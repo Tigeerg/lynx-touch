@@ -36,6 +36,11 @@
 | `modules/gcode-viewer/test_drill_cycles.py` | Headless-проверка кадровых циклов сверления G73/G81/G82/G83: клевки, вывод стружки, возврат на R |
 | `modules/gcode-viewer/test_tool_profile.py` | Headless-проверка профиля инструмента и оправки: типы `UI_TOOL`, вылет, кольца |
 | `modules/gcode-viewer/test_collision.py` | Headless-проверка коллизий: `_circle_rect_hit`, скан оправки по заготовке, отсутствие тихого отказа |
+| `scripts/build-viewer.ps1` | Сборка C++-плагина `CNC.Edges` (Ninja, MSVC, Qt 6.12, OCCT, Eigen) в `build/edges` |
+| `modules/gcode-viewer/cpp/CMakeLists.txt` | Каркас сборки плагина `CNC.Edges`: цели `cncedgesplugin`, `cncedgespluginplugin`, `stepledges_probe` |
+| `modules/gcode-viewer/cpp/stepledgesgeometry.h` / `.cpp` | Рёбра STEP (B-rep) как `Lines`-геометрия QML: сэмплер и фильтр швов согласованы с `load_step_model` |
+| `modules/gcode-viewer/cpp/stepledges_probe.cpp` | Пробник: сегменты рёбер STEP из плагина (число и `sha256` набора точек), проверка импорта QML |
+| `modules/gcode-viewer/test_stepledges_plugin.py` | Headless-сверка сегментов плагина `CNC.Edges` с питоновским эталоном `load_step_model` |
 | `modules/gcode-viewer/oracle_dump.py` | Оракул промежуточных результатов: эталон для переноса на C++ |
 | `modules/gcode-viewer/test_ribbon_width.py` | Живая проверка толщины ленты (2 px по вертикали и горизонтали) |
 | `modules/gcode-viewer/test_solid_skin.py` | Живая проверка: сплошная кожа закрывает скрытые рёбра (без просвечивания) |
@@ -43,11 +48,35 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.13.14` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.14.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.14.0 — 2026-10-16
+
+- **Каркас сборки C++: плагин `CNC.Edges` (этап 1 плана переноса на C++).** QML-плагин рёбер STEP
+  (`cpp/stepledgesgeometry`) теперь собирается: `scripts/build-viewer.ps1` конфигурирует `cpp/` генератором
+  Ninja (Qt Quick3D, OCCT, Eigen; пути из `CNC_QT_DIR`/`CNC_OCC_DIR` и подобных переменных) и кладёт модуль
+  `CNC.Edges` в `build/edges`. Цель разделена на `cncedgesplugin` (типы и алгоритм) и
+  `cncedgespluginplugin` (точка входа) — по образцу Qt для QML-плагина.
+- **Алгоритм приведён к питоновскому эталону.** Сэмплер кривых заменён на `GCPnts_UniformDeflection(0.05)`
+  (только линейный допуск, как `load_step_model`), фильтр форм-рёбер согласован с шовным правилом
+  `step_import.py`, добавлен порт `_coalesce_segments`. Свойство `angularDeflection` убрано — эталон
+  углового критерия не задаёт, потребителей в репозитории нет. Путь STEP читается как UTF-8: иначе
+  кириллица в пути репозитория терялась.
+- **Проверка совпадения.** Пробник `cpp/stepledges_probe.cpp` строит геометрию из `Test_model.STEP` и
+  печатает число сегментов и `sha256` набора точек; `test_stepledges_plugin.py` сверяет их с
+  `load_step_model`: 2426 отрезков, набор точек совпадает (`ff0d95ac…`). Побайтово порядок расходится — в
+  питоновском `_coalesce_segments` кластеры упорядочены неустойчивым `numpy.argsort`; это объяснено, а не
+  подогнано.
+- **Что тронуто:** `cpp/CMakeLists.txt`, `cpp/stepledgesgeometry.h/.cpp`, `tools/check.ps1`, `.gitignore`;
+  добавлены `scripts/build-viewer.ps1`, `cpp/stepledges_probe.cpp`, `test_stepledges_plugin.py`. Поведение
+  Python-вьювера и QML-контракт не менялись, оракул не тронут, `CACHE_VER` не поднимался.
+- **Проверки.** Сторож гоняет 64 проверки (добавлены сборка плагина, наличие модуля и
+  `test_stepledges_plugin.py`), зелёный; на машине без тулчейна шаг печатает `skip` и сторож остаётся
+  зелёным. Оракул без изменений (22 записи). Версия 0.13.14 -> 0.14.0.
 
 ### 0.13.14 — 2026-10-16
 

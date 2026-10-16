@@ -1,47 +1,47 @@
 #pragma once
 
 #include <QQuick3DGeometry>
-#include <QPointF>
+#include <QVector>
 #include <QtQml/qqmlregistration.h>
 
 #include <TopoDS_Shape.hxx>
 
-class QVector3D;
-
 // =============================================================================
-// StepEdgesGeometry - CAD edges (B-Rep) of a STEP model as a QML-usable Lines
-// geometry (QQuick3DGeometry, primitive Lines, GL_LINES pair order).
+// StepEdgesGeometry — рёбра B-Rep модели STEP как Lines-геометрия QML
+// (QQuick3DGeometry, примитив Lines, порядок пар как у GL_LINES).
 //
-// All TopAbs_EDGE elements are extracted from the TopoDS_Shape with a
-// TopExp_Explorer; straight edges are taken analytically by their endpoints,
-// curvilinear ones are discretized by GCPnts_TangentialDeflection (tangential
-// criterion: both chord and angle deviation).  "Form" edges are filtered out:
-// a straight edge whose every adjacent face is curved (a seam / generatrix of
-// a cylinder or cone) is not a model edge, SolidWorks draws it neither.
+// Повторяет питоновский эталон load_step_model(...) по рёбрам
+// (modules/gcode-viewer/step_import.py): обход TopAbs_EDGE в порядке
+// TopExp_Explorer, полилиния каждого ребра — GCPnts_UniformDeflection с линейным
+// допуском 0.05 мм (угловой критерий не используется: эталон его не задаёт),
+// затем склейка почти совпадающих отрезков (_coalesce_segments,
+// modules/gcode-viewer/packing.py). Шовные линии криволинейных граней (прямое
+// ребро, у которого все смежные грани криволинейны) отбрасываются: SolidWorks
+// их тоже не рисует. Совпадение с эталоном проверяет cpp/stepledges_probe.cpp и
+// modules/gcode-viewer/test_stepledges_plugin.py.
 //
-// Visibility (hidden line removal) is done by the GPU, not by post-processing:
-// the geometry is rendered with the paired custom material (stepledges.vert),
-// which pulls the lines toward the camera in clip space (z *= depthBias),
-// while standard LESS/LESS_EQUAL depth testing rejects lines behind the
-// solid.  The solid itself must be opaque (write into the depth buffer).
+// Скрытие невидимых линий делает GPU, а не постобработка: геометрия рисуется
+// парным материалом (stepledges.vert), который подтягивает линии к камере в
+// clip space (z *= depthBias), а обычный тест глубины LESS/LESS_EQUAL отсекает
+// линии за телом. Тело обязано быть непрозрачным (пишет в буфер глубины).
 // =============================================================================
 
-class StepEdgesGeometry final : public QQuick3DGeometry
+class StepEdgesGeometry : public QQuick3DGeometry
 {
     Q_OBJECT
     QML_NAMED_ELEMENT(StepEdges)
     QML_ADDED_IN_VERSION(1, 0)
 
-    // Path to the STEP file (.step/.stp). Reloaded on change.
+    // Путь к файлу STEP (.step/.stp). Читается заново при изменении.
     Q_PROPERTY(QString source READ source WRITE setSource NOTIFY sourceChanged)
-    // Discretization of curvilinear edges: linear deviation, mm.
+    // Дискретизация криволинейных рёбер: линейный допуск, мм.
     Q_PROPERTY(qreal deflection READ deflection WRITE setDeflection NOTIFY deflectionChanged)
-    // Tangential deviation, radians (angle between the chord endpoints).
-    Q_PROPERTY(qreal angularDeflection READ angularDeflection WRITE setAngularDeflection NOTIFY deflectionChanged)
-    // Hide the seam/generatrix lines of curved faces (on by default).
+    // Скрывать шовные линии криволинейных граней (по умолчанию включено).
     Q_PROPERTY(bool hideFormEdges READ hideFormEdges WRITE setHideFormEdges NOTIFY hideFormEdgesChanged)
-    // Diagnostics: number of segments in the built buffer.
+    // Диагностика: число отрезков в построенном буфере.
     Q_PROPERTY(int segmentCount READ segmentCount NOTIFY sourceChanged)
+    // Диагностика переноса: число отрезков до склейки.
+    Q_PROPERTY(int rawSegmentCount READ rawSegmentCount NOTIFY sourceChanged)
 
 public:
     explicit StepEdgesGeometry(QQuick3DObject *parent = nullptr);
@@ -52,17 +52,19 @@ public:
     qreal deflection() const { return m_deflection; }
     void setDeflection(qreal d);
 
-    qreal angularDeflection() const { return m_angularDeflection; }
-    void setAngularDeflection(qreal a);
-
     bool hideFormEdges() const { return m_hideFormEdges; }
     void setHideFormEdges(bool on);
 
     int segmentCount() const { return m_segmentCount; }
+    int rawSegmentCount() const { return m_rawSegmentCount; }
 
-    // C++ host (without QML): build from an already loaded shape.
-    // Returns false if the shape produced no edges.
+    // Хост на C++ (без QML): построение по уже прочитанной форме.
+    // false — форма не дала ни одного отрезка.
     bool setShape(const TopoDS_Shape &shape);
+
+    // Диагностика переноса: точки отрезков подряд парами (x, y, z), float32.
+    // Порядок — порядок построения, тот же, что у эталонного массива.
+    QVector<float> segmentPoints() const { return m_points; }
 
 signals:
     void sourceChanged();
@@ -70,11 +72,12 @@ signals:
     void hideFormEdgesChanged();
 
 private:
-    void rebuild();                       // source -> geometry buffers
+    void rebuild();                       // source -> буферы геометрии
 
     QString m_source;
-    qreal m_deflection = 0.05;            // mm
-    qreal m_angularDeflection = 0.3;      // rad (~17 deg), like OCCT defaults
+    qreal m_deflection = 0.05;            // мм
     bool m_hideFormEdges = true;
     int m_segmentCount = 0;
+    int m_rawSegmentCount = 0;
+    QVector<float> m_points;              // диагностика и буфер вершин
 };

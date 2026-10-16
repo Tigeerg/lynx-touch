@@ -1,15 +1,21 @@
-# QML extension plugin "CNC.Edges" - StepEdges (B-Rep edge Lines geometry).
+# QML-плагин "CNC.Edges" — StepEdges: рёбра B-Rep модели как Lines-геометрия.
 #
-# Configure (SDK paths are the same as scripts/build-viewer.ps1 uses):
-#   cmake -S modules/gcode-viewer/cpp -B build/edges -G "Visual Studio 18 2026" -A x64 ^
-#         -DQt6_DIR=<Qt>/lib/cmake/Qt6 -DOpenCASCADE_DIR=<OCCT>/cmake
-#   cmake --build build/edges --config Release
+# Сборка (скрипт делает то же самое):
+#   powershell -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
+# Вручную:
+#   call <VS2022>\VC\Auxiliary\Build\vcvars64.bat
+#   cmake -S modules/gcode-viewer/cpp -B build/edges -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+#         -DCMAKE_PREFIX_PATH="<Qt6>/msvc2022_64;<OCCT>/Library"
+#   cmake --build build/edges
 #
-# The plugin lands into build/edges/CNC/Edges/; consumers add that directory:
-#   QML:  import CNC.Edges 1.0
-#   PySide6:  engine.addImportPath("<build>/edges")
-# Linking note: OCCT libs are resolved via the config-package targets when
-# available (TK* imported), otherwise via OpenCASCADE_{INCLUDE_DIR,LIBRARY_DIR}.
+# Модуль кладётся в build/edges/CNC/Edges/: qmldir, cncedgesplugin.dll (резервная
+# библиотека с типами и алгоритмом) и cncedgespluginplugin.dll (точка входа, её
+# грузит QML). Импорт-путь для потребителя — build/edges; там же лежит пробник
+# stepledges_probe.exe:
+#   QML:      import CNC.Edges 1.0
+#   PySide6:  engine.addImportPath("<repo>/build/edges")
+# Библиотеки OCCT линкуются по импортированным целям TK* из конфиг-пакета, а если их
+# в пакете нет — по переменным OpenCASCADE_INCLUDE_DIR/OpenCASCADE_LIBRARY_DIR.
 
 cmake_minimum_required(VERSION 3.16)
 project(cnc_edges_plugin LANGUAGES CXX)
@@ -21,20 +27,33 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Quick3D)
 find_package(OpenCASCADE REQUIRED)
 
 qt_standard_project_setup()
+if(COMMAND qt_policy)
+    # Префикс ресурсов QML-модуля ':/qt/qml/' — значение по умолчанию для новых проектов.
+    qt_policy(SET QTP0001 NEW)
+endif()
 
-qt_add_library(cncedgesplugin MODULE)
+# Модуль разделён по образцу Qt: резервная библиотека cncedgesplugin (SHARED) несёт
+# типы и алгоритм, плагин cncedgespluginplugin (MODULE) — точка входа, которую QML
+# грузит по строке "plugin cncedgespluginplugin" в qmldir. Резервная библиотека
+# линкуется в пробник; MODULE-библиотеку CMake линковать не разрешает.
+qt_add_library(cncedgesplugin SHARED)
 
 set_target_properties(cncedgesplugin PROPERTIES
     QT_QML_GENERATE_QMLLS_INI OFF
+    # Резервная библиотека лежит рядом с плагином: иначе QML не найдёт её при загрузке.
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
+    # Windows: класс StepEdgesGeometry нужен пробнику, а по умолчанию DLL ничего не экспортирует.
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
 
 qt_add_qml_module(cncedgesplugin
     URI CNC.Edges
     VERSION 1.0
+    # Каталог модуля повторяет URI: <build>/CNC/Edges/. Импорт-путь потребителя — <build>.
+    OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
     SOURCES
         stepledgesgeometry.h
         stepledgesgeometry.cpp
-    NO_PLUGIN_CLASS           # QML_ELEMENT from C++ registers the type
 )
 
 target_compile_definitions(cncedgesplugin PRIVATE OCCT_HANDLE_NOCAST)
@@ -42,8 +61,8 @@ if (MSVC)
     target_compile_options(cncedgesplugin PRIVATE /utf-8 /MP)
 endif()
 
-# OpenCASCADE: prefer modern imported targets (TKxxx::), fall back to the
-# classic variables provided by older configs.
+# OpenCASCADE: сначала импортированные цели (TKxxx::), иначе классические переменные
+# из старого конфиг-пакета.
 set(OCC_NEEDED TKernel TKMath TKTopAlgo TKGeomBase TKBRep TKDESTEP TKXSBase)
 foreach(lib IN LISTS OCC_NEEDED)
     if (TARGET OpenCASCADE::${lib})
@@ -56,3 +75,17 @@ target_include_directories(cncedgesplugin PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
 target_link_libraries(cncedgesplugin PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Quick3D)
+
+# Пробник сверки с питоновским эталоном: отдельная цель, в плагин не входит.
+# Читает геометрию через сам плагин (setSource -> setShape), печатает число
+# отрезков и sha256 буфера; сравнение с эталоном ведёт
+# modules/gcode-viewer/test_stepledges_plugin.py.
+add_executable(stepledges_probe stepledges_probe.cpp)
+set_target_properties(stepledges_probe PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+if (MSVC)
+    target_compile_options(stepledges_probe PRIVATE /utf-8 /MP)
+endif()
+target_link_libraries(stepledges_probe PRIVATE cncedgesplugin Qt6::Core Qt6::Qml Qt6::Quick3D)
+target_include_directories(stepledges_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})

@@ -158,10 +158,19 @@ facade; the code is spread over 18 modules: `gv_types`, `gv_common`, `gcode_pars
 `stl_import`, `packing`, `step_import`, `step_surfaces`, `tangents`, `silhouette`, `normals`, `outline`,
 `path_prep`, `tooling`, `collision`, `geometry`, `controller`. The names used by the tests,
 `bench_viewer.py`, `oracle_dump.py` and QML are re-exported by the facade, so the outside code never
-changed, and the oracle confirmed on every step that no result moved. Stage 0 still has to do: **types
-instead of tuples are in place** (`gv_types.py`, 0.13.13 — path points, stages, bounds, buffers, STEP
-surfaces, silhouette topology, tool and holder profiles); the missing tests (numpy became a hard
-dependency, 0.13.11; the library prints became logging, 0.13.12).
+changed, and the oracle confirmed on every step that no result moved.
+
+**Stage 0 is closed.** Types instead of tuples are in place (`gv_types.py`, 0.13.13 — path points, stages,
+bounds, buffers, STEP surfaces, silhouette topology, tool and holder profiles), numpy became a hard
+dependency (0.13.11), the library prints became logging (0.13.12), and the missing tests were added — the
+G-code parser, drill cycles, tool profile and collisions (0.13.14).
+
+**The build skeleton (stage 1) is in place.** `scripts/build-viewer.ps1` builds the `CNC.Edges` plugin with
+the Ninja generator (MSVC, Qt 6.12 Quick3D, OCCT 8.0.1, Eigen) into `build/edges`. The STEP edge segments
+are checked against the Python reference `load_step_model` by the `cpp/stepledges_probe.cpp` probe and the
+`test_stepledges_plugin.py` check: 2426 segments, the point set matches (sha256 `ff0d95ac…`), only the
+traversal order differs — in the Python `_coalesce_segments` the clusters are ordered by an unstable
+`numpy.argsort`. The build and the comparison sit in the guard and are skipped when the toolchain is absent.
 
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.

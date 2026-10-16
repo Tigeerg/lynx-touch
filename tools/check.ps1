@@ -142,6 +142,47 @@ if ($pythonReal) {
   Skipped 'python: py_compile, offscreen-прогоны, test_tangent_policy.py, test_normals_golden.py'
 }
 
+# 6. Сборка QML-плагина CNC.Edges (StepEdges) и сверка рёбер STEP с питоновским
+#    эталоном. Нужен полный C++-тулчейн: Qt6, OCCT, cmake, ninja, vcvars64.
+#    Тулчейна нет — шаг пропускается, как остальные инструментальные проверки.
+$qtDir = if ($env:CNC_QT_DIR) { $env:CNC_QT_DIR } else { 'C:\Qt\6.12.0\msvc2022_64' }
+$occDir = if ($env:CNC_OCC_DIR) { $env:CNC_OCC_DIR }
+          elseif ($env:CONDA_PREFIX) { Join-Path $env:CONDA_PREFIX 'Library' }
+          else { 'C:\Users\Tiger\anaconda3\envs\gcode-cpp\Library' }
+$vcvarsCandidates = @($env:CNC_VCVARS,
+  'C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat')
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+if (Test-Path -LiteralPath $vswhere) {
+  $vsRoot = (& $vswhere -latest -products * -property installationPath 2>$null | Out-String).Trim()
+  if ($vsRoot) { $vcvarsCandidates += (Join-Path $vsRoot 'VC\Auxiliary\Build\vcvars64.bat') }
+}
+$cmakeExe = if (Get-Command cmake -ErrorAction SilentlyContinue) { (Get-Command cmake).Source }
+            else { 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' }
+$ninjaExe = if (Get-Command ninja -ErrorAction SilentlyContinue) { (Get-Command ninja).Source }
+            else { 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe' }
+$vcvars = $vcvarsCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+$cppReady = (Test-Path -LiteralPath (Join-Path $qtDir 'lib\cmake\Qt6\Qt6Config.cmake')) -and
+            (Test-Path -LiteralPath (Join-Path $occDir 'lib\cmake\opencascade\OpenCASCADEConfig.cmake')) -and
+            $vcvars -and (Test-Path -LiteralPath $cmakeExe) -and (Test-Path -LiteralPath $ninjaExe)
+
+if ($cppReady -and $pythonReal) {
+  Run-Tool 'build-viewer.ps1 (плагин CNC.Edges)' {
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
+  }
+  if (Test-Path -LiteralPath 'build/edges/CNC/Edges/qmldir') {
+    Ok 'модуль CNC.Edges собран (build/edges/CNC/Edges)'
+  } else {
+    Bad 'модуль CNC.Edges не собран: нет build/edges/CNC/Edges/qmldir'
+  }
+  if (Test-Path -LiteralPath 'build/edges/stepledges_probe.exe') {
+    Run-Tool 'test_stepledges_plugin.py' { python modules/gcode-viewer/test_stepledges_plugin.py }
+  } else {
+    Bad 'нет пробника build/edges/stepledges_probe.exe'
+  }
+} else {
+  Skipped 'сборка плагина CNC.Edges и сверка рёбер: нет Qt6/OCCT/cmake/ninja/vcvars64'
+}
+
 Write-Host ''
 if ($fail.Count -gt 0) {
   Write-Host "GUARD: FAIL ($($fail.Count))" -ForegroundColor Red

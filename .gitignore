@@ -16,6 +16,8 @@ node_modules
 
 # Build artifacts
 tsconfig.tsbuildinfo
+# каталог сборки C++ (плагин CNC.Edges и пробник)
+build/
 
 # Python
 __pycache__/

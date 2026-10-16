@@ -3905,7 +3905,7 @@ class GcodeToolpath(QObject):
     def _stl_normals(verts):
         """Crease-smooth vertex normals for an STL triangle soup (position
         list); None when numpy is absent (caller keeps flat normals)."""
-        if _np is None or not verts or len(verts) < 3:
+        if _np is None or verts is None or len(verts) < 3:
             return None
         try:
             return _smooth_face_normals(_np.asarray(verts, dtype=_np.float64)

@@ -205,7 +205,10 @@ Engineering:
 - `dataclass` instead of tuples/dicts, with type hints;
 - make numpy a hard dependency (remove the pure-Python fallbacks);
 - a performance gate in `pnpm guard` via `bench_viewer.py`;
-- centralized logging.
+- centralized logging;
+- port the compute core to C++ (the OCCT SDK directly instead of bindings, Eigen instead of
+  numpy) — estimate, risks and stages in [`PORT-CPP.md`](PORT-CPP.md) /
+  [`PORT-CPP.en.md`](PORT-CPP.en.md).
 
 ## 14. Checks and tests
 

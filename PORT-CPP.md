@@ -1,0 +1,205 @@
+# План переноса бэкенда `gcode-viewer` на C++
+
+Оценка и порядок работ. Документ описывает **план**, а не принятое решение: он нужен, чтобы
+выбирать этапы осознанно и видеть цену каждого.
+
+Основание для переноса: C++ строже по типам и допускает существенно более серьёзную
+оптимизацию. Ниже — где именно эта оптимизация даёт выигрыш, а где нет, и что придётся
+заплатить.
+
+Состояние на момент оценки: вьювер **0.13.4**, `mock_backend.py` — 4092 строки,
+`GcodeViewer3D.qml` — около 1050 строк, плюс `cpp/stepledgesgeometry.{h,cpp}` (плагин
+`CNC.Edges`, не собирается: в системе нет Qt6-dev-пакетов).
+
+---
+
+## 1. Инвентаризация Python-кода по слоям
+
+| # | Слой | Ключевые сущности | Зависимости |
+|---|------|-------------------|-------------|
+| 1 | Общая обвязка | замок `_occt`, опциональный импорт numpy, константы окружения `CNC_*` | threading, numpy (опц.) |
+| 2 | Парсер G-кода | `parse_gcode`, `_run_cycle` (сверление), `_arc_points`, `_arc_sweep` | re, math |
+| 3 | Теги `UI_*` | `parse_ui_rotation/origin/tool/holder/stock`, `stage_label`, `quat_from_cols` | re, math, QQuaternion |
+| 4 | Импорт STL | `load_stl_vertices` (бинарный и ASCII), `_verts_bounds` | struct, numpy |
+| 5 | Упаковка рёбер | `_pack_edges_np`, `packed_positions`, `_pack_edge_segments`, `_coalesce_segments` | numpy |
+| 6 | Импорт STEP | `_step_shape`, `load_step_model`, фильтр швов, `_orient_shell_outward` | OCP (STEPControl, BRepMesh, TopExp, BRepAdaptor, GCPnts) |
+| 7 | Аналитические поверхности | `load_step_surfaces` (цилиндры и конусы: ось, радиус, дуга) | OCP (BRepAdaptor_Surface, gp, GeomAbs) |
+| 8 | Crease-aware нормали | `_smooth_face_normals` (сварка по сетке, батчинг по размеру группы, кластеризация по 20 град) | numpy |
+| 9 | Топология силуэта | `_build_silhouette_topology` (сварка 1e-4 мм), `_mesh_silhouette_segments` (знак `n·E - d`, int8) | numpy |
+| 10 | Аналитические касательные | `_tangent_families` (предвычисление), `_tangent_from_families` (на кадр), `_cone_keeps_silhouette`, `_dedupe_cones` | numpy, math |
+| 11 | Обводка STL | `_feature_edges` (двугранный угол), `_feature_edges_np` | numpy |
+| 12 | Подготовка траектории | `_prepare_ordered` (ядро), `_pack_stream_np`, `_stages_norm`, `_scene_bounds_lo_hi` | numpy |
+| 13 | Инструмент и оправка | `_tool_profile`, `_tool_outline_profile`, `_holder_*_profile`, `_rings_segments` | math, array |
+| 14 | Коллизии и tool-check | `_scan_collisions`, `_circle_rect_hit`, `_tool_check_report` | math |
+| 15 | Дисковый кэш | `_cache_key`, чтение/запись `.npz`, `_cache_prune` | hashlib, json, numpy |
+| 16 | Геометрии Qt | `ToolpathGeometry` (stride 20), `HLRLineGeometry` (stride 48), `GridGeometry`, `AxisArrowGeometry`, `MeshGeometry`, `ToolGeometry` | Qt Quick3D, numpy, array |
+| 17 | Контроллер | `GcodeToolpath`: свойства, слоты, сигналы, `refreshTangents`, `_load_model_verts`, `_apply_mesh_verts`, `_compute_edges`, `load_gcode*`, фоновые потоки | Qt Core/Gui/Qml/Quick3D, threading |
+
+Порядок величины: **около 4.1 тыс. строк Python**, из них примерно 2.6 тыс. — вычислительное
+ядро, 1.0 тыс. — контроллер, 0.5 тыс. — геометрии Qt.
+
+Ключевые зависимости: **numpy** (формально опциональный), **OCP** (`cadquery-ocp`) только для
+STEP, **PySide6**, `threading` с замком вокруг OCCT.
+
+## 2. QML-контракт, который нельзя ломать
+
+Перенос обязан сохранить контракт с QML — иначе вьювер перестанет работать целиком.
+
+- **Свойства-данные:** `center`, `radius`, `moveLength`, `stages`, `collisions`, `toolCheck`,
+  `stockCenter`, `stockSize`, `hasStock`, `holderGauge`, `toolInfo`, `toolLength`, `toolRadius`,
+  `holderRadius`, `modelPath`, `partMeshCenter`, `partRadius`, `partRotation`, `partPosition`,
+  `toolPosition`, `loading`, `eyeRaw`.
+- **Свойства-геометрии:** `rapidGeometry`, `feedGeometry`, `partGeometry`, `partEdges`,
+  `hlrEdges`, `hlrTangents`, `toolGeometry`, `toolOutline`, `holderGeometry`, `holderOutline`,
+  `toolRings`, `holderRings`.
+- **Сигналы:** `ready`, `pathChanged`, `modelPathChanged`, `meshChanged`, `partTransformChanged`,
+  `stockChanged`, `toolChanged`, `loadingChanged`, `toolInfoChanged`, `collisionsChanged`,
+  `toolCheckChanged`, `loadFinished`, `eyeChanged`, `toolpathLoaded(int)`, `toolpathReady(object)`,
+  `edgesReady(object)`, `meshReady(object)`.
+- **Слоты:** `setToolStage`, `analyzeCollisions`, `setMachineTools`, `setMachineLimits`,
+  `runToolCheck`, `refreshTangents`, `load_gcode`, `loadModel`, `load_gcode_async`, `load_string`,
+  `sampleAt`, `isRapidAt`, `speedAt`.
+- **Форматы буферов шейдеров** переносятся 1:1: `HLRLineGeometry` — stride 48 (POSITION vec4,
+  NORMAL vec4 = направление отрезка, TEXCOORD0 vec4 = сторона; `stepledges.vert` читает `UV0.x`,
+  `NORMAL` и uniform'ы `eyeRaw`, `camFloatMm`, `lineWidthPx`, `viewportW/H`, `polyOffset`);
+  `ToolpathGeometry` — stride 20 (POSITION 3f + TEXCOORD0.x = параметр пути; `toolpath.vert/.frag`
+  отвечают за `cutoff`, `pathEnd`, `fadeStart`, `stageMode`, `stageStart`, `stageEnd`).
+- `GridGeometry` и `AxisArrowGeometry` QML использует напрямую, не через контроллер.
+
+## 3. Что уже C++-дружелюбно
+
+- **Геометрии Qt** — тонкие обёртки над `QQuick3DGeometry`; порядок вызовов
+  `clear -> setVertexData -> setStride -> addAttribute -> setBounds -> update` есть уже сейчас,
+  Python лишь готовит байты.
+- **Ядро парсера и `_prepare_ordered`** — без Qt, потокобезопасно: транслируется в свободные
+  функции.
+- **Вызовы OCCT** уже перечислены в `cpp/stepledgesgeometry.cpp` — тот же API есть в C++ SDK.
+- **Токены загрузки** (`_load_token`, `_edge_token`, `_collision_token`) ложатся на
+  `std::atomic`.
+- **`set_packed`**: буфер собирается вне GUI-потока и лишь устанавливается — семантика та же.
+
+## 4. Что заменяется и что это даёт
+
+| Сейчас | В C++ | Выигрыш |
+|---|---|---|
+| Вызовы OCCT через SIP-биндинги `OCP.*` | OCCT C++ SDK напрямую | **Главный**: в `load_step_model` и `load_step_surfaces` на каждую вершину, треугольник и точку идёт маршалинг Python↔C++ (`tri.Node(i)`, `tri.Triangle(i)`, `sampler.Value(i)` — около 180 тыс. обменов на Test_model). Исчезает целиком |
+| numpy для `cross`, `norm`, `einsum` | Eigen (`Vector3d`, `.cross()`, `.norm()`) | Нет промежуточных массивов ndarray; снимаются 36 ветвлений «опционального numpy» |
+| `threading.Thread` и замок вокруг OCCT | `QThreadPool`, `QtConcurrent` | Нет GIL; сейчас OCCT специально отпускает GIL, поэтому секции сериализованы замком |
+| Питоновские циклы на сборке буферов (`ToolGeometry`, `GridGeometry`, ASCII-STL) | циклы C++ и векторы | Интерпретатор уходит с горячих путей сборки |
+
+Измеренная база (`bench_viewer.py`, Test_model, слабый CPU): `step.shape_read` 858 мс,
+`step.read` 571 мс, `gcode.parse` 385 мс, `stl.feature_edges` 357 мс, `step.surfaces` 68 мс,
+`families.build` 37 мс. Интерактив при этом уже в бюджете: событие камеры 0.71 мс, кадр в покое
+ограничен GPU.
+
+**Вывод:** выигрыш концентрируется в холодной загрузке и в будущих тяжёлых функциях (съём
+материала, проверка зареза), а не в орбите. Ради одной орбиты перенос не нужен.
+
+## 5. Что не стоит переносить
+
+1. **Питоновские фолбэки без numpy** (`_pack_stream_py`, `_feature_edges_py`, питоновские ветки
+   `_pack_edge_segments` и `MeshGeometry.set_triangles`) — это уже помеченный «медленный резерв»;
+   удалить, а не транслировать.
+2. **`GridGeometry` и `AxisArrowGeometry`** — статическая процедурная геометрия, малый буфер,
+   перестраивается редко: выигрыш около нуля.
+3. **Дисковый кэш** в формате `.npz` — перенос формата ломает совместимость с питоновским кэшем.
+   Либо оставить sidecar, либо осознанно перейти на `QDataStream` и поднять `CACHE_VER`.
+4. **Инструменты приёмки рендера** (`test_solid_skin.py`, `test_ribbon_width.py`,
+   `render_probe.py`, `smoke_test_qml.py`) — они проверяют всю цепочку и должны продолжать
+   работать против нового бэкенда при неизменном QML-контракте.
+5. **JS-логика камеры и этапов в QML** — её место в бэкенде, но это отдельный рефакторинг;
+   смешивать с переносом нельзя.
+6. **`_tool_check_report`** — скелет без источника данных стойки: переносить дёшево, ценность
+   нулевая, пока не определён контракт.
+
+## 6. Риски и цена
+
+- **Объём:** ожидаемо ×1.5–1.8 по строкам (заголовки, явные типы, шаблоны, CMake).
+- **Время сборки:** заголовки OCCT тяжёлые; один TU на слой, PCH на OCCT и Qt.
+- **Лицензия OCCT:** LGPL-2.1 **с исключением OCCT** — динамическая линковка к `TK*.dll`
+  безопасна для закрытого продукта. **Статическая линковка — серая зона** и не рекомендуется.
+  `cpp/CMakeLists.txt` уже готов к `find_package(OpenCASCADE)`; под полный порт нужны ещё
+  `TKMesh`, `TKPrim`, `TKG3d`.
+- **Инфраструктура:** Qt6-dev-пакетов в системе нет — без них C++-часть не соберётся вообще.
+  Eigen — header-only, лицензия MPL2.
+- **Кросс-платформенность:** Qt, OCCT и Eigen собираются и на Windows, и на Linux; но целевое
+  слабое железо (Atom + Ion, legacy OpenGL 3.3) остаётся узким местом по GPU — перенос этого не
+  меняет.
+- **Главный риск — не объём, а точность.** `test_normals_golden.py` требует совпадения float32
+  **бит-в-бит**, `test_tangent_policy.py` — поэлементного совпадения силуэта. Результат зависит
+  от порядка суммирования, порядка батчинга и округления. Ключевые отличия: `numpy.round`
+  округляет пол-к-чётному, `std::round` — пол-от-нуля. Нужны `/fp:precise` (MSVC),
+  `-ffp-contract=off -fno-fast-math` (GCC/Clang) и ручное воспроизведение порядка суммирования;
+  иначе golden покраснеет и придётся переутверждать нормали, а это ломает уже принятое требование.
+
+## 7. Поэтапный план
+
+Принцип: **сначала Python приводится в переносимое состояние и порождает «золотые» артефакты
+(оракул), затем C++ заменяет слой за слоем как drop-in при неизменном QML-контракте.** Каждый
+этап оставляет Python-бэкенд рабочим, переключение — флагом.
+
+| Этап | Что делается | Зелёное после этапа | Откат |
+|---|---|---|---|
+| **0** | Только Python: разбить монолит на модули, ввести типы вместо кортежей и dict, numpy — жёсткая зависимость, `print` -> `logging`, добавить недостающие тесты, **сгенерировать оракул** (дамп промежуточных массивов на Test_model) | Существующие проверки и новые тесты; оракул записан | Нечего откатывать: поведение не меняется |
+| **1** | Каркас сборки: CMake, Qt6 Quick3D, OCCT, Eigen; довести `cpp/stepledgesgeometry` до собираемого плагина; подключить сборку к сторожу | Плагин собирается, сегменты совпадают с `load_step_model` | Плагин отдельный, ничего не ломает |
+| **2** | Чистое ядро: парсер G-кода, циклы, дуги, теги `UI_*`, `_prepare_ordered`, упаковка этапов | C++ даёт идентичные буферы и этапы против оракула | Python-ядро остаётся |
+| **3** | Геометрии Qt: `ToolpathGeometry`, `MeshGeometry`, `ToolGeometry`, `HLRLineGeometry` с форматами буферов | `smoke_test_qml`, `test_ribbon_width` зелёные, буферы совпадают | Python-геометрии остаются |
+| **4** | **STEP, STL, нормали, топология, силуэт** на OCCT SDK напрямую + Eigen | `test_normals_golden` бит-в-бит, `test_normals_orientation`, `test_tangent_policy` зелёные, холодная загрузка падает кратно | Python-ветка STEP остаётся эталоном для диффов |
+| **5** | Контроллер `GcodeToolpath`: свойства, слоты, сигналы 1:1, async через `QThreadPool`, токены через атомики | `smoke_test_qml`, `test_solid_skin`, `render_probe`, `preview_3d` (offscreen и живое окно), ни одной `[QML warning]` | Возврат к Python-регистрации типа |
+| **6** | Периферия: кэш, `_scan_collisions`, `_tool_check_report`, обводка STL, `GridGeometry` и `AxisArrowGeometry` | По остаточному принципу | — |
+
+**Основную часть выигрыша даёт этап 4.** Этапы 2 и 3 дешёвые и безопасные; этап 5 нужен, чтобы
+совсем отпустить Python, но сам по себе почти ничего не ускоряет.
+
+## 8. Оценки
+
+Допущения: прямая трансляция алгоритмов, Eigen вместо numpy, OCCT динамически, QML-контракт
+неизменен, для нормалей и силуэта преследуется бит-в-бит.
+
+| Слой | Сложность | Строк C++ примерно |
+|---|---|---|
+| Каркас CMake и плагин | низкая | 150–250 |
+| Парсер G-кода, циклы, дуги, теги | средняя | 700–900 |
+| Подготовка траектории и этапов | низкая-средняя | 300–400 |
+| Кэш (если переносить) | низкая-средняя | 200–300 |
+| STL | низкая | 120–180 |
+| Упаковка и склейка рёбер | средняя | 200–300 |
+| **STEP и нормали** | **высокая** | **900–1300** |
+| **Аналитические поверхности и касательные** | **высокая** | **700–1000** |
+| Топология силуэта | средняя | 250–350 |
+| Обводка STL | средняя | 250–350 |
+| Инструмент, оправка, кольца | низкая-средняя | 350–500 |
+| Коллизии и tool-check | низкая-средняя | 300–400 |
+| Геометрии Qt | низкая | 500–700 |
+| Контроллер | средняя | 800–1000 |
+| **Итого** | — | **около 5500–7500** |
+
+Два высокорисковых слоя (STEP с нормалями и аналитический силуэт) — это примерно 1.6–2.3 тыс.
+строк и почти весь риск точности.
+
+## 9. Что мешает переносу и должно быть подготовлено заранее
+
+- **Монолит.** `mock_backend.py` — 4092 строки и более двухсот определений в одном файле.
+- **Глобальное состояние:** замок OCCT, флаг numpy, константы кэша и окружения — на уровне
+  модуля.
+- **Тесты завязаны на приватные имена:** `test_tangent_policy.py` и `bench_viewer.py` импортируют
+  `_tangent_families`, `_pack_edge_segments`, `_prepare_ordered` и другие. При переносе эти имена
+  становятся публичным контрактом: либо стабилизировать, либо переносить тесты вместе с оракулом.
+- **Кортежи и dict вместо структур:** точки пути, этапы, дескрипторы цилиндров и конусов, профили
+  инструмента.
+- **Магические числа без имени и единиц** — при переносе их надо назвать, иначе точность «поедет»
+  тихо.
+- **`print` вместо логирования** — в C++ это категории `qCInfo`/`qCWarning`.
+- **Нет аннотаций типов** — для C++ это значит «угадай тип»; этап 0 обязателен.
+
+## 10. Резюме
+
+1. Начинать с **этапа 0** — без оракула и типов бит-в-бит недостижим.
+2. Затем этапы 2–3: чистое ядро и геометрии Qt — дешёво, безопасно, тренирует процесс.
+3. **Основной выигрыш — этап 4** (STEP, STL, нормали, силуэт напрямую через OCCT SDK).
+4. Контроллер (этап 5) нужен, чтобы полностью отпустить Python; QML-контракт и форматы буферов
+   заморозить и переносить 1:1.
+5. **Заведомо не окупится:** `GridGeometry` и `AxisArrowGeometry`, питоновские фолбэки, инструменты
+   приёмки рендера, JS-логика камеры; дисковый кэш — отдельное решение.
+6. **Главный риск — точность, а не объём:** без контроля порядка суммирования, FMA и округления
+   golden-проверки покраснеют.

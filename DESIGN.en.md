@@ -108,7 +108,14 @@ data. `load_step_model` tessellates the surfaces (deflection 0.05 mm) and extrac
 needs them.
 
 **STL (fallback).** A triangle soup without topology; the outline is a dihedral-angle heuristic
-(`_feature_edges`, threshold 20 degrees).
+(`_feature_edges`, threshold 20 degrees). Its edges arrive as chains of sub-millimetre links (the median
+edge of Test_model.STL is 0.07 mm), so the chains are welded and simplified (`_simplify_edge_chains`,
+tolerance 0.15 mm): a ribbon is built from the two ends of a segment, and on a sub-pixel link its direction
+is noise. **Limitation:** the heuristic only sees sharp transitions. B-rep face boundaries where the surfaces
+meet tangentially (blend boundaries, seams) cannot be told from triangulation edges by angle, so the STL
+outline carries fewer internal contours than the STEP one - a property of the fallback, not a defect. The
+threshold was swept: 20 -> 2 degrees adds about 290 segments and does not reach the STEP network (6825 mm),
+while below 1.5 degrees the outline explodes tenfold on curved-surface facets.
 
 **Shell orientation.** The sign of a normal sets the shading of a face, so the shell is turned outward once
 per model - `_orient_shell_outward` (for a closed solid the area-weighted normals point away from the

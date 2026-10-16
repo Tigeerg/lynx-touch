@@ -123,6 +123,7 @@ if ($pythonReal) {
   Run-Tool 'test_tangent_policy.py' { python modules/gcode-viewer/test_tangent_policy.py }
   Run-Tool 'test_normals_golden.py' { python modules/gcode-viewer/test_normals_golden.py }
   Run-Tool 'test_normals_orientation.py' { python modules/gcode-viewer/test_normals_orientation.py }
+  Run-Tool 'test_outline_segments.py' { python modules/gcode-viewer/test_outline_segments.py }
 } else {
   Skipped 'python: py_compile, offscreen-прогоны, test_tangent_policy.py, test_normals_golden.py'
 }

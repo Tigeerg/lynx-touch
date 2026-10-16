@@ -17,7 +17,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.12.2"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.13.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -305,10 +305,17 @@ Item {
         environment: SceneEnvironment {
             clearColor: root.backgroundColor
             backgroundMode: SceneEnvironment.Color
-            // MSAA keeps the thin feature-edge lines and G-code paths
-            // continuous instead of dashed.
+            // MSAA держит сплошными тонкие рёбра и линии УП (иначе пунктир).
+            // High (8x) стоит почти вдвое дороже кадра; на слабом GPU это
+            // главный тормоз (см. DESIGN.md, разд. 12). Линиям лент он не
+            // нужен - у них свой distance-field AA в stepledges.frag, Medium
+            // (4x) их держит так же (замер render_probe: тёмная обводка
+            // 10062 px при Medium против 11324 px при High - один порядок,
+            // разница в пределах семантики режима кожи, не разрывов нет).
+            // На быстрой карте кадровая цена не видна: QSG_RENDER_TIMING
+            // даёт render=0 мс при swap=16 мс - упор в vsync, не в растер.
             antialiasingMode: SceneEnvironment.MSAA
-            antialiasingQuality: SceneEnvironment.High
+            antialiasingQuality: SceneEnvironment.Medium
         }
 
         PerspectiveCamera {
@@ -776,10 +783,13 @@ Item {
     property bool showStockVisible: true     // show the stock (billet) box
     property bool showPartVisible: true      // show the part model (STL)
     property bool showAllCode: true          // true = whole code at once, false = limit draw distance
-    property bool xray: true              // рентген-кожа для поиска
-                                          // артефактов отрисовки (X):
-                                          // два материала кожи разведены
-                                          // видимостью (см. Node детали)
+    property bool xray: false             // сплошная кожа по умолчанию:
+                                          // рентген-режим (X) - полноэкранный
+                                          // Blend-overdraw и на слабом GPU
+                                          // режет FPS вдвое; включается
+                                          // клавишей X для поиска артефактов
+                                          // (два материала кожи разведены
+                                          // видимостью - см. Node детали)
     property bool showCollisions: true    // красные диски столкновений;
                                           // off в render_probe - не
                                           // заслоняют контур

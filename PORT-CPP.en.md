@@ -218,6 +218,14 @@ the STEP branch are switched; a C++ failure logs a warning and falls back to Pyt
 with and without the flag; the QML contract is unchanged. Still to do in stage 5: move the surfaces, the
 silhouette topology and the parser into the bridge, then the Qt geometries and the controller.
 
+**The bridge and the flag were extended (stage 5, part 2).** `CNC_CPP` accepts `normals`, `step`,
+`surfaces`, `silhouette`, `parser`, `all`. The STEP surfaces, the silhouette topology, the mesh silhouette,
+the tangent families, the G-code parsing and the path preparation are switched — byte-for-byte the same as
+Python (the oracle under the flag confirms it too). With `step`+`surfaces` the STEP file is read once:
+before, Python read it a second time for the surfaces. Numbers on the development machine: mesh silhouette
+per frame 0.56 -> 0.48 ms, tangents 0.60 -> 0.14 ms. Still to do in stage 5: the Qt geometries and the
+controller — a separate step that must verify loading the Qt plugin into the PySide6 process.
+
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.
 

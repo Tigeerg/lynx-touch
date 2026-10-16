@@ -183,6 +183,8 @@ Code against the CLAUDE.md rules:
 
 Checks:
 - tests depend on private functions (fragile under refactoring);
+- `refreshTangents` is wrapped in an outer `try/except Exception: pass` — an unrelated per-frame error
+  stays invisible; the C++ path failures report themselves;
 - `test_solid_skin.py` is red on the development machine (11792 px against a threshold of 10500, and on a
   clean `HEAD` as well); the threshold was measured on another machine, and the guard does not run the test;
 - `tools/check.ps1` (`pnpm guard`) does not run `bench_viewer.py` — performance regressions are not caught.

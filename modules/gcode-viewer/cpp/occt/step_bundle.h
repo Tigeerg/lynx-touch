@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include "core/tangents.h"     // gv::StepSurfaceList - аналитические поверхности
+
 namespace gv {
 
 struct StepBundle {
@@ -23,5 +25,23 @@ struct StepBundle {
 // допуском рёбер 0.05 мм. Путь - в UTF-8: так его принимает OCCT. Ошибка чтения
 // - std::runtime_error.
 StepBundle loadStepBundle(const std::string &utf8Path, double deflection = 0.05);
+
+// Модель и аналитические поверхности вращения одного файла за одно чтение:
+// проход STEPControl_Reader стоит около 0.8 с на модель, и второй проход ради
+// поверхностей удваивал бы его (эталон платит именно так - см. _step_model в
+// controller.py). Порядок работ тот же, что у питоновской пары
+// load_step_model + load_step_surfaces на общей форме: тесселяция кожи, затем
+// обход граней.
+struct StepBundleAll {
+    StepBundle bundle;
+    StepSurfaceList surfaces;
+};
+
+StepBundleAll loadStepBundleAll(const std::string &utf8Path, double deflection = 0.05);
+
+// Только аналитические поверхности файла (чтение STEP внутри). Нужны там, где
+// STEP-ветка осталась на Python, а поверхности уже считает C++.
+StepSurfaceList loadStepSurfacesBundle(const std::string &utf8Path,
+                                       double deflection = 0.05);
 
 } // namespace gv

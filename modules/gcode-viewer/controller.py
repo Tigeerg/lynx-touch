@@ -45,6 +45,9 @@ np = _np          # код слоя читает numpy как np
 
 logger = logging.getLogger(__name__)
 
+# Ключи фолбэков, о которых уже сообщили: см. _warn_fallback.
+_fallback_warned = set()
+
 
 def _step_model(path, shape):
     """Модель STEP: суп вершин, рёбра и crease-aware нормали.
@@ -52,9 +55,7 @@ def _step_model(path, shape):
     Считает C++, если CNC_CPP=step|all (мост gvbridge, этап 5 плана переноса);
     отказ C++-пути виден в журнале и уходит на питоновский эталон. Рёбра мост
     отдаёт до склейки: склейку ведёт _coalesce_segments, поэтому буфер обводки
-    остаётся тем же, что у питоновского пути. Форму для поверхностей читает
-    Python (_step_shape), поэтому на флаге STEP читается дважды - это уйдёт,
-    когда в мост переедут поверхности."""
+    остаётся тем же, что у питоновского пути."""
     if gv_cpp.step_enabled():
         try:
             verts, segments, normals = gv_cpp.load_step_model(path)
@@ -62,6 +63,59 @@ def _step_model(path, shape):
         except Exception as exc:
             logger.warning("C++-STEP не прочитан (%s): читает Python", exc)
     return load_step_model(path, shape=shape)
+
+
+def _step_surfaces(path, shape=None):
+    """Аналитические поверхности STEP: цилиндры и конусы.
+
+    Считает C++, если CNC_CPP=surfaces|all (мост gvbridge, этап 5 плана переноса);
+    отказ C++-пути виден в журнале и уходит на питоновский эталон. Форму для
+    питоновского пути даёт _step_shape: вызывающий может передать уже прочитанную,
+    тогда STEP читается один раз на модель, иначе она читается здесь."""
+    if gv_cpp.surfaces_enabled():
+        try:
+            return gv_cpp.load_step_surfaces(path)
+        except Exception as exc:
+            logger.warning("C++-поверхности STEP не посчитаны (%s): считает Python", exc)
+    if shape is None:
+        try:
+            shape = _step_shape(path)
+        except Exception:
+            shape = None
+    return load_step_surfaces(path, shape=shape)
+
+
+def _read_step_model(path):
+    """Модель STEP и поверхности: суп, рёбра до склейки, нормали, поверхности.
+
+    При CNC_CPP=step и surfaces вместе файл читается один раз (мост отдаёт суп и
+    поверхности за один проход, gv_load_step_all): у питоновского эталона форму
+    читает _step_shape, а второй проход был бы ещё около 0.8 с на модель. Порознь
+    слои читают STEP каждый своим проходом - как эталон и как было до переноса
+    поверхностей."""
+    if gv_cpp.step_enabled() and gv_cpp.surfaces_enabled():
+        try:
+            verts, segments, normals, surfaces = gv_cpp.load_step_all(path)
+            return verts, _coalesce_segments(segments), normals, surfaces
+        except Exception as exc:
+            logger.warning("C++-STEP не прочитан (%s): читает Python", exc)
+    try:
+        shape = _step_shape(path)
+    except Exception:
+        shape = None
+    verts, segments, normals = _step_model(path, shape)
+    return verts, segments, normals, _step_surfaces(path, shape)
+
+
+def _warn_fallback(key, text):
+    """Предупреждение о фолбэке один раз за прогон.
+
+    refreshTangents вызывается на каждое движение камеры (десятки раз в секунду):
+    строка на кадр превратила бы журнал в мусор, а причина отказа одна и та же."""
+    if key in _fallback_warned:
+        return
+    _fallback_warned.add(key)
+    logger.warning("%s", text)
 
 
 # ==========================================================================
@@ -488,6 +542,75 @@ class GcodeToolpath(QObject):
         except Exception:
             return None
 
+    @staticmethod
+    def _mesh_topology(verts):
+        """Топология меша для силуэта (MeshTopology) или None на пустом супе.
+
+        Считает C++, если CNC_CPP=silhouette|all (мост gvbridge, этап 5 плана
+        переноса): отказ C++-пути виден в журнале и уходит на питоновский эталон.
+        Строится один раз на модель (~137 мс на Test_model, ~45k треугольников)."""
+        if verts is None:
+            return None
+        if gv_cpp.silhouette_enabled():
+            try:
+                return gv_cpp.build_silhouette_topology(verts)
+            except Exception as exc:
+                _warn_fallback("topology",
+                               "C++-топология силуэта не построена (%s): строит Python"
+                               % exc)
+        return _build_silhouette_topology(verts)
+
+    @staticmethod
+    def _mesh_segments(topo, eye):
+        """Силуэтные рёбра меша на глазу eye: C++ при CNC_CPP=silhouette."""
+        if gv_cpp.silhouette_enabled():
+            try:
+                return gv_cpp.mesh_silhouette_segments(topo, eye)
+            except Exception as exc:
+                _warn_fallback("silhouette",
+                               "C++-силуэт не посчитан (%s): считает Python" % exc)
+        return _mesh_silhouette_segments(topo, eye)
+
+    @staticmethod
+    def _tangents(surfaces, packed=None, skin=None):
+        """Семейства касательных STEP: C++ при CNC_CPP=silhouette.
+
+        Семейства строятся один раз на модель: у эталона это тот же
+        _tangent_families, и результат сравнивается с ним побитово."""
+        if gv_cpp.silhouette_enabled():
+            try:
+                return gv_cpp.tangent_families(surfaces, packed, skin)
+            except Exception as exc:
+                _warn_fallback("tangent-families",
+                               "C++-семейства касательных не посчитаны (%s): "
+                               "считает Python" % exc)
+        return _tangent_families(surfaces, packed, skin)
+
+    @staticmethod
+    def _tangent_segments(families, eye):
+        """Отрезки касательных на глазу eye: C++ при CNC_CPP=silhouette."""
+        if gv_cpp.silhouette_enabled():
+            try:
+                return gv_cpp.tangent_segments(families, eye)
+            except Exception as exc:
+                _warn_fallback("tangent-segments",
+                               "C++-касательные не посчитаны (%s): считает Python" % exc)
+        return _tangent_from_families(families, eye)
+
+    @staticmethod
+    def _prepare_toolpath(text):
+        """Разбор УП и подготовка траектории (parse_gcode + _prepare_ordered).
+
+        Считает C++, если CNC_CPP=parser|all (мост gvbridge, этап 5 плана
+        переноса): отказ C++-пути виден в журнале и уходит на питоновский эталон."""
+        if gv_cpp.parser_enabled():
+            try:
+                return gv_cpp.prepare_path(text)
+            except Exception as exc:
+                logger.warning("C++-разбор УП не прошёл (%s): разбирает Python", exc)
+        ordered, _last, _seg, stages = parse_gcode(text)
+        return _prepare_ordered(ordered, stages)
+
     def _load_model_verts(self, model_path):
         """Read the model source on a worker thread: STEP returns (verts,
         pre-packed outline segments, smooth normals); STL returns
@@ -501,7 +624,7 @@ class GcodeToolpath(QObject):
                 self._tan_fams = None
                 verts = load_stl_vertices(model_path)
                 verts = _orient_shell_outward(verts).reshape(-1, 3)
-                self._mesh_topo = _build_silhouette_topology(verts)
+                self._mesh_topo = self._mesh_topology(verts)
                 return verts, None, self._stl_normals(verts)
             except Exception as exc:
                 logger.warning("STL load failed: %s", exc)
@@ -511,28 +634,22 @@ class GcodeToolpath(QObject):
             hit = _cache_read_model(ck) if ck else None
             if hit is not None:
                 if self._rev_surfaces is None:
-                    try:
-                        shape = _step_shape(model_path)
-                    except Exception:
-                        shape = None
-                    self._rev_surfaces = load_step_surfaces(model_path,
-                                                            shape=shape)
-                    self._tan_fams = _tangent_families(self._rev_surfaces,
-                                                       hit[1],
-                                                       (hit[0], hit[2]))
+                    self._rev_surfaces = _step_surfaces(model_path)
+                    self._tan_fams = self._tangents(self._rev_surfaces,
+                                                    hit[1],
+                                                    (hit[0], hit[2]))
                     # топология меша для силуэта: строится вместе с моделью
                     # (~137 мс на Test_model, ~45k треугольников) и живёт до
                     # смены модели; на камере силуэт считается по ней
-                    self._mesh_topo = _build_silhouette_topology(hit[0])
+                    self._mesh_topo = self._mesh_topology(hit[0])
                 return hit
             try:
-                shape = _step_shape(model_path)
-                verts, segments, normals = _step_model(model_path, shape)
-                self._rev_surfaces = load_step_surfaces(model_path, shape=shape)
+                verts, segments, normals, surfaces = _read_step_model(model_path)
+                self._rev_surfaces = surfaces
                 packed = _pack_edge_segments(segments)
-                self._tan_fams = _tangent_families(self._rev_surfaces, packed,
-                                                   (verts, normals))
-                self._mesh_topo = _build_silhouette_topology(verts)
+                self._tan_fams = self._tangents(self._rev_surfaces, packed,
+                                                (verts, normals))
+                self._mesh_topo = self._mesh_topology(verts)
                 if ck and normals is not None:
                     _cache_write_model(ck, verts, normals, packed)
                 return verts, packed, normals
@@ -549,7 +666,7 @@ class GcodeToolpath(QObject):
                     try:
                         sv = load_stl_vertices(self._model_path)
                         sv = _orient_shell_outward(sv).reshape(-1, 3)
-                        self._mesh_topo = _build_silhouette_topology(sv)
+                        self._mesh_topo = self._mesh_topology(sv)
                         return sv, None, None
                     except Exception:
                         pass
@@ -602,13 +719,13 @@ class GcodeToolpath(QObject):
                 if not self._rev_surfaces:
                     return
                 if self._tan_fams is None:
-                    self._tan_fams = _tangent_families(self._rev_surfaces,
-                                                       self._step_edges)
-                segments = _tangent_from_families(self._tan_fams, eye_raw)
+                    self._tan_fams = self._tangents(self._rev_surfaces,
+                                                    self._step_edges)
+                segments = self._tangent_segments(self._tan_fams, eye_raw)
             else:
                 if self._mesh_topo is None:
                     return                  # модель без меша: силуэта нет
-                segments = _mesh_silhouette_segments(self._mesh_topo, eye_raw)
+                segments = self._mesh_segments(self._mesh_topo, eye_raw)
             has = segments is not None and len(segments) > 0
             if has:
                 self._sync_hlr_reference()
@@ -898,8 +1015,7 @@ class GcodeToolpath(QObject):
             ck = _cache_key(filepath, "path") if _cache_enabled() else None
             data = _cache_read_path(ck) if ck else None
             if data is None:
-                ordered, _last, _seg, stages = parse_gcode(text)
-                data = _prepare_ordered(ordered, stages)
+                data = self._prepare_toolpath(text)
                 if ck:
                     _cache_write_path(ck, data)
         except Exception as exc:                       # never take the app down
@@ -1008,13 +1124,12 @@ class GcodeToolpath(QObject):
     @Slot(str, result=int)
     def load_string(self, text):
         self._set_model_path("")         # string input has no file to pair with
-        ordered, _last, seg_count, stages = parse_gcode(text)
-        data = _prepare_ordered(ordered, stages)
+        data = self._prepare_toolpath(text)
         self._apply_toolpath_data(data, text)
         self._mesh.reset()               # string input -> no part model
         self._clear_edges()
         self.meshChanged.emit()
-        return seg_count
+        return data.seg_count
 
     @Property(float, notify=pathChanged)
     def minY(self):

@@ -1,4 +1,41 @@
 {
+  "path.flags": {
+    "dtype": "float64",
+    "sha256": "9143259749b973e229c240c43d225a8b33103b079374bf19c80e25bac1565ad9",
+    "shape": [
+      70915,
+      2
+    ]
+  },
+  "path.last": {
+    "dtype": "float64",
+    "sha256": "7fc409d5d43f290f03cc51ae9a42281a78123b614068988346c3202455deb973",
+    "shape": [
+      3
+    ]
+  },
+  "path.points": {
+    "dtype": "float64",
+    "sha256": "f806c889877dc3a94903fc8ecab0548c8b8d60fd414487393c6d461e9cac9cfe",
+    "shape": [
+      70915,
+      3
+    ]
+  },
+  "path.segments": {
+    "dtype": "int64",
+    "sha256": "9432a83e50426cd170850e82d6298b8c47d34e40757eb4ad420be3a976dab806",
+    "shape": [
+      1
+    ]
+  },
+  "path.stages": {
+    "dtype": "<U64",
+    "sha256": "82fda667611e1893351cef1fefcb566613096623b38002db178dcf2c057da9f6",
+    "shape": [
+      13
+    ]
+  },
   "silhouette.eye0": {
     "dtype": "float32",
     "sha256": "e9f6a7a9d129f08d5f43f371db53236941647f0d8e7840b1f55ff61ee839ea74",

@@ -29,6 +29,7 @@ import mock_backend as mb  # noqa: E402
 DATA = os.path.abspath(os.path.join(HERE, "..", "..", "data", "cad-testdata"))
 STEP = os.path.join(DATA, "Test_model.STEP")
 STL = os.path.join(DATA, "Test_model.STL")
+NGC = os.path.join(DATA, "Test_model.ngc")
 MANIFEST = os.path.join(HERE, "oracle_manifest.json")
 
 EYES = [(100.0, 150.0, 300.0), (-200.0, 40.0, 260.0), (60.0, -180.0, 120.0),
@@ -67,6 +68,17 @@ def collect():
                 segs = mb._mesh_silhouette_segments(topo, eye)
                 out["silhouette.eye%d" % i] = np.asarray(
                     segs if segs is not None else np.empty((0, 2, 3)), dtype=np.float32)
+
+    if os.path.exists(NGC):
+        with open(NGC, "r", encoding="utf-8", errors="ignore") as fh:
+            text = fh.read()
+        ordered, last, seg_count, stages = mb.parse_gcode(text)
+        out["path.points"] = np.asarray([p[0] for p in ordered], dtype=np.float64)
+        out["path.flags"] = np.asarray(
+            [[1.0 if p[1] else 0.0, float(p[2])] for p in ordered], dtype=np.float64)
+        out["path.last"] = np.asarray(last, dtype=np.float64)
+        out["path.segments"] = np.asarray([seg_count], dtype=np.int64)
+        out["path.stages"] = np.asarray([str((s[0], s[1])) for s in stages], dtype="U64")
 
     if os.path.exists(STL):
         soup = np.asarray(mb.load_stl_vertices(STL), dtype=np.float64)

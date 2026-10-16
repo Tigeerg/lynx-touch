@@ -82,7 +82,7 @@ The port must keep the QML contract, or the whole viewer stops working.
 | Now | In C++ | Gain |
 |---|---|---|
 | OCCT calls through `OCP.*` SIP bindings | OCCT C++ SDK directly | **The main one**: in `load_step_model` and `load_step_surfaces` every vertex, triangle and point goes through Python↔C++ marshalling (`tri.Node(i)`, `tri.Triangle(i)`, `sampler.Value(i)` — about 180 thousand exchanges on Test_model). It disappears |
-| numpy for `cross`, `norm`, `einsum` | Eigen (`Vector3d`, `.cross()`, `.norm()`) | No intermediate ndarray objects; the 36 optional-numpy branches go away |
+| numpy for `cross`, `norm`, `einsum` | C++ loops with an explicit summation order | No intermediate ndarray objects; the 36 optional-numpy branches go away. Eigen is not used — see §11 |
 | `threading.Thread` and the lock around OCCT | `QThreadPool`, `QtConcurrent` | No GIL; today OCCT releases the GIL on purpose, so sections are serialised by a lock |
 | Python loops while building buffers (`ToolGeometry`, `GridGeometry`, ASCII STL) | C++ loops and vectors | The interpreter leaves the hot buffer-building paths |
 
@@ -120,8 +120,9 @@ removal, gouge check), not in the orbit. A port for the orbit alone is not worth
   is already ready for `find_package(OpenCASCADE)`; a full port also needs `TKMesh`, `TKPrim`,
   `TKG3d`.
 - **Infrastructure:** there are no Qt6 dev packages on the machine, so the C++ part cannot be built
-  at all until they are installed. Eigen is header-only, licence MPL2.
-- **Cross-platform:** Qt, OCCT and Eigen build on Windows and Linux alike; but the target weak
+  at all until they are installed. Eigen is deliberately not used: `Eigen::cross()`/`.norm()` give a
+  different summation order and FMA, while the golden checks demand bit-for-bit (see §11).
+- **Cross-platform:** Qt and OCCT build on Windows and Linux alike; but the target weak
   hardware (Atom + Ion, legacy OpenGL 3.3) stays GPU-bound — the port does not change that.
 - **The main risk is not size but exactness.** `test_normals_golden.py` demands a **bit-for-bit**
   float32 match and `test_tangent_policy.py` an element-wise silhouette match. The result depends on
@@ -139,10 +140,10 @@ unchanged.** Every stage leaves the Python backend working; switching is a flag.
 | Stage | What is done | Green after the stage | Rollback |
 |---|---|---|---|
 | **0** | Python only: split the monolith into modules, introduce types instead of tuples and dicts, make numpy mandatory, `print` -> `logging`, add the missing tests, **generate the oracle** (dump intermediate arrays on Test_model) | Existing checks and new tests; the oracle is written | Nothing to roll back: behaviour is unchanged |
-| **1** | Build skeleton: CMake, Qt6 Quick3D, OCCT, Eigen; make `cpp/stepledgesgeometry` buildable; wire the build into the guard | The plugin builds, its segments match `load_step_model` | The plugin is separate and breaks nothing |
+| **1** | Build skeleton: CMake, Qt6 Quick3D, OCCT; make `cpp/stepledgesgeometry` buildable; wire the build into the guard | The plugin builds, its segments match `load_step_model` | The plugin is separate and breaks nothing |
 | **2** | Pure core: G-code parser, cycles, arcs, `UI_*` tags, `_prepare_ordered`, stage packing | C++ gives identical buffers and stages against the oracle | The Python core stays |
 | **3** | Qt geometries: `ToolpathGeometry`, `MeshGeometry`, `ToolGeometry`, `HLRLineGeometry` with the buffer formats | `smoke_test_qml`, `test_ribbon_width` green, buffers match | The Python geometries stay |
-| **4** | **STEP, STL, normals, topology, silhouette** on the OCCT SDK directly + Eigen | `test_normals_golden` bit-for-bit, `test_normals_orientation`, `test_tangent_policy` green, cold loading down several times over | The Python STEP branch stays as the diff reference |
+| **4** | **STEP, STL, normals, topology, silhouette** on the OCCT SDK directly | `test_normals_golden` bit-for-bit, `test_normals_orientation`, `test_tangent_policy` green, cold loading down several times over | The Python STEP branch stays as the diff reference |
 | **5** | The `GcodeToolpath` controller: properties, slots, signals 1:1, async via `QThreadPool`, tokens via atomics | `smoke_test_qml`, `test_solid_skin`, `render_probe`, `preview_3d` (offscreen and live window), not one `[QML warning]` | Back to the Python type registration |
 | **6** | Periphery: cache, `_scan_collisions`, `_tool_check_report`, STL outline, `GridGeometry` and `AxisArrowGeometry` | As a leftover | — |
 
@@ -166,7 +167,7 @@ dependency (0.13.11), the library prints became logging (0.13.12), and the missi
 G-code parser, drill cycles, tool profile and collisions (0.13.14).
 
 **The build skeleton (stage 1) is in place.** `scripts/build-viewer.ps1` builds the `CNC.Edges` plugin with
-the Ninja generator (MSVC, Qt 6.12 Quick3D, OCCT 8.0.1, Eigen) into `build/edges`. The STEP edge segments
+the Ninja generator (MSVC, Qt 6.12 Quick3D, OCCT 8.0.1) into `build/edges`. The STEP edge segments
 are checked against the Python reference `load_step_model` by the `cpp/stepledges_probe.cpp` probe and the
 `test_stepledges_plugin.py` check: 2426 segments, the point set matches (sha256 `ff0d95ac…`), only the
 traversal order differs — in the Python `_coalesce_segments` the clusters are ordered by an unstable
@@ -231,7 +232,8 @@ go of Python altogether but barely speeds anything up on its own.
 
 ## 8. Estimates
 
-Assumptions: a direct translation of the algorithms, Eigen instead of numpy, OCCT linked
+Assumptions: a direct translation of the algorithms, scalar C++ with an explicit summation order instead of
+numpy (Eigen is not used — see §11), OCCT linked
 dynamically, the QML contract unchanged, bit-for-bit pursued for normals and silhouette.
 
 | Layer | Complexity | C++ lines, roughly |
@@ -282,3 +284,77 @@ lines and almost all of the exactness risk.
    render acceptance tools, the camera JS; the disk cache is a separate decision.
 6. **The main risk is exactness, not size:** without control over summation order, FMA and rounding,
    the golden checks will fail.
+
+## 11. Optimisation and hardware adaptivity (after the port)
+
+Found by reviewing the C++ after stages 1-5; ordered by payoff.
+
+**Structure and duplication.**
+- Weld-by-grid is implemented three times (`core/normals.cpp`, `core/outline.cpp`, `core/silhouette.cpp`),
+  with `roundToInt`, `norm3` and `dot3` duplicated alongside — they belong in one internal header.
+- STEP reading is duplicated in the plugin (`stepledgesgeometry.cpp`) and in `occt/step_import.cpp`; the
+  plugin also re-reads the file from disk on a `deflection`/`hideFormEdges` change — the shape is not cached
+  (about 0.6-0.9 s per property change; the `step.shape_read` baseline is 858 ms).
+- Tessellation runs twice over the same shape: `occt/step_surfaces.cpp` calls
+  `BRepMesh_IncrementalMesh` after it has already run inside `loadStepBundleAll`.
+- The edge coalescing (`occt/step_edges.cpp`) is not used by the bridge: `gv_load_step_model` returns the
+  edges before coalescing, and Python does the coalescing.
+- `gvqtgeom` builds but is wired only to a probe; `emptyCylinderFamilies`, `packedPositions`, `vertsBounds`,
+  `loadStepModel(string)` and `parseUi*` are outside the ABI — they live only in probes.
+
+**Data copies.** The STEP soup (136194 vertices, about 3.3 MB) is materialised 6-7 times on the way to the
+buffers (about 20-25 MB of transient copies per load), the normals (about 1.6 MB) up to five times. The
+reasons: the soup returned by value in `orientShellOutward`, explicit copies in `step_bundle.cpp`,
+`malloc`+`memcpy` in the bridge, `_take` in `gv_cpp.py`, then copies inside the geometries. The NC points
+are copied 3-4 times.
+
+**Per-frame hot path.** `gv_mesh_silhouette_segments` and `gv_tangent_segments` rebuild all arrays on every
+call: about 2.6 MB of copies per frame at 45398 faces and 57842 edges. The cure is an opaque handle on the
+topology and the families (built once per model) — an ABI change, `GV_ABI_VERSION` 1 -> 2.
+
+**OCCT dependencies.** What is really used: `STEPControl_Reader`, `BRepMesh_IncrementalMesh`,
+`Poly_Triangulation`, `TopExp_Explorer`, `TopoDS`, `BRep_Tool`, `TopLoc`, `gp_Trsf`,
+`BRepAdaptor_Curve/Surface`, `GCPnts_UniformDeflection`, `gp_Cylinder`/`gp_Cone`; what is linked: `TKernel`
+`TKMath` `TKG3d` `TKG2d` `TKGeomBase` `TKTopAlgo` `TKBRep` `TKMesh` `TKDESTEP` `TKXSBase`. Visualisation,
+OCAF, DRAW, MeshVS/AIS and any exchange beyond STEP are not needed — OCCT can be built with
+`USE_VISUALIZATION=OFF`, `USE_DRAW=OFF`, `USE_OCAF=OFF`. Before that, check
+`dumpbin /dependents TKDESTEP.dll`: if it pulls `TKXCAF`/`TKDE`, OCAF cannot be trimmed and the minimum set
+is 13-14 DLLs. The gain is distribution size and startup time on weak hardware, not read speed. Linking
+stays dynamic: LGPL with the OCCT exception, and we have two OCCT consumers (the bridge and the plugin).
+
+**Version-dependent places.** Tessellation is tied to OCCT's deflection behaviour (changed in 7.4), so an
+SDK version bump re-approves the golden. In the code: `OCCT_HANDLE_NOCAST`, the 5-argument
+`BRepMesh_IncrementalMesh` (with `isRelative`, since 7.5), the 2-argument `GCPnts_UniformDeflection` (up to
+7.6), and the 1-based `Poly_Triangulation::Node/Triangle` (deprecated in newer branches).
+
+**Eigen is not used and is not needed.** There is not a single Eigen include under `cpp/**`: bit-for-bit is
+already secured by a hand-written summation order (`pairwise` and buffered sums), while `Eigen::cross()` and
+`.norm()` produce a different order and FMA. The Eigen mentions earlier in this document are historical.
+
+**Parallelism.** There is no `std::thread`, no OpenMP and no `QtConcurrent` in the C++; the only parallel
+call is `BRepMesh(isInParallel=true)`. Worth parallelising: the per-face soup assembly with concatenation in
+the original order, the cone policy over the cones (hoisting the temporary vectors out of the loop), and the
+outline `p0/p1` assembly. Sorts and sums must not be parallelised: their order is part of the golden.
+
+**Hardware variability.** Presets `low`/`med`/`high` plus the fallback `safe`; the knobs and the
+auto-detection are in `DESIGN.md` §13 ("Performance and hardware adaptivity"). In the C++ the parameters are
+already passed as arguments (`deflection`, edge and coalescing tolerances, `weldMm`, `creaseDeg`); what stays
+hard-coded is the outline simplification threshold, the silhouette angle, the cone policy and DROP — those
+are what should move into the presets.
+
+**Priority list.**
+1. An opaque handle on the silhouette topology — remove about 2.6 MB of copies per frame (medium risk: an ABI
+   change).
+2. A cached STEP shape in `StepEdgesGeometry` — minus 0.6-0.9 s per property change (low risk).
+3. Drop the second `BRepMesh` — one tessellation pass less on a cold load (low risk).
+4. Remove the copies on the STEP -> soup path (`move` instead of a copy, in-place flip) — 10-20 MB of peak
+   memory and tens of ms (low risk).
+5. Presets `low`/`med`/`high` and `CNC_QUALITY` (medium risk: each level needs measurements).
+6. Auto-detect the level from the renderer/GL version and a reference frame run (medium risk: there is no
+   VRAM-size API, and the RHI behaviour on ION can only be checked on hardware).
+7. Buffer reuse in `meshSilhouetteSegments`, `tangentFromFamilies` and `HLRLineGeometry` (low risk:
+   0.1-0.5 ms per frame).
+8. Parallelise the cold stages (medium risk: the traversal order is part of the sha256 contract).
+9. Drop the duplicated STEP reads and the dead code, and hoist the shared helpers (low risk).
+10. Reconcile the numbers in the docs and the code: 4884/2426 against 18986 for the Test_model outline
+    (zero risk).

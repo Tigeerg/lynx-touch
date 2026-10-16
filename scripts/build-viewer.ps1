@@ -9,7 +9,7 @@
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunTangentsProbe
 #
 # Генератор — Ninja, конфигурация Release, компилятор MSVC. Пути SDK берутся из
-# окружения с умолчаниями: CNC_QT_DIR (Qt6 с Quick3D), CNC_OCC_DIR (OCCT + Eigen),
+# окружения с умолчаниями: CNC_QT_DIR (Qt6 с Quick3D), CNC_OCC_DIR (OCCT),
 # CNC_VCVARS (vcvars64.bat), CNC_CMAKE, CNC_NINJA. Скрипт не привязан к одной
 # машине: всё, что не найдено, названо в ошибке, а не угадано.
 #
@@ -62,7 +62,7 @@
 param(
     # Каталог Qt6 (внутри ожидается lib/cmake/Qt6/Qt6Config.cmake).
     [string]$QtDir = $env:CNC_QT_DIR,
-    # Каталог OCCT/Eigen (внутри ожидается lib/cmake/opencascade/OpenCASCADEConfig.cmake).
+    # Каталог OCCT (внутри ожидается lib/cmake/opencascade/OpenCASCADEConfig.cmake).
     [string]$OccDir = $env:CNC_OCC_DIR,
     # Каталог сборки относительно корня репозитория.
     [string]$BuildDir = 'build/edges',

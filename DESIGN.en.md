@@ -203,20 +203,80 @@ Performance on weak hardware (Intel Atom + Nvidia Ion):
 - `xray: true` by default makes the skin transparent (full-screen overdraw);
 - a PBR skin under three `DirectionalLight`s is heavy over a large area;
 - the ION driver is the legacy OpenGL 3.3 branch, there is no Vulkan, and D3D11 may not come up; a hardware
-  GL context is required, not a software rasterizer.
+  GL context is required, not a software rasterizer;
+- the most expensive per-frame path is the silhouette: the topology and the tangent families travel as flat
+  arrays and are copied again on every camera move (about 2.6 MB per frame at 45398 faces);
+- there is no parallelism in the C++ (except `BRepMesh`): tessellation, soup assembly and the cone policy
+  are single-threaded;
+- the quality thresholds (tessellation deflection, edge angle, coalescing step, outline simplification) are
+  hard-coded and do not depend on the hardware;
+- the STEP soup and normals are materialised 6-7 times on the way to the buffers: about 20-25 MB of
+  transient copies per Test_model load;
+- `gvqtgeom` (the C++ Qt geometries) builds but is wired only to a probe — QML still runs the Python
+  geometries; `Eigen` is not used in the C++ at all (bit-for-bit requires a hand-written summation order).
 
 ## 13. Directions for improvement
 
 Functionality:
-- material removal simulation (heightmap/dexel, in the background on a weak CPU);
-- gouge check of the tool against the part model;
+- material removal simulation (heightmap/dexel, in the background on a weak CPU): the height map as a dynamic
+  2D texture of the Z-buffer that a vertex shader extrudes into plane polygons;
+- gouge check of the tool against the part model and cutting-mode control: compare the Z depth of cut with
+  the flute length and the tool diameter from a database (SQLite), so a smooth shank does not cut into the
+  part;
 - machining time and ETA (`moveLength`/`speeds` already exist);
 - linking 3D and the NC line (click a path point -> block/line, search);
 - section planes, measurements, point coordinates;
 - work offsets G54..G59, reference point;
 - STEP holder models (B-rep import already exists; needs an anchor/gauge, a model catalog, a cache, and
   collision primitives from the analytic cylinders instead of the hard-coded ER20);
-- FPS meter and quality presets (low/med/high), a dark theme, program drag-and-drop.
+- FPS meter, a dark theme, program drag-and-drop.
+
+NC analysis and collision protection (look-ahead):
+- a background pre-parse of the NC program: a C++ pass over the trajectory before the machine starts;
+- rapid-move control: block the program if a `G0` runs through coordinates of the stock allowance not yet
+  removed;
+- depth-of-cut and flute-length control against the tool database — see above.
+
+Machine control and safety:
+- a dual PID loop: the inner loop in the servo drives (tuned over RS485/Modbus), the outer loop in LinuxCNC
+  fed back by linear encoders;
+- adaptive spindle control in HAL: real-time load monitoring; above the threshold a `wcomp` comparator puts
+  the machine into an emergency stop (`halui.machine.off`), protecting the cutter from a jam.
+
+Tool management and probing:
+- logical decoupling of the CAM tool (`T`) from the automatic tool changer pocket (`P`);
+- protection against a wrong magazine load (`M6` remap): after the change the machine goes to the probe and
+  compares the measured length with the database reference; on a mismatch the program is blocked;
+- dynamic calibration (`G38.2` + `M4`): length and diameter measured by a touch probe at low rpm in reverse
+  rotation, accounting for the actual run-out of the cutting edges;
+- polymorphic probing macros: the C++ backend picks the macro by cutter type (centre touch for solid
+  cutters, a radius offset for shell cutters with an empty centre).
+
+CAD-style visualisation (Qt Quick 3D + OCCT):
+- done: exact B-rep edges from STEP rendered as `GL_LINES` (the `CNC.Edges` plugin, 0.14.0), normal smoothing
+  by crease angle that keeps sharp corners, seam filtering over adjacent faces, hardware Z-fighting removal
+  by a projective `depthBias`, analytic surfaces of revolution and the `C360`/`ARC` mask;
+- not done: an X-ray with hidden lines (a Z test in the fragment shader against `DEPTH_TEXTURE`, recolouring
+  the hidden edges pale) — only `xray` with a translucent skin exists today;
+- deliberately deferred: `GCPnts_TangentialDeflection` edge discretisation for perfect arcs — it is
+  `GCPnts_UniformDeflection` now so the result matches the Python reference bit for bit; revisit once the
+  reference is no longer mandatory.
+
+Performance and hardware adaptivity:
+- quality presets `low`/`med`/`high` plus a fallback `safe` (software rasterizer): MSAA (off/4x/8x),
+  tessellation deflection (0.10/0.05/0.03 mm), edge tolerance and coalescing step, silhouette refresh rate
+  (every 4th frame / every frame), tangent layers, `lineWidthPx`, grid density, a DPR clamp, `xray` disabled
+  on weak hardware;
+- a manual level switch (`root.quality` and a key) and the `CNC_QUALITY` environment variable modelled on
+  `CNC_CPP` and `CNC_SILHOUETTE`;
+- auto-detection: the OpenGL version and renderer string via `QOpenGLContext`, a software rasterizer hint
+  (llvmpipe/softpipe/Basic Render Driver) -> the `safe` level, the core count via
+  `QThread::idealThreadCount`, and a reference run of a few frames after `sceneGraphInitialized`; keep the
+  result in `QSettings` so the measurement is not paid on every start; force the OpenGL branch on ION;
+- C++ optimisation after the port: an opaque handle on the silhouette topology instead of per-frame copies,
+  a cached STEP shape in `StepEdgesGeometry`, removing the second `BRepMesh`, buffer reuse, and parallelism
+  of the cold stages — the list with estimates is in [`PORT-CPP.md`](PORT-CPP.md) §11 /
+  [`PORT-CPP.en.md`](PORT-CPP.en.md).
 
 Engineering:
 - split the monolith and introduce a single `dataclass` contract QML <-> Python;
@@ -224,9 +284,8 @@ Engineering:
   (`gv_types.py`, 0.13.13); core type annotations remain;
 - a performance gate in `pnpm guard` via `bench_viewer.py`;
 - centralized logging;
-- port the compute core to C++ (the OCCT SDK directly instead of bindings, Eigen instead of
-  numpy) — estimate, risks and stages in [`PORT-CPP.md`](PORT-CPP.md) /
-  [`PORT-CPP.en.md`](PORT-CPP.en.md).
+- port the compute core to C++ (the OCCT SDK directly instead of bindings) — estimate, risks and stages in
+  [`PORT-CPP.md`](PORT-CPP.md) / [`PORT-CPP.en.md`](PORT-CPP.en.md).
 
 ## 14. Checks and tests
 

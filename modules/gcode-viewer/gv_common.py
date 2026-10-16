@@ -20,3 +20,8 @@ except Exception:                      # numpy is optional: fall back to pure Py
     print("[gv_common] WARNING: numpy not found - pure-Python fallback is much "
           "slower (edges/geometry). Install numpy on the CNC controller.",
           file=_sys.stderr)
+
+
+def _to_3d(p):
+    """Machine (X, Y, Z) -> scene (X, Z, -Y); Y is up."""
+    return (p[0], p[2], -p[1])

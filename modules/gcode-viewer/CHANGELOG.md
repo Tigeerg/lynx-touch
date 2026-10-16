@@ -60,6 +60,9 @@
 | `modules/gcode-viewer/cpp/core/packing.h` / `.cpp` | C++-упаковка рёбер в буферы геометрии (`_pack_edges_np`, `packed_positions`) |
 | `modules/gcode-viewer/cpp/stl_probe.cpp` | Пробник STL: суп и рёбра обводки, `sha256` |
 | `modules/gcode-viewer/test_stl_core.py` | Headless-сверка STL-импорта и обводки C++ с оракулом |
+| `modules/gcode-viewer/cpp/core/silhouette.h` / `.cpp` | C++-топология силуэта меша и горизонт поверхности |
+| `modules/gcode-viewer/cpp/silhouette_probe.cpp` | Пробник силуэта: топология и пять глаз, `sha256` |
+| `modules/gcode-viewer/test_silhouette_core.py` | Headless-сверка топологии силуэта и глаз C++ с оракулом |
 | `modules/gcode-viewer/oracle_dump.py` | Оракул промежуточных результатов: эталон для переноса на C++ |
 | `modules/gcode-viewer/test_ribbon_width.py` | Живая проверка толщины ленты (2 px по вертикали и горизонтали) |
 | `modules/gcode-viewer/test_solid_skin.py` | Живая проверка: сплошная кожа закрывает скрытые рёбра (без просвечивания) |
@@ -67,11 +70,30 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.18.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.19.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.19.0 — 2026-10-16
+
+- **Топология силуэта меша на C++ (этап 4, часть 3).** `silhouette.py` перенесён в
+  `cpp/core/silhouette.{h,cpp}` (цель `gvcore`, без Qt и OCCT): `_build_silhouette_topology` —
+  сварка вершин по сетке 0.0001 мм (пол-к-чётному, деление как в эталоне), кластеры и их номера в
+  лексикографическом порядке, рёбра с группами ровно из двух граней, отсев по площади и углу 20
+  градусов, `d = n·cen` во float32; `_mesh_silhouette_segments` — знак `n·E - d`, отбор по разные
+  стороны.
+- **Совпадение бит-в-бит.** Одиннадцать ключей оракула: `topo.n` [45398,3], `topo.d` [45398],
+  `topo.f0`/`topo.f1` [57842], `topo.ea`/`topo.eb` [57842,3] и `silhouette.eye0..eye4`
+  ([245|224|251|509|185, 2, 3]) — `sha256` C++ равен эталону и оракулу. Совпадение вышло с первой
+  сборки. Проверка не слепая: смена сварки 1e-4 -> 1e-3 даёт FAIL по всем ключам.
+- **Что тронуто:** `cpp/CMakeLists.txt`, `scripts/build-viewer.ps1`, `tools/check.ps1`; добавлены
+  `cpp/core/silhouette.{h,cpp}`, `cpp/silhouette_probe.cpp`, `test_silhouette_core.py`. Питоновские
+  модули, QML, шейдеры и оракул не менялись.
+- **Остаток этапа 4:** аналитические поверхности (`step_surfaces`) и `_tangent_families`.
+- **Проверки.** Сторож гоняет 69 проверок, зелёный; этапы 1-4b целы, оракул без изменений (22 записи).
+  Версия 0.18.0 -> 0.19.0.
 
 ### 0.18.0 — 2026-10-16
 

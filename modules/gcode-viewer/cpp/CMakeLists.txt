@@ -3,7 +3,9 @@
 # нормали) и его пробник gcode_probe — они в плагин не входят и Qt не требуют.
 # Там же слой STEP и нормалей gvstep (этап 4a плана переноса) с пробником
 # step_probe: они читают OCCT напрямую, Qt им не нужен. Импорт STL и обводка меша
-# (этап 4b) лежат в ядре gvcore, их пробник - stl_probe.
+# (этап 4b) лежат в ядре gvcore, их пробник - stl_probe. Топология силуэта
+# (этап 4c) - тоже в gvcore, её пробник silhouette_probe берёт суп из STEP через
+# gvstep.
 #
 # Сборка (скрипт делает то же самое):
 #   powershell -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
@@ -32,9 +34,10 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Quick3D)
 find_package(OpenCASCADE REQUIRED)
 
 # Чистое ядро gvcore (этапы 2 и 4 плана переноса): парсер G-кода, теги UI_*,
-# crease-aware нормали кожи (этап 4a), импорт STL и обводка меша (этап 4b). Ни Qt,
-# ни OCCT не нужны - только стандартная библиотека. Цель отдельная от плагина,
-# чтобы ядро можно было собрать и сверить с Python без Qt.
+# crease-aware нормали кожи (этап 4a), импорт STL и обводка меша (этап 4b),
+# топология силуэта (этап 4c). Ни Qt, ни OCCT не нужны - только стандартная
+# библиотека. Цель отдельная от плагина, чтобы ядро можно было собрать и сверить
+# с Python без Qt.
 #
 # /fp:precise обязателен: ядро сверяется с Python побайтово, а /fp:fast разрешает
 # переассоциацию и слияние умножения со сложением (FMA), что сдвигает результат.
@@ -44,6 +47,7 @@ add_library(gvcore STATIC
     core/outline.cpp
     core/packing.cpp
     core/path_prep.cpp
+    core/silhouette.cpp
     core/stl_import.cpp
     core/text_util.cpp
     core/ui_tags.cpp
@@ -156,6 +160,25 @@ if (MSVC)
     target_compile_options(stl_probe PRIVATE /utf-8)
 endif()
 target_link_libraries(stl_probe PRIVATE gvcore)
+
+# Пробник топологии силуэта и силуэта на фиксированных глазах (этап 4c плана
+# переноса): отдельная цель, в плагин не входит. Берёт суп вершин из STEP тем же
+# путём gvstep, что питоновский load_step_model, строит топологию и считает
+# силуэт на пяти глазах. Печатает число вершин, треугольников и кандидатных
+# рёбер и sha256 массивов топологии и силуэтов в тех же сериализациях, что
+# Python, и пишет те же массивы дампом; сверку ведёт
+# modules/gcode-viewer/test_silhouette_core.py. Топология живёт в gvcore, поэтому
+# цели нужен только слой STEP: DLL OCCT пробнику нужны, DLL Qt - нет.
+add_executable(silhouette_probe silhouette_probe.cpp)
+set_target_properties(silhouette_probe PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+if (MSVC)
+    target_compile_options(silhouette_probe PRIVATE /utf-8)
+endif()
+target_link_libraries(silhouette_probe PRIVATE gvstep)
+# Заголовок слоя включает TopoDS_Shape.hxx: инклюды OCCT у gvstep приватные.
+target_include_directories(silhouette_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
 qt_standard_project_setup()
 if(COMMAND qt_policy)

@@ -189,13 +189,17 @@ The classes are not QML types yet and are not wired into the controller: switchi
 OCCT SDK directly (`cpp/occt/step_import`, target `gvstep`), the skin normals live in `cpp/core/normals`.
 The match is bit-exact: `step.verts` [136194,3], `step.tri` [45398,3,3] and `step.normals` [45398,3,3]
 produce the same `sha256` as the reference and the oracle; the `cpp/step_probe.cpp` probe and
-`test_step_core.py` do the comparison. Still to do in stage 4: `step_surfaces`, the silhouette
-topology and `_tangent_families`.
+`test_step_core.py` do the comparison.
 
 **STL and the outline (stage 4, part 2) are in place.** The STL import, the mesh outline and the edge
 packing are ported to `cpp/core` (target `gvcore`), bit-exact: `stl.soup` [562776,3] and
 `stl.feature_edges` [1435,2,3] produce the same `sha256` as the reference and the oracle; the
 `cpp/stl_probe.cpp` probe and `test_stl_core.py` do the comparison.
+
+**The silhouette topology (stage 4, part 3) is in place.** `silhouette.py` is ported to
+`cpp/core/silhouette`; eleven oracle keys (`topo.n/d/f0/f1/ea/eb` and `silhouette.eye0..eye4`) match
+bit-exact; the `cpp/silhouette_probe.cpp` probe and `test_silhouette_core.py` do the comparison. Still to
+do in stage 4: `step_surfaces` and `_tangent_families`.
 
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.

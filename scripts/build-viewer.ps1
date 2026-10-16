@@ -5,6 +5,7 @@
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunCoreProbe
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunStepProbe
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunStlProbe
+#          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunSilhouetteProbe
 #
 # Генератор — Ninja, конфигурация Release, компилятор MSVC. Пути SDK берутся из
 # окружения с умолчаниями: CNC_QT_DIR (Qt6 с Quick3D), CNC_OCC_DIR (OCCT + Eigen),
@@ -36,6 +37,11 @@
 # пробник - <build>/stl_probe.exe; сверку с эталоном ведёт
 # modules/gcode-viewer/test_stl_core.py. Ни Qt, ни OCCT этой цели не нужны.
 #
+# Топология силуэта (этап 4c плана переноса) лежит в ядре gvcore, её пробник -
+# <build>/silhouette_probe.exe: он берёт суп вершин из STEP через цель gvstep,
+# поэтому ему нужны DLL OCCT (Qt - нет). Сверку с эталоном ведёт
+# modules/gcode-viewer/test_silhouette_core.py.
+#
 # Код возврата: 0 — собрано, плагин на месте; 1 — инструмент не найден или ошибка сборки.
 
 [CmdletBinding()]
@@ -54,6 +60,8 @@ param(
     [switch]$RunStepProbe,
     # Дополнительно прогнать пробник STL и обводки меша на data/cad-testdata/Test_model.STL.
     [switch]$RunStlProbe,
+    # Дополнительно прогнать пробник топологии силуэта на data/cad-testdata/Test_model.STEP.
+    [switch]$RunSilhouetteProbe,
     # Только конфигурирование, без сборки.
     [switch]$ConfigureOnly
 )
@@ -215,6 +223,13 @@ if (Test-Path -LiteralPath $stlProbe) {
     Fail "слой STL и обводки не собран: нет $stlProbe"
 }
 
+$silProbe = Join-Path $BuildDir 'silhouette_probe.exe'
+if (Test-Path -LiteralPath $silProbe) {
+    Write-Host ("build-viewer: пробник топологии силуэта " + $silProbe)
+} else {
+    Fail "топология силуэта не собрана: нет $silProbe"
+}
+
 if ($RunProbe) {
     if (-not (Test-Path -LiteralPath $probe)) { Fail "пробника нет: $probe" }
     if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
@@ -251,6 +266,17 @@ if ($RunStlProbe) {
     New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
     & $stlProbe $probeStl $dumpDir
     if ($LASTEXITCODE -ne 0) { Fail "пробник STL вернул $LASTEXITCODE" }
+}
+
+if ($RunSilhouetteProbe) {
+    if (-not (Test-Path -LiteralPath $silProbe)) { Fail "пробника нет: $silProbe" }
+    if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
+    # Пробнику нужны только DLL OCCT: суп он берёт из STEP через цель gvstep.
+    $env:PATH = "$OccDir\bin;$env:PATH"
+    $dumpDir = Join-Path $env:TEMP 'gvsilhouette_build_probe'
+    New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
+    & $silProbe $probeStep $dumpDir
+    if ($LASTEXITCODE -ne 0) { Fail "пробник топологии силуэта вернул $LASTEXITCODE" }
 }
 
 Write-Host 'build-viewer: OK' -ForegroundColor Green

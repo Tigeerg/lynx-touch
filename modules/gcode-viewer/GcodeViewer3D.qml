@@ -17,7 +17,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.13.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.13.1"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -882,12 +882,17 @@ Item {
         }
     }
 
-    // Счётчик кадров: правый верхний угол, чтобы не мешать строке подсказок.
+    // Счётчик кадров: правый верхний угол, ниже строки подсказок. Строка
+    // подсказок длиннее окна (1024 px) и доходит до этого угла: на одной с ней
+    // высоте цифра сливается с её глифами, поэтому счётчик сдвинут под неё
+    // (topMargin 30 > отступ 10 плюс высота строки), а z держит его поверх.
     Text {
         visible: root.showFps
+        z: 1
         anchors.right: parent.right
+        anchors.rightMargin: 10
         anchors.top: parent.top
-        anchors.margins: 10
+        anchors.topMargin: 30
         text: Math.round(root.fpsSmoothed) + " FPS"
         color: "#535C66"
         font.pixelSize: 12

@@ -182,8 +182,7 @@ Code against the CLAUDE.md rules:
 Checks:
 - no test for the G-code parser, drill cycles, tool profile, or collisions;
 - tests depend on private functions (fragile under refactoring);
-- `tools/check.ps1` (`pnpm guard`) does not run `bench_viewer.py` — performance regressions are not caught;
-- `print` instead of logging; `[outline] ...` prints on every load.
+- `tools/check.ps1` (`pnpm guard`) does not run `bench_viewer.py` — performance regressions are not caught.
 
 Outline on the STL branch:
 - On a mesh only sharp transitions are drawn, so there are fewer internal contours than on STEP: B-rep face

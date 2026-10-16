@@ -159,7 +159,8 @@ facade; the code is spread over 17 modules: `gv_common`, `gcode_parser`, `ui_tag
 `path_prep`, `tooling`, `collision`, `geometry`, `controller`. The names used by the tests,
 `bench_viewer.py`, `oracle_dump.py` and QML are re-exported by the facade, so the outside code never
 changed, and the oracle confirmed on every step that no result moved. Stage 0 still has to do: types
-instead of tuples and `print` -> logging (numpy became a hard dependency, 0.13.11).
+instead of tuples, and the missing tests (numpy became a hard dependency, 0.13.11; the library prints
+became logging, 0.13.12).
 
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.

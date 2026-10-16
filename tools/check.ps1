@@ -119,18 +119,20 @@ if ($pythonReal) {
   Run-Tool 'py_compile mock_backend.py' { python -m py_compile modules/gcode-viewer/mock_backend.py }
   $env:QT_QPA_PLATFORM = 'offscreen'
   Run-Tool 'smoke_test_qml.py' { python modules/gcode-viewer/smoke_test_qml.py }
-  # Кода возврата мало: фоновая трассировка внутри прогона (например, NameError в
-  # слое геометрий) не меняет код выхода, а прогон всё равно печатает "loaded OK".
+  # Кода возврата мало: фоновая трассировка или записанное предупреждение внутри
+  # прогона (например, отказ скана коллизий) код выхода не меняют - прогон всё
+  # равно печатает "loaded OK". Такие отказы обязаны быть видны.
   Run-Tool 'preview_3d.py offscreen' {
     $log = python modules/gcode-viewer/preview_3d.py 'data/cad-testdata/Test_model.ngc' 2>&1
     $code = $LASTEXITCODE
-    if ($code -ne 0 -or ($log | Select-String -Pattern 'Traceback' -Quiet)) { cmd /c exit 1 }
+    if ($code -ne 0 -or ($log | Select-String -Pattern 'Traceback|^(WARNING|ERROR) ' -Quiet)) { cmd /c exit 1 }
     else { cmd /c exit 0 }
   }
   Run-Tool 'test_tangent_policy.py' { python modules/gcode-viewer/test_tangent_policy.py }
   Run-Tool 'test_normals_golden.py' { python modules/gcode-viewer/test_normals_golden.py }
   Run-Tool 'test_normals_orientation.py' { python modules/gcode-viewer/test_normals_orientation.py }
   Run-Tool 'test_outline_segments.py' { python modules/gcode-viewer/test_outline_segments.py }
+  Run-Tool 'test_module_names.py' { python modules/gcode-viewer/test_module_names.py }
   Run-Tool 'oracle_dump.py' { python modules/gcode-viewer/oracle_dump.py }
 } else {
   Skipped 'python: py_compile, offscreen-прогоны, test_tangent_policy.py, test_normals_golden.py'

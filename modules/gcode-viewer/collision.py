@@ -4,8 +4,9 @@
 """
 import os
 
-from tooling import (_HOLDER_NUT_D, _HOLDER_NUT_H,                        # noqa: F401
-                     _HOLDER_BODY_D, _HOLDER_BODY_H)
+from tooling import (_HOLDER_NUT_D, _HOLDER_NUT_H, _HOLDER_BODY_D,        # noqa: F401
+                     _HOLDER_BODY_H, _holder_profile)
+from ui_tags import stage_label                                           # noqa: F401
 
 
 def _circle_rect_hit(cx, cy, r, xmin, xmax, ymin, ymax):

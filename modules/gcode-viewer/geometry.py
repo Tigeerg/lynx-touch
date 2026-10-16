@@ -15,6 +15,7 @@ from PySide6.QtQuick3D import QQuick3DGeometry
 
 from gv_common import (_np, QML_IMPORT_NAME, QML_IMPORT_MAJOR_VERSION,
                        QML_IMPORT_MINOR_VERSION)
+from stl_import import _verts_bounds
 
 np = _np          # код слоя читает numpy как np
 

@@ -25,7 +25,7 @@
 - `main.qml`, `preview.qml`, генератор `gen_preview_qml.py`, ассеты/шрифты
 - Запуск: `python apps/qt-interface/preview_qml.py`
 
-### 3. 3D-вьювер УП — `gcode-viewer` (`0.13.11`)
+### 3. 3D-вьювер УП — `gcode-viewer` (`0.13.12`)
 3D-визуализация управляющей программы (`apps/qt-interface`).
 
 - `GcodeViewer3D.qml` — сцена/камера/материалы/анимация/панель режимов
@@ -37,6 +37,8 @@
   зафиксирована: 7.7.2 не читает STEP вовсе, а `test_normals_golden.py` сверяет
   тесселяцию бит-в-бит и к версии OCP чувствителен
 - Запуск: `python modules/gcode-viewer/preview_3d.py "data/cad-testdata/Test_model.ngc"`
+- Диагностика идёт через `logging`: уровень задаёт `CNC_LOG_LEVEL` (по умолчанию `INFO`,
+  `DEBUG` покажет источник контура — STEP или меш; сбои загрузки печатаются как `WARNING`)
   (рядом подхватывается `Test_model.step`, иначе — `Test_model.stl`)
 - Журнал изменений: [`modules/gcode-viewer/CHANGELOG.md`](modules/gcode-viewer/CHANGELOG.md)
 

@@ -11,6 +11,7 @@ optionally overrides the toolpath from a .ngc file and shows it.
 Headless check:
     QT_QPA_PLATFORM=offscreen python preview_3d.py
 """
+import logging
 import os
 import sys
 
@@ -25,6 +26,10 @@ import mock_backend  # noqa: E402,F401  (registers "MockBackend" via @QmlElement
 
 
 def main() -> int:
+    # Диагностика вьювера идёт через logging; уровень задаёт окружение
+    # (CNC_LOG_LEVEL=DEBUG покажет и источник контура), по умолчанию INFO.
+    logging.basicConfig(level=os.environ.get("CNC_LOG_LEVEL", "INFO").upper(),
+                        format="%(levelname)s %(name)s: %(message)s")
     app = QGuiApplication(sys.argv)
 
     engine = QQmlApplicationEngine()

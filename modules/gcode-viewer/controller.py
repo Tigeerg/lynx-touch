@@ -4,6 +4,7 @@
 имена у всех нижних модулей, обратных зависимостей нет. Модуль регистрирует QML-тип
 "MockBackend" 1.0 - QML_IMPORT_* обязан лежать в том же модуле, что и класс.
 """
+import logging
 import math
 import os
 import threading
@@ -39,6 +40,8 @@ from geometry import (ToolpathGeometry, HLRLineGeometry, GridGeometry,
                       AxisArrowGeometry, MeshGeometry, ToolGeometry)
 
 np = _np          # код слоя читает numpy как np
+
+logger = logging.getLogger(__name__)
 
 
 # ==========================================================================
@@ -335,7 +338,7 @@ class GcodeToolpath(QObject):
                 self._sample_cum, self._move_length,
                 self._machine_tools, self._machine_limits)
         except Exception as exc:
-            print("[GcodeToolpath] tool check failed:", exc)
+            logger.warning("tool check failed: %s", exc)
             self._tool_check = []
         self.toolCheckChanged.emit()
 
@@ -366,7 +369,7 @@ class GcodeToolpath(QObject):
         try:
             res = _scan_collisions(pts, cum, total, starts, lens, stock, _COLLISION_STEP)
         except Exception as exc:
-            print("[GcodeToolpath] collision scan failed:", exc)
+            logger.warning("collision scan failed: %s", exc)
             res = []
         try:
             if token != self._collision_token:
@@ -472,7 +475,7 @@ class GcodeToolpath(QObject):
                 self._mesh_topo = _build_silhouette_topology(verts)
                 return verts, None, self._stl_normals(verts)
             except Exception as exc:
-                print("[GcodeToolpath] STL load failed:", exc)
+                logger.warning("STL load failed: %s", exc)
                 return None, None, None
         if low.endswith((".step", ".stp")):
             ck = _cache_key(model_path, "model") if _cache_enabled() else None
@@ -506,7 +509,7 @@ class GcodeToolpath(QObject):
                     _cache_write_model(ck, verts, normals, packed)
                 return verts, packed, normals
             except Exception as exc:
-                print("[GcodeToolpath] STEP load failed:", exc)
+                logger.warning("STEP load failed: %s", exc)
                 stl = os.path.splitext(model_path)[0] + ".stl"
                 if not os.path.exists(stl):
                     for ext in (".STL", ".Stl"):
@@ -688,7 +691,7 @@ class GcodeToolpath(QObject):
         model: dihedral-angle feature edges of the mesh, disk-cached."""
         if self._step_edges is not None:
             packed = self._step_edges
-            print("[outline] source=STEP segments=%d" % (packed[1] // 2))
+            logger.debug("outline: source=STEP segments=%d", packed[1] // 2)
         else:
             ck = _cache_key(model_path, "edges") if (model_path and _cache_enabled()) else None
             packed = _cache_read_edges(ck) if ck else None
@@ -699,7 +702,7 @@ class GcodeToolpath(QObject):
                     packed = (b'', 0, None)
                 if ck:
                     _cache_write_edges(ck, packed)
-            print("[outline] source=MESH angle=20deg segments=%d" % (packed[1] // 2))
+            logger.debug("outline: source=MESH angle=20deg segments=%d", packed[1] // 2)
         try:
             self.edgesReady.emit((token, packed))
         except RuntimeError:
@@ -818,7 +821,7 @@ class GcodeToolpath(QObject):
             with open(filepath, "r", encoding="utf-8", errors="ignore") as fh:
                 text = fh.read()
         except OSError as exc:
-            print("[GcodeToolpath] cannot read '%s': %s" % (filepath, exc))
+            logger.error("cannot read '%s': %s", filepath, exc)
             return 0
         count = self.load_string(text)   # clears modelPath
         self._find_model(filepath)       # auto-loads <same name>.stl (if present)
@@ -849,7 +852,7 @@ class GcodeToolpath(QObject):
             with open(filepath, "r", encoding="utf-8", errors="ignore") as fh:
                 text = fh.read()
         except OSError as exc:
-            print("[GcodeToolpath] cannot read '%s': %s" % (filepath, exc))
+            logger.error("cannot read '%s': %s", filepath, exc)
             return 0
         self._load_token += 1
         token = self._load_token
@@ -872,7 +875,7 @@ class GcodeToolpath(QObject):
                 if ck:
                     _cache_write_path(ck, data)
         except Exception as exc:                       # never take the app down
-            print("[GcodeToolpath] parse failed:", exc)
+            logger.error("parse failed: %s", exc)
             self.loadFinished.emit()
             return
         if token != self._load_token:

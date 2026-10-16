@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 
 $marks = @{
-  'lib/cnc/machine.ts' = 1254  # редуктор сводит, а не впитывает: подсистема -> свой редьюсер
+  'apps/react-interface/lib/cnc/machine.ts' = 1254  # редуктор сводит, а не впитывает: подсистема -> свой редьюсер
 }
 
 $fail = New-Object System.Collections.Generic.List[string]
@@ -34,7 +34,8 @@ function Get-ToolVersion([string]$exe, [string[]]$arguments) {
 Write-Host 'CNC panel — guard' -ForegroundColor Cyan
 
 $sources = @(
-  Get-ChildItem -LiteralPath 'app', 'components', 'lib', 'qml' -Recurse -File -ErrorAction SilentlyContinue |
+  Get-ChildItem -LiteralPath 'apps/react-interface/app', 'apps/react-interface/components', 'apps/react-interface/lib',
+    'apps/qt-interface', 'modules/gcode-viewer' -Recurse -File -ErrorAction SilentlyContinue |
     Where-Object { $_.Extension -in '.ts', '.tsx', '.js', '.mjs', '.py', '.qml', '.vert', '.frag' }
 )
 
@@ -102,7 +103,7 @@ if (Get-Command pnpm -ErrorAction SilentlyContinue) {
 }
 if ($pnpmReal) {
   foreach ($script in 'typecheck', 'test', 'format:check') {
-    Run-Tool "pnpm run $script" { pnpm run $script }
+    Run-Tool "pnpm run $script" { pnpm -C 'apps/react-interface' run $script }
   }
 } else {
   Skipped 'pnpm: typecheck, test, format:check'

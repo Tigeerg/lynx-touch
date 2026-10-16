@@ -68,3 +68,7 @@ python modules/gcode-viewer/preview_3d.py "data/cad-testdata/Test_model.ngc"
 - [`DESIGN.md`](DESIGN.md) / [`DESIGN.en.md`](DESIGN.en.md) — архитектура 3D-вьювера и технический долг
   (русский / английский)
 - [`modules/gcode-viewer/CHANGELOG.md`](modules/gcode-viewer/CHANGELOG.md) — журнал вьювера
+
+## Лицензия
+
+Apache License 2.0 — см. [`LICENSE`](LICENSE).

@@ -5,7 +5,9 @@
 # step_probe: они читают OCCT напрямую, Qt им не нужен. Импорт STL и обводка меша
 # (этап 4b) лежат в ядре gvcore, их пробник - stl_probe. Топология силуэта
 # (этап 4c) - тоже в gvcore, её пробник silhouette_probe берёт суп из STEP через
-# gvstep.
+# gvstep. Аналитические поверхности вращения STEP лежат в gvstep
+# (occt/step_surfaces), семейства касательных - в gvcore (core/tangents), их
+# общий пробник - tangents_probe (этап 4d).
 #
 # Сборка (скрипт делает то же самое):
 #   powershell -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
@@ -35,9 +37,9 @@ find_package(OpenCASCADE REQUIRED)
 
 # Чистое ядро gvcore (этапы 2 и 4 плана переноса): парсер G-кода, теги UI_*,
 # crease-aware нормали кожи (этап 4a), импорт STL и обводка меша (этап 4b),
-# топология силуэта (этап 4c). Ни Qt, ни OCCT не нужны - только стандартная
-# библиотека. Цель отдельная от плагина, чтобы ядро можно было собрать и сверить
-# с Python без Qt.
+# топология силуэта (этап 4c), семейства касательных (этап 4d). Ни Qt, ни OCCT
+# не нужны - только стандартная библиотека. Цель отдельная от плагина, чтобы ядро
+# можно было собрать и сверить с Python без Qt.
 #
 # /fp:precise обязателен: ядро сверяется с Python побайтово, а /fp:fast разрешает
 # переассоциацию и слияние умножения со сложением (FMA), что сдвигает результат.
@@ -49,6 +51,7 @@ add_library(gvcore STATIC
     core/path_prep.cpp
     core/silhouette.cpp
     core/stl_import.cpp
+    core/tangents.cpp
     core/text_util.cpp
     core/ui_tags.cpp
 )
@@ -101,16 +104,17 @@ if (MSVC)
 endif()
 target_link_libraries(geometry_probe PRIVATE gvqtgeom Qt6::Core Qt6::Gui Qt6::Quick3D)
 
-# STEP и crease-aware нормали (этап 4a плана переноса): зеркало
-# modules/gcode-viewer/step_import.py и normals.py на OCCT SDK напрямую (нормали
-# лежат в gvcore - они от Qt и OCCT не зависят). Цель отдельная от плагина:
-# слой сверяется с питоновским эталоном побитово, а в бэкенд его подключит этап 5.
+# STEP, crease-aware нормали и аналитические поверхности (этап 4a и 4d плана
+# переноса): зеркало modules/gcode-viewer/step_import.py, normals.py и
+# step_surfaces.py на OCCT SDK напрямую (нормали и семейства касательных лежат в
+# gvcore - они от Qt и OCCT не зависят). Цель отдельная от плагина: слой
+# сверяется с питоновским эталоном побитово, а в бэкенд его подключит этап 5.
 # Qt сюда не тянется: STEP-слой читает OCCT, больше ему ничего не нужно.
 #
 # /fp:precise обязателен так же, как у gvcore и gvqtgeom: и суп вершин, и
 # нормали сверяются с Python бит-в-бит, а /fp:fast разрешает переассоциацию и
 # слияние умножения со сложением (FMA), что сдвигает младшие биты.
-add_library(gvstep STATIC occt/step_import.cpp)
+add_library(gvstep STATIC occt/step_import.cpp occt/step_surfaces.cpp)
 target_include_directories(gvstep PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(gvstep PUBLIC gvcore)
 if (MSVC)
@@ -179,6 +183,26 @@ endif()
 target_link_libraries(silhouette_probe PRIVATE gvstep)
 # Заголовок слоя включает TopoDS_Shape.hxx: инклюды OCCT у gvstep приватные.
 target_include_directories(silhouette_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
+
+# Пробник аналитических поверхностей STEP и семейств касательных (этап 4d плана
+# переноса): отдельная цель, в плагин не входит. Берёт суп вершин и поверхности
+# вращения из STEP тем же путём gvstep, что питоновские load_step_model и
+# load_step_surfaces, читает упакованные рёбра STEP из файла проверки и строит
+# семейства касательных (ядро gvcore), затем считает отрезки на пяти
+# фиксированных глазах. Печатает числа и sha256 массивов в тех же
+# сериализациях, что Python, и пишет те же массивы дампом; сверку ведёт
+# modules/gcode-viewer/test_tangents_core.py. Семейства живут в gvcore, поэтому
+# цели нужен только слой STEP: DLL OCCT пробнику нужны, DLL Qt - нет.
+add_executable(tangents_probe tangents_probe.cpp)
+set_target_properties(tangents_probe PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+if (MSVC)
+    target_compile_options(tangents_probe PRIVATE /utf-8)
+endif()
+target_link_libraries(tangents_probe PRIVATE gvstep)
+# Заголовки слоёв включают TopoDS_Shape.hxx: инклюды OCCT у gvstep приватные.
+target_include_directories(tangents_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
 qt_standard_project_setup()
 if(COMMAND qt_policy)

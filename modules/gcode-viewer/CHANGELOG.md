@@ -63,6 +63,10 @@
 | `modules/gcode-viewer/cpp/core/silhouette.h` / `.cpp` | C++-топология силуэта меша и горизонт поверхности |
 | `modules/gcode-viewer/cpp/silhouette_probe.cpp` | Пробник силуэта: топология и пять глаз, `sha256` |
 | `modules/gcode-viewer/test_silhouette_core.py` | Headless-сверка топологии силуэта и глаз C++ с оракулом |
+| `modules/gcode-viewer/cpp/occt/step_surfaces.h` / `.cpp` | C++-аналитические поверхности STEP: цилиндры и конусы |
+| `modules/gcode-viewer/cpp/core/tangents.h` / `.cpp` | C++-касательные контура: семейства цилиндров и конусов, политика конусов, силуэт из семейств |
+| `modules/gcode-viewer/cpp/tangents_probe.cpp` | Пробник касательных: поверхности, семейства, силуэт на пяти глазах |
+| `modules/gcode-viewer/test_tangents_core.py` | Headless-сверка поверхностей STEP и касательных C++ с питоновским эталоном |
 | `modules/gcode-viewer/oracle_dump.py` | Оракул промежуточных результатов: эталон для переноса на C++ |
 | `modules/gcode-viewer/test_ribbon_width.py` | Живая проверка толщины ленты (2 px по вертикали и горизонтали) |
 | `modules/gcode-viewer/test_solid_skin.py` | Живая проверка: сплошная кожа закрывает скрытые рёбра (без просвечивания) |
@@ -70,11 +74,34 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.19.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.20.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.20.0 — 2026-10-16
+
+- **Аналитические поверхности STEP и касательные контура на C++ (этап 4, часть 4; этап 4 закрыт).**
+  `step_surfaces.py` перенесён в `cpp/occt/step_surfaces.{h,cpp}` (цель `gvstep`): обход граней,
+  `BRepAdaptor_Surface`, цилиндры (ось, дуга из азимутов вершин, радиус, параметры) и конусы (вершина,
+  ось, полуугол). `tangents.py` перенесён в `cpp/core/tangents.{h,cpp}` (цель `gvcore`, без Qt и OCCT):
+  семейства касательных цилиндров и конусов, слияние пролётов и семейств, `_cone_keeps_silhouette`
+  с `_pt_tri_dist2`, `_dedupe_cones`, силуэт из семейств.
+- **Совпадение бит-в-бит на двух моделях.** Test_model: 194 поверхности (180 цилиндров, 14 конусов),
+  124 семейства, силуэт на глазах 57/58/53/53/56 отрезков; Test_model_2: 6 цилиндров, 5 семейств.
+  Все 22 дампа на каждой модели дают тот же `sha256`, что `load_step_surfaces`/`_tangent_families`/
+  `_tangent_from_families`; сверяют `cpp/tangents_probe.cpp` и `test_tangents_core.py`.
+- **Два разбора, а не подгонка.** Во-первых, `** 0.5` в `step_surfaces.py` — это `pow`, а не `sqrt`:
+  вблизи единицы расходится в младшем бите и уводит нормализованное направление оси на 1 ulp, поэтому
+  в порту `std::pow(x, 0.5)`. Во-вторых, ветка триангуляции грани в эталоне недостижима: у OCP-обёртки
+  `Poly_Triangulation` нет `IsNull`, поэтому `getattr(ftri, "IsNull", ...)` даёт `True` и точки берутся
+  из вершин грани; C++ повторяет наблюдаемое поведение (описано в коде и в тесте).
+- **Что тронуто:** `cpp/CMakeLists.txt`, `scripts/build-viewer.ps1`, `tools/check.ps1`; добавлены
+  `cpp/occt/step_surfaces.{h,cpp}`, `cpp/core/tangents.{h,cpp}`, `cpp/tangents_probe.cpp`,
+  `test_tangents_core.py`. Питоновские модули, QML, шейдеры и оракул не менялись.
+- **Проверки.** Сторож гоняет 70 проверок, зелёный; `test_tangent_policy.py`, `test_normals_golden.py`,
+  `test_normals_orientation.py` зелёные, оракул без изменений (22 записи). Версия 0.19.0 -> 0.20.0.
 
 ### 0.19.0 — 2026-10-16
 

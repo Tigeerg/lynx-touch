@@ -6,6 +6,7 @@
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunStepProbe
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunStlProbe
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunSilhouetteProbe
+#          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunTangentsProbe
 #
 # Генератор — Ninja, конфигурация Release, компилятор MSVC. Пути SDK берутся из
 # окружения с умолчаниями: CNC_QT_DIR (Qt6 с Quick3D), CNC_OCC_DIR (OCCT + Eigen),
@@ -42,6 +43,13 @@
 # поэтому ему нужны DLL OCCT (Qt - нет). Сверку с эталоном ведёт
 # modules/gcode-viewer/test_silhouette_core.py.
 #
+# Аналитические поверхности вращения STEP (этап 4d плана переноса) лежат в
+# gvstep (occt/step_surfaces), семейства касательных - в gvcore
+# (core/tangents), их общий пробник - <build>/tangents_probe.exe: он тоже берёт
+# суп и поверхности из STEP через gvstep и читает упакованные рёбра STEP из
+# файла проверки, поэтому ему нужны DLL OCCT (Qt - нет). Сверку с эталоном ведёт
+# modules/gcode-viewer/test_tangents_core.py.
+#
 # Код возврата: 0 — собрано, плагин на месте; 1 — инструмент не найден или ошибка сборки.
 
 [CmdletBinding()]
@@ -62,6 +70,8 @@ param(
     [switch]$RunStlProbe,
     # Дополнительно прогнать пробник топологии силуэта на data/cad-testdata/Test_model.STEP.
     [switch]$RunSilhouetteProbe,
+    # Дополнительно прогнать пробник поверхностей и касательных на data/cad-testdata/Test_model.STEP.
+    [switch]$RunTangentsProbe,
     # Только конфигурирование, без сборки.
     [switch]$ConfigureOnly
 )
@@ -230,6 +240,13 @@ if (Test-Path -LiteralPath $silProbe) {
     Fail "топология силуэта не собрана: нет $silProbe"
 }
 
+$tanProbe = Join-Path $BuildDir 'tangents_probe.exe'
+if (Test-Path -LiteralPath $tanProbe) {
+    Write-Host ("build-viewer: пробник поверхностей и касательных " + $tanProbe)
+} else {
+    Fail "поверхности и касательные не собраны: нет $tanProbe"
+}
+
 if ($RunProbe) {
     if (-not (Test-Path -LiteralPath $probe)) { Fail "пробника нет: $probe" }
     if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
@@ -277,6 +294,20 @@ if ($RunSilhouetteProbe) {
     New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
     & $silProbe $probeStep $dumpDir
     if ($LASTEXITCODE -ne 0) { Fail "пробник топологии силуэта вернул $LASTEXITCODE" }
+}
+
+if ($RunTangentsProbe) {
+    if (-not (Test-Path -LiteralPath $tanProbe)) { Fail "пробника нет: $tanProbe" }
+    if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
+    # Пробнику нужны только DLL OCCT: суп и поверхности он берёт из STEP через
+    # цель gvstep. Упакованных рёбер в этом каталоге нет - пробник пойдёт без
+    # пометок DROP, как эталон с packed_edges=None; полную сверку с дампами ведёт
+    # modules/gcode-viewer/test_tangents_core.py.
+    $env:PATH = "$OccDir\bin;$env:PATH"
+    $dumpDir = Join-Path $env:TEMP 'gvtangents_build_probe'
+    New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
+    & $tanProbe $probeStep $dumpDir
+    if ($LASTEXITCODE -ne 0) { Fail "пробник поверхностей и касательных вернул $LASTEXITCODE" }
 }
 
 Write-Host 'build-viewer: OK' -ForegroundColor Green

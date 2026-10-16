@@ -198,8 +198,17 @@ packing are ported to `cpp/core` (target `gvcore`), bit-exact: `stl.soup` [56277
 
 **The silhouette topology (stage 4, part 3) is in place.** `silhouette.py` is ported to
 `cpp/core/silhouette`; eleven oracle keys (`topo.n/d/f0/f1/ea/eb` and `silhouette.eye0..eye4`) match
-bit-exact; the `cpp/silhouette_probe.cpp` probe and `test_silhouette_core.py` do the comparison. Still to
-do in stage 4: `step_surfaces` and `_tangent_families`.
+bit-exact; the `cpp/silhouette_probe.cpp` probe and `test_silhouette_core.py` do the comparison.
+
+**Stage 4 is closed.** `step_surfaces.py` is ported to `cpp/occt/step_surfaces`, `tangents.py` to
+`cpp/core/tangents`; on Test_model and Test_model_2 all 22 dumps match (surfaces, families, cone policy,
+the silhouette on five eyes) — the C++ `sha256` equals the Python reference. Digging into the mismatches
+turned up two places in the reference: `** 0.5` there is `pow`, not `sqrt`, and the face-triangulation
+branch is unreachable because the OCP `Poly_Triangulation` wrapper has no `IsNull`, so the points come
+from the face vertices. The C++ port reproduces the observed behaviour.
+
+**Stage 5 is the backend switch.** The C++ layers are checked against Python but not wired in yet: the
+controller still runs on the Python geometries. Stage 5 replaces them and enables the C++ path by a flag.
 
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.

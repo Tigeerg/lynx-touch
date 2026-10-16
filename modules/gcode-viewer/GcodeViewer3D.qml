@@ -17,7 +17,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.11.2"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.12.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -30,6 +30,23 @@ Item {
     // ---- edge layer toggles (diagnostics: E / D) ----
     property bool showBrepEdges: true      // static STEP B-rep outline
     property bool showTangentLines: true   // view-dependent tangent contour
+
+    // ---- FPS counter (F) ----
+    // Экспоненциальное среднее кадровой частоты: мгновенное 1/frameTime на
+    // vsync-мониторах стоит ровно и читать нечего, единичный дроп кадра
+    // не должен бросать цифру. Коэффициент 0.9 -> скачок виден за ~10 кадров.
+    property bool showFps: false
+    property real fpsSmoothed: 0            // среднее, кадр/с
+    FrameAnimation {
+        running: root.showFps
+        onTriggered: {
+            if (frameTime <= 0)
+                return
+            var fps = 1.0 / frameTime
+            root.fpsSmoothed = root.fpsSmoothed > 0
+                ? root.fpsSmoothed * 0.9 + fps * 0.1 : fps
+        }
+    }
 
     // ---- screen-space outline ----
     // The silhouette rim is drawn in world units, so its on-screen width would
@@ -844,7 +861,23 @@ Item {
         } else if (event.key === Qt.Key_X) {
             root.xray = !root.xray
             event.accepted = true
+        } else if (event.key === Qt.Key_F) {
+            root.showFps = !root.showFps
+            if (!root.showFps) root.fpsSmoothed = 0
+            event.accepted = true
         }
+    }
+
+    // Счётчик кадров: правый верхний угол, чтобы не мешать строке подсказок.
+    Text {
+        visible: root.showFps
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: 10
+        text: Math.round(root.fpsSmoothed) + " FPS"
+        color: "#535C66"
+        font.pixelSize: 12
+        font.bold: true
     }
 
     Text {
@@ -860,6 +893,7 @@ Item {
               + "   ·   E рёбра: " + (root.showBrepEdges ? "вкл" : "выкл")
               + " · D касательные: " + (root.showTangentLines ? "вкл" : "выкл")
               + " · X рентген: " + (root.xray ? "вкл" : "выкл")
+              + " · F fps: " + (root.showFps ? "вкл" : "выкл")
         color: "#535C66"
         font.pixelSize: 12
         font.bold: true

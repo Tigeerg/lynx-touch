@@ -150,8 +150,16 @@ unchanged.** Every stage leaves the Python backend working; switching is a flag.
 the Python path (STEP: mesh, edges, normals; silhouette topology; silhouette at five fixed eyes; STL: soup and
 outline) and compares their `sha256` with the `oracle_manifest.json` manifest. Only the manifest is in the
 repository - the arrays are tens of megabytes and are produced by running the script (`--write` rewrites the
-manifest deliberately, together with the change that altered the result). The check runs in the guard: 17
+manifest deliberately, together with the change that altered the result). The check runs in the guard: 22
 entries, a mismatch means an intermediate result has changed.
+
+**The monolith split (stage 0) is done as well.** `mock_backend.py` was 4620 lines and is now a 104-line
+facade; the code is spread over 17 modules: `gv_common`, `gcode_parser`, `ui_tags`, `cache_store`,
+`stl_import`, `packing`, `step_import`, `step_surfaces`, `tangents`, `silhouette`, `normals`, `outline`,
+`path_prep`, `tooling`, `collision`, `geometry`, `controller`. The names used by the tests,
+`bench_viewer.py`, `oracle_dump.py` and QML are re-exported by the facade, so the outside code never
+changed, and the oracle confirmed on every step that no result moved. Stage 0 still has to do: types
+instead of tuples, numpy as a hard dependency, `print` -> logging.
 
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.

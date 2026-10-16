@@ -1136,6 +1136,26 @@ def _step_shape(path):
     return reader.OneShape()
 
 
+def _orient_shell_outward(verts):
+    """Развернуть оболочку наружу, если её треугольники смотрят внутрь.
+
+    У замкнутого тела площадь-взвешенные нормали должны смотреть от центроида.
+    Если OCP отдал внутреннюю развёртку (или STEP/STL экспортирован вывернутым),
+    разворачивается вся оболочка целиком - это единственное место, где решается
+    её ориентация. Пофейсовый разворот по центроиду здесь не годится: на
+    вогнутых участках (карманы, отверстия) наружная нормаль смотрит к центроиду,
+    и такой разворот выворачивает их внутрь. Требует numpy; возвращает
+    (F,3,3) float64."""
+
+    tri = _np.asarray(verts, dtype=_np.float64).reshape(-1, 3, 3)
+    cr = _np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    ctr = tri.mean(axis=1)
+    cent = tri.reshape(-1, 3).mean(axis=0)
+    if float((cr * (ctr - cent)).sum()) < 0.0:
+        tri = _np.ascontiguousarray(tri[:, ::-1, :])
+    return tri
+
+
 def load_step_model(path, deflection=0.05, shape=None):
     """Full model source from a STEP file: triangle-soup vertices, outline
     segments, per-vertex smooth normals.
@@ -1259,20 +1279,8 @@ def load_step_model(path, deflection=0.05, shape=None):
 
     segments = _coalesce_segments(segments)
     if _np is not None and soup:
-        verts = _np.array(soup, dtype=_np.float64)
-        tri = verts.reshape(-1, 3, 3)
-        cr = _np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
-        ctr = tri.mean(axis=1)
-        cent = verts.mean(axis=0)
-        # Global winding sanity: for a closed solid the area-weighted normals
-        # must point away from the centroid; if OCP hands us the inward
-        # convention (or a STEP exported flipped), turn the whole shell so
-        # back-face culling and the normals (and with them the GPU contour)
-        # face outward.
-        if float((cr * (ctr - cent)).sum()) < 0.0:
-            tri = _np.ascontiguousarray(tri[:, ::-1, :])
-            verts = tri.reshape(-1, 3)
-        return verts, segments, _smooth_face_normals(tri)
+        tri = _orient_shell_outward(soup)
+        return tri.reshape(-1, 3), segments, _smooth_face_normals(tri)
     return soup, segments, None
 
 
@@ -2124,14 +2132,14 @@ def _smooth_face_normals(T, crease_deg=20.0):
     on top faces), while moderately curved regions shade continuously.
     Fillet facet steps (~23 deg) are irrelevant downstream: the edge
     detector's pow() response + 0.55 threshold silently ignore them.
-    Returns (F,3,3) float32."""
+    Returns (F,3,3) float32. Ориентация берётся из обхода треугольников:
+    оболочка разворачивается наружу один раз на модель
+    (_orient_shell_outward)."""
     np = _np
     F = T.shape[0]
     fn = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0])
-    # Ориентация наружу: нормаль должна смотреть от центра модели
-    ctr = T.mean(axis=(0, 1))
-    dots = np.einsum('ij,ij->i', fn, T.mean(axis=1) - ctr)
-    fn = np.where(dots[:, None] < 0, -fn, fn)
+    # Ориентацию задаёт вызывающий (см. _orient_shell_outward): пофейсовый
+    # разворот по центроиду выворачивал нормали вогнутых участков внутрь.
     area = np.linalg.norm(fn, axis=1)
     ok = area > 1e-12
     face_n = np.empty((F, 3), dtype=np.float64)
@@ -3925,6 +3933,8 @@ class GcodeToolpath(QObject):
                 self._rev_surfaces = None
                 self._tan_fams = None
                 verts = load_stl_vertices(model_path)
+                if _np is not None:
+                    verts = _orient_shell_outward(verts).reshape(-1, 3)
                 self._mesh_topo = _build_silhouette_topology(verts)
                 return verts, None, self._stl_normals(verts)
             except Exception as exc:
@@ -3973,6 +3983,8 @@ class GcodeToolpath(QObject):
                     self._model_path = os.path.abspath(stl)
                     try:
                         sv = load_stl_vertices(self._model_path)
+                        if _np is not None:
+                            sv = _orient_shell_outward(sv).reshape(-1, 3)
                         self._mesh_topo = _build_silhouette_topology(sv)
                         return sv, None, None
                     except Exception:

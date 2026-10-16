@@ -17,7 +17,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.13.1"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.13.2"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -834,9 +834,19 @@ Item {
 
     // ---- Playback: Space = play/pause, Esc = reset to start ----
     // ---- Hotkeys: S stock, M part model, L limit length, T stages,
-    // ----          PgUp/PgDn switch stage, P play, O visible contour ----
+    // ----          PgUp/PgDn switch stage, P play ----
+    // Раскладка не должна гасить горячие клавиши: на русской раскладке Qt
+    // сообщает для физической X код Key_Ch, а не Key_X, и буквенные ветки ниже
+    // не срабатывали. Буквы сверяются ещё и по nativeVirtualKey (VK-код
+    // физической клавиши), как в панели (apps/qt-interface/main.qml, keyIs).
+    // Служебные клавиши (Space, Esc, стрелки, PgUp/PgDn) от раскладки не
+    // зависят и сверяются по Qt.Key.
+    function keyIs(ev, vk, qtkey) {
+        return ev.nativeVirtualKey === vk || ev.key === qtkey
+    }
+
     Keys.onPressed: (event) => {
-        if (event.key === Qt.Key_Space || event.key === Qt.Key_P) {
+        if (event.key === Qt.Key_Space || root.keyIs(event, 0x50, Qt.Key_P)) {
             root.togglePlay()
             event.accepted = true
         } else if (event.key === Qt.Key_Escape) {
@@ -848,16 +858,16 @@ Item {
         } else if (event.key === Qt.Key_Down) {
             root.speed = Math.max(0.05, root.speed / 1.5)
             event.accepted = true
-        } else if (event.key === Qt.Key_S) {
+        } else if (root.keyIs(event, 0x53, Qt.Key_S)) {
             root.showStockVisible = !root.showStockVisible
             event.accepted = true
-        } else if (event.key === Qt.Key_M) {
+        } else if (root.keyIs(event, 0x4D, Qt.Key_M)) {
             root.showPartVisible = !root.showPartVisible
             event.accepted = true
-        } else if (event.key === Qt.Key_L) {
+        } else if (root.keyIs(event, 0x4C, Qt.Key_L)) {
             root.showAllCode = !root.showAllCode
             event.accepted = true
-        } else if (event.key === Qt.Key_T) {
+        } else if (root.keyIs(event, 0x54, Qt.Key_T)) {
             root.toggleStageMode()
             event.accepted = true
         } else if (event.key === Qt.Key_PageUp) {
@@ -866,16 +876,16 @@ Item {
         } else if (event.key === Qt.Key_PageDown) {
             root.nextStage()
             event.accepted = true
-        } else if (event.key === Qt.Key_E) {
+        } else if (root.keyIs(event, 0x45, Qt.Key_E)) {
             root.showBrepEdges = !root.showBrepEdges
             event.accepted = true
-        } else if (event.key === Qt.Key_D) {
+        } else if (root.keyIs(event, 0x44, Qt.Key_D)) {
             root.showTangentLines = !root.showTangentLines
             event.accepted = true
-        } else if (event.key === Qt.Key_X) {
+        } else if (root.keyIs(event, 0x58, Qt.Key_X)) {
             root.xray = !root.xray
             event.accepted = true
-        } else if (event.key === Qt.Key_F) {
+        } else if (root.keyIs(event, 0x46, Qt.Key_F)) {
             root.showFps = !root.showFps
             if (!root.showFps) root.fpsSmoothed = 0
             event.accepted = true

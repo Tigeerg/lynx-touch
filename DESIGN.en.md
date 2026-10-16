@@ -174,6 +174,15 @@ Checks:
 - `tools/check.ps1` (`pnpm guard`) does not run `bench_viewer.py` — performance regressions are not caught;
 - `print` instead of logging; `[outline] ...` prints on every load.
 
+Skin normals:
+- `test_normals_golden.py` is red. `_smooth_face_normals` flips every face normal that points towards the
+  centre of the model; on a part with pockets and holes the outward normals of concave regions do point
+  towards the centroid, so the flip turns them inward - 70 % of the Test_model vertices against the shell
+  winding. The winding is already outward: `load_step_model` guarantees it with its "global winding sanity",
+  so the per-face flip is both needless and harmful. The golden is correct - it agrees with the winding in
+  99.9 %. Disabling the flip matches the golden bit for bit; the flip cannot simply be removed because the
+  STL path (`_stl_normals`) has no global orientation of its own and relies on it.
+
 Performance on weak hardware (Intel Atom + Nvidia Ion):
 - `MSAA High` on the whole frame is the main cost; the ribbons already have distance-field AA and do not need
   MSAA;

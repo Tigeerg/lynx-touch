@@ -50,6 +50,12 @@
 # файла проверки, поэтому ему нужны DLL OCCT (Qt - нет). Сверку с эталоном ведёт
 # modules/gcode-viewer/test_tangents_core.py.
 #
+# C-ABI-мост над C++-ядром (этап 5 плана переноса) собирается той же сборкой в
+# <repo>/build/cpp/gvbridge.dll: SHARED-цель gvbridge без Qt над gvcore и gvstep,
+# наружу только C-типы. Оттуда её берёт питоновский шим
+# modules/gcode-viewer/gv_cpp.py; C++ включается одним слоем по флагу CNC_CPP.
+# Проверка - modules/gcode-viewer/test_cpp_bridge.py.
+#
 # Код возврата: 0 — собрано, плагин на месте; 1 — инструмент не найден или ошибка сборки.
 
 [CmdletBinding()]
@@ -245,6 +251,13 @@ if (Test-Path -LiteralPath $tanProbe) {
     Write-Host ("build-viewer: пробник поверхностей и касательных " + $tanProbe)
 } else {
     Fail "поверхности и касательные не собраны: нет $tanProbe"
+}
+
+$bridge = Join-Path $root 'build\cpp\gvbridge.dll'
+if (Test-Path -LiteralPath $bridge) {
+    Write-Host ("build-viewer: мост C-ABI " + $bridge)
+} else {
+    Fail "мост C-ABI не собран: нет $bridge"
 }
 
 if ($RunProbe) {

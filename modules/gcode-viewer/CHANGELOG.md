@@ -67,6 +67,11 @@
 | `modules/gcode-viewer/cpp/core/tangents.h` / `.cpp` | C++-касательные контура: семейства цилиндров и конусов, политика конусов, силуэт из семейств |
 | `modules/gcode-viewer/cpp/tangents_probe.cpp` | Пробник касательных: поверхности, семейства, силуэт на пяти глазах |
 | `modules/gcode-viewer/test_tangents_core.py` | Headless-сверка поверхностей STEP и касательных C++ с питоновским эталоном |
+| `modules/gcode-viewer/cpp/bridge/gv_bridge.h` / `.cpp` | C-ABI-мост над C++-ядром: нормали кожи и STEP-модель для вызова из Python |
+| `modules/gcode-viewer/cpp/occt/step_edges.h` / `.cpp` | Отбор и склейка рёбер STEP вынесены в Qt-free слой: одна редакция алгоритма для плагина и моста |
+| `modules/gcode-viewer/cpp/occt/step_bundle.h` / `.cpp` | Комплект STEP (суп, нормали, рёбра до склейки) для моста |
+| `modules/gcode-viewer/gv_cpp.py` | Python-шим моста: загрузка через `ctypes`, поиск DLL, каталог OCCT в путь |
+| `modules/gcode-viewer/test_cpp_bridge.py` | Проверка моста: разбор флага, нормали и STEP бит-в-бит, фолбэк на Python |
 | `modules/gcode-viewer/oracle_dump.py` | Оракул промежуточных результатов: эталон для переноса на C++ |
 | `modules/gcode-viewer/test_ribbon_width.py` | Живая проверка толщины ленты (2 px по вертикали и горизонтали) |
 | `modules/gcode-viewer/test_solid_skin.py` | Живая проверка: сплошная кожа закрывает скрытые рёбра (без просвечивания) |
@@ -74,11 +79,38 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.20.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.21.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.21.0 — 2026-10-16
+
+- **Мост C-ABI и флаг C++ (этап 5, часть 1).** C++-слои были статическими библиотеками без C-ABI —
+  загрузить их в Python было нельзя. Добавлена SHARED-цель `gvbridge` с чистым `extern "C"` API над
+  Qt-free ядром: нормали кожи и STEP-модель (суп, нормали, рёбра до склейки). Наружу только C-типы,
+  память выделяет и освобождает библиотека (`gv_free`), исключения границу не пересекают, текст ошибки —
+  `gv_last_error`. Python-шим `gv_cpp.py` грузит мост через `ctypes`, ищет DLL по `CNC_CPP_LIB` (иначе
+  `build/cpp/gvbridge.dll`) и добавляет каталог OCCT-DLL в путь поиска.
+- **Флаг `CNC_CPP`** (`normals` | `step` | `all`, по умолчанию выключен) переключает слой по образцу
+  `CNC_SILHOUETTE`. Переключены нормали STL и STEP-ветка; любой отказ C++ даёт `logger.warning` и расчёт
+  на Python — молчаливого отказа нет.
+- **Одна редакция рёбер STEP.** Отбор и склейка вынесены из Qt-плагина в Qt-free `cpp/occt/step_edges`;
+  плагин `CNC.Edges` и мост вызывают один и тот же код, поэтому буфер обводки не разошёлся.
+- **Совпадение.** Нормали STL (187592 треугольника) и STEP (суп 136194 вершины, нормали 45398) — байт в
+  бит; упакованный буфер обводки 97040 байт равен. С флагом `CNC_CPP=all`: `test_normals_golden` даёт
+  `differing-floats=0`, `test_normals_orientation` и `oracle_dump` — `RESULT: OK`, `smoke_test_qml` —
+  `RESULT: OK`, offscreen `preview_3d` — `loaded OK` без `Traceback`, `WARNING` и `ERROR`.
+- **Что тронуто:** `cpp/CMakeLists.txt`, `cpp/stepledgesgeometry.{h,cpp}`, `controller.py`,
+  `scripts/build-viewer.ps1`, `tools/check.ps1`; добавлены `cpp/bridge/gv_bridge.{h,cpp}`,
+  `cpp/occt/step_edges.{h,cpp}`, `cpp/occt/step_bundle.{h,cpp}`, `gv_cpp.py`, `test_cpp_bridge.py`.
+  Контракт QML (имена, stride 20 и 48) не менялся, оракул не тронут, `CACHE_VER` не поднимался.
+- **Известная краснота, не от этой правки.** `test_solid_skin.py` на этой машине красный и на чистом
+  `HEAD` (11792 px против порога 10500; в дереве без загруженной модели 202727 px). Тест в стороже не
+  стоит, порог мерялся на другой машине; записано в `DESIGN.md` §12.
+- **Проверки.** Сторож гоняет 80 проверок, зелёный; оракул без изменений (22 записи). Версия
+  0.20.0 -> 0.21.0.
 
 ### 0.20.0 — 2026-10-16
 

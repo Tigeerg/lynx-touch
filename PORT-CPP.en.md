@@ -210,6 +210,14 @@ from the face vertices. The C++ port reproduces the observed behaviour.
 **Stage 5 is the backend switch.** The C++ layers are checked against Python but not wired in yet: the
 controller still runs on the Python geometries. Stage 5 replaces them and enables the C++ path by a flag.
 
+**The bridge and the flag (stage 5, part 1) are in place.** The C++ layers were static libraries without a
+C ABI, that is, unreachable from Python. A SHARED target `gvbridge` with a plain `extern "C"` API over the
+Qt-free core (skin normals, the STEP model), a Python shim `gv_cpp.py` (ctypes) and a flag `CNC_CPP`
+(`normals` | `step` | `all`, off by default, modelled on `CNC_SILHOUETTE`) were added. The STL normals and
+the STEP branch are switched; a C++ failure logs a warning and falls back to Python. Byte-for-byte the same
+with and without the flag; the QML contract is unchanged. Still to do in stage 5: move the surfaces, the
+silhouette topology and the parser into the bridge, then the Qt geometries and the controller.
+
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.
 

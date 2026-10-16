@@ -142,11 +142,11 @@ if ($pythonReal) {
   Skipped 'python: py_compile, offscreen-прогоны, test_tangent_policy.py, test_normals_golden.py'
 }
 
-# 6. Сборка QML-плагина CNC.Edges (StepEdges) и сверка рёбер STEP, супа, обводки
-#    STL, топологии силуэта, аналитических поверхностей и семейств касательных с
-#    питоновским эталоном. Нужен полный C++-тулчейн: Qt6, OCCT, cmake, ninja,
-#    vcvars64. Тулчейна нет — шаг пропускается, как остальные инструментальные
-#    проверки.
+# 6. Сборка QML-плагина CNC.Edges (StepEdges), C-ABI-моста gvbridge и сверка
+#    рёбер STEP, супа, обводки STL, топологии силуэта, аналитических поверхностей
+#    и семейств касательных с питоновским эталоном. Нужен полный C++-тулчейн:
+#    Qt6, OCCT, cmake, ninja, vcvars64. Тулчейна нет — шаг пропускается, как
+#    остальные инструментальные проверки.
 $qtDir = if ($env:CNC_QT_DIR) { $env:CNC_QT_DIR } else { 'C:\Qt\6.12.0\msvc2022_64' }
 $occDir = if ($env:CNC_OCC_DIR) { $env:CNC_OCC_DIR }
           elseif ($env:CONDA_PREFIX) { Join-Path $env:CONDA_PREFIX 'Library' }
@@ -210,6 +210,14 @@ if ($cppReady -and $pythonReal) {
     Run-Tool 'test_tangents_core.py' { python modules/gcode-viewer/test_tangents_core.py }
   } else {
     Bad 'нет пробника поверхностей и касательных build/edges/tangents_probe.exe'
+  }
+  # C-ABI-мост и флаг CNC_CPP: проверка сама пропускается (код 0), если мост не
+  # собран, но в этом шаге тулчейн есть и сборка уже прошла - значит, моста нет
+  # по другой причине, и это красное.
+  if (Test-Path -LiteralPath 'build/cpp/gvbridge.dll') {
+    Run-Tool 'test_cpp_bridge.py' { python modules/gcode-viewer/test_cpp_bridge.py }
+  } else {
+    Bad 'нет моста build/cpp/gvbridge.dll'
   }
 } else {
   Skipped 'сборка плагина CNC.Edges, ядра gvcore, геометрий, STEP, STL, силуэта и касательных: нет тулчейна'

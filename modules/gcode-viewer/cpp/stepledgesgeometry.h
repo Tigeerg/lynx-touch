@@ -12,13 +12,14 @@
 //
 // Повторяет питоновский эталон load_step_model(...) по рёбрам
 // (modules/gcode-viewer/step_import.py): обход TopAbs_EDGE в порядке
-// TopExp_Explorer, полилиния каждого ребра — GCPnts_UniformDeflection с линейным
+// TopExp_Explorer, полилиния каждого ребра - GCPnts_UniformDeflection с линейным
 // допуском 0.05 мм (угловой критерий не используется: эталон его не задаёт),
 // затем склейка почти совпадающих отрезков (_coalesce_segments,
 // modules/gcode-viewer/packing.py). Шовные линии криволинейных граней (прямое
 // ребро, у которого все смежные грани криволинейны) отбрасываются: SolidWorks
-// их тоже не рисует. Совпадение с эталоном проверяет cpp/stepledges_probe.cpp и
-// modules/gcode-viewer/test_stepledges_plugin.py.
+// их тоже не рисует. Сам отбор и склейка лежат в gvstep (cpp/occt/step_edges):
+// тот же алгоритм без Qt нужен C-ABI-мосту gvbridge. Совпадение с эталоном
+// проверяет cpp/stepledges_probe.cpp и modules/gcode-viewer/test_stepledges_plugin.py.
 //
 // Скрытие невидимых линий делает GPU, а не постобработка: геометрия рисуется
 // парным материалом (stepledges.vert), который подтягивает линии к камере в

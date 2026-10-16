@@ -25,12 +25,13 @@ from cache_store import (_cache_enabled, _cache_key, _cache_read_path,
                          _cache_write_path, _cache_read_edges, _cache_write_edges,
                          _cache_read_model, _cache_write_model)
 from stl_import import load_stl_vertices, _verts_bounds
-from packing import packed_positions, _pack_edge_segments
+from packing import packed_positions, _pack_edge_segments, _coalesce_segments
 from step_import import _step_shape, _orient_shell_outward, load_step_model
 from step_surfaces import load_step_surfaces
 from tangents import _tangent_families, _tangent_from_families
 from silhouette import _build_silhouette_topology, _mesh_silhouette_segments
 from normals import _smooth_face_normals
+import gv_cpp
 from outline import _feature_edges
 from path_prep import _prepare_ordered
 from tooling import (_tool_profile, _tool_outline_profile, _tool_exposed_length,
@@ -43,6 +44,24 @@ from geometry import (ToolpathGeometry, HLRLineGeometry, GridGeometry,
 np = _np          # код слоя читает numpy как np
 
 logger = logging.getLogger(__name__)
+
+
+def _step_model(path, shape):
+    """Модель STEP: суп вершин, рёбра и crease-aware нормали.
+
+    Считает C++, если CNC_CPP=step|all (мост gvbridge, этап 5 плана переноса);
+    отказ C++-пути виден в журнале и уходит на питоновский эталон. Рёбра мост
+    отдаёт до склейки: склейку ведёт _coalesce_segments, поэтому буфер обводки
+    остаётся тем же, что у питоновского пути. Форму для поверхностей читает
+    Python (_step_shape), поэтому на флаге STEP читается дважды - это уйдёт,
+    когда в мост переедут поверхности."""
+    if gv_cpp.step_enabled():
+        try:
+            verts, segments, normals = gv_cpp.load_step_model(path)
+            return verts, _coalesce_segments(segments), normals
+        except Exception as exc:
+            logger.warning("C++-STEP не прочитан (%s): читает Python", exc)
+    return load_step_model(path, shape=shape)
 
 
 # ==========================================================================
@@ -451,9 +470,18 @@ class GcodeToolpath(QObject):
     @staticmethod
     def _stl_normals(verts):
         """Crease-smooth vertex normals for an STL triangle soup (position
-        list); None when numpy is absent (caller keeps flat normals)."""
+        list); None when the soup is too short (caller keeps flat normals).
+
+        Слой считает Python, пока CNC_CPP не просит C++ (мост gvbridge):
+        отказ C++-пути виден в журнале и возвращает расчёт на Python, а не
+        молчание."""
         if verts is None or len(verts) < 3:
             return None
+        if gv_cpp.normals_enabled():
+            try:
+                return gv_cpp.smooth_face_normals(verts)
+            except Exception as exc:
+                logger.warning("C++-нормали не посчитаны (%s): считает Python", exc)
         try:
             return _smooth_face_normals(_np.asarray(verts, dtype=_np.float64)
                                         .reshape(-1, 3, 3))
@@ -499,8 +527,7 @@ class GcodeToolpath(QObject):
                 return hit
             try:
                 shape = _step_shape(model_path)
-                verts, segments, normals = load_step_model(model_path,
-                                                           shape=shape)
+                verts, segments, normals = _step_model(model_path, shape)
                 self._rev_surfaces = load_step_surfaces(model_path, shape=shape)
                 packed = _pack_edge_segments(segments)
                 self._tan_fams = _tangent_families(self._rev_surfaces, packed,

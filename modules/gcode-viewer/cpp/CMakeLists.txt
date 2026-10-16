@@ -9,6 +9,11 @@
 # (occt/step_surfaces), семейства касательных - в gvcore (core/tangents), их
 # общий пробник - tangents_probe (этап 4d).
 #
+# Рядом собирается C-ABI-мост gvbridge.dll (этап 5): SHARED-цель без Qt над
+# gvcore и gvstep, наружу только C-типы. Кладётся в <repo>/build/cpp, откуда её
+# берёт питоновский шим modules/gcode-viewer/gv_cpp.py; включает C++ один слой
+# вьювера по флагу CNC_CPP. Проверка - modules/gcode-viewer/test_cpp_bridge.py.
+#
 # Сборка (скрипт делает то же самое):
 #   powershell -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
 # Вручную:
@@ -31,6 +36,12 @@ project(cnc_edges_plugin LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Каталог C-ABI-моста gvbridge.dll: путь знает питоновский шим gv_cpp.py
+# (по умолчанию <repo>/build/cpp). Отдельной переменной он вынесен потому, что
+# не совпадает с каталогом сборки плагина.
+set(GV_BRIDGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../build/cpp"
+    CACHE PATH "Каталог, куда кладётся gvbridge.dll")
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Quick3D)
 find_package(OpenCASCADE REQUIRED)
@@ -114,7 +125,8 @@ target_link_libraries(geometry_probe PRIVATE gvqtgeom Qt6::Core Qt6::Gui Qt6::Qu
 # /fp:precise обязателен так же, как у gvcore и gvqtgeom: и суп вершин, и
 # нормали сверяются с Python бит-в-бит, а /fp:fast разрешает переассоциацию и
 # слияние умножения со сложением (FMA), что сдвигает младшие биты.
-add_library(gvstep STATIC occt/step_import.cpp occt/step_surfaces.cpp)
+add_library(gvstep STATIC occt/step_import.cpp occt/step_surfaces.cpp
+                            occt/step_edges.cpp occt/step_bundle.cpp)
 target_include_directories(gvstep PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(gvstep PUBLIC gvcore)
 if (MSVC)
@@ -124,8 +136,10 @@ else()
 endif()
 
 # OpenCASCADE: TKMesh - тесселяция (BRepMesh_IncrementalMesh, Poly_Triangulation),
-# TKDESTEP/TKXSBase - чтение STEP, TKBRep/TKTopAlgo - обход топологии.
-set(OCC_STEP_NEEDED TKernel TKMath TKTopAlgo TKGeomBase TKBRep TKMesh TKDESTEP TKXSBase)
+# TKDESTEP/TKXSBase - чтение STEP, TKBRep/TKTopAlgo - обход топологии, TKG3d -
+# GCPnts_UniformDeflection (полилинии рёбер в occt/step_edges).
+set(OCC_STEP_NEEDED TKernel TKMath TKG3d TKG2d TKGeomBase TKTopAlgo TKBRep
+                    TKMesh TKDESTEP TKXSBase)
 foreach(lib IN LISTS OCC_STEP_NEEDED)
     if (TARGET OpenCASCADE::${lib})
         target_link_libraries(gvstep PRIVATE OpenCASCADE::${lib})
@@ -204,6 +218,30 @@ target_link_libraries(tangents_probe PRIVATE gvstep)
 # Заголовки слоёв включают TopoDS_Shape.hxx: инклюды OCCT у gvstep приватные.
 target_include_directories(tangents_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
+# C-ABI-мост над Qt-free слоями (этап 5 плана переноса): нормали кожи и модель
+# STEP одним вызовом, наружу - только C-типы и буферы, выделенные библиотекой.
+# Qt в цели нет; OCCT есть, потому что STEP без него не читается. Библиотеку
+# грузит питоновский шим modules/gcode-viewer/gv_cpp.py (ctypes), поэтому она
+# кладётся не в каталог сборки, а по предсказуемому пути <repo>/build/cpp:
+# шим ищет её без знания о генераторе CMake и конфигурации.
+#
+# /fp:precise обязателен: нормали и суп сверяются с Python бит-в-бит.
+add_library(gvbridge SHARED bridge/gv_bridge.cpp)
+target_include_directories(gvbridge PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(gvbridge PRIVATE gvstep)
+set_target_properties(gvbridge PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${GV_BRIDGE_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${GV_BRIDGE_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${GV_BRIDGE_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_BRIDGE_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${GV_BRIDGE_DIR}
+)
+if (MSVC)
+    target_compile_options(gvbridge PRIVATE /utf-8 /fp:precise)
+else()
+    target_compile_options(gvbridge PRIVATE -ffp-contract=off -fno-fast-math)
+endif()
+
 qt_standard_project_setup()
 if(COMMAND qt_policy)
     # Префикс ресурсов QML-модуля ':/qt/qml/' — значение по умолчанию для новых проектов.
@@ -253,6 +291,10 @@ target_include_directories(cncedgesplugin PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
 target_link_libraries(cncedgesplugin PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Quick3D)
+# Отбор и склейка рёбер лежат в gvstep (cpp/occt/step_edges): одна редакция на
+# плагин и на мост gvbridge.
+target_link_libraries(cncedgesplugin PRIVATE gvstep)
+target_include_directories(cncedgesplugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Пробник сверки с питоновским эталоном: отдельная цель, в плагин не входит.
 # Читает геометрию через сам плагин (setSource -> setShape), печатает число

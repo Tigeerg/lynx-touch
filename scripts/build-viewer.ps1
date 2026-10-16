@@ -2,6 +2,7 @@
 #
 # Запуск:  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunProbe
+#          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunCoreProbe
 #
 # Генератор — Ninja, конфигурация Release, компилятор MSVC. Пути SDK берутся из
 # окружения с умолчаниями: CNC_QT_DIR (Qt6 с Quick3D), CNC_OCC_DIR (OCCT + Eigen),
@@ -16,6 +17,9 @@
 # Собранный модуль лежит в <build>/CNC/Edges/ (qmldir, cncedgesplugin.dll,
 # cncedgespluginplugin.dll); каталог <build> — это import path для QML и для
 # engine.addImportPath(...). Пробник — в <build>/stepledges_probe.exe.
+# Той же сборкой собирается чистое ядро gvcore (без Qt и OCCT) и его пробник
+# <build>/gcode_probe.exe; сверку ядра с эталоном ведёт
+# modules/gcode-viewer/test_gcode_core.py.
 #
 # Код возврата: 0 — собрано, плагин на месте; 1 — инструмент не найден или ошибка сборки.
 
@@ -29,6 +33,8 @@ param(
     [string]$BuildDir = 'build/edges',
     # Дополнительно прогнать пробник сегментов на data/cad-testdata/Test_model.STEP.
     [switch]$RunProbe,
+    # Дополнительно прогнать пробник ядра на data/cad-testdata/Test_model.ngc.
+    [switch]$RunCoreProbe,
     # Только конфигурирование, без сборки.
     [switch]$ConfigureOnly
 )
@@ -38,6 +44,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $srcDir = Join-Path $root 'modules\gcode-viewer\cpp'
 $probeStep = Join-Path $root 'data\cad-testdata\Test_model.STEP'
+$probeNgc = Join-Path $root 'data\cad-testdata\Test_model.ngc'
 if (-not [System.IO.Path]::IsPathRooted($BuildDir)) {
     $BuildDir = Join-Path $root $BuildDir
 }
@@ -160,12 +167,28 @@ if (Test-Path -LiteralPath $probe) {
     Write-Host ("build-viewer: пробник  " + $probe)
 }
 
+$coreProbe = Join-Path $BuildDir 'gcode_probe.exe'
+if (Test-Path -LiteralPath $coreProbe) {
+    Write-Host ("build-viewer: пробник ядра " + $coreProbe)
+} else {
+    Fail "ядро не собрано: нет $coreProbe"
+}
+
 if ($RunProbe) {
     if (-not (Test-Path -LiteralPath $probe)) { Fail "пробника нет: $probe" }
     if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
     $env:PATH = "$moduleDir;$OccDir\bin;$QtDir\bin;$env:PATH"   # DLL OCCT, Qt и плагина
     & $probe $probeStep
     if ($LASTEXITCODE -ne 0) { Fail "пробник вернул $LASTEXITCODE" }
+}
+
+if ($RunCoreProbe) {
+    if (-not (Test-Path -LiteralPath $probeNgc)) { Fail "нет тестовой УП: $probeNgc" }
+    # Пробнику ядра DLL не нужны: gvcore статическая, Qt и OCCT в ней не участвуют.
+    $dumpDir = Join-Path $env:TEMP 'gvcore_build_probe'
+    New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
+    & $coreProbe $probeNgc $dumpDir
+    if ($LASTEXITCODE -ne 0) { Fail "пробник ядра вернул $LASTEXITCODE" }
 }
 
 Write-Host 'build-viewer: OK' -ForegroundColor Green

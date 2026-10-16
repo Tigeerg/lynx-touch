@@ -1,4 +1,6 @@
 # QML-плагин "CNC.Edges" — StepEdges: рёбра B-Rep модели как Lines-геометрия.
+# Рядом собирается чистое ядро gvcore (парсер G-кода, теги UI_*) и его пробник
+# gcode_probe — они в плагин не входят и Qt не требуют.
 #
 # Сборка (скрипт делает то же самое):
 #   powershell -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
@@ -25,6 +27,37 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Quick3D)
 find_package(OpenCASCADE REQUIRED)
+
+# Чистое ядро gvcore (этап 2 плана переноса): парсер G-кода, теги UI_*. Ни Qt, ни
+# OCCT не нужны - только стандартная библиотека. Цель отдельная от плагина, чтобы
+# ядро можно было собрать и сверить с Python без Qt.
+#
+# /fp:precise обязателен: ядро сверяется с Python побайтово, а /fp:fast разрешает
+# переассоциацию и слияние умножения со сложением (FMA), что сдвигает результат.
+add_library(gvcore STATIC
+    core/gcode_parser.cpp
+    core/path_prep.cpp
+    core/text_util.cpp
+    core/ui_tags.cpp
+)
+target_include_directories(gvcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+if (MSVC)
+    target_compile_options(gvcore PRIVATE /utf-8 /fp:precise)
+else()
+    target_compile_options(gvcore PRIVATE -ffp-contract=off -fno-fast-math)
+endif()
+
+# Пробник ядра: отдельная цель, в плагин не входит. Печатает точки, флаги,
+# этапы и sha256 тех же сериализаций, что считает Python, и пишет те же массивы
+# дампом; проверка - modules/gcode-viewer/test_gcode_core.py.
+add_executable(gcode_probe gcode_probe.cpp)
+set_target_properties(gcode_probe PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+if (MSVC)
+    target_compile_options(gcode_probe PRIVATE /utf-8)
+endif()
+target_link_libraries(gcode_probe PRIVATE gvcore)
 
 qt_standard_project_setup()
 if(COMMAND qt_policy)

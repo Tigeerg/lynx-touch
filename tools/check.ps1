@@ -166,7 +166,7 @@ $cppReady = (Test-Path -LiteralPath (Join-Path $qtDir 'lib\cmake\Qt6\Qt6Config.c
             $vcvars -and (Test-Path -LiteralPath $cmakeExe) -and (Test-Path -LiteralPath $ninjaExe)
 
 if ($cppReady -and $pythonReal) {
-  Run-Tool 'build-viewer.ps1 (плагин CNC.Edges)' {
+  Run-Tool 'build-viewer.ps1 (плагин CNC.Edges, ядро gvcore)' {
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
   }
   if (Test-Path -LiteralPath 'build/edges/CNC/Edges/qmldir') {
@@ -179,8 +179,13 @@ if ($cppReady -and $pythonReal) {
   } else {
     Bad 'нет пробника build/edges/stepledges_probe.exe'
   }
+  if (Test-Path -LiteralPath 'build/edges/gcode_probe.exe') {
+    Run-Tool 'test_gcode_core.py' { python modules/gcode-viewer/test_gcode_core.py }
+  } else {
+    Bad 'нет пробника ядра build/edges/gcode_probe.exe'
+  }
 } else {
-  Skipped 'сборка плагина CNC.Edges и сверка рёбер: нет Qt6/OCCT/cmake/ninja/vcvars64'
+  Skipped 'сборка плагина CNC.Edges, ядра gvcore и сверка с эталоном: нет Qt6/OCCT/cmake/ninja/vcvars64'
 }
 
 Write-Host ''

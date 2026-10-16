@@ -41,6 +41,12 @@
 | `modules/gcode-viewer/cpp/stepledgesgeometry.h` / `.cpp` | Рёбра STEP (B-rep) как `Lines`-геометрия QML: сэмплер и фильтр швов согласованы с `load_step_model` |
 | `modules/gcode-viewer/cpp/stepledges_probe.cpp` | Пробник: сегменты рёбер STEP из плагина (число и `sha256` набора точек), проверка импорта QML |
 | `modules/gcode-viewer/test_stepledges_plugin.py` | Headless-сверка сегментов плагина `CNC.Edges` с питоновским эталоном `load_step_model` |
+| `modules/gcode-viewer/cpp/core/gcode_parser.h` / `.cpp` | C++-ядро: парсер G-кода, циклы сверления, дуги, прореживание, скорости |
+| `modules/gcode-viewer/cpp/core/ui_tags.h` / `.cpp` | C++-ядро: теги постпроцессора `UI_*` и подписи этапов |
+| `modules/gcode-viewer/cpp/core/path_prep.h` / `.cpp` | C++-ядро: `_prepare_ordered`, потоки вершин, этапы |
+| `modules/gcode-viewer/cpp/core/gv_types.h`, `text_util.h` / `.cpp` | C++-ядро: типы границ модулей и строковые помощники |
+| `modules/gcode-viewer/cpp/gcode_probe.cpp` | Пробник ядра: буферы и этапы УП, `sha256` против оракула |
+| `modules/gcode-viewer/test_gcode_core.py` | Headless-сверка C++-ядра с `parse_gcode` и оракулом (плюс ветки, которых нет в Test_model) |
 | `modules/gcode-viewer/oracle_dump.py` | Оракул промежуточных результатов: эталон для переноса на C++ |
 | `modules/gcode-viewer/test_ribbon_width.py` | Живая проверка толщины ленты (2 px по вертикали и горизонтали) |
 | `modules/gcode-viewer/test_solid_skin.py` | Живая проверка: сплошная кожа закрывает скрытые рёбра (без просвечивания) |
@@ -48,11 +54,31 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.14.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.15.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.15.0 — 2026-10-16
+
+- **Чистое ядро на C++ (этап 2 плана переноса).** Парсер УП, кадровые циклы, дуги, теги `UI_*`,
+  подготовка траектории и упаковка потоков вершин перенесены на C++ без Qt и OCCT (только стандартная
+  библиотека): `cpp/core/gcode_parser`, `ui_tags`, `path_prep`, `gv_types`, `text_util`, цель CMake
+  `gvcore` со `/fp:precise`.
+- **Результат совпал с эталоном бит-в-бит.** Пробник `cpp/gcode_probe.cpp` и проверка
+  `test_gcode_core.py` сверяют с `parse_gcode` и оракулом: `path.points` [70915,3], `path.flags`
+  [70915,2], `path.last` [3], `path.segments` [1], `path.stages` [13] — `sha256` эталона и C++
+  совпадают, максимум расхождения 0; потоки вершин `path_prep` равны байт в байт (быстрые 63040 байт,
+  рабочие 2773520 байт). Точно повторён и `math.hypot`: замена на `sqrt(x*x+y*y)` сдвигала 51 точку из
+  70915, поэтому у ядра `/fp:precise` и нигде нет `/fp:fast`. В тест добавлены ветки, которых нет в
+  Test_model: R-дуги (в том числе отрицательный R), G73/G81/G82/G80, `G91`, дуга без центра, этапы из
+  комментариев и по сменам инструмента, кириллица в подписи, пустая программа.
+- **Что тронуто:** `cpp/CMakeLists.txt`, `scripts/build-viewer.ps1`, `tools/check.ps1`; добавлены
+  `cpp/core/*`, `cpp/gcode_probe.cpp`, `test_gcode_core.py`. Питоновские модули ядра, QML и оракул не
+  менялись, `CACHE_VER` не поднимался.
+- **Проверки.** Сторож гоняет 65 проверок, зелёный; сборка плагина и сверка сегментов (этап 1) целы,
+  оракул без изменений (22 записи). Версия 0.14.0 -> 0.15.0.
 
 ### 0.14.0 — 2026-10-16
 

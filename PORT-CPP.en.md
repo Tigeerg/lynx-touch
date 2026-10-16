@@ -172,6 +172,13 @@ are checked against the Python reference `load_step_model` by the `cpp/stepledge
 traversal order differs — in the Python `_coalesce_segments` the clusters are ordered by an unstable
 `numpy.argsort`. The build and the comparison sit in the guard and are skipped when the toolchain is absent.
 
+**The clean core (stage 2) is in place.** The G-code parser, cycles, arcs, the `UI_*` tags,
+`_prepare_ordered` and the vertex-stream packing are ported to C++ without Qt or OCCT (`cpp/core`, target
+`gvcore`). The match is bit-exact: `path.points`, `path.flags`, `path.last`, `path.segments`, `path.stages`
+produce the same `sha256`, and the vertex streams are equal byte for byte; the `cpp/gcode_probe.cpp` probe
+and the `test_gcode_core.py` check do the comparison. The core is not wired into the backend yet: it is a
+parallel implementation, switched by a flag in stage 3/5.
+
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.
 

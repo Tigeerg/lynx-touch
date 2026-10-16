@@ -1,0 +1,1254 @@
+import {
+  DRY_RUN_RATE,
+  INITIAL_ALARMS,
+  INITIAL_OFFSETS,
+  INITIAL_TOOLS,
+  MODE_LABEL,
+  PROGRAM_FILES,
+  RAPID_JOG_MULT,
+  RAPID_RATE,
+  RAPID_STEPS,
+  SCREEN_LABEL,
+  SOFT_LIMITS,
+} from './data'
+import {
+  computeProbeResult,
+  localToMachine,
+  PROBE_CYCLES,
+  PROBE_STEP_MEASURE,
+  PROBE_STEP_RESULT,
+  PROBE_TOOL,
+  probeLocalPosition,
+  TOUCH_MS,
+} from './probe'
+import { initialLadder, isLadderAction, ladderReducer, ladderRungs, type LadderAction } from './ladder'
+import { idleSim, isProgAction, progReducer, tickSim, type ProgAction } from './prog'
+import {
+  defaultParams,
+  evaluateLadder,
+  formatParam,
+  sameLadderMem,
+  INI_FILE,
+  MAX_FEED_PARAM,
+  MAX_SPINDLE_PARAM,
+  hasServiceList,
+  paramAt,
+  SERVICE_PASSWORD,
+  serviceListLength,
+  THEME_PARAM,
+  TOOLPATH_PARAM,
+  UI_MODE_PARAM,
+  unsavedIds,
+  type ParamDef,
+} from './service-data'
+import {
+  AXES,
+  MDI_HISTORY_SIZE,
+  MODE_LOCKED_SCREENS,
+  MODE_START_SCREEN,
+  MODES,
+  MPG_STEPS,
+  SERVICE_SECTIONS,
+  type AlarmLevel,
+  type Axes,
+  type Axis,
+  type MachineState,
+  type Message,
+  type Mode,
+  type Screen,
+  type ServiceSection,
+} from './types'
+
+export type Action =
+  | { type: 'TICK'; dt: number }
+  | { type: 'CYCLE_START' }
+  | { type: 'FEED_HOLD' }
+  | { type: 'RESET' }
+  | { type: 'ESTOP' }
+  | { type: 'SET_MODE'; mode: Mode }
+  | { type: 'CYCLE_MODE'; dir: 1 | -1 }
+  | { type: 'SET_SCREEN'; screen: Screen }
+  | { type: 'SELECT_AXIS'; axis: Axis }
+  | { type: 'JOG'; dir: 1 | -1; axis?: Axis }
+  | { type: 'SET_STEP'; step: number }
+  | { type: 'OVERRIDE'; kind: 'feed' | 'spindle' | 'rapid'; dir: 1 | -1 }
+  | {
+      type: 'TOGGLE'
+      key:
+        | 'singleBlock'
+        | 'optStop'
+        | 'dryRun'
+        | 'blockSkip'
+        | 'machineLock'
+        | 'coolant'
+        | 'mist'
+        | 'workLight'
+        | 'chipConveyor'
+        | 'jogRapid'
+        | 'aBrake'
+    }
+  | { type: 'SPINDLE_MANUAL'; dir?: 1 | -1 }
+  | { type: 'SPINDLE_STOP' }
+  | { type: 'TOOL_CLAMP'; clamp: boolean }
+  | { type: 'LUBE' }
+  | { type: 'GO_SAFE' }
+  | { type: 'MDI_BUFFER'; value: string }
+  | { type: 'MDI_RECALL'; index: number }
+  | { type: 'CURSOR'; delta: number }
+  | { type: 'PROG_REWIND' }
+  | { type: 'PROG_TO_CURSOR' }
+  | { type: 'OFFSET_ACTIVATE' }
+  | { type: 'OFFSET_TEACH'; axis: Axis }
+  | { type: 'OFFSET_CLEAR' }
+  | { type: 'TOOL_CALL' }
+  | { type: 'TOOL_MEASURE' }
+  | { type: 'TOOL_RESET_LIFE' }
+  | { type: 'ALARM_ACK' }
+  | { type: 'ALARM_CLEAR_ALL' }
+  | { type: 'ZERO_REL' }
+  | { type: 'ZERO_WORK'; axis?: Axis }
+  | { type: 'SET_JOG_FEED'; feed: number }
+  | { type: 'HELP'; open?: boolean }
+  | { type: 'FILE_DIALOG'; open?: boolean }
+  | { type: 'FILE_CURSOR'; delta: number }
+  | { type: 'FILE_OPEN' }
+  | { type: 'EDIT_MODE'; on?: boolean }
+  | { type: 'EDIT_BEGIN' }
+  | { type: 'EDIT_INSERT' }
+  | { type: 'EDIT_DELETE' }
+  | { type: 'EDIT_BUFFER'; value: string }
+  | { type: 'EDIT_COMMIT' }
+  | { type: 'EDIT_CANCEL' }
+  | { type: 'SERVICE_SECTION'; section: ServiceSection }
+  | { type: 'SERVICE_AXIS'; axis: Axis }
+  | { type: 'SERVICE_ENTER' }
+  | { type: 'SERVICE_CANCEL' }
+  | { type: 'SERVICE_BACK' }
+  | { type: 'SERVICE_LOCK' }
+  | { type: 'SERVICE_AUTH_INPUT'; value: string }
+  | { type: 'SERVICE_SAVE' }
+  | { type: 'SERVICE_DEFAULTS' }
+  | { type: 'PARAM_ADJUST'; dir: 1 | -1; coarse?: boolean }
+  | { type: 'THEME_TOGGLE' }
+  | { type: 'UI_MODE_SET'; value: 0 | 1 }
+  | { type: 'TOOLPATH_TOGGLE' }
+  | { type: 'PROBE_OPEN'; open?: boolean }
+  | { type: 'PROBE_STEP'; dir: 1 | -1 }
+  | { type: 'PROBE_CALL_TOOL' }
+  | { type: 'PROBE_WRITE' }
+  | { type: 'PROBE_RETRY' }
+  | { type: 'OFFSET_NEXT' }
+  | { type: 'GO_WORK_ZERO' }
+  | { type: 'TOOL_PROBE' }
+  | { type: 'TOOL_DIALOG'; open?: boolean }
+  | { type: 'TOOL_INPUT'; value: string }
+  | { type: 'TOOL_BACK' }
+  | { type: 'TOOL_RUN' }
+  | { type: 'CALC'; open?: boolean }
+  | ProgAction
+  | LadderAction
+
+const zeroAxes = (): Axes => ({ X: 0, Y: 0, Z: 0, A: 0 })
+
+const MACHINE_LOCK_MSG = 'Включена блокировка станка — оси не перемещаются'
+
+export const currentFile = (s: MachineState) => s.files[s.activeFile]
+export const programLines = (s: MachineState) => currentFile(s).lines
+
+const stamp = () =>
+  new Date()
+    .toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    .replace(',', '')
+
+const setLines = (s: MachineState, lines: string[]): MachineState => ({
+  ...s,
+  files: s.files.map((f, i) => (i === s.activeFile ? { ...f, lines, modified: stamp() } : f)),
+})
+
+export const initialState: MachineState = {
+  ladder: initialLadder,
+  files: PROGRAM_FILES,
+  activeFile: 0,
+  fileDialog: false,
+  fileCursor: 0,
+  toolDialog: false,
+  toolBuffer: '',
+  calc: false,
+  editMode: false,
+  editor: null,
+  mode: 'AUTO',
+  run: 'IDLE',
+  screen: MODE_START_SCREEN.AUTO,
+  machine: zeroAxes(),
+  relOrigin: zeroAxes(),
+  offsets: INITIAL_OFFSETS,
+  activeOffset: 0,
+  tools: INITIAL_TOOLS,
+  tool: 1,
+  pendingTool: 1,
+  line: 0,
+  nextLine: 0,
+  motion: null,
+  dwell: 0,
+  programEnd: false,
+  stopAfterBlock: false,
+  homing: false,
+  workZero: false,
+  motionModal: 0,
+  programFeed: 0,
+  spindleSet: 0,
+  spindleOn: false,
+  spindleDir: 1,
+  toolClamped: true,
+  aBrake: true,
+  coolant: false,
+  mist: false,
+  lube: 0,
+  workLight: false,
+  chipConveyor: false,
+  mdi: { buffer: '', history: ['G90 G54', 'S1200 M3', 'G0 X0 Y0'], running: false },
+  feedOverride: 100,
+  spindleOverride: 100,
+  rapidOverride: 50,
+  singleBlock: false,
+  optStop: true,
+  dryRun: false,
+  blockSkip: false,
+  machineLock: false,
+  jogAxis: 'X',
+  jogStep: 0.1,
+  jogRapid: false,
+  jogFeed: 1000,
+  cursor: { pos: 0, prog: 0, offset: 0, tool: 0, alarm: 0, service: 0 },
+  alarms: INITIAL_ALARMS,
+  alarmSeq: 10,
+  cycleTime: 0,
+  lastCycle: 0,
+  partCount: 41,
+  message: null,
+  help: false,
+  service: {
+    section: 'system',
+    focus: 'nav',
+    axis: 'X',
+    write: false,
+    restartPending: false,
+    editing: null,
+    saved: defaultParams(),
+    auth: null,
+  },
+  probe: {
+    open: false,
+    cycle: 0,
+    step: 0,
+    running: false,
+    elapsed: 0,
+    origin: null,
+    result: null,
+    written: false,
+    prev: null,
+  },
+  sim: idleSim(),
+  search: { open: false, query: '', replace: '' },
+  params: defaultParams(),
+}
+
+function probeTick(s: MachineState, dt: number): MachineState {
+  const cycle = PROBE_CYCLES[s.probe.cycle]
+  const origin = s.probe.origin ?? s.machine
+  const elapsed = s.probe.elapsed + (dt * s.feedOverride) / 100
+  if (elapsed >= cycle.touches.length * TOUCH_MS) {
+    const result = computeProbeResult(cycle, origin)
+    return notify(
+      {
+        ...s,
+        run: 'IDLE',
+        machine: { ...origin },
+        probe: { ...s.probe, running: false, elapsed, result, step: PROBE_STEP_RESULT },
+      },
+      `Измерение «${cycle.name}» завершено`,
+    )
+  }
+  const { pos } = probeLocalPosition(cycle, elapsed)
+  return { ...s, machine: localToMachine(cycle, origin, pos), probe: { ...s.probe, elapsed } }
+}
+
+const abortProbe = (s: MachineState): MachineState =>
+  s.probe.running
+    ? {
+        ...s,
+        machine: s.probe.origin ? { ...s.probe.origin } : s.machine,
+        probe: { ...s.probe, running: false, elapsed: 0, step: PROBE_STEP_MEASURE },
+      }
+    : s
+
+export const workOffset = (s: MachineState) => s.offsets[s.activeOffset].values
+
+export const toWork = (s: MachineState): Axes => {
+  const off = workOffset(s)
+  return { X: s.machine.X - off.X, Y: s.machine.Y - off.Y, Z: s.machine.Z - off.Z, A: s.machine.A - off.A }
+}
+
+export const distanceToGo = (s: MachineState): Axes => {
+  if (!s.motion) return zeroAxes()
+  const t = s.motion.target
+  return { X: t.X - s.machine.X, Y: t.Y - s.machine.Y, Z: t.Z - s.machine.Z, A: t.A - s.machine.A }
+}
+
+export const motionSpeed = (s: MachineState): number => {
+  if (!s.motion) return 0
+  if (s.motion.rapid) return (RAPID_RATE * s.rapidOverride) / 100
+  if (s.dryRun) return DRY_RUN_RATE
+  return (s.motion.feed * s.feedOverride) / 100
+}
+
+const timeNow = () => new Date().toLocaleTimeString('ru-RU', { hour12: false })
+
+const notify = (s: MachineState, text: string, level: Message['level'] = 'info'): MachineState => ({
+  ...s,
+  message: { text, level, ttl: 3500 },
+})
+
+const pushAlarm = (s: MachineState, code: number, level: AlarmLevel, text: string): MachineState => ({
+  ...s,
+  alarms: [{ id: `a${s.alarmSeq}`, code, level, text, time: timeNow(), active: true }, ...s.alarms],
+  alarmSeq: s.alarmSeq + 1,
+})
+
+const isBusy = (s: MachineState) => s.run === 'RUN' || s.run === 'HOLD'
+
+// Общий пропуск для действий перемещения («безопасный отвод», «в нуль детали»):
+// занятость и блокировка станка проверяются одинаково во всех путях, чтобы один
+// из них не забыл условие и не двинул оси, когда это запрещено.
+const blockedFromMotion = (s: MachineState, busyMessage: string): MachineState | null => {
+  if (isBusy(s)) return notify(s, busyMessage, 'warn')
+  if (s.machineLock) return notify(s, MACHINE_LOCK_MSG, 'warn')
+  return null
+}
+
+const cancelEdit = (s: MachineState): MachineState => {
+  const editing = s.service.editing
+  if (!editing) return s
+  return { ...s, params: { ...s.params, [editing.id]: editing.original }, service: { ...s.service, editing: null } }
+}
+
+const markSaved = (s: MachineState, id: string, value: number): MachineState => ({
+  ...s,
+  service: { ...s.service, saved: { ...s.service.saved, [id]: value } },
+})
+
+function setParam(s: MachineState, def: ParamDef, value: number): MachineState {
+  const n: MachineState = {
+    ...s,
+    params: { ...s.params, [def.id]: value },
+    service: { ...s.service, restartPending: s.service.restartPending || !!def.restart },
+  }
+  if (def.id === MAX_FEED_PARAM) n.feedOverride = Math.min(n.feedOverride, value)
+  if (def.id === MAX_SPINDLE_PARAM) n.spindleOverride = Math.min(n.spindleOverride, value)
+  return n
+}
+
+function parseWords(line: string) {
+  const code = line.replace(/\(.*?\)/g, '').toUpperCase()
+  const words: { letter: string; value: number }[] = []
+  for (const m of code.matchAll(/([A-Z])\s*(-?\d+(?:\.\d+)?)/g)) {
+    words.push({ letter: m[1], value: Number.parseFloat(m[2]) })
+  }
+  return words
+}
+
+function executeLine(state: MachineState, index: number): MachineState {
+  const lines = programLines(state)
+  if (index >= lines.length) return { ...state, programEnd: true }
+  if (state.blockSkip && lines[index].trimStart().startsWith('/')) {
+    return { ...state, line: index, nextLine: index + 1, dwell: 0 }
+  }
+  return applyBlock({ ...state, line: index, nextLine: index + 1 }, lines[index], index > 0)
+}
+
+function applyBlock(state: MachineState, text: string, allowMotion: boolean): MachineState {
+  let s: MachineState = { ...state, dwell: 150 }
+  const coords: Partial<Axes> = {}
+  let home = false
+  const mCodes: number[] = []
+
+  for (const { letter, value } of parseWords(text)) {
+    if (letter === 'G') {
+      if (value === 0 || value === 1) s.motionModal = value
+      if (value >= 54 && value <= 59) s.activeOffset = value - 54
+      if (value === 28) home = true
+    } else if (letter === 'X' || letter === 'Y' || letter === 'Z' || letter === 'A') {
+      coords[letter] = value
+    } else if (letter === 'F') s.programFeed = value
+    else if (letter === 'S') s.spindleSet = value
+    else if (letter === 'T') s.pendingTool = value
+    else if (letter === 'M') mCodes.push(value)
+  }
+
+  if (home) {
+    s.motion = { target: { ...s.machine, Z: 0 }, rapid: true, feed: 0 }
+  } else if (Object.keys(coords).length > 0 && allowMotion) {
+    const off = workOffset(s)
+    const work = toWork(s)
+    const target = { ...zeroAxes() }
+    for (const ax of AXES) target[ax] = (coords[ax] ?? work[ax]) + off[ax]
+    s.motion = { target, rapid: s.motionModal === 0, feed: s.programFeed }
+  }
+
+  for (const m of mCodes) {
+    if (m === 3 || m === 4) {
+      s.spindleOn = true
+      s.spindleDir = m === 3 ? 1 : -1
+    }
+    if (m === 5) s.spindleOn = false
+    if (m === 6) {
+      s.tool = s.pendingTool
+      s.dwell = 1800
+    }
+    if (m === 8) s.coolant = true
+    if (m === 9) s.coolant = false
+    if (m === 0 || (m === 1 && s.optStop)) {
+      s.stopAfterBlock = true
+      s = notify(s, m === 0 ? 'Программный останов M00' : 'Опциональный останов M01 — нажмите ПУСК')
+    }
+    if (m === 30) s.programEnd = true
+  }
+
+  if (s.singleBlock) s.stopAfterBlock = true
+  return s
+}
+
+function stepMotion(s: MachineState, dt: number): MachineState {
+  if (!s.motion) return s
+  if (s.machineLock) return { ...s, motion: null }
+  const { target } = s.motion
+  const dist = Math.hypot(...AXES.map((ax) => target[ax] - s.machine[ax]))
+  const travel = (motionSpeed(s) / 60000) * dt
+  if (dist <= 0.0005 || travel >= dist) return { ...s, machine: { ...target }, motion: null }
+  if (travel === 0) return s
+  const k = travel / dist
+  const machine = { ...s.machine }
+  for (const ax of AXES) machine[ax] += (target[ax] - machine[ax]) * k
+  return { ...s, machine }
+}
+
+function completeBlock(s: MachineState): MachineState {
+  if (s.homing) {
+    if (s.machine.X !== 0 || s.machine.Y !== 0) {
+      return { ...s, motion: { target: { ...s.machine, X: 0, Y: 0 }, rapid: true, feed: 0 } }
+    }
+    return notify({ ...s, run: 'IDLE', homing: false }, 'Безопасная точка достигнута')
+  }
+  if (s.mdi.running) {
+    return { ...s, run: 'IDLE', mdi: { ...s.mdi, running: false }, stopAfterBlock: false, programEnd: false }
+  }
+  if (s.workZero) {
+    const off = workOffset(s)
+    if (Math.abs(s.machine.X - off.X) > 0.0005 || Math.abs(s.machine.Y - off.Y) > 0.0005) {
+      return { ...s, motion: { target: { ...s.machine, X: off.X, Y: off.Y, Z: 0 }, rapid: true, feed: 0 } }
+    }
+    return notify({ ...s, run: 'IDLE', workZero: false }, 'В нуле детали')
+  }
+  if (s.programEnd) {
+    return notify(
+      {
+        ...s,
+        run: 'IDLE',
+        programEnd: false,
+        line: 0,
+        nextLine: 0,
+        partCount: s.partCount + 1,
+        lastCycle: s.cycleTime,
+        cycleTime: 0,
+        spindleOn: false,
+        coolant: false,
+      },
+      'Программа завершена (M30). Деталь учтена',
+    )
+  }
+  if (s.stopAfterBlock) return { ...s, run: 'IDLE', stopAfterBlock: false }
+  return executeLine(s, s.nextLine)
+}
+
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
+
+function listLength(s: MachineState, screen: Screen) {
+  if (screen === 'prog') return programLines(s).length
+  if (screen === 'offset') return s.offsets.length
+  if (screen === 'tool') return s.tools.length
+  if (screen === 'alarm') return s.alarms.length
+  if (screen === 'service')
+    return s.service.section === 'ladder' ? ladderRungs(s).length : serviceListLength(s.service.section)
+  return 1
+}
+
+export function reducer(state: MachineState, a: Action): MachineState {
+  const s = state
+  if (isLadderAction(a)) {
+    const r = ladderReducer(s, a)
+    return r.msg ? notify(r.s, r.msg, r.level) : r.s
+  }
+  if (isProgAction(a)) {
+    const r = progReducer(s, a)
+    return r.msg ? notify(r.s, r.msg, r.level) : r.s
+  }
+  switch (a.type) {
+    case 'TICK': {
+      let n = s
+      if (n.message) {
+        const ttl = n.message.ttl - a.dt
+        n = { ...n, message: ttl > 0 ? { ...n.message, ttl } : null }
+      }
+      if (n.lube > 0) n = { ...n, lube: Math.max(0, n.lube - a.dt) }
+      const scan = evaluateLadder(n, undefined, a.dt)
+      if (!sameLadderMem(scan.mem, n.ladder.mem)) n = { ...n, ladder: { ...n.ladder, mem: scan.mem } }
+      n = tickSim(n, a.dt)
+      if (n.run !== 'RUN') return n
+      if (n.probe.running) return probeTick(n, a.dt)
+      if (n.mode === 'AUTO') n = { ...n, cycleTime: n.cycleTime + a.dt }
+      if (n.dwell > 0) return { ...n, dwell: Math.max(0, n.dwell - a.dt) }
+      if (n.motion) return stepMotion(n, a.dt)
+      return completeBlock(n)
+    }
+
+    case 'CYCLE_START': {
+      if (s.run === 'ESTOP') return notify(s, 'Аварийный стоп активен — отпустите кнопку', 'error')
+      if (s.run === 'ALARM') return notify(s, 'Есть авария — нажмите СБРОС', 'error')
+      if (s.run === 'RUN') return s
+      if (s.run === 'HOLD') return notify({ ...s, sim: idleSim(), run: 'RUN' }, 'Подача возобновлена')
+      if (s.probe.open && s.screen === 'offset') {
+        if (s.probe.step !== PROBE_STEP_MEASURE) return notify(s, 'ПУСК щупа доступен на шаге «Измерение»', 'warn')
+        if (s.tool !== PROBE_TOOL) return notify(s, 'В шпинделе нет щупа T99', 'error')
+        if (s.spindleOn) return notify(s, 'Остановите шпиндель перед измерением', 'error')
+        return notify(
+          {
+            ...s,
+            sim: idleSim(),
+            run: 'RUN',
+            probe: {
+              ...s.probe,
+              running: true,
+              elapsed: 0,
+              origin: { ...s.machine },
+              result: null,
+              written: false,
+              prev: null,
+            },
+          },
+          'Измерение щупом… G38.2',
+        )
+      }
+      if (s.editMode) return notify(s, 'Выйдите из режима редактирования', 'warn')
+      if (s.mode === 'AUTO') {
+        const start = s.nextLine >= programLines(s).length ? 0 : s.nextLine
+        return executeLine({ ...s, sim: idleSim(), run: 'RUN' }, start)
+      }
+      if (s.mode === 'MDI') {
+        const text = s.mdi.buffer.trim().toUpperCase()
+        if (!text) return notify(s, 'Введите кадр MDI', 'warn')
+        if (!s.toolClamped && /M0?[34]\b/.test(text))
+          return notify(s, 'Инструмент разжат — зажмите перед пуском шпинделя', 'error')
+        const history = [text, ...s.mdi.history.filter((h) => h !== text)].slice(0, MDI_HISTORY_SIZE)
+        const n = applyBlock(
+          { ...s, sim: idleSim(), run: 'RUN', mdi: { buffer: '', history, running: true } },
+          text,
+          true,
+        )
+        return notify({ ...n, programEnd: false, stopAfterBlock: false }, `MDI: ${text}`)
+      }
+      return notify(s, `ПУСК недоступен в режиме «${MODE_LABEL[s.mode]}»`, 'warn')
+    }
+
+    case 'FEED_HOLD':
+      return s.run === 'RUN' ? notify({ ...s, run: 'HOLD' }, 'Стоп подачи. ПУСК — продолжить', 'warn') : s
+
+    case 'RESET': {
+      if (s.run === 'ESTOP') return notify(s, 'Сначала отпустите аварийный стоп', 'error')
+      return notify(
+        {
+          ...abortProbe(s),
+          run: 'IDLE',
+          motion: null,
+          dwell: 0,
+          homing: false,
+          workZero: false,
+          sim: idleSim(),
+          programEnd: false,
+          stopAfterBlock: false,
+          spindleOn: false,
+          coolant: false,
+          mist: false,
+          mdi: { ...s.mdi, running: false },
+          line: 0,
+          nextLine: 0,
+          cycleTime: 0,
+          alarms: s.alarms.map((al) => (al.level === 'error' ? { ...al, active: false } : al)),
+        },
+        'Сброс выполнен',
+      )
+    }
+
+    case 'ESTOP': {
+      if (s.run === 'ESTOP') return notify({ ...s, run: 'ALARM' }, 'Аварийный стоп отпущен — нажмите СБРОС', 'warn')
+      const n = pushAlarm(
+        {
+          ...abortProbe(s),
+          run: 'ESTOP',
+          motion: null,
+          dwell: 0,
+          homing: false,
+          workZero: false,
+          sim: idleSim(),
+          spindleOn: false,
+          coolant: false,
+          mist: false,
+          mdi: { ...s.mdi, running: false },
+        },
+        1001,
+        'error',
+        'Нажата кнопка аварийного останова',
+      )
+      return notify(n, 'АВАРИЙНЫЙ СТОП', 'error')
+    }
+
+    case 'SET_MODE': {
+      if (s.run === 'RUN') return notify(s, 'Смена режима во время выполнения запрещена', 'warn')
+      const screen = MODE_START_SCREEN[a.mode]
+      const jogStep = a.mode === 'MPG' && !MPG_STEPS.includes(s.jogStep) ? MPG_STEPS[MPG_STEPS.length - 1] : s.jogStep
+      const n = s.editMode && screen !== 'prog' ? { ...s, editMode: false, editor: null } : s
+      return notify({ ...n, mode: a.mode, screen, jogStep }, `Режим: ${MODE_LABEL[a.mode]}`)
+    }
+
+    case 'CYCLE_MODE': {
+      const idx = (MODES.indexOf(s.mode) + a.dir + MODES.length) % MODES.length
+      return reducer(s, { type: 'SET_MODE', mode: MODES[idx] })
+    }
+
+    case 'SET_SCREEN':
+      if (MODE_LOCKED_SCREENS[s.mode].includes(a.screen)) {
+        return notify(s, `В режиме «${MODE_LABEL[s.mode]}» экран «${SCREEN_LABEL[a.screen]}» заблокирован`, 'warn')
+      }
+      if (a.screen !== 'service' && (s.service.editing || s.service.auth)) {
+        const reverted = cancelEdit(s)
+        return reducer({ ...reverted, service: { ...reverted.service, auth: null } }, a)
+      }
+      if (a.screen !== 'prog' && s.editMode) {
+        return notify({ ...s, screen: a.screen, editMode: false, editor: null }, `Файл ${currentFile(s).name} сохранён`)
+      }
+      return { ...s, screen: a.screen }
+
+    case 'SELECT_AXIS':
+      return { ...s, jogAxis: a.axis }
+
+    case 'JOG': {
+      if (s.mode !== 'JOG' && s.mode !== 'MPG')
+        return notify(s, 'Перемещение доступно в режиме РУЧНОЙ или МАХОВИК', 'warn')
+      if (s.run !== 'IDLE') return notify(s, 'Перемещение заблокировано', 'warn')
+      if (s.machineLock) return notify(s, MACHINE_LOCK_MSG, 'warn')
+      const ax = a.axis ?? s.jogAxis
+      if (ax === 'A' && s.aBrake) return notify(s, 'Тормоз оси A включён — снимите его клавишей F6', 'error')
+      const distance = s.jogRapid ? s.jogStep * RAPID_JOG_MULT : s.jogStep
+      const next = Math.round((s.machine[ax] + a.dir * distance) * 1000) / 1000
+      const [min, max] = SOFT_LIMITS[ax]
+      if (next < min || next > max) {
+        return notify({ ...s, jogAxis: ax }, `Программный предел оси ${ax}${a.dir > 0 ? '+' : '−'}`, 'error')
+      }
+      return { ...s, jogAxis: ax, machine: { ...s.machine, [ax]: next } }
+    }
+
+    case 'SET_STEP':
+      if (s.mode !== 'JOG' && s.mode !== 'MPG') return notify(s, 'Шаг выбирается в режиме РУЧНОЙ или МАХОВИК', 'warn')
+      if (s.mode === 'MPG' && !MPG_STEPS.includes(a.step))
+        return notify(s, 'Маховик: доступны множители ×1, ×10, ×100', 'warn')
+      return { ...s, jogStep: a.step }
+
+    case 'SET_JOG_FEED':
+      if (s.mode !== 'JOG') return notify(s, 'Скорость перемещения задаётся в режиме РУЧНОЙ', 'warn')
+      return { ...s, jogFeed: a.feed }
+
+    case 'OVERRIDE': {
+      if (a.kind === 'feed')
+        return { ...s, feedOverride: clamp(s.feedOverride + a.dir * 10, 0, s.params[MAX_FEED_PARAM]) }
+      if (a.kind === 'spindle')
+        return { ...s, spindleOverride: clamp(s.spindleOverride + a.dir * 10, 50, s.params[MAX_SPINDLE_PARAM]) }
+      const idx = clamp(RAPID_STEPS.indexOf(s.rapidOverride) + a.dir, 0, RAPID_STEPS.length - 1)
+      return { ...s, rapidOverride: RAPID_STEPS[idx] }
+    }
+
+    case 'TOGGLE':
+      if (a.key === 'dryRun' && isBusy(s)) return notify(s, 'Холостой ход переключается только в останове', 'warn')
+      if (a.key === 'machineLock' && isBusy(s))
+        return notify(s, 'Блокировка станка переключается только в останове', 'warn')
+      return { ...s, [a.key]: !s[a.key] }
+
+    case 'SPINDLE_STOP':
+      if (!s.spindleOn) return s
+      if (isBusy(s)) return notify(s, 'Остановка шпинделя во время цикла недоступна', 'warn')
+      return notify({ ...s, spindleOn: false }, 'Шпиндель остановлен (M5)')
+
+    case 'SPINDLE_MANUAL': {
+      if (s.mode === 'AUTO' || isBusy(s) || s.run === 'ESTOP') {
+        return notify(s, 'Ручное управление шпинделем недоступно', 'warn')
+      }
+      const dir = a.dir ?? s.spindleDir
+      if (s.spindleOn) {
+        if (dir !== s.spindleDir) return notify(s, 'Сначала остановите шпиндель', 'warn')
+        return notify({ ...s, spindleOn: false }, 'Шпиндель остановлен')
+      }
+      if (!s.toolClamped) return notify(s, 'Инструмент разжат — пуск шпинделя запрещён', 'error')
+      if (s.tool === PROBE_TOOL) return notify(s, 'В шпинделе щуп T99 — вращение запрещено', 'error')
+      return notify(
+        { ...s, spindleOn: true, spindleDir: dir, spindleSet: s.spindleSet || 1000 },
+        dir > 0 ? 'Шпиндель по часовой (M3)' : 'Шпиндель против часовой (M4)',
+      )
+    }
+
+    case 'TOOL_CLAMP':
+      if (a.clamp === s.toolClamped) return s
+      if (!a.clamp && (s.spindleOn || isBusy(s)))
+        return notify(s, 'Разжим запрещён: шпиндель вращается или идёт цикл', 'error')
+      return notify(
+        { ...s, toolClamped: a.clamp },
+        a.clamp ? 'Инструмент зажат' : 'Инструмент разжат',
+        a.clamp ? 'info' : 'warn',
+      )
+
+    case 'LUBE':
+      if (s.run === 'ESTOP') return notify(s, 'Смазка недоступна при аварийном стопе', 'warn')
+      return notify({ ...s, lube: 3000 }, 'Принудительная смазка направляющих')
+
+    case 'GO_SAFE':
+      if (s.run === 'ESTOP' || s.run === 'ALARM') return notify(s, 'Сначала сбросьте аварию', 'error')
+      return (
+        blockedFromMotion(s, 'Остановите программу перед выходом в безопасную точку') ??
+        notify(
+          {
+            ...s,
+            run: 'RUN',
+            homing: true,
+            workZero: false,
+            motion: { target: { ...s.machine, Z: 0 }, rapid: true, feed: 0 },
+          },
+          'Выход в безопасную точку: Z0, затем X0 Y0',
+        )
+      )
+
+    case 'MDI_BUFFER':
+      return { ...s, mdi: { ...s.mdi, buffer: a.value.toUpperCase() } }
+
+    case 'MDI_RECALL': {
+      const text = s.mdi.history[a.index]
+      return text ? { ...s, mdi: { ...s.mdi, buffer: text } } : s
+    }
+
+    case 'SERVICE_SECTION': {
+      const base = cancelEdit(s)
+      return {
+        ...base,
+        service: { ...base.service, section: a.section, focus: 'nav' },
+        cursor: { ...base.cursor, service: 0 },
+      }
+    }
+
+    case 'SERVICE_AXIS':
+      if (s.service.editing || s.service.auth) return s
+      return { ...s, service: { ...s.service, axis: a.axis } }
+
+    case 'SERVICE_ENTER': {
+      const sv = s.service
+      if (sv.auth) {
+        if (sv.auth.input === SERVICE_PASSWORD) {
+          return notify({ ...s, service: { ...sv, auth: null, write: true } }, 'Запись параметров разрешена', 'warn')
+        }
+        return { ...s, service: { ...sv, auth: { input: '', error: true } } }
+      }
+      if (sv.editing) {
+        const def = paramAt(sv.section, s.cursor.service, sv.axis)
+        const committed: MachineState = { ...s, service: { ...sv, editing: null } }
+        return def?.free ? markSaved(committed, def.id, s.params[def.id]) : committed
+      }
+      if (sv.focus === 'nav') {
+        if (!hasServiceList(sv.section)) return notify(s, 'В этом разделе нет редактируемых параметров')
+        return { ...s, service: { ...sv, focus: 'list' } }
+      }
+      if (sv.section === 'ladder') return reducer(s, { type: 'LADDER_EDIT', on: true })
+      const def = paramAt(sv.section, s.cursor.service, sv.axis)
+      if (!def) return s
+      if (!def.free) {
+        if (isBusy(s)) return notify(s, 'Изменение параметров во время цикла запрещено', 'warn')
+        if (!sv.write) return { ...s, service: { ...sv, auth: { input: '', error: false } } }
+      }
+      return { ...s, service: { ...sv, editing: { id: def.id, original: s.params[def.id] } } }
+    }
+
+    case 'SERVICE_CANCEL': {
+      const sv = s.service
+      if (sv.auth) return { ...s, service: { ...sv, auth: null } }
+      if (sv.editing) return notify(cancelEdit(s), 'Изменение отменено')
+      if (sv.focus === 'list') return { ...s, service: { ...sv, focus: 'nav' } }
+      return s
+    }
+
+    case 'SERVICE_BACK': {
+      const sv = s.service
+      if (sv.auth || sv.editing || sv.focus === 'list') return reducer(s, { type: 'SERVICE_CANCEL' })
+      if (sv.section !== SERVICE_SECTIONS[0])
+        return reducer(s, { type: 'SERVICE_SECTION', section: SERVICE_SECTIONS[0] })
+      return reducer(s, { type: 'SET_SCREEN', screen: 'pos' })
+    }
+
+    case 'SERVICE_LOCK': {
+      const sv = s.service
+      if (sv.auth) return s
+      if (sv.write) {
+        if (sv.editing || unsavedIds(s.params, sv.saved).length > 0) {
+          return notify(s, 'Есть несохранённые изменения — сначала нажмите «Сохранить»', 'warn')
+        }
+        return notify({ ...s, service: { ...sv, write: false } }, 'Запись параметров заблокирована')
+      }
+      if (isBusy(s)) return notify(s, 'Запись параметров недоступна во время цикла', 'warn')
+      return { ...s, service: { ...sv, auth: { input: '', error: false } } }
+    }
+
+    case 'SERVICE_AUTH_INPUT':
+      if (!s.service.auth) return s
+      return { ...s, service: { ...s.service, auth: { input: a.value.slice(0, 12), error: false } } }
+
+    case 'SERVICE_SAVE': {
+      const sv = s.service
+      if (!sv.write) return notify(s, 'Запись заблокирована — разрешите запись (F2)', 'warn')
+      if (sv.editing) return notify(s, 'Завершите правку параметра: Ввод или Отмена', 'warn')
+      if (isBusy(s)) return notify(s, 'Сохранение недоступно во время цикла', 'warn')
+      const count = unsavedIds(s.params, sv.saved).length
+      if (count === 0) return notify(s, 'Нет несохранённых изменений')
+      return notify(
+        { ...s, service: { ...sv, saved: { ...s.params } } },
+        sv.restartPending
+          ? `Сохранено в ${INI_FILE}: ${count}. Требуется перезапуск LinuxCNC`
+          : `Сохранено в ${INI_FILE}: ${count}`,
+        sv.restartPending ? 'warn' : 'info',
+      )
+    }
+
+    case 'SERVICE_DEFAULTS': {
+      const sv = s.service
+      if (sv.auth || sv.editing || sv.focus !== 'list') return s
+      const def = paramAt(sv.section, s.cursor.service, sv.axis)
+      if (!def) return s
+      const value = defaultParams()[def.id]
+      if (s.params[def.id] === value) return notify(s, 'Параметр уже имеет значение по умолчанию')
+      if (!def.free) {
+        if (isBusy(s)) return notify(s, 'Изменение параметров во время цикла запрещено', 'warn')
+        if (!sv.write) return notify(s, 'Параметр защищён — разрешите запись (F2)', 'warn')
+      }
+      let n = setParam(s, def, value)
+      if (def.free) n = markSaved(n, def.id, value)
+      return notify(
+        n,
+        def.free ? 'Сброшено по умолчанию' : 'Сброшено по умолчанию. Нажмите «Сохранить», чтобы записать',
+      )
+    }
+
+    case 'PARAM_ADJUST': {
+      const sv = s.service
+      if (sv.section === 'ladder') return sv.focus === 'list' ? reducer(s, { type: 'LADDER_COL', dir: a.dir }) : s
+      if (sv.auth) return s
+      if (!sv.editing) {
+        if (sv.focus === 'list' && (sv.section === 'joints' || sv.section === 'pid')) {
+          const axis = AXES[(AXES.indexOf(sv.axis) + a.dir + AXES.length) % AXES.length]
+          return { ...s, service: { ...sv, axis } }
+        }
+        return s
+      }
+      const def = paramAt(sv.section, s.cursor.service, sv.axis)
+      if (!def || def.id !== sv.editing.id) return s
+      const cur = s.params[def.id]
+      let next: number
+      if (def.options) {
+        next = (cur + a.dir + def.options.length) % def.options.length
+      } else {
+        const k = 10 ** Math.max(def.digits, 4)
+        next = Math.round(clamp(cur + a.dir * def.step * (a.coarse ? 10 : 1), def.min, def.max) * k) / k
+      }
+      return next === cur ? s : setParam(s, def, next)
+    }
+
+    case 'THEME_TOGGLE':
+      return markSaved(
+        { ...s, params: { ...s.params, [THEME_PARAM]: (s.params[THEME_PARAM] + 1) % 4 } },
+        THEME_PARAM,
+        (s.params[THEME_PARAM] + 1) % 4,
+      )
+    case 'UI_MODE_SET':
+      if (s.params[UI_MODE_PARAM] === a.value) return s
+      return markSaved({ ...s, params: { ...s.params, [UI_MODE_PARAM]: a.value } }, UI_MODE_PARAM, a.value)
+    case 'TOOLPATH_TOGGLE': {
+      const show = s.params[TOOLPATH_PARAM] ? 0 : 1
+      return notify(
+        markSaved({ ...s, params: { ...s.params, [TOOLPATH_PARAM]: show } }, TOOLPATH_PARAM, show),
+        show ? 'Предпросмотр траектории включён' : 'Предпросмотр траектории скрыт',
+      )
+    }
+
+    case 'PROBE_OPEN': {
+      const open = a.open ?? !s.probe.open
+      if (!open && s.probe.running) return notify(s, 'Дождитесь окончания измерения или нажмите СБРОС', 'warn')
+      if (open && isBusy(s)) return notify(s, 'Остановите программу', 'warn')
+      if (open && MODE_LOCKED_SCREENS[s.mode].includes('offset'))
+        return notify(s, `Щуп недоступен в режиме «${MODE_LABEL[s.mode]}»`, 'warn')
+      return {
+        ...s,
+        screen: open ? 'offset' : s.screen,
+        probe: { ...s.probe, open, step: open ? 0 : s.probe.step, result: open ? null : s.probe.result },
+      }
+    }
+
+    case 'PROBE_STEP': {
+      if (s.probe.running) return s
+      const step = clamp(s.probe.step + a.dir, 0, PROBE_STEP_MEASURE)
+      if (a.dir > 0 && s.probe.step === 1 && s.tool !== PROBE_TOOL)
+        return notify(s, 'Установите щуп T99 в шпиндель (F3)', 'warn')
+      if (a.dir > 0 && s.probe.step === PROBE_STEP_MEASURE) return notify(s, '��ажмите ПУСК для измерения', 'warn')
+      const from = s.probe.step === PROBE_STEP_RESULT && a.dir < 0 ? PROBE_STEP_MEASURE : step
+      return { ...s, probe: { ...s.probe, step: from } }
+    }
+
+    case 'PROBE_CALL_TOOL':
+      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
+      return notify(
+        { ...s, tool: PROBE_TOOL, pendingTool: PROBE_TOOL, spindleOn: false },
+        'Щуп T99 в шпинделе. Шпиндель заблокирован',
+      )
+
+    case 'PROBE_WRITE': {
+      const r = s.probe.result
+      if (!r) return s
+      const i = s.cursor.offset
+      const offsets = s.offsets.map((o, idx) => (idx === i ? { ...o, values: { ...o.values, ...r.values } } : o))
+      const axes = Object.keys(r.values).join(' ')
+      const prev = s.probe.prev ?? { ...s.offsets[i].values }
+      return notify(
+        { ...s, offsets, probe: { ...s.probe, written: true, prev } },
+        `Записано в ${s.offsets[i].code}: ${axes}`,
+      )
+    }
+
+    case 'PROBE_RETRY':
+      return {
+        ...s,
+        probe: { ...s.probe, step: PROBE_STEP_MEASURE, result: null, written: false, prev: null, elapsed: 0 },
+      }
+
+    case 'OFFSET_NEXT': {
+      if (isBusy(s)) return notify(s, 'Смена системы координат недоступна во время цикла', 'warn')
+      const i = (s.activeOffset + 1) % s.offsets.length
+      return notify({ ...s, activeOffset: i }, `Активная система: ${s.offsets[i].code}`)
+    }
+
+    case 'GO_WORK_ZERO': {
+      if (s.run === 'ESTOP' || s.run === 'ALARM') return notify(s, 'Сначала сбросьте аварию', 'error')
+      return (
+        blockedFromMotion(s, 'Остановите программу перед переходом к нулю детали') ??
+        notify(
+          {
+            ...s,
+            run: 'RUN',
+            workZero: true,
+            homing: false,
+            motion: { target: { ...s.machine, Z: 0 }, rapid: true, feed: 0 },
+          },
+          `К нулю ${s.offsets[s.activeOffset].code}: подъём Z, затем X0 Y0`,
+        )
+      )
+    }
+
+    case 'TOOL_PROBE': {
+      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
+      if (s.spindleOn) return notify(s, 'Остановите шпиндель перед измерением', 'warn')
+      if (s.tool === PROBE_TOOL) return notify(s, 'В шпинделе щуп T99', 'error')
+      const i = s.tools.findIndex((t) => t.number === s.tool)
+      if (i < 0) return notify(s, 'В шпинделе нет инструмента из таблицы', 'warn')
+      const length = Math.round((60 + ((Math.abs(s.machine.Z) * 7.31 + i * 13.7) % 70)) * 1000) / 1000
+      const tools = s.tools.map((t, idx) => (idx === i ? { ...t, length } : t))
+      const t = tools[i]
+      return notify(
+        { ...s, tools },
+        `Датчик: T${String(t.number).padStart(2, '0')} длина ${length.toFixed(3)} мм, Ø ${t.diameter.toFixed(3)} мм`,
+      )
+    }
+
+    case 'TOOL_DIALOG': {
+      const open = a.open ?? !s.toolDialog
+      if (open && isBusy(s)) return notify(s, 'Остановите программу, чтобы вызвать инструмент', 'warn')
+      return { ...s, toolDialog: open, toolBuffer: open ? '' : s.toolBuffer }
+    }
+
+    case 'TOOL_INPUT':
+      return { ...s, toolBuffer: (s.toolBuffer + a.value).replace(/^0+(?=\d)/, '').slice(0, 2) }
+
+    case 'TOOL_BACK':
+      return { ...s, toolBuffer: s.toolBuffer.slice(0, -1) }
+
+    case 'TOOL_RUN': {
+      const n = s.toolBuffer ? Number(s.toolBuffer) : 0
+      if (!n) return notify(s, 'Введите номер инструмента', 'warn')
+      const i = s.tools.findIndex((t) => t.number === n)
+      if (i < 0) return notify(s, `Инструмент T${n} отсутствует в таблице`, 'error')
+      if (s.mode === 'AUTO' || isBusy(s)) return notify(s, 'Смена инструмента в режиме РУЧНОЙ / MDI', 'warn')
+      const t = s.tools[i]
+      return notify(
+        {
+          ...s,
+          toolDialog: false,
+          toolBuffer: '',
+          cursor: { ...s.cursor, tool: i },
+          tool: t.number,
+          pendingTool: t.number,
+          spindleOn: false,
+        },
+        `T${String(t.number).padStart(2, '0')} M6: «${t.name}» в шпинделе`,
+      )
+    }
+
+    case 'CALC':
+      return { ...s, calc: a.open ?? !s.calc }
+
+    case 'CURSOR': {
+      if (s.screen === 'offset' && s.probe.open && s.probe.step === 0) {
+        return {
+          ...s,
+          probe: { ...s.probe, cycle: clamp(s.probe.cycle + Math.sign(a.delta), 0, PROBE_CYCLES.length - 1) },
+        }
+      }
+      if (s.screen === 'service' && !s.help) {
+        const sv = s.service
+        if (sv.auth) return s
+        if (sv.editing) return reducer(s, { type: 'PARAM_ADJUST', dir: a.delta < 0 ? 1 : -1, coarse: true })
+        if (sv.focus === 'nav') {
+          const i = SERVICE_SECTIONS.indexOf(sv.section)
+          return reducer(s, {
+            type: 'SERVICE_SECTION',
+            section: SERVICE_SECTIONS[clamp(i + a.delta, 0, SERVICE_SECTIONS.length - 1)],
+          })
+        }
+      }
+      if (s.screen === 'service' && s.service.section === 'ladder') {
+        if (s.ladder.form) return s
+        if (s.ladder.manager) return reducer(s, { type: 'LADDER_PICK_MOVE', delta: a.delta })
+      }
+      const len = listLength(s, s.screen)
+      return { ...s, cursor: { ...s.cursor, [s.screen]: clamp(s.cursor[s.screen] + a.delta, 0, len - 1) } }
+    }
+
+    case 'PROG_REWIND':
+      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
+      return notify(
+        { ...s, line: 0, nextLine: 0, sim: idleSim(), cursor: { ...s.cursor, prog: 0 } },
+        'Программа в начале',
+      )
+
+    case 'PROG_TO_CURSOR': {
+      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
+      const idx = s.cursor.prog
+      let base: MachineState = {
+        ...s,
+        sim: idleSim(),
+        motion: null,
+        dwell: 0,
+        homing: false,
+        stopAfterBlock: false,
+        programEnd: false,
+        message: null,
+      }
+      for (let i = 0; i < idx; i++) base = applyBlock(base, programLines(s)[i], false)
+      const codes = [base.offsets[base.activeOffset].code]
+      if (base.spindleOn) codes.push(`S${base.spindleSet} ${base.spindleDir === 1 ? 'M3' : 'M4'}`)
+      if (base.coolant) codes.push('M8')
+      return notify(
+        {
+          ...base,
+          line: idx,
+          nextLine: idx,
+          dwell: 0,
+          motion: null,
+          homing: false,
+          stopAfterBlock: false,
+          programEnd: false,
+          message: null,
+        },
+        `Старт с кадра ${idx + 1}: восстановлено ${codes.join(', ')}`,
+      )
+    }
+
+    case 'OFFSET_ACTIVATE':
+      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
+      return notify({ ...s, activeOffset: s.cursor.offset }, `Активно смещение ${s.offsets[s.cursor.offset].code}`)
+
+    case 'OFFSET_TEACH': {
+      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
+      const i = s.cursor.offset
+      const offsets = s.offsets.map((o, idx) =>
+        idx === i ? { ...o, values: { ...o.values, [a.axis]: s.machine[a.axis] } } : o,
+      )
+      return notify({ ...s, offsets }, `${s.offsets[i].code} ${a.axis} = ${s.machine[a.axis].toFixed(3)}`)
+    }
+
+    case 'OFFSET_CLEAR': {
+      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
+      const i = s.cursor.offset
+      const offsets = s.offsets.map((o, idx) => (idx === i ? { ...o, values: zeroAxes() } : o))
+      return notify({ ...s, offsets }, `${s.offsets[i].code} обнулено`)
+    }
+
+    case 'TOOL_CALL': {
+      if (s.mode === 'AUTO' || isBusy(s)) return notify(s, 'Смена инструмента в режиме РУЧНОЙ / MDI', 'warn')
+      const t = s.tools[s.cursor.tool].number
+      return notify({ ...s, tool: t, pendingTool: t }, `Инструмент T${String(t).padStart(2, '0')} в шпинделе`)
+    }
+
+    case 'TOOL_MEASURE': {
+      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
+      const i = s.cursor.tool
+      const length = Math.round((60 + ((Math.abs(s.machine.Z) * 7.31 + i * 13.7) % 70)) * 1000) / 1000
+      const tools = s.tools.map((t, idx) => (idx === i ? { ...t, length } : t))
+      return notify({ ...s, tools }, `T${String(tools[i].number).padStart(2, '0')}: длина ${length.toFixed(3)} мм`)
+    }
+
+    case 'TOOL_RESET_LIFE': {
+      const i = s.cursor.tool
+      const tools = s.tools.map((t, idx) => (idx === i ? { ...t, life: 100 } : t))
+      return notify({ ...s, tools }, 'Ресурс инструмента сброшен')
+    }
+
+    case 'ALARM_ACK': {
+      const i = s.cursor.alarm
+      if (!s.alarms[i]) return s
+      return { ...s, alarms: s.alarms.map((al, idx) => (idx === i ? { ...al, active: false } : al)) }
+    }
+
+    case 'ALARM_CLEAR_ALL': {
+      const alarms = s.alarms.filter((al) => al.active)
+      return { ...s, alarms, cursor: { ...s.cursor, alarm: clamp(s.cursor.alarm, 0, Math.max(0, alarms.length - 1)) } }
+    }
+
+    case 'ZERO_REL':
+      return notify({ ...s, relOrigin: { ...s.machine } }, 'Относительные координаты обнулены')
+
+    case 'ZERO_WORK': {
+      if (s.mode !== 'JOG') return notify(s, 'Обнуление рабочих координат — в режиме ��УЧНОЙ', 'warn')
+      if (isBusy(s)) return notify(s, 'Остановите станок', 'warn')
+      const axes = a.axis ? [a.axis] : AXES
+      const offsets = s.offsets.map((o, idx) => {
+        if (idx !== s.activeOffset) return o
+        const values = { ...o.values }
+        for (const ax of axes) values[ax] = s.machine[ax]
+        return { ...o, values }
+      })
+      const code = s.offsets[s.activeOffset].code
+      return notify({ ...s, offsets }, a.axis ? `${code}: ${a.axis} = 0` : `${code}: все оси обнулены`)
+    }
+
+    case 'HELP':
+      return { ...s, help: a.open ?? !s.help }
+
+    case 'FILE_DIALOG': {
+      const open = a.open ?? !s.fileDialog
+      if (open && isBusy(s)) return notify(s, 'Остановите программу, чтобы открыть другой файл', 'warn')
+      return { ...s, fileDialog: open, fileCursor: s.activeFile, editor: open ? null : s.editor }
+    }
+
+    case 'FILE_CURSOR':
+      return { ...s, fileCursor: clamp(s.fileCursor + a.delta, 0, s.files.length - 1) }
+
+    case 'FILE_OPEN': {
+      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
+      const f = s.files[s.fileCursor]
+      return notify(
+        {
+          ...s,
+          activeFile: s.fileCursor,
+          fileDialog: false,
+          screen: MODE_LOCKED_SCREENS[s.mode].includes('prog') ? s.screen : 'prog',
+          editMode: false,
+          editor: null,
+          line: 0,
+          nextLine: 0,
+          cycleTime: 0,
+          sim: idleSim(),
+          cursor: { ...s.cursor, prog: 0 },
+        },
+        `Открыт файл ${f.name} — ${f.title}`,
+      )
+    }
+
+    case 'EDIT_MODE': {
+      const on = a.on ?? !s.editMode
+      if (on && isBusy(s)) return notify(s, 'Редактирование доступно только в останове', 'warn')
+      if (on && MODE_LOCKED_SCREENS[s.mode].includes('prog'))
+        return notify(s, `В режиме «${MODE_LABEL[s.mode]}» экран «${SCREEN_LABEL.prog}» заблокирован`, 'warn')
+      if (on)
+        return notify(
+          { ...s, editMode: true, screen: 'prog' },
+          'Редактирование: Enter — изменить, Ins — вставить, Del — удалить',
+        )
+      return notify({ ...s, editMode: false, editor: null }, `Файл ${currentFile(s).name} сохранён`)
+    }
+
+    case 'EDIT_BEGIN': {
+      if (!s.editMode) return s
+      const i = s.cursor.prog
+      return { ...s, editor: { line: i, buffer: programLines(s)[i], inserted: false } }
+    }
+
+    case 'EDIT_INSERT': {
+      if (!s.editMode) return s
+      const i = s.cursor.prog + 1
+      const lines = [...programLines(s)]
+      lines.splice(i, 0, '')
+      const n = setLines(s, lines)
+      return { ...n, cursor: { ...s.cursor, prog: i }, editor: { line: i, buffer: '', inserted: true } }
+    }
+
+    case 'EDIT_DELETE': {
+      if (!s.editMode) return s
+      const lines = programLines(s)
+      if (lines.length <= 1) return notify(s, 'Нельзя удалить последний кадр', 'warn')
+      const i = s.cursor.prog
+      const n = setLines(
+        s,
+        lines.filter((_, idx) => idx !== i),
+      )
+      return notify(
+        { ...n, cursor: { ...s.cursor, prog: clamp(i, 0, lines.length - 2) }, line: 0, nextLine: 0 },
+        `Кадр ${i + 1} удалён`,
+      )
+    }
+
+    case 'EDIT_BUFFER':
+      return s.editor ? { ...s, editor: { ...s.editor, buffer: a.value.toUpperCase() } } : s
+
+    case 'EDIT_COMMIT': {
+      if (!s.editor) return s
+      const value = s.editor.buffer.trim()
+      if (!value) return reducer(s, { type: 'EDIT_CANCEL' })
+      const lines = programLines(s).map((l, idx) => (idx === s.editor!.line ? value : l))
+      return notify({ ...setLines(s, lines), editor: null }, `Кадр ${s.editor.line + 1} изменён`)
+    }
+
+    case 'EDIT_CANCEL': {
+      if (!s.editor) return s
+      if (s.editor.inserted) {
+        const i = s.editor.line
+        const n = setLines(
+          s,
+          programLines(s).filter((_, idx) => idx !== i),
+        )
+        return { ...n, editor: null, cursor: { ...s.cursor, prog: Math.max(0, i - 1) } }
+      }
+      return { ...s, editor: null }
+    }
+
+    default:
+      return s
+  }
+}

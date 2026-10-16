@@ -1,0 +1,8 @@
+# Ревизии, которые двигают только форматирование. git blame их пропускает:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Сюда добавляется хеш коммита полного форматирования (`pnpm format`), сделанного
+# отдельно от функциональных правок. Форматтер — prettier (.prettierrc.json).
+
+# style(react-interface): полное форматирование дерева prettier
+b8d6183f06e0a70835957b97931dec89101f9cd7

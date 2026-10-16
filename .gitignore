@@ -1,0 +1,33 @@
+# v0 sandbox internal files
+__v0_runtime_loader.js
+__v0_devtools.tsx
+__v0_jsx-dev-runtime.ts
+.snowflake/
+.v0-trash/
+.vercel/
+
+# Environment variables
+.env*.local
+
+# Common ignores
+node_modules
+.next/
+.DS_Store
+
+# Build artifacts
+tsconfig.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+# диагностический кадр render_probe
+modules/gcode-viewer/probe_render.png
+
+# Архивы старых релизов и локальные/служебные артефакты
+ZIP/
+.kilo/worktrees/
+.vscode/
+*.log
+# диагностические кадры сравнения и скриншоты рабочего стола
+img/ab_*.png
+img/*Снимок экрана*

@@ -1,0 +1,59 @@
+{
+  "product": "CNC Панель оператора",
+  "version": "0.11.0",
+  "versioning": "semver",
+  "description": "Панель оператора ЧПУ: React-интерфейс, Qt-порт, 3D-вьювер УП и тестовые данные/постпроцессор.",
+  "projects": [
+    {
+      "id": "react-interface",
+      "name": "React интерфейс (панель оператора)",
+      "version": "0.7.0",
+      "path": ".",
+      "kind": "next.js",
+      "entry": "app/page.tsx",
+      "run": "pnpm dev",
+      "description": "Основной интерфейс панели оператора. Сгенерирован в v0.dev, здесь отрабатываются отображение и основная логика. Экраны и логика ЧПУ — components/cnc, lib/cnc."
+    },
+    {
+      "id": "qt-interface",
+      "name": "Qt-порт интерфейса",
+      "version": "0.5.1",
+      "path": "apps/qt-interface",
+      "kind": "qml",
+      "entry": "main.qml",
+      "run": "python apps/qt-interface/preview_qml.py",
+      "description": "Перенос React-интерфейса на Qt/QML. main.qml, preview.qml, генератор preview и ассеты/шрифты."
+    },
+    {
+      "id": "gcode-viewer",
+      "name": "3D-вьювер УП",
+      "version": "0.11.0",
+      "path": "apps/qt-interface",
+      "kind": "qml+python",
+      "entry": "GcodeViewer3D.qml",
+      "run": "python modules/gcode-viewer/preview_3d.py \"data/cad-testdata/Test_model.ngc\"",
+      "description": "3D-визуализация управляющей программы: траектория, заготовка, модель детали, инструмент/оправка, этапы, скорость 1:1, анализ столкновений и проверка инструмента.",
+      "files": [
+        "GcodeViewer3D.qml",
+        "mock_backend.py",
+        "toolpath.vert",
+        "toolpath.frag",
+        "preview_3d.qml",
+        "preview_3d.py",
+        "preview_qml.py",
+        "preview_pyqt5.py",
+        "smoke_test_qml.py"
+      ]
+    },
+    {
+      "id": "cad-testdata",
+      "name": "Тестовые УП/модели и постпроцессор",
+      "version": "0.5.1",
+      "path": "CAD",
+      "kind": "data",
+      "entry": "Test_model.ngc",
+      "description": "Тестовые УП и модели для отработки вьювера и постпроцессор для CAM/CAD (linuxcnc_ui.cps — с тегами UI_*).",
+      "files": ["Test_model.ngc", "Test_model.STL", "linuxcnc_ui.cps", "linuxcnc.cps"]
+    }
+  ]
+}

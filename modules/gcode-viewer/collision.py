@@ -2,6 +2,8 @@
 
 Вынесено из mock_backend.py (этап 0 плана переноса на C++).
 """
+import os
+
 from tooling import (_HOLDER_NUT_D, _HOLDER_NUT_H,                        # noqa: F401
                      _HOLDER_BODY_D, _HOLDER_BODY_H)
 
@@ -178,3 +180,8 @@ def _tool_check_report(stage_tools, stages, scene_pts, cum, total,
                                       % (num, delta))
         report.append(row)
     return report
+
+
+# Шаг выборки вдоль пути при скане коллизий (мм).
+# Collision scan sampling step along the path (mm).
+_COLLISION_STEP = float(os.environ.get("CNC_COLLISION_STEP", "1.0"))

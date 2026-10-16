@@ -119,7 +119,14 @@ if ($pythonReal) {
   Run-Tool 'py_compile mock_backend.py' { python -m py_compile modules/gcode-viewer/mock_backend.py }
   $env:QT_QPA_PLATFORM = 'offscreen'
   Run-Tool 'smoke_test_qml.py' { python modules/gcode-viewer/smoke_test_qml.py }
-  Run-Tool 'preview_3d.py offscreen' { python modules/gcode-viewer/preview_3d.py 'data/cad-testdata/Test_model.ngc' }
+  # Кода возврата мало: фоновая трассировка внутри прогона (например, NameError в
+  # слое геометрий) не меняет код выхода, а прогон всё равно печатает "loaded OK".
+  Run-Tool 'preview_3d.py offscreen' {
+    $log = python modules/gcode-viewer/preview_3d.py 'data/cad-testdata/Test_model.ngc' 2>&1
+    $code = $LASTEXITCODE
+    if ($code -ne 0 -or ($log | Select-String -Pattern 'Traceback' -Quiet)) { cmd /c exit 1 }
+    else { cmd /c exit 0 }
+  }
   Run-Tool 'test_tangent_policy.py' { python modules/gcode-viewer/test_tangent_policy.py }
   Run-Tool 'test_normals_golden.py' { python modules/gcode-viewer/test_normals_golden.py }
   Run-Tool 'test_normals_orientation.py' { python modules/gcode-viewer/test_normals_orientation.py }

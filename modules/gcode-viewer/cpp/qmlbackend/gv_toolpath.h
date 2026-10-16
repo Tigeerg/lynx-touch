@@ -1,6 +1,6 @@
 // cpp/qmlbackend/gv_toolpath.h - контроллер вьювера GcodeToolpath как QML-тип.
 //
-// Этап 5.4а плана переноса: C++-контроллер в URI MockBackend 1.0 вместо
+// Этапы 5.4а и 5.4б плана переноса: C++-контроллер в URI MockBackend 1.0 вместо
 // питоновского controller.py. Контракт QML (свойства, слоты, сигналы,
 // objectName "gcodeToolpath") сохранён 1:1 - GcodeViewer3D.qml не правится.
 //
@@ -10,18 +10,22 @@
 // toolPosition, слоты sampleAt/isRapidAt/speedAt/setToolStage, асинхронная
 // загрузка на QThreadPool с отменой устаревшего результата атомарным токеном.
 //
+// Модель STEP/STL (этап 5.4б): чтение модели (STEP - суп, рёбра B-Rep, нормали,
+// поверхности за один проход через gvstep; STL - суп, ориентация оболочки,
+// crease-aware нормали и обводка по двугранному углу), кожа partGeometry,
+// обводка partEdges и hlrEdges (stride 48), силуэт hlrTangents на текущий глаз,
+// частьMeshCenter/partRadius и трансформа детали partRotation/partPosition из
+// UI_ROTATION/UI_ORIGIN/UI_CAD_MATRIX/UI_STOCK. Заготовка публикуется
+// (stockCenter/stockSize/hasStock) потому, что трансформа эталона подгоняет
+// модель под её нижний угол: без заготовки положение детали разошлось бы.
+//
 // Что заглушено до следующих частей шага (контракт заведён, поведение пустое и
 // безопасное - чтобы QML не ругался):
-//   * модель STEP/STL - loadModel(), partGeometry, partEdges, meshChanged,
-//     meshReady: траектория грузится без кожи и обводки (шаг 5.4б);
-//   * обводка и силуэт - hlrEdges, hlrTangents, refreshTangents: глаз
-//     обновляется (eyeRaw), сегментов нет (шаг 5.4б);
 //   * инструмент и оправка - toolGeometry, toolOutline, toolRings,
 //     holderGeometry, holderOutline, holderRings, toolLength, toolRadius,
 //     holderRadius: геометрии пусты, метаданные UI_TOOL публикуются;
-//   * станок - заготовка (stockCenter/stockSize/hasStock), скан коллизий
-//     (collisions/analyzeCollisions) и сверка инструмента (toolCheck,
-//     setMachineTools, setMachineLimits, runToolCheck) (шаг 5.4в).
+//   * станок - скан коллизий (collisions/analyzeCollisions) и сверка инструмента
+//     (toolCheck, setMachineTools, setMachineLimits, runToolCheck) (шаг 5.4в).
 // Отказ выполненной стадии виден в журнале (qCWarning), молчаливого отказа нет;
 // вызов заглушки, чей результат отличается от питоновского эталона, пишет
 // предупреждение один раз (warnDeferred). Call-time предупреждений у слотов,
@@ -48,10 +52,13 @@
 #include <QVariantMap>
 #include <QVector3D>
 
+#include <array>
 #include <atomic>
 #include <memory>
 
 #include "core/path_prep.h"
+#include "core/silhouette.h"
+#include "core/tangents.h"
 #include "qmlbackend/gv_qmlgeom.h"
 
 class QQuick3DGeometry;
@@ -67,6 +74,28 @@ struct PreparedPath {
     QString text;
     QString model_path;
     std::shared_ptr<const gv::PathData> data;
+};
+
+// Модель, прочитанная рабочим потоком: то, что питоновский _load_model_verts
+// отдаёт про файл STEP или STL. Контейнеры лежат за shared_ptr: сигнал контракта
+// несёт структуру копией (QVariant), и копия меша в десятки мегабайт была бы
+// платой ни за что.
+struct ModelData {
+    bool is_step = false;                 // прочитан STEP (иначе STL)
+    std::vector<double> verts;            // суп кожи (F*9 float64, плоский ряд)
+    std::vector<float> normals;           // crease-aware нормали (F,3,3) float32
+    bool has_step_edges = false;          // обводка B-Rep пришла вместе с моделью
+    gv::PackedEdges step_edges;           // рёбра STEP после склейки и упаковки
+    gv::StepSurfaceList surfaces;         // STEP: аналитические цилиндры и конусы
+    gv::TangentFamilies families;         // STEP: семейства касательных
+    gv::MeshTopology topo;                // топология силуэта меша
+};
+
+// Токен загрузки, путь модели и её данные: то, что несёт сигнал meshReady.
+struct PreparedModel {
+    int token = 0;
+    QString path;
+    std::shared_ptr<const ModelData> model;
 };
 
 class GcodeToolpath : public QObject
@@ -179,7 +208,7 @@ public:
     Q_INVOKABLE void refreshTangents(const QVector3D &view_point);
     // Синхронная загрузка УП (тесты и headless): возвращает число сегментов.
     Q_INVOKABLE int load_gcode(const QString &filepath);
-    // Загрузка только модели (STEP/STL): заглушка, см. шапку файла.
+    // Загрузка только модели (STEP/STL): читает файл и публикует кожу с обводкой.
     Q_INVOKABLE bool loadModel(const QString &filepath);
     // Асинхронная загрузка: разбор и буферы на QThreadPool.
     Q_INVOKABLE int load_gcode_async(const QString &filepath);
@@ -223,6 +252,31 @@ private:
     // Предупреждение о заглушке - один раз за прогон на ключ.
     void warnDeferred(const char *key, const QString &text);
 
+    // ---- модель, обводка и силуэт (этап 5.4б) -----------------------------
+    // Теги сцены из текста УП: UI_ROTATION, UI_ORIGIN, UI_CAD_MATRIX,
+    // UI_CAD_MATRIX_ORIGIN и UI_STOCK. Из них собирается трансформа детали и
+    // место заготовки в сцене.
+    void applySceneTags(const QString &text);
+    // Итоговая трансформа детали: сцена <- база <- WCS <- CAD (питоновский
+    // _rebuild_part_transform).
+    void rebuildPartTransform();
+    // GUI-поток: применить модель, прочитанную рабочим потоком (или nullptr -
+    // модель не прочитана: кожа и обводка пустеют, как у эталона).
+    void applyModelData(const std::shared_ptr<const ModelData> &model);
+    void onMeshReady(const QVariant &payload);
+    // Синхронный путь: прочитать модель по пути (пустой путь - модели нет) и
+    // опубликовать кожу с обводкой. Нужен load_gcode и loadModel.
+    void applyModelPath(const QString &path);
+    // Обводка вторым проходом, как у эталона: STEP - готовая из чтения модели,
+    // STL - рёбра по двугранному углу (до 0.4 с на модель, поэтому не на
+    // GUI-потоке). Результат применяется по токену: устаревшая обводка уходит.
+    void startEdgesTask(const std::shared_ptr<const ModelData> &model, int token);
+    void setEdgesPacked(const gv::PackedEdges &packed);
+    // Общий центр габарита кожи для обеих лент контура (радиальный отжим).
+    void syncHlrReference();
+    // Публикация силуэта: сегменты (M,2,3) float32, пустой вектор - убрать.
+    void setSilhouetteSegments(const std::vector<float> &segments);
+
     std::shared_ptr<const gv::PathData> data_;
 
     ToolpathGeometry *rapid_ = nullptr;
@@ -246,6 +300,26 @@ private:
     QVariantMap machine_limits_;          // пределы осей (заглушка)
     QVariantMap tool_info_;               // разобранный UI_TOOL
     QString model_path_;                  // сайдкар модели рядом с УП
+
+    // ---- состояние модели, обводки и трансформы ---------------------------
+    bool has_step_edges_ = false;         // обводка B-Rep пришла с моделью
+    gv::PackedEdges step_edges_;          // рёбра STEP: склейка и упаковка
+    gv::StepSurfaceList rev_surfaces_;    // STEP: аналитические цилиндры и конусы
+    bool has_tan_fams_ = false;           // семейства касательных посчитаны
+    gv::TangentFamilies tan_fams_;        // STEP: семейства касательных
+    gv::MeshTopology mesh_topo_;          // топология силуэта меша
+    bool has_topo_ = false;               // меш есть - силуэт считается по нему
+    bool has_mesh_ = false;               // габарит кожи известен
+    std::array<double, 3> mesh_lo_{0.0, 0.0, 0.0};
+    std::array<double, 3> mesh_hi_{0.0, 0.0, 0.0};
+    int edge_token_ = 0;                  // отменяет устаревшую обводку (GUI-поток)
+    std::array<double, 3> rot_{0.0, 0.0, 0.0};        // UI_ROTATION, градусы
+    std::array<double, 3> model_pos_{0.0, 0.0, 0.0};  // UI_ORIGIN, координаты сцены
+    bool has_cad_ = false;                // UI_CAD_MATRIX найден
+    std::array<double, 9> cad_matrix_{};  // столбцы X, Y, Z матрицы CAD
+    std::array<double, 3> cad_origin_{0.0, 0.0, 0.0}; // UI_CAD_MATRIX_ORIGIN
+    std::array<double, 3> stock_lower_m_{0.0, 0.0, 0.0};  // нижний угол, машинные
+    std::array<double, 3> part_offset_{0.0, 0.0, 0.0};    // поправка CNC_OFS_M*
 
     // Токены: устаревший результат рабочего потока отбрасывается. Атомарный
     // счётчик взят по указателю: рабочий поток читает счётчик, а не контроллер
@@ -272,3 +346,4 @@ private:
 } // namespace gvqml
 
 Q_DECLARE_METATYPE(gvqml::PreparedPath)
+Q_DECLARE_METATYPE(gvqml::PreparedModel)

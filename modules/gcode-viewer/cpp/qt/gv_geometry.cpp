@@ -434,26 +434,33 @@ void MeshGeometry::setTriangles(const double *verts, int nFloats, const double *
             const float *a = &tri[std::size_t(t) * 9];
             const float *b = a + 3;
             const float *c = a + 6;
-            float n[3];
-            if (normals != nullptr) {
-                // Нормаль задана на треугольник (у всех трёх вершин одна).
-                for (int j = 0; j < 3; ++j)
-                    n[j] = float(normals[std::size_t(t) * 9 + j]);
-            } else {
+            float face_n[3] = {0.0f, 0.0f, 1.0f};
+            if (normals == nullptr) {
                 const float u0 = b[0] - a[0], u1 = b[1] - a[1], u2 = b[2] - a[2];
                 const float w0 = c[0] - a[0], w1 = c[1] - a[1], w2 = c[2] - a[2];
                 const float fn[3] = {u1 * w2 - u2 * w1, u2 * w0 - u0 * w2, u0 * w1 - u1 * w0};
                 const float ln = std::sqrt((fn[0] * fn[0] + fn[1] * fn[1]) + fn[2] * fn[2]);
                 const float divisor = (ln == 0.0f) ? 1.0f : ln;    // вырожденный треугольник
                 for (int j = 0; j < 3; ++j)
-                    n[j] = fn[j] / divisor;
+                    face_n[j] = fn[j] / divisor;
             }
             for (int v = 0; v < 3; ++v) {
                 float *o = &inter[(std::size_t(t) * 3 + v) * 6];
                 for (int j = 0; j < 3; ++j)
                     o[j] = a[v * 3 + j];
-                for (int j = 0; j < 3; ++j)
-                    o[3 + j] = n[j];
+                if (normals == nullptr) {
+                    for (int j = 0; j < 3; ++j)
+                        o[3 + j] = face_n[j];
+                } else {
+                    // Нормаль задана на угол треугольника и у углов бывает разной:
+                    // _smooth_face_normals кластеризует нормали вокруг каждого
+                    // сваренного угла, поэтому углы одной грани получают разные
+                    // средние. Столбец первого угла на весь треугольник - другая
+                    // (сглаженная не в ту сторону) картинка.
+                    const double *n = &normals[(std::size_t(t) * 3 + std::size_t(v)) * 3];
+                    for (int j = 0; j < 3; ++j)
+                        o[3 + j] = float(n[j]);
+                }
             }
         }
         data_ = asBytes(inter);

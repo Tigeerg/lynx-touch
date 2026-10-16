@@ -387,9 +387,14 @@ target_include_directories(gvqmlbackend PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # по имени файла (<gv_qmlgeom.h>, <gv_toolpath.h>): их каталог обязан быть в
 # путях поиска, иначе регистрация молча пропускается (__has_include).
 target_include_directories(gvqmlbackend PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/qmlbackend)
-# Ядро (разбор УП и подготовка траектории) и геометрии этапа 3 (буферы линий).
+# Ядро (разбор УП, подготовка траектории, STL, обводка, силуэт и касательные),
+# геометрии этапа 3 (буферы линий) и слой STEP (чтение модели вместе с обводкой
+# B-Rep и поверхностями: этап 5.4б). OCCT-библиотеки тянет gvstep.
 target_link_libraries(gvqmlbackend PRIVATE
-    gvcore gvqtgeom Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Quick3D)
+    gvcore gvstep gvqtgeom Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Quick3D)
+# Заголовки слоя STEP включают TopoDS_Shape.hxx (orientShellOutward): у gvstep
+# инклюды OCCT приватные, поэтому путь поиска задаётся здесь (как у step_probe).
+target_include_directories(gvqmlbackend PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 if (MSVC)
     target_compile_options(gvqmlbackend PRIVATE /utf-8 /MP /fp:precise)
 else()

@@ -242,6 +242,14 @@ silhouette, the tool and holder, the stock, the collisions and `toolCheck` are s
 warning. It is enabled by `CNC_CPP=controller`; the Python registration is skipped in that mode, otherwise QML
 does not load at all.
 
+**The model and the silhouette are ported (stage 5, part 4b).** The C++ controller reads STEP (soup, normals,
+edges and surfaces in one pass) or STL, publishes `partGeometry`/`partEdges`/`hlrEdges`/`hlrTangents`, the part
+transform and the stock; the silhouette is computed both from the mesh (`CNC_SILHOUETTE=mesh`) and analytically.
+The mesh and silhouette buffers matched the reference bit for bit, the outline matched as a point set (the order
+differs for the already accepted reason). `render_probe` does not give parity yet: the difference is entirely in
+the layers not ported in step 5.4c (tool, holder, rings, the collision scan). Still to do in stage 5: the tool
+and holder, the stock, the collisions and `toolCheck`, the cache.
+
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.
 

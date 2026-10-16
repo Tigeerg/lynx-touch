@@ -85,11 +85,50 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.24.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.25.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.25.0 — 2026-10-16
+
+- **C++-контроллер читает модель и считает силуэт (этап 5, часть 4б).** `loadModel` идёт по ветке STEP
+  (`occt/step_import`, `step_surfaces`, `step_edges` — суп, нормали, рёбра и поверхности за одно чтение) или
+  STL (`core/stl_import`, разворот оболочки, `core/outline`). Наполнены `partGeometry` (меш с нормалями,
+  stride 24), `partEdges`, `hlrEdges` (stride 48), `hlrTangents`, `partMeshCenter`, `partRadius`, трансформа
+  детали (`partRotation`/`partPosition`) и заготовка (`hasStock`/`stockCenter`/`stockSize`); сигналы
+  `meshChanged`, `partTransformChanged`, `edgesReady`, `meshReady`. Обводка публикуется третьим проходом,
+  как поток `_compute_edges` у эталона; чтение STEP/STL сериализовано мьютексом (роль `_occt`).
+- **Трансформа** собрана из `UI_ROTATION`/`UI_ORIGIN`/`UI_CAD_MATRIX[_ORIGIN]`: `q = q_base(-90°,0,0) ·
+  q_wcs · q_cad`, `quatFromCols` переписан в double с приведением конструктором `QQuaternion`; при наличии
+  `UI_STOCK` и кожи — асимметричная подгонка по восьми углам габарита, иначе центр кожи в центр траектории,
+  затем смещение `CNC_OFS_M*`. Без публикации заготовки положение детали разошлось бы: эталон выбирает
+  ветку подгонки по `_has_stock`.
+- **Силуэт** считается на сырой кадр обратной трансформы: `CNC_SILHOUETTE=mesh` (умолчание — топология меша)
+  или `analytic` (семейства касательных STEP, ленивое построение). Публикация безопасна при частых вызовах
+  с кадра: любой отказ гасится, предупреждение — один раз.
+- **Совпадение с эталоном.** STEP: меш 45398 треугольников, `sha256 9e24c25dca87e0d1` совпал; обводка 2426
+  сегментов, набор точек `ff0d95ac17586bdc` совпал (порядок расходится по уже принятой причине —
+  неустойчивый `numpy.argsort` в склейке); силуэт `mesh` 1380 вершин `sha 8908a9f1208012fb` и `analytic`
+  336 вершин `sha 018da2c061149412` совпали; `partMeshCenter`, `partRadius`, `partRotation`, `partPosition`
+  совпали. STL: меш 187592 треугольника `sha e6bff0d5b06d4cbe`, обводка 1435 сегментов, силуэт 2274 вершины
+  `sha 1eea118351ee34f2` — совпали; заголовок в пиксельных метриках не сошёлся, причина ниже.
+- **Исправлен изъян в `gvqtgeom`.** `MeshGeometry::setTriangles(verts, normals)` писал нормаль первого угла
+  на все три — исправлено; проверка `test_geometry_core.py` остаётся зелёной.
+- **`render_probe` пока не гейт паритета.** Замерено: без флага стабильно `edge_px 7905`,
+  `stock_px 67232`; под флагом `edge_px 9294`, `stock_px 58680`. Расхождение целиком в неперенесённых слоях
+  шага 5.4в (инструмент, оправка, кольца, скан коллизий и значок столкновений), а не в модели: буферы меша и
+  силуэта совпадают бит-в-бит, а в области самой детали расхождение — единицы пикселей на сглаживании.
+- **Что тронуто:** `cpp/qmlbackend/gv_toolpath.{h,cpp}`, `cpp/qt/gv_geometry.cpp`, `cpp/CMakeLists.txt`
+  (`gvqmlbackend` линкует `gvstep`, добавлен путь заголовков OCCT), `test_controller_cpp.py`. Оракул не
+  тронут.
+- **Осталось заглушками:** `toolGeometry/toolOutline/toolRings/holderGeometry/holderOutline/holderRings`,
+  `toolLength/toolRadius/holderRadius`, `collisions/collisionCount`, `toolCheck`.
+- **Проверки.** Сторож гоняет 99 проверок, зелёный; `oracle_dump.py` — `RESULT: OK` при флаге и без; с
+  `CNC_CPP=controller` offscreen `preview_3d.py` — `loaded OK` без `Traceback`, `WARNING` и `ERROR`;
+  `smoke_test_qml.py` — `RESULT: OK` без `[QML warning]`; `test_controller_cpp.py` — `RESULT: OK`.
+  Версия 0.24.0 -> 0.25.0.
 
 ### 0.24.0 — 2026-10-16
 

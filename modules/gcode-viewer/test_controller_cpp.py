@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""C++-контроллер вьювера против питоновского эталона (этап 5.4а плана переноса).
+"""C++-контроллер вьювера против питоновского эталона (этапы 5.4а и 5.4б).
 
-Проверяется одно и то же УП (data/cad-testdata/Test_model.ngc), загруженное двумя
-путями:
+Проверяется одно и то же УП (data/cad-testdata/Test_model.ngc) вместе с моделью
+рядом с ним (Test_model.STEP), загруженное двумя путями:
 
   * питоновский эталон - mock_backend (controller.py, @QmlElement) в отдельном
     процессе с пустым CNC_CPP;
@@ -17,19 +17,23 @@
 
 Что сверяется: число сегментов, свойства center/radius/moveLength/minY,
 toolPosition (и toolX/Y/Z), toolInfo, этапы (диапазоны, подписи, теги UI_TOOL),
-holderGauge, modelPath, буферы rapid/feed (число вершин, длина и sha256 байт,
-stride-контракт тот же), выборка sampleAt/isRapidAt/speedAt на фиксированных
-длинах, пустой toolCheck и число предупреждений движка (у C++-пути их не должно быть
-ни одного).
+holderGauge, modelPath, заготовка (hasStock/stockCenter/stockSize), буферы
+rapid/feed (число вершин, длина и sha256 байт, stride-контракт тот же), выборка
+sampleAt/isRapidAt/speedAt на фиксированных длинах, пустой toolCheck и число
+предупреждений движка (у C++-пути их не должно быть ни одного).
 
-Чего в сверке нет (заглушки этого шага, следующие части этапа 5.4): заготовка
-(hasStock/stockCenter/stockSize) вместе со сканом коллизий
-(collisions/collisionCount) - эталон разбирает UI_STOCK и считает столкновения, а
-C++-контроллер заготовки пока не знает; модель (partGeometry, partEdges,
-partMeshCenter, partRadius), обводка и силуэт (hlrEdges, hlrTangents) и инструмент
-(toolGeometry, toolOutline, toolRings, holderGeometry, holderOutline, holderRings,
-toolLength, toolRadius, holderRadius). Итог перечисляет их отдельной строкой, чтобы
-остаток был назван, а не замолчан.
+Модель сверяется двумя снимками - после load_gcode (ветка STEP) и после
+loadModel (ветка STL, файл Test_model.STL рядом): буферы partGeometry, partEdges,
+hlrEdges и силуэт hlrTangents в обоих режимах CNC_SILHOUETTE (mesh и analytic),
+габарит (partMeshCenter, partRadius) и трансформа детали
+(partRotation, partPosition) с числом вершин и sha256 байт вершинного буфера.
+Силуэт считается слотом refreshTangents с одним и тем же глазом в обоих
+процессах, поэтому числа сопоставимы.
+
+Чего в сверке нет (заглушки этого шага, следующие части этапа 5.4): скан коллизий
+(collisions/collisionCount) и инструмент (toolGeometry, toolOutline, toolRings,
+holderGeometry, holderOutline, holderRings, toolLength, toolRadius, holderRadius).
+Итог перечисляет их отдельной строкой, чтобы остаток был назван, а не замолчан.
 
 Без собранного модуля build/qmlbackend/MockBackend проверка пропускается с кодом 0:
 сборку стережёт scripts/build-viewer.ps1.
@@ -42,6 +46,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -50,25 +55,37 @@ sys.path.insert(0, HERE)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 NGC = os.path.join(ROOT, "data", "cad-testdata", "Test_model.ngc")
+STL = os.path.join(ROOT, "data", "cad-testdata", "Test_model.STL")
 MODULE_DIR = os.path.join(ROOT, "build", "qmlbackend", "MockBackend")
 MODULE_QMLDIR = os.path.join(MODULE_DIR, "qmldir")
+
+# Глаз для силуэта: одна и та же точка сцены в обоих процессах (иначе числа
+# силуэта несопоставимы).
+EYE = (120.0, 90.0, 140.0)
 
 # Числа, которые обязаны совпасть: сравнение идёт побитово (float64 у свойств и
 # у выборки, float32 внутри буферов), поэтому допуска здесь нет.
 SCALARS = ("moveLength", "radius", "minY", "toolX", "toolY", "toolZ", "holderGauge")
-VECTORS = ("center", "toolPosition")
+VECTORS = ("center", "toolPosition", "stockCenter", "stockSize")
 LISTS = ("stages", "toolCheck")
 MAPS = ("toolInfo",)
-FLAGS = ("loading",)
+FLAGS = ("loading", "hasStock")
 INTS = ("toolIssueCount",)
 
 # Заглушки шага: у питоновского пути они заполнены, у C++ - пусты по замыслу
-# (заготовка и скан коллизий, модель, обводка, инструмент).
-DEFERRED = ("hasStock", "stockCenter", "stockSize", "collisions", "collisionCount",
-            "partRotation", "partPosition", "partMeshCenter", "partRadius", "toolLength",
-            "toolRadius", "holderRadius", "partGeometry", "partEdges", "hlrEdges",
-            "hlrTangents", "toolGeometry", "toolOutline", "toolRings", "holderGeometry",
-            "holderOutline", "holderRings")
+# (скан коллизий и инструмент).
+DEFERRED = ("collisions", "collisionCount", "toolLength", "toolRadius", "holderRadius",
+            "toolGeometry", "toolOutline", "toolRings", "holderGeometry", "holderOutline",
+            "holderRings")
+
+# Поля снимка модели: сверяются и для STEP, и для STL.
+MODEL_FIELDS = ("partMeshCenter", "partRadius", "partRotation", "partPosition",
+                "modelPath")
+# Буферы снимка модели: имя свойства, поле счётчика и раскладка для сверки
+# набором отрезков (вершин на отрезок, float на вершину; None - побитовая сверка).
+MODEL_BUFFERS = (("partGeometry", "triangleCount", None),
+                 ("partEdges", "vertexCount", (2, 5)),
+                 ("hlrEdges", "vertexCount", (6, 12)))
 
 QML = b'import MockBackend 1.0\nGcodeToolpath { objectName: "gcodeToolpath" }\n'
 
@@ -78,6 +95,13 @@ def _vec3(value):
     if value is None:
         return None
     return [float(value.x()), float(value.y()), float(value.z())]
+
+
+def _quat(value):
+    """QQuaternion -> список четырёх чисел scalar, x, y, z (None - свойства нет)."""
+    if value is None:
+        return None
+    return [float(value.scalar()), float(value.x()), float(value.y()), float(value.z())]
 
 
 def _backend():
@@ -123,17 +147,90 @@ def _backend():
     return backend, cpp, warnings, (engine, component)
 
 
-def _buffer(backend, name):
-    """Буфер геометрии: число вершин, длина и sha256 байт вершинного буфера."""
+def _canonical_segments(raw, verts_per_segment, stride_floats):
+    """Набор отрезков буфера: координаты округлены до 1e-4 мм, куски отсортированы.
+
+    Порядок склеенных рёбер STEP побитово не воспроизводится: эталон упорядочивает
+    кластеры неустойчивым numpy.argsort (quicksort) и несёт остаток 1e-15 от
+    порядка суммирования, C++ сортирует устойчиво (тот же разбор и та же мера -
+    test_stepledges_plugin.py). Поэтому буфер сверяется как набор отрезков, а
+    форма каждого отрезка (порядок концов, нормали и сторона ленты) - побитово.
+    """
+    import numpy as np
+    arr = np.frombuffer(raw, dtype="<f4").reshape(-1, verts_per_segment, stride_floats)
+    rounded = np.round(arr[:, :, 0:3], 4)
+    rounded = np.where(rounded == 0.0, np.float32(0.0), rounded)
+    buf = np.ascontiguousarray(rounded, dtype="<f4").tobytes()
+    chunk = verts_per_segment * 3 * 4
+    parts = [buf[i:i + chunk] for i in range(0, len(buf), chunk)]
+    return {"segments": len(parts),
+            "set_sha256": hashlib.sha256(b"".join(sorted(parts))).hexdigest()}
+
+
+def _buffer(backend, name, count_field="vertexCount", canonical=None):
+    """Буфер геометрии: число вершин, длина и sha256 байт вершинного буфера.
+
+    У меша счётчик называется triangleCount, у линий - vertexCount.
+    canonical задаёт раскладку для сверки набором отрезков (см.
+    _canonical_segments): у таких буферов побитовый хэш не сверяется.
+    """
     geo = backend.property(name)
     if geo is None:
         return {"present": False}
     raw = bytes(geo.vertexData())
-    count = getattr(geo, "vertexCount", None)
+    count = geo.property(count_field)
     if count is None:
-        count = geo.property("vertexCount")
-    return {"present": True, "nv": int(count or 0), "bytes": len(raw),
-            "sha256": hashlib.sha256(raw).hexdigest()}
+        count = getattr(geo, count_field, 0)
+    info = {"present": True, "nv": int(count or 0), "bytes": len(raw)}
+    if canonical is not None and raw:
+        info.update(_canonical_segments(raw, canonical[0], canonical[1]))
+    else:
+        info["sha256"] = hashlib.sha256(raw).hexdigest()
+    return info
+
+
+def _settle(app, backend, timeout_s=30.0):
+    """Дождаться обводки: она публикуется вторым проходом (эталон - свой поток,
+    C++ - задача на пуле), поэтому до прокрутки очереди событий буфер пуст."""
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        app.processEvents()
+        edges = backend.property("partEdges")
+        hlr = backend.property("hlrEdges")
+        edges_nv = int(edges.property("vertexCount") or 0) if edges is not None else 0
+        hlr_nv = int(hlr.property("vertexCount") or 0) if hlr is not None else 0
+        if edges_nv > 0 and hlr_nv > 0:
+            app.processEvents()
+            return
+        time.sleep(0.02)
+    app.processEvents()
+
+
+def _model_snapshot(app, backend):
+    """Снимок модели: буферы, габарит, трансформа и силуэт в обоих режимах."""
+    from PySide6.QtGui import QVector3D
+    _settle(app, backend)
+    snap = {}
+    for name, field, canonical in MODEL_BUFFERS:
+        snap[name] = _buffer(backend, name, field, canonical)
+    previous = os.environ.get("CNC_SILHOUETTE")
+    for mode, key in (("mesh", "hlrTangentsMesh"), ("analytic", "hlrTangentsAnalytic")):
+        os.environ["CNC_SILHOUETTE"] = mode
+        backend.refreshTangents(QVector3D(*EYE))
+        snap[key] = _buffer(backend, "hlrTangents")
+    if previous is None:
+        os.environ.pop("CNC_SILHOUETTE", None)
+    else:
+        os.environ["CNC_SILHOUETTE"] = previous
+    for name in MODEL_FIELDS:
+        value = backend.property(name)
+        if name == "partRotation":
+            snap[name] = _quat(value)
+        elif name == "partMeshCenter" or name == "partPosition":
+            snap[name] = _vec3(value)
+        else:
+            snap[name] = value
+    return snap
 
 
 def _samples(backend, total):
@@ -146,7 +243,7 @@ def _samples(backend, total):
              "speed": float(backend.speedAt(d))} for d in dists]
 
 
-def _backend_values():
+def _backend_values(app):
     """Значения контроллера этого процесса одним словарём."""
     backend, cpp, warnings, keep_alive = _backend()
     _ = keep_alive                       # движок и компонент живут до конца чтения
@@ -173,12 +270,24 @@ def _backend_values():
     values["samples"] = _samples(backend, total)
     # Этапы QML читает по полям: сверяем именно словари, а не их число.
     values["stage_count"] = len(values["stages"] or [])
+    # Модель рядом с УП (STEP) и та же деталь в формате STL: обе ветки чтения.
+    values["step"] = _model_snapshot(app, backend)
+    if os.path.exists(STL):
+        backend.loadModel(STL)
+        values["stl"] = _model_snapshot(app, backend)
     return values
 
 
 def _run_dump(out_path, mode):
-    """Прогон одного пути в отдельном процессе (env задаёт mode)."""
-    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", CNC_CPP=mode)
+    """Прогон одного пути в отдельном процессе (env задаёт mode).
+
+    CNC_NO_CACHE=1 обязателен: дисковый кэш носит суп float32, а C++-контроллер
+    читает модель всегда заново (перенос кэша - отдельное решение, PORT-CPP §5).
+    С тёплым кэшем эталон сравнивался бы не с тем же расчётом: границы габарита и
+    сварка вершин у float32-супа другие. Оба процесса идут холодным путём.
+    """
+    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", CNC_CPP=mode,
+               CNC_NO_CACHE="1")
     code = ("import sys; sys.path.insert(0, %r); "
             "import test_controller_cpp as t; t._write_dump(%r)" % (HERE, out_path))
     res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
@@ -197,8 +306,8 @@ def _write_dump(path):
     окна, а тип и свойства читаются как обычно).
     """
     from PySide6.QtGui import QGuiApplication
-    _app = QGuiApplication([])
-    values = _backend_values()
+    app = QGuiApplication([])
+    values = _backend_values(app)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(values, fh)
     print("DUMP OK segments=%d cpp=%s" % (values["segments"], values["cpp"]))
@@ -220,6 +329,9 @@ def _compare(ref, got, problems):
     _diff(ref.get("feed"), got.get("feed"), problems)
     _diff(ref.get("samples"), got.get("samples"), problems)
     _diff(ref.get("modelPath"), got.get("modelPath"), problems)
+    # Снимки модели (STEP и STL) сверяются целиком: и буферы, и трансформа.
+    for folder in ("step", "stl"):
+        _diff(ref.get(folder), got.get(folder), problems)
 
 
 def main() -> int:
@@ -277,6 +389,36 @@ def main() -> int:
     print("этапов: %d, выборок: %d, предупреждений движка: эталон %d, C++ %d"
           % (ref["stage_count"], len(ref["samples"]), len(ref["warnings"]),
              len(got["warnings"])))
+    for folder in ("step", "stl"):
+        block_ref, block_got = ref.get(folder), got.get(folder)
+        if block_ref is None or block_got is None:
+            continue
+        print("%s: меш %s->%s tri, обводка %s->%s вершин, контур %s->%s, силуэт "
+              "(mesh) %s->%s, силуэт (analytic) %s->%s"
+              % (folder.upper(),
+                 block_ref["partGeometry"].get("nv"), block_got["partGeometry"].get("nv"),
+                 block_ref["partEdges"].get("nv"), block_got["partEdges"].get("nv"),
+                 block_ref["hlrEdges"].get("nv"), block_got["hlrEdges"].get("nv"),
+                 block_ref["hlrTangentsMesh"].get("nv"),
+                 block_got["hlrTangentsMesh"].get("nv"),
+                 block_ref["hlrTangentsAnalytic"].get("nv"),
+                 block_got["hlrTangentsAnalytic"].get("nv")))
+        print("   sha256 меша: %s -> %s; набор обводки %s -> %s (%d отрезков)"
+              % ((block_ref["partGeometry"].get("sha256") or "")[:16],
+                 (block_got["partGeometry"].get("sha256") or "")[:16],
+                 (block_ref["partEdges"].get("set_sha256") or "")[:16],
+                 (block_got["partEdges"].get("set_sha256") or "")[:16],
+                 block_got["partEdges"].get("segments", 0)))
+        print("   sha256 силуэта: mesh %s -> %s, analytic %s -> %s"
+              % ((block_ref["hlrTangentsMesh"].get("sha256") or "")[:16],
+                 (block_got["hlrTangentsMesh"].get("sha256") or "")[:16],
+                 (block_ref["hlrTangentsAnalytic"].get("sha256") or "")[:16],
+                 (block_got["hlrTangentsAnalytic"].get("sha256") or "")[:16]))
+        print("   partMeshCenter %s|%s partRadius %r|%r partPosition %s|%s"
+              % (block_ref["partMeshCenter"], block_got["partMeshCenter"],
+                 block_ref["partRadius"], block_got["partRadius"],
+                 block_ref["partPosition"], block_got["partPosition"]))
+        print("   partRotation %s|%s" % (block_ref["partRotation"], block_got["partRotation"]))
     print("заглушки шага (не сверяются): %s" % ", ".join(DEFERRED))
 
     if problems:

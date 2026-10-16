@@ -75,6 +75,9 @@
 | `modules/gcode-viewer/gv_qtgeom.py` | Оболочка C++-геометрий Qt: буфер считает `gvgeom`, установку делает эталонный `_rebuild()` |
 | `modules/gcode-viewer/cpp/exp/gvqtshim.h` / `.cpp` | C-ABI шим к геометриям Qt: сборка буферов и обёртка объектов для процесса PySide6 |
 | `modules/gcode-viewer/test_qt_bridge.py` | Проверка: буферы шести C++-геометрий и проводка QML в процессе PySide6 |
+| `modules/gcode-viewer/cpp/qmlbackend/gv_qmlgeom.h` / `.cpp` | QML-обёртки C++-геометрий в модуле `MockBackend` 1.0 |
+| `modules/gcode-viewer/cpp/qmlbackend/gv_toolpath.h` / `.cpp` | C++-контроллер `GcodeToolpath`: каркас, загрузка УП, буферы, свойства и слоты выборки |
+| `modules/gcode-viewer/test_controller_cpp.py` | Сверка C++- и питоновского контроллеров на одном УП |
 | `modules/gcode-viewer/oracle_dump.py` | Оракул промежуточных результатов: эталон для переноса на C++ |
 | `modules/gcode-viewer/test_ribbon_width.py` | Живая проверка толщины ленты (2 px по вертикали и горизонтали) |
 | `modules/gcode-viewer/test_solid_skin.py` | Живая проверка: сплошная кожа закрывает скрытые рёбра (без просвечивания) |
@@ -82,11 +85,43 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.23.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.24.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.24.0 — 2026-10-16
+
+- **C++-контроллер: плагин `MockBackend` 1.0 и каркас `GcodeToolpath` (этап 5, часть 4а).** Заведён
+  QML-плагин `cpp/qmlbackend` (цель `gvqmlbackend`, каталог `build/qmlbackend`): шесть типов-обёрток над
+  готовым `gvgeom` (`ToolpathGeometry`, `HLRLineGeometry`, `GridGeometry`, `AxisArrowGeometry`,
+  `MeshGeometry`, `ToolGeometry`) и C++-класс `GcodeToolpath` с контрактом 1:1. `GcodeViewer3D.qml` не
+  менялся.
+- **Что уже работает в C++-контроллере.** Загрузка УП (`load_gcode`, `load_gcode_async`, `load_string`)
+  через `gvcore`, буферы `rapidGeometry`/`feedGeometry`, свойства `center`, `radius`, `moveLength`, `minY`,
+  `stages`, `loading`, `toolPosition`, `toolInfo`, слоты `sampleAt`/`isRapidAt`/`speedAt`/`setToolStage`,
+  сигналы контракта. Асинхронность — `QThreadPool` с атомарным токеном, сигнал испускается на GUI-потоке
+  через `QMetaObject::invokeMethod`, поэтому уничтожение объекта не даёт use-after-free.
+- **Совпадение с питоновским путём.** Сегментов 70914 = 70914; буфер быстрых ходов 3152 вершины,
+  `sha256 50fbc8a31b7b8c63` совпал; рабочих 138676 вершин, `dfcb8b92b72d05eb` совпал; `center`, `radius`,
+  `moveLength`, `minY`, 13 этапов и выборка на десяти длинах совпали.
+- **Заглушки (безопасны, пишут предупреждение).** Модель STEP/STL, обводка и силуэт, инструмент и оправка,
+  заготовка, скан коллизий и `toolCheck` — их наполнение в следующих шагах. Нашлось, что Qt в сборке
+  PySide6 не печатает `qWarning` без обработчика, поэтому отказ идёт двумя каналами: `qCWarning` и строка
+  `gv.controller: ...` в stderr — иначе отказ был бы невидим.
+- **Сосуществование с питоновской регистрацией.** `CNC_CPP=controller` (и `all`) включает C++-путь только
+  при собранном модуле: тогда точки входа не импортируют питоновский бэкенд (две регистрации одного URI
+  дают `Namespace 'MockBackend' has already been used for type registration` и QML вообще не грузится) и
+  добавляют каталог модуля в `PATH` до создания движка. Флага нет — путь прежний. `controller.py` не
+  менялся.
+- **Что тронуто:** `cpp/CMakeLists.txt`, `gv_cpp.py`, `scripts/build-viewer.ps1`, `tools/check.ps1`, точки
+  входа; добавлены `cpp/qmlbackend/gv_qmlgeom.{h,cpp}`, `cpp/qmlbackend/gv_toolpath.{h,cpp}`,
+  `test_controller_cpp.py`. Оракул не тронут.
+- **Проверки.** Сторож гоняет 99 проверок, зелёный; `oracle_dump.py` — `RESULT: OK` при флаге и без; с
+  `CNC_CPP=controller` offscreen `preview_3d.py` — `loaded OK` без `Traceback`, `WARNING` и `ERROR`,
+  `smoke_test_qml.py` — `RESULT: OK` без `[QML warning]`, живое окно — `segments: 70914`. Версия
+  0.23.0 -> 0.24.0.
 
 ### 0.23.0 — 2026-10-16
 

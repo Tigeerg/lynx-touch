@@ -1,0 +1,274 @@
+// cpp/qmlbackend/gv_toolpath.h - контроллер вьювера GcodeToolpath как QML-тип.
+//
+// Этап 5.4а плана переноса: C++-контроллер в URI MockBackend 1.0 вместо
+// питоновского controller.py. Контракт QML (свойства, слоты, сигналы,
+// objectName "gcodeToolpath") сохранён 1:1 - GcodeViewer3D.qml не правится.
+//
+// Что уже считается здесь: чтение УП, разбор и подготовка траектории (ядро
+// gvcore: parseGcode + prepareOrdered), буферы rapid/feed (геометрии этапа 3,
+// цель gvqtgeom), свойства center/radius/moveLength/minY/stages/loading/
+// toolPosition, слоты sampleAt/isRapidAt/speedAt/setToolStage, асинхронная
+// загрузка на QThreadPool с отменой устаревшего результата атомарным токеном.
+//
+// Что заглушено до следующих частей шага (контракт заведён, поведение пустое и
+// безопасное - чтобы QML не ругался):
+//   * модель STEP/STL - loadModel(), partGeometry, partEdges, meshChanged,
+//     meshReady: траектория грузится без кожи и обводки (шаг 5.4б);
+//   * обводка и силуэт - hlrEdges, hlrTangents, refreshTangents: глаз
+//     обновляется (eyeRaw), сегментов нет (шаг 5.4б);
+//   * инструмент и оправка - toolGeometry, toolOutline, toolRings,
+//     holderGeometry, holderOutline, holderRings, toolLength, toolRadius,
+//     holderRadius: геометрии пусты, метаданные UI_TOOL публикуются;
+//   * станок - заготовка (stockCenter/stockSize/hasStock), скан коллизий
+//     (collisions/analyzeCollisions) и сверка инструмента (toolCheck,
+//     setMachineTools, setMachineLimits, runToolCheck) (шаг 5.4в).
+// Отказ выполненной стадии виден в журнале (qCWarning), молчаливого отказа нет;
+// вызов заглушки, чей результат отличается от питоновского эталона, пишет
+// предупреждение один раз (warnDeferred). Call-time предупреждений у слотов,
+// которые QML зовёт постоянно (refreshTangents на движении камеры), нет: там
+// поведение совпадает с питоновским путём без модели.
+//
+// Сосуществование с питоновской регистрацией: QML-типы модуля MockBackend
+// объявляет либо питоновский controller.py (@QmlElement), либо этот плагин.
+// Оба одновременно в один движок не попадают: точки входа при включённом флаге
+// CNC_CPP=controller не импортируют mock_backend и добавляют путь импорта
+// плагина (см. gv_cpp.controller_enabled). Пустое значение флага - питоновский
+// путь, как было.
+//
+// Потоки: разбор УП и сборка буферов идут на пуле QThreadPool (объектов Qt ядро
+// не создаёт); на GUI-поток результат возвращает сигнал toolpathReady, а
+// устаревший результат отбрасывает токен - std::atomic<int>, а не threading.
+#pragma once
+
+#include <QObject>
+#include <QQuaternion>
+#include <QString>
+#include <QVariant>
+#include <QVariantList>
+#include <QVariantMap>
+#include <QVector3D>
+
+#include <atomic>
+#include <memory>
+
+#include "core/path_prep.h"
+#include "qmlbackend/gv_qmlgeom.h"
+
+class QQuick3DGeometry;
+
+namespace gvqml {
+
+// Результат рабочего потока: токен загрузки, исходный текст УП, разрешённый путь
+// модели рядом с программой и подготовленная траектория. Структура целиком в C++
+// (ядро gvcore объектов Qt не создаёт), поэтому границу потоков переходит без
+// блокировок.
+struct PreparedPath {
+    int token = 0;
+    QString text;
+    QString model_path;
+    std::shared_ptr<const gv::PathData> data;
+};
+
+class GcodeToolpath : public QObject
+{
+    Q_OBJECT
+    QML_ELEMENT
+
+    // ---- данные траектории ------------------------------------------------
+    Q_PROPERTY(QVector3D center READ center NOTIFY pathChanged)
+    Q_PROPERTY(double radius READ radius NOTIFY pathChanged)
+    Q_PROPERTY(double moveLength READ moveLength NOTIFY pathChanged)
+    Q_PROPERTY(double minY READ minY NOTIFY pathChanged)
+    Q_PROPERTY(QVariantList stages READ stages NOTIFY pathChanged)
+    Q_PROPERTY(QVariantList collisions READ collisions NOTIFY collisionsChanged)
+    Q_PROPERTY(int collisionCount READ collisionCount NOTIFY collisionsChanged)
+    Q_PROPERTY(QVariantList toolCheck READ toolCheck NOTIFY toolCheckChanged)
+    Q_PROPERTY(int toolIssueCount READ toolIssueCount NOTIFY toolCheckChanged)
+    Q_PROPERTY(QVector3D stockCenter READ stockCenter NOTIFY stockChanged)
+    Q_PROPERTY(QVector3D stockSize READ stockSize NOTIFY stockChanged)
+    Q_PROPERTY(bool hasStock READ hasStock NOTIFY stockChanged)
+    Q_PROPERTY(double holderGauge READ holderGauge NOTIFY pathChanged)
+    Q_PROPERTY(QVariantMap toolInfo READ toolInfo NOTIFY toolInfoChanged)
+    Q_PROPERTY(double toolLength READ toolLength NOTIFY toolInfoChanged)
+    Q_PROPERTY(double toolRadius READ toolRadius NOTIFY toolInfoChanged)
+    Q_PROPERTY(double holderRadius READ holderRadius CONSTANT)
+    Q_PROPERTY(QString modelPath READ modelPath NOTIFY modelPathChanged)
+    Q_PROPERTY(QVector3D partMeshCenter READ partMeshCenter NOTIFY meshChanged)
+    Q_PROPERTY(double partRadius READ partRadius NOTIFY meshChanged)
+    Q_PROPERTY(QQuaternion partRotation READ partRotation NOTIFY partTransformChanged)
+    Q_PROPERTY(QVector3D partPosition READ partPosition NOTIFY partTransformChanged)
+    Q_PROPERTY(QVector3D toolPosition READ toolPosition NOTIFY toolChanged)
+    Q_PROPERTY(double toolX READ toolX WRITE setToolX NOTIFY toolChanged)
+    Q_PROPERTY(double toolY READ toolY WRITE setToolY NOTIFY toolChanged)
+    Q_PROPERTY(double toolZ READ toolZ WRITE setToolZ NOTIFY toolChanged)
+    Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
+    Q_PROPERTY(QVector3D eyeRaw READ eyeRaw NOTIFY eyeChanged)
+
+    // ---- геометрии --------------------------------------------------------
+    Q_PROPERTY(QQuick3DGeometry *rapidGeometry READ rapidGeometry NOTIFY ready)
+    Q_PROPERTY(QQuick3DGeometry *feedGeometry READ feedGeometry NOTIFY ready)
+    Q_PROPERTY(QQuick3DGeometry *partGeometry READ partGeometry NOTIFY meshChanged)
+    Q_PROPERTY(QQuick3DGeometry *partEdges READ partEdges NOTIFY meshChanged)
+    Q_PROPERTY(QQuick3DGeometry *hlrEdges READ hlrEdges NOTIFY meshChanged)
+    Q_PROPERTY(QQuick3DGeometry *hlrTangents READ hlrTangents NOTIFY meshChanged)
+    Q_PROPERTY(QQuick3DGeometry *toolGeometry READ toolGeometry NOTIFY toolInfoChanged)
+    Q_PROPERTY(QQuick3DGeometry *toolOutline READ toolOutline NOTIFY toolInfoChanged)
+    Q_PROPERTY(QQuick3DGeometry *holderGeometry READ holderGeometry CONSTANT)
+    Q_PROPERTY(QQuick3DGeometry *holderOutline READ holderOutline CONSTANT)
+    Q_PROPERTY(QQuick3DGeometry *toolRings READ toolRings NOTIFY toolInfoChanged)
+    Q_PROPERTY(QQuick3DGeometry *holderRings READ holderRings CONSTANT)
+
+public:
+    explicit GcodeToolpath(QObject *parent = nullptr);
+
+    // ---- свойства: данные траектории --------------------------------------
+    QVector3D center() const;
+    double radius() const { return radius_; }
+    double moveLength() const { return move_length_; }
+    double minY() const { return min_y_; }
+    QVariantList stages() const { return stages_; }
+    QVariantList collisions() const { return collisions_; }
+    int collisionCount() const { return int(collisions_.size()); }
+    QVariantList toolCheck() const { return tool_check_; }
+    int toolIssueCount() const;
+    QVector3D stockCenter() const { return stock_center_; }
+    QVector3D stockSize() const { return stock_size_; }
+    bool hasStock() const { return has_stock_; }
+    double holderGauge() const { return 0.0; }
+    QVariantMap toolInfo() const { return tool_info_; }
+    double toolLength() const { return tool_length_; }
+    double toolRadius() const { return tool_radius_; }
+    double holderRadius() const { return holder_radius_; }
+    QString modelPath() const { return model_path_; }
+    QVector3D partMeshCenter() const { return mesh_center_; }
+    double partRadius() const;
+    QQuaternion partRotation() const { return part_rotation_; }
+    QVector3D partPosition() const { return part_position_; }
+    QVector3D toolPosition() const;
+    double toolX() const { return tool_[0]; }
+    double toolY() const { return tool_[1]; }
+    double toolZ() const { return tool_[2]; }
+    void setToolX(double v);
+    void setToolY(double v);
+    void setToolZ(double v);
+    bool loading() const { return loading_; }
+    QVector3D eyeRaw() const { return eye_raw_; }
+
+    // ---- свойства: геометрии ---------------------------------------------
+    QQuick3DGeometry *rapidGeometry() const;
+    QQuick3DGeometry *feedGeometry() const;
+    QQuick3DGeometry *partGeometry() const;
+    QQuick3DGeometry *partEdges() const;
+    QQuick3DGeometry *hlrEdges() const;
+    QQuick3DGeometry *hlrTangents() const;
+    QQuick3DGeometry *toolGeometry() const;
+    QQuick3DGeometry *toolOutline() const;
+    QQuick3DGeometry *holderGeometry() const;
+    QQuick3DGeometry *holderOutline() const;
+    QQuick3DGeometry *toolRings() const;
+    QQuick3DGeometry *holderRings() const;
+
+    // ---- слоты QML --------------------------------------------------------
+    // Показ инструмента этапа index: метаданные UI_TOOL этапа публикуются
+    // (профиль инструмента - следующая часть шага).
+    Q_INVOKABLE void setToolStage(int index);
+    Q_INVOKABLE void analyzeCollisions();
+    Q_INVOKABLE void setMachineTools(const QVariantList &tools);
+    Q_INVOKABLE void setMachineLimits(const QVariantMap &limits);
+    Q_INVOKABLE void runToolCheck();
+    Q_INVOKABLE void refreshTangents(const QVector3D &view_point);
+    // Синхронная загрузка УП (тесты и headless): возвращает число сегментов.
+    Q_INVOKABLE int load_gcode(const QString &filepath);
+    // Загрузка только модели (STEP/STL): заглушка, см. шапку файла.
+    Q_INVOKABLE bool loadModel(const QString &filepath);
+    // Асинхронная загрузка: разбор и буферы на QThreadPool.
+    Q_INVOKABLE int load_gcode_async(const QString &filepath);
+    // Загрузка УП из строки: файла рядом нет, поэтому и модели тоже.
+    Q_INVOKABLE int load_string(const QString &text);
+    Q_INVOKABLE QVector3D sampleAt(double d) const;
+    Q_INVOKABLE bool isRapidAt(double d) const;
+    Q_INVOKABLE double speedAt(double d) const;
+
+signals:
+    void ready();
+    void pathChanged();
+    void modelPathChanged();
+    void meshChanged();
+    void partTransformChanged();
+    void stockChanged();
+    void toolChanged();
+    void loadingChanged();
+    void toolInfoChanged();
+    void collisionsChanged();
+    void toolCheckChanged();
+    void loadFinished();
+    void eyeChanged();
+    void toolpathLoaded(int segment_count);
+    void toolpathReady(const QVariant &payload);
+    void edgesReady(const QVariant &payload);
+    void meshReady(const QVariant &payload);
+
+private:
+    // GUI-поток: применить траекторию, подготовленную рабочим потоком.
+    void onToolpathReady(const QVariant &payload);
+    void applyToolpathData(const std::shared_ptr<const gv::PathData> &data, const QString &text);
+    void applyToolInfo(const QVariantMap &info);
+    void setLoading(bool v);
+    void setModelPath(const QString &path);
+    void setTool(double x, double y, double z);
+    // Пустая обводка: свежий объект, иначе QML не перезаливает буфер.
+    void clearEdges();
+    // Индекс сегмента, содержащего путь d (двоичный поиск по накопленной длине).
+    int indexAt(double d) const;
+    // Предупреждение о заглушке - один раз за прогон на ключ.
+    void warnDeferred(const char *key, const QString &text);
+
+    std::shared_ptr<const gv::PathData> data_;
+
+    ToolpathGeometry *rapid_ = nullptr;
+    ToolpathGeometry *feed_ = nullptr;
+    MeshGeometry *mesh_ = nullptr;
+    ToolpathGeometry *edges_ = nullptr;
+    HLRLineGeometry *hlr_edges_ = nullptr;
+    HLRLineGeometry *hlr_tangents_ = nullptr;
+    ToolGeometry *tool_geo_ = nullptr;
+    ToolGeometry *tool_outline_geo_ = nullptr;
+    ToolGeometry *holder_geo_ = nullptr;
+    ToolGeometry *holder_outline_geo_ = nullptr;
+    ToolpathGeometry *tool_rings_geo_ = nullptr;
+    ToolpathGeometry *holder_rings_geo_ = nullptr;
+
+    QVariantList stages_;                 // [{start, end, label, tool}]
+    QVector<QVariantMap> stage_tools_;    // метаданные UI_TOOL по этапам
+    QVariantList collisions_;             // коллизии оправки с заготовкой
+    QVariantList tool_check_;             // отчёт сверки инструмента
+    QVariantList machine_tools_;          // станочная таблица (заглушка)
+    QVariantMap machine_limits_;          // пределы осей (заглушка)
+    QVariantMap tool_info_;               // разобранный UI_TOOL
+    QString model_path_;                  // сайдкар модели рядом с УП
+
+    // Токены: устаревший результат рабочего потока отбрасывается. Атомарный
+    // счётчик взят по указателю: рабочий поток читает счётчик, а не контроллер
+    // (объект может исчезнуть, пока загрузка идёт), а GUI-поток только пишет.
+    std::shared_ptr<std::atomic<int>> load_token_ = std::make_shared<std::atomic<int>>(0);
+
+    double radius_ = 50.0;
+    double move_length_ = 0.0;
+    double min_y_ = 0.0;
+    double tool_length_ = 0.0;
+    double tool_radius_ = 0.0;
+    double holder_radius_ = 0.0;
+    double tool_[3] = {0.0, 0.0, 0.0};
+    bool loading_ = false;
+    bool has_stock_ = false;
+    QVector3D mesh_center_;
+    QVector3D stock_center_;
+    QVector3D stock_size_;
+    QVector3D eye_raw_;
+    QQuaternion part_rotation_;
+    QVector3D part_position_;
+};
+
+} // namespace gvqml
+
+Q_DECLARE_METATYPE(gvqml::PreparedPath)

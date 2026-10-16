@@ -30,6 +30,14 @@
 #   PySide6:  engine.addImportPath("<repo>/build/edges")
 # Библиотеки OCCT линкуются по импортированным целям TK* из конфиг-пакета, а если их
 # в пакете нет — по переменным OpenCASCADE_INCLUDE_DIR/OpenCASCADE_LIBRARY_DIR.
+#
+# Той же сборкой собирается C++-контроллер вьювера (этап 5.4а): QML-модуль
+# MockBackend 1.0 в <repo>/build/qmlbackend/MockBackend (тип GcodeToolpath и шесть
+# геометрий этапа 3, цель gvqmlbackend). Модуль включает флаг CNC_CPP=controller, а
+# проверка сверяет его буферы и свойства с питоновским эталоном -
+# modules/gcode-viewer/test_controller_cpp.py.
+#   QML:      import MockBackend 1.0
+#   PySide6:  engine.addImportPath("<repo>/build/qmlbackend")
 
 cmake_minimum_required(VERSION 3.16)
 project(cnc_edges_plugin LANGUAGES CXX)
@@ -42,6 +50,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # не совпадает с каталогом сборки плагина.
 set(GV_BRIDGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../build/cpp"
     CACHE PATH "Каталог, куда кладётся gvbridge.dll")
+
+# Каталог QML-модуля MockBackend (C++-контроллер вьювера, этап 5.4а плана
+# переноса). Путь знает питоновский шим gv_cpp.py (qml_backend_import_path):
+# он добавляет его движку как import path и кладёт каталог модуля в PATH.
+set(GV_QMLBACKEND_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../build/qmlbackend"
+    CACHE PATH "Каталог, куда кладётся QML-модуль MockBackend")
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Quick3D)
 find_package(OpenCASCADE REQUIRED)
@@ -334,3 +348,50 @@ if (MSVC)
 endif()
 target_link_libraries(stepledges_probe PRIVATE cncedgesplugin Qt6::Core Qt6::Qml Qt6::Quick3D)
 target_include_directories(stepledges_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
+
+# C++-контроллер вьювера (этап 5.4а плана переноса): QML-модуль MockBackend 1.0 с
+# типом GcodeToolpath и шестью геометриями этапа 3. Заменяет питоновскую
+# регистрацию тех же типов (controller.py, geometry.py) при CNC_CPP=controller:
+# контракт QML - URI, имена типов, свойства, слоты и сигналы - тот же, поэтому
+# GcodeViewer3D.qml не меняется.
+#
+# Модуль, как и CNC.Edges, разделён по образцу Qt: резервная библиотека
+# gvqmlbackend.dll несёт типы и логику (её грузит точка входа), точка входа
+# gvqmlbackendplugin.dll - то, что QML открывает по строке "plugin ..." в qmldir.
+# Каталог модуля лежит не в каталоге сборки, а по предсказуемому пути
+# <repo>/build/qmlbackend/MockBackend: тем же путём его находят точки входа
+# вьювера, которые не знают о генераторе CMake и конфигурации.
+#
+# /fp:precise обязателен так же, как у gvcore и gvqtgeom: буферы траектории
+# сверяются с питоновским эталоном побайтово, а /fp:fast разрешает
+# переассоциацию и слияние умножения со сложением (FMA), что сдвигает младшие биты.
+qt_add_library(gvqmlbackend SHARED)
+set_target_properties(gvqmlbackend PROPERTIES
+    QT_QML_GENERATE_QMLLS_INI OFF
+    # Резервная библиотека лежит рядом с точкой входа: иначе QML её не найдёт.
+    RUNTIME_OUTPUT_DIRECTORY ${GV_QMLBACKEND_DIR}/MockBackend
+)
+qt_add_qml_module(gvqmlbackend
+    URI MockBackend
+    VERSION 1.0
+    # Каталог модуля повторяет URI: <build>/MockBackend. Импорт-путь - <build>.
+    OUTPUT_DIRECTORY ${GV_QMLBACKEND_DIR}/MockBackend
+    SOURCES
+        qmlbackend/gv_qmlgeom.h
+        qmlbackend/gv_qmlgeom.cpp
+        qmlbackend/gv_toolpath.h
+        qmlbackend/gv_toolpath.cpp
+)
+target_include_directories(gvqmlbackend PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+# Сгенерированный qt_add_qml_module файл регистрации типов включает заголовки
+# по имени файла (<gv_qmlgeom.h>, <gv_toolpath.h>): их каталог обязан быть в
+# путях поиска, иначе регистрация молча пропускается (__has_include).
+target_include_directories(gvqmlbackend PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/qmlbackend)
+# Ядро (разбор УП и подготовка траектории) и геометрии этапа 3 (буферы линий).
+target_link_libraries(gvqmlbackend PRIVATE
+    gvcore gvqtgeom Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Quick3D)
+if (MSVC)
+    target_compile_options(gvqmlbackend PRIVATE /utf-8 /MP /fp:precise)
+else()
+    target_compile_options(gvqmlbackend PRIVATE -ffp-contract=off -fno-fast-math)
+endif()

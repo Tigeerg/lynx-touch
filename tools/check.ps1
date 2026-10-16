@@ -143,11 +143,11 @@ if ($pythonReal) {
 }
 
 # 6. Сборка QML-плагина CNC.Edges (StepEdges), C-ABI-моста gvbridge, шима
-#    Qt-геометрий gvqtshim и сверка рёбер STEP, супа, обводки STL, топологии
-#    силуэта, аналитических поверхностей, семейств касательных и буферов всех
-#    шести геометрий Qt с питоновским эталоном. Нужен полный C++-тулчейн:
-#    Qt6, OCCT, cmake, ninja, vcvars64. Тулчейна нет - шаг пропускается, как
-#    остальные инструментальные проверки.
+#    Qt-геометрий gvqtshim, модуля C++-контроллера MockBackend и сверка рёбер STEP,
+#    супа, обводки STL, топологии силуэта, аналитических поверхностей, семейств
+#    касательных, буферов всех шести геометрий Qt и контроллера с питоновским
+#    эталоном. Нужен полный C++-тулчейн: Qt6, OCCT, cmake, ninja, vcvars64.
+#    Тулчейна нет - шаг пропускается, как остальные инструментальные проверки.
 $qtDir = if ($env:CNC_QT_DIR) { $env:CNC_QT_DIR } else { 'C:\Qt\6.12.0\msvc2022_64' }
 $occDir = if ($env:CNC_OCC_DIR) { $env:CNC_OCC_DIR }
           elseif ($env:CONDA_PREFIX) { Join-Path $env:CONDA_PREFIX 'Library' }
@@ -228,8 +228,16 @@ if ($cppReady -and $pythonReal) {
   } else {
     Bad 'нет шима Qt-геометрий build/cpp/gvqtshim.dll'
   }
+  # C++-контроллер вьювера (этап 5.4а): тот же УП грузится питоновским эталоном и
+  # QML-плагином MockBackend (CNC_CPP=controller), сверяются свойства, буферы
+  # траектории и выборка вдоль пути. Та же оговорка: без сборки это красное.
+  if (Test-Path -LiteralPath 'build/qmlbackend/MockBackend/qmldir') {
+    Run-Tool 'test_controller_cpp.py' { python modules/gcode-viewer/test_controller_cpp.py }
+  } else {
+    Bad 'нет QML-модуля контроллера build/qmlbackend/MockBackend/qmldir'
+  }
 } else {
-  Skipped 'сборка плагина CNC.Edges, ядра gvcore, геометрий, STEP, STL, силуэта, касательных и Qt-геометрий: нет тулчейна'
+  Skipped 'сборка плагина CNC.Edges, ядра gvcore, геометрий, STEP, STL, силуэта, касательных, Qt-геометрий и C++-контроллера: нет тулчейна'
 }
 
 Write-Host ''

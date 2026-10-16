@@ -25,6 +25,13 @@ out-параметры и структуры из C-полей, память б�
                         инструмент, контур) собирает C++ (gvgeom через шим
                         gvqtshim.dll, оболочка gv_qtgeom.py); типы QML
                         по-прежнему регистрирует Python и контракт не меняется;
+  CNC_CPP=controller  - контроллер вьювера (тип GcodeToolpath) приходит из
+                        C++-плагина MockBackend (Qt-модуль из cpp/qmlbackend,
+                        каталог build/qmlbackend/MockBackend). Питоновская
+                        регистрация MockBackend при этом не делается: точки
+                        входа не импортируют mock_backend и отдают движку путь
+                        импорта плагина. Модуля нет - флаг ничего не включает,
+                        поведение прежнее;
   CNC_CPP=all         - всё перечисленное;
   пусто/off/0         - всё на Python (умолчание).
 
@@ -56,13 +63,19 @@ ABI_VERSION = 1
 # Слой, который включает значение флага: ключ -> нужные значения CNC_CPP.
 _PART_MODES = {"normals": ("normals", "all"), "step": ("step", "all"),
                "surfaces": ("surfaces", "all"), "silhouette": ("silhouette", "all"),
-               "parser": ("parser", "all"), "qtgeom": ("qtgeom", "all")}
+               "parser": ("parser", "all"), "qtgeom": ("qtgeom", "all"),
+               "controller": ("controller", "all")}
 _OFF_VALUES = ("", "off", "0", "no", "false")
-_MODE_VALUES = ("normals", "step", "surfaces", "silhouette", "parser", "qtgeom", "all")
+_MODE_VALUES = ("normals", "step", "surfaces", "silhouette", "parser", "qtgeom",
+                "controller", "all")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 DEFAULT_LIB = os.path.join(ROOT, "build", "cpp", "gvbridge.dll")
+# QML-модуль C++-контроллера: import path для движка и каталог модуля внутри него
+# (туда цель gvqmlbackend кладёт qmldir, gvqmlbackend.dll и точку входа).
+QML_BACKEND_ENV = "CNC_CPP_QML_DIR"
+DEFAULT_QML_BACKEND = os.path.join(ROOT, "build", "qmlbackend")
 
 # Каталоги поиска DLL (os.add_dll_directory) держим живыми: закрытая ручка
 # выкидывает каталог из путей поиска.
@@ -228,6 +241,46 @@ def qtgeom_enabled() -> bool:
     предупреждение и оставляет питоновский путь).
     """
     return mode() in _PART_MODES["qtgeom"]
+
+
+def controller_enabled() -> bool:
+    """Контроллер вьювера приходит из C++-плагина (CNC_CPP=controller|all).
+
+    Плагин - Qt-модуль MockBackend (cpp/qmlbackend), а не C-ABI-мост: его
+    собирает цель gvqmlbackend в каталог build/qmlbackend/MockBackend. Каталога нет
+    - флаг ничего не включает, и точки входа оставляют питоновскую регистрацию:
+    включённый флаг без сборки давал бы 'module "MockBackend" is not installed'.
+    """
+    return mode() in _PART_MODES["controller"] and os.path.isdir(qml_backend_dir())
+
+
+def qml_backend_import_path() -> str:
+    """Каталог, который движку отдают как import path (внутри лежит MockBackend)."""
+    return os.environ.get(QML_BACKEND_ENV) or DEFAULT_QML_BACKEND
+
+
+def qml_backend_dir() -> str:
+    """Каталог самого модуля MockBackend (там qmldir и точка входа плагина)."""
+    return os.path.join(qml_backend_import_path(), "MockBackend")
+
+
+def prepare_qml_backend_path() -> str:
+    """Каталог модуля MockBackend и DLL OCCT в PATH до создания движка.
+
+    Точка входа Qt-плагина (gvqmlbackendplugin.dll) разрешает зависимости по PATH,
+    а не через os.add_dll_directory - то же условие, что у модуля CNC.Edges
+    (разбор - test_qt_bridge.py, cpp/exp/exp_qml_diag.py). Каталогов сборки нет -
+    PATH не трогаем. Возвращает добавленные каталоги (пустая строка - нечего).
+    """
+    dirs = [d for d in (qml_backend_dir(), occt_bin_dir()) if d and os.path.isdir(d)]
+    if not dirs:
+        return ""
+    current = os.environ.get("PATH", "")
+    have = [p.lower() for p in current.split(os.pathsep) if p]
+    add = [d for d in dirs if d.lower() not in have]
+    if add:
+        os.environ["PATH"] = os.pathsep.join(add + ([current] if current else []))
+    return os.pathsep.join(dirs)
 
 
 def smooth_face_normals(verts, crease_deg: float = 20.0):

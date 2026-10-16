@@ -29,6 +29,27 @@ from PySide6.QtCore import QUrl, QTimer, QObject  # noqa: E402
 from PySide6.QtGui import QGuiApplication  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
 
+import gv_cpp  # noqa: E402
+
+# CNC_CPP=controller: MockBackend приходит из C++-плагина (cpp/qmlbackend), и
+# питоновские модули того же URI тогда не импортируются: движок отказывается от
+# двух регистраций одного имени (см. preview_3d.py).
+CONTROLLER_CPP = gv_cpp.controller_enabled()
+if CONTROLLER_CPP:
+    gv_cpp.prepare_qml_backend_path()
+    # Питоновский бэкенд не импортируется, а он приводил с собой PySide6.QtQuick и
+    # QtQuick3D: без них корень окна обёрнут как QWindow (нет grabWindow), а
+    # QQuick3DGeometry* из свойства partGeometry не читается конвертером PySide6.
+    from PySide6.QtQuick import QQuickWindow  # noqa: E402,F401
+    from PySide6.QtQuick3D import QQuick3DGeometry  # noqa: E402,F401
+else:
+    import gv_qtgeom  # noqa: E402
+
+    # Каталог QML-модуля CNC/Edges и DLL OCCT - в PATH до создания движка (см.
+    # preview_3d.py): без сборки helper ничего не меняет.
+    gv_qtgeom.prepare_dll_path()
+    import mock_backend  # noqa: E402,F401  (регистрирует "MockBackend")
+
 OUT = os.path.join(HERE, "probe_render.png")
 NGC = os.path.abspath(os.path.join(HERE, "..", "..", "data", "cad-testdata", "Test_model.ngc"))
 STEP = os.path.abspath(os.path.join(HERE, "..", "..", "data", "cad-testdata", "Test_model.STEP"))
@@ -71,12 +92,8 @@ def main() -> int:
     app = QGuiApplication(sys.argv)
     engine = QQmlApplicationEngine()
     engine.addImportPath(HERE)
-    import mock_backend  # noqa: F401  (регистрирует "MockBackend")
-    import gv_qtgeom
-
-    # Каталог QML-модуля CNC/Edges и DLL OCCT - в PATH до создания движка (см.
-    # preview_3d.py): без сборки helper ничего не меняет.
-    gv_qtgeom.prepare_dll_path()
+    if CONTROLLER_CPP:
+        engine.addImportPath(gv_cpp.qml_backend_import_path())
 
     done = {"ok": False, "started": False}
     cam = {}

@@ -67,6 +67,12 @@
 # modules/gcode-viewer/gv_qtgeom.py ставит их буферы в геометрии контроллера при
 # CNC_CPP=qtgeom|all. Регистрация QML-типов остаётся за Python.
 #
+# Той же сборкой собирается C++-контроллер вьювера (этап 5.4а плана переноса):
+# QML-модуль MockBackend 1.0 (цель gvqmlbackend) в <repo>/build/qmlbackend/
+# MockBackend - тип GcodeToolpath и шесть геометрий этапа 3. При CNC_CPP=controller
+# он заменяет питоновскую регистрацию тех же типов; проверка сверяет его свойства и
+# буферы с питоновским эталоном - modules/gcode-viewer/test_controller_cpp.py.
+#
 # Код возврата: 0 — собрано, плагин на месте; 1 — инструмент не найден или ошибка сборки.
 
 [CmdletBinding()]
@@ -276,6 +282,19 @@ if (Test-Path -LiteralPath $shim) {
     Write-Host ("build-viewer: шим Qt-геометрий " + $shim)
 } else {
     Fail "шим эксперимента не собран: нет $shim"
+}
+
+# QML-модуль C++-контроллера (этап 5.4а): каталог модуля - <repo>/build/qmlbackend/
+# MockBackend, импорт-путь - <repo>/build/qmlbackend. Оба знает питоновский шим
+# (gv_cpp.qml_backend_import_path), поэтому каталог и не совпадает с каталогом сборки.
+$backendImport = Join-Path $root 'build\qmlbackend'
+$backendModule = Join-Path $backendImport 'MockBackend'
+$backendQmldir = Join-Path $backendModule 'qmldir'
+if (Test-Path -LiteralPath $backendQmldir) {
+    Write-Host ("build-viewer: модуль MockBackend " + $backendModule)
+    Write-Host ("build-viewer: import path контроллера: " + $backendImport)
+} else {
+    Fail "модуль MockBackend не собран: нет $backendQmldir"
 }
 
 if ($RunProbe) {

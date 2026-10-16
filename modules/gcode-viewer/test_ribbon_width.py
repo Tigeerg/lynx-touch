@@ -29,12 +29,26 @@ from PySide6.QtGui import QGuiApplication  # noqa: E402
 from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
 from PySide6.QtQuick import QQuickWindow  # noqa: E402
 
-import mock_backend  # noqa: E402
-import gv_qtgeom  # noqa: E402
+import gv_cpp  # noqa: E402
 
-# Каталог QML-модуля CNC/Edges и DLL OCCT - в PATH до создания движка (см.
-# preview_3d.py): без сборки helper ничего не меняет.
-gv_qtgeom.prepare_dll_path()
+# CNC_CPP=controller: MockBackend приходит из C++-плагина (cpp/qmlbackend), и
+# питоновские модули того же URI тогда не импортируются: движок отказывается от
+# двух регистраций одного имени (см. preview_3d.py). Класс ленты контура берётся
+# из слоя геометрий: QML этого теста MockBackend не импортирует, поэтому типы,
+# которые geometry.py регистрирует при импорте, здесь никому не мешают.
+CONTROLLER_CPP = gv_cpp.controller_enabled()
+if CONTROLLER_CPP:
+    gv_cpp.prepare_qml_backend_path()
+    from geometry import HLRLineGeometry  # noqa: E402
+else:
+    import gv_qtgeom  # noqa: E402
+
+    # Каталог QML-модуля CNC/Edges и DLL OCCT - в PATH до создания движка (см.
+    # preview_3d.py): без сборки helper ничего не меняет.
+    gv_qtgeom.prepare_dll_path()
+    import mock_backend  # noqa: E402
+
+    HLRLineGeometry = mock_backend.HLRLineGeometry
 
 WIDTH_PX = 2.0
 TOLERANCE_PX = 0.4
@@ -96,7 +110,7 @@ def _section_width(img, axis, at):
 
 def main() -> int:
     app = QGuiApplication(sys.argv)
-    geom = mock_backend.HLRLineGeometry()
+    geom = HLRLineGeometry()
     # вертикальная линия слева от центра, горизонтальная - выше центра; обе
     # короче видимой области, чтобы концы не выходили из кадра
     # 62.13 мм * 1.6095 px/мм (fov 45, dist 300, h=400) = ровно 100 px:

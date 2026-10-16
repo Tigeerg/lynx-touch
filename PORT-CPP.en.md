@@ -227,6 +227,21 @@ before, Python read it a second time for the surfaces. Numbers on the developmen
 per frame 0.56 -> 0.48 ms, tangents 0.60 -> 0.14 ms. Still to do in stage 5: the Qt geometries and the
 controller — a separate step that must verify loading the Qt plugin into the PySide6 process.
 
+**The Qt geometries are wired in (stage 5, part 3).** The QML type registration stayed in Python while
+`gvgeom` builds the buffers through the `gvqtshim` shim; the flag value is `CNC_CPP=qtgeom`. The buffers of
+all six geometries matched the Python ones inside the live PySide6 process. The key point was verified too:
+`Qt6Core.dll` resolves by name to the PySide6 Qt, ordinary SHARED libraries with Qt objects load
+unconditionally, and the QML plugin needs the module directory plus `OCCT/bin` in `PATH` before the engine is
+created.
+
+**The C++ controller is in place (stage 5, part 4a).** The `MockBackend` 1.0 plugin (`cpp/qmlbackend`)
+provides the same geometry types and the C++ class `GcodeToolpath`: NC loading, buffers, properties, sampling
+slots and signals work and match the Python path (70914 segments; buffers and `center/radius/moveLength/minY`
+bit for bit). Async uses `QThreadPool` and an atomic token instead of `threading`. The model, the outline and
+silhouette, the tool and holder, the stock, the collisions and `toolCheck` are stubs for now and log a
+warning. It is enabled by `CNC_CPP=controller`; the Python registration is skipped in that mode, otherwise QML
+does not load at all.
+
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.
 

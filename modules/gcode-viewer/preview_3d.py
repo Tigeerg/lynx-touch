@@ -5,8 +5,9 @@
 Usage:
     python preview_3d.py [path/to/file.ngc]
 
-Registers the MockBackend QML module from mock_backend.py, loads the window,
-optionally overrides the toolpath from a .ngc file and shows it.
+Registers the MockBackend QML module (mock_backend.py, or the C++ plugin
+cpp/qmlbackend when CNC_CPP=controller), loads the window, optionally overrides
+the toolpath from a .ngc file and shows it.
 
 Headless check:
     QT_QPA_PLATFORM=offscreen python preview_3d.py
@@ -22,14 +23,27 @@ from PySide6.QtQml import QQmlApplicationEngine
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-import mock_backend  # noqa: E402,F401  (registers "MockBackend" via @QmlElement)
-import gv_qtgeom  # noqa: E402
+import gv_cpp  # noqa: E402
 
-# Каталог QML-модуля CNC/Edges и DLL OCCT - в PATH до создания движка: точка
-# входа Qt-плагина ищет свои зависимости по PATH, а не через add_dll_directory
-# (разбор - test_qt_bridge.py, cpp/exp/exp_qml_diag.py). Каталогов сборки нет -
-# PATH не трогаем: на машине без тулчейна поведение прежнее.
-gv_qtgeom.prepare_dll_path()
+# CNC_CPP=controller: MockBackend приходит из C++-плагина (cpp/qmlbackend, цель
+# gvqmlbackend). Питоновские модули того же URI тогда не импортируются: движок
+# отказывается от двух регистраций одного имени ("Namespace 'MockBackend' has
+# already been used for type registration"), а питоновские геометрии этапа 3
+# C++-контроллеру не нужны. Каталог модуля обязан попасть в PATH до создания
+# движка: точка входа Qt-плагина ищет зависимости по PATH, а не через
+# add_dll_directory (разбор - test_qt_bridge.py, cpp/exp/exp_qml_diag.py). Флаг без
+# собранного модуля ничего не подменяет - путь прежний, питоновский.
+CONTROLLER_CPP = gv_cpp.controller_enabled()
+if CONTROLLER_CPP:
+    gv_cpp.prepare_qml_backend_path()
+else:
+    import gv_qtgeom  # noqa: E402
+
+    # Каталог QML-модуля CNC/Edges и DLL OCCT - в PATH до создания движка (см.
+    # выше). Каталогов сборки нет - PATH не трогаем: на машине без тулчейна
+    # поведение прежнее.
+    gv_qtgeom.prepare_dll_path()
+    import mock_backend  # noqa: E402,F401  (регистрирует "MockBackend" @QmlElement)
 
 
 def main() -> int:
@@ -41,6 +55,8 @@ def main() -> int:
 
     engine = QQmlApplicationEngine()
     engine.addImportPath(HERE)
+    if CONTROLLER_CPP:
+        engine.addImportPath(gv_cpp.qml_backend_import_path())
     engine.warnings.connect(lambda m: print("[QML warning]", m, file=sys.stderr))
 
     engine.load(QUrl.fromLocalFile(os.path.join(HERE, "preview_3d.qml")))

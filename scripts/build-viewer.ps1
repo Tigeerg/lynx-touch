@@ -21,6 +21,11 @@
 # <build>/gcode_probe.exe; сверку ядра с эталоном ведёт
 # modules/gcode-viewer/test_gcode_core.py.
 #
+# Той же сборкой собираются геометрии Qt Quick 3D (цель gvqtgeom) и их пробник
+# <build>/geometry_probe.exe; входные данные для него пишет проверка
+# modules/gcode-viewer/test_geometry_core.py, поэтому отдельного ключа запуска у
+# скрипта нет - он только следит, что пробник собран.
+#
 # Код возврата: 0 — собрано, плагин на месте; 1 — инструмент не найден или ошибка сборки.
 
 [CmdletBinding()]
@@ -172,6 +177,13 @@ if (Test-Path -LiteralPath $coreProbe) {
     Write-Host ("build-viewer: пробник ядра " + $coreProbe)
 } else {
     Fail "ядро не собрано: нет $coreProbe"
+}
+
+$geomProbe = Join-Path $BuildDir 'geometry_probe.exe'
+if (Test-Path -LiteralPath $geomProbe) {
+    Write-Host ("build-viewer: пробник геометрий " + $geomProbe)
+} else {
+    Fail "геометрии не собраны: нет $geomProbe"
 }
 
 if ($RunProbe) {

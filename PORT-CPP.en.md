@@ -179,6 +179,12 @@ produce the same `sha256`, and the vertex streams are equal byte for byte; the `
 and the `test_gcode_core.py` check do the comparison. The core is not wired into the backend yet: it is a
 parallel implementation, switched by a flag in stage 3/5.
 
+**The Qt geometries (stage 3) are in place.** All six `geometry.py` geometries are ported to
+`cpp/qt/gv_geometry` (target `gvqtgeom`) with the same buffer formats, attributes and vertex order. The
+`cpp/geometry_probe.cpp` probe and the `test_geometry_core.py` check compare the buffers with the Python
+ones byte for byte — 14 cases match, including empty geometries and the float32 arithmetic of the ribbons.
+The classes are not QML types yet and are not wired into the controller: switching the backend is stage 5.
+
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.
 

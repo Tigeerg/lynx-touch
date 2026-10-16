@@ -47,6 +47,9 @@
 | `modules/gcode-viewer/cpp/core/gv_types.h`, `text_util.h` / `.cpp` | C++-ядро: типы границ модулей и строковые помощники |
 | `modules/gcode-viewer/cpp/gcode_probe.cpp` | Пробник ядра: буферы и этапы УП, `sha256` против оракула |
 | `modules/gcode-viewer/test_gcode_core.py` | Headless-сверка C++-ядра с `parse_gcode` и оракулом (плюс ветки, которых нет в Test_model) |
+| `modules/gcode-viewer/cpp/qt/gv_geometry.h` / `.cpp` | C++-геометрии Qt Quick 3D: траектория, рёбра HLR, сетка, оси, меш, инструмент |
+| `modules/gcode-viewer/cpp/geometry_probe.cpp` | Пробник геометрий: дампы буферов и `sha256` против питоновских геометрий |
+| `modules/gcode-viewer/test_geometry_core.py` | Headless-сверка буферов C++-геометрий с `geometry.py` побайтово |
 | `modules/gcode-viewer/oracle_dump.py` | Оракул промежуточных результатов: эталон для переноса на C++ |
 | `modules/gcode-viewer/test_ribbon_width.py` | Живая проверка толщины ленты (2 px по вертикали и горизонтали) |
 | `modules/gcode-viewer/test_solid_skin.py` | Живая проверка: сплошная кожа закрывает скрытые рёбра (без просвечивания) |
@@ -54,11 +57,33 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.15.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.16.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.16.0 — 2026-10-16
+
+- **Геометрии Qt Quick 3D на C++ (этап 3 плана переноса).** Все шесть геометрий `geometry.py` перенесены
+  в `cpp/qt/gv_geometry.{h,cpp}` (цель `gvqtgeom`): `ToolpathGeometry` (stride 20), `HLRLineGeometry`
+  (stride 48), `GridGeometry` (28), `AxisArrowGeometry` (12), `MeshGeometry` и `ToolGeometry` (24). Форматы
+  буферов, атрибуты, порядок вершин и габариты сохранены как есть — это замороженный контракт QML и
+  шейдеров.
+- **Совпадение побайтово на 14 случаях.** Пробник `cpp/geometry_probe.cpp` пишет состояние и буферы
+  геометрий, `test_geometry_core.py` сверяет их с живыми питоновскими геометриями: буфер, stride, тип
+  примитива, атрибуты и смещения, габарит (по битам float32) и число вершин совпадают. Покрыты пустые
+  геометрии, ленты контура с float32-арифметикой (включая нулевой отрезок), меш с вырожденным
+  треугольником и тело вращения (48 и 3 деления, обе ветки веера). Проверка не слепая: контрольная
+  подмена `feather 0.45 -> 0.5` даёт расхождение ровно на случае сетки.
+- **Что тронуто:** `cpp/CMakeLists.txt`, `scripts/build-viewer.ps1`, `tools/check.ps1`; добавлены
+  `cpp/qt/gv_geometry.{h,cpp}`, `cpp/geometry_probe.cpp`, `test_geometry_core.py`. Питоновские модули,
+  QML, шейдеры и оракул не менялись, `CACHE_VER` не поднимался.
+- **Остаток:** классы пока не QML-типы и не подключены к контроллеру (переключение бэкенда — этап 5);
+  ветка `MeshGeometry.set_triangles` со списком точек (без numpy) не перенесена — модели приходят
+  массивом.
+- **Проверки.** Сторож гоняет 66 проверок, зелёный; этапы 1-2 (плагин, сегменты, ядро) целы, оракул без
+  изменений (22 записи). Версия 0.15.0 -> 0.16.0.
 
 ### 0.15.0 — 2026-10-16
 

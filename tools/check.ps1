@@ -184,6 +184,11 @@ if ($cppReady -and $pythonReal) {
   } else {
     Bad 'нет пробника ядра build/edges/gcode_probe.exe'
   }
+  if (Test-Path -LiteralPath 'build/edges/geometry_probe.exe') {
+    Run-Tool 'test_geometry_core.py' { python modules/gcode-viewer/test_geometry_core.py }
+  } else {
+    Bad 'нет пробника геометрий build/edges/geometry_probe.exe'
+  }
 } else {
   Skipped 'сборка плагина CNC.Edges, ядра gvcore и сверка с эталоном: нет Qt6/OCCT/cmake/ninja/vcvars64'
 }

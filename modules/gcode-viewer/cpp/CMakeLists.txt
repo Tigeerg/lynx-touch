@@ -59,6 +59,36 @@ if (MSVC)
 endif()
 target_link_libraries(gcode_probe PRIVATE gvcore)
 
+# Геометрии Qt Quick 3D (этап 3 плана переноса): зеркало modules/gcode-viewer/geometry.py
+# с теми же форматами буферов (stride 20 и 48 - контракт QML и шейдеров
+# toolpath.*/stepledges.*). Цель отдельная от плагина: геометрии сверяются с
+# питоновским эталоном побайтово, а в QML-модуль их подключает этап 5.
+#
+# /fp:precise обязателен так же, как у gvcore: часть чисел геометрий (нормали
+# меша, ленты контура) Python считает в float32, и переассоциация с FMA сдвинула
+# бы младшие биты буфера.
+add_library(gvqtgeom STATIC qt/gv_geometry.cpp)
+target_include_directories(gvqtgeom PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(gvqtgeom PUBLIC Qt6::Core Qt6::Gui Qt6::Quick3D)
+if (MSVC)
+    target_compile_options(gvqtgeom PRIVATE /utf-8 /fp:precise)
+else()
+    target_compile_options(gvqtgeom PRIVATE -ffp-contract=off -fno-fast-math)
+endif()
+
+# Пробник геометрий: отдельная цель, в плагин не входит. Строит каждую геометрию
+# на входных данных, которые пишет питоновская проверка, печатает состояние и
+# sha256 буфера и пишет буферы дампом; сверку ведёт
+# modules/gcode-viewer/test_geometry_core.py.
+add_executable(geometry_probe geometry_probe.cpp)
+set_target_properties(geometry_probe PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+if (MSVC)
+    target_compile_options(geometry_probe PRIVATE /utf-8)
+endif()
+target_link_libraries(geometry_probe PRIVATE gvqtgeom Qt6::Core Qt6::Gui Qt6::Quick3D)
+
 qt_standard_project_setup()
 if(COMMAND qt_policy)
     # Префикс ресурсов QML-модуля ':/qt/qml/' — значение по умолчанию для новых проектов.

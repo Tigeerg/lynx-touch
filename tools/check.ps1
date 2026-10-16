@@ -133,6 +133,10 @@ if ($pythonReal) {
   Run-Tool 'test_normals_orientation.py' { python modules/gcode-viewer/test_normals_orientation.py }
   Run-Tool 'test_outline_segments.py' { python modules/gcode-viewer/test_outline_segments.py }
   Run-Tool 'test_module_names.py' { python modules/gcode-viewer/test_module_names.py }
+  Run-Tool 'test_gcode_parser.py' { python modules/gcode-viewer/test_gcode_parser.py }
+  Run-Tool 'test_drill_cycles.py' { python modules/gcode-viewer/test_drill_cycles.py }
+  Run-Tool 'test_tool_profile.py' { python modules/gcode-viewer/test_tool_profile.py }
+  Run-Tool 'test_collision.py' { python modules/gcode-viewer/test_collision.py }
   Run-Tool 'oracle_dump.py' { python modules/gcode-viewer/oracle_dump.py }
 } else {
   Skipped 'python: py_compile, offscreen-прогоны, test_tangent_policy.py, test_normals_golden.py'

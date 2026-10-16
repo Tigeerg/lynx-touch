@@ -182,7 +182,6 @@ Code against the CLAUDE.md rules:
 - no type annotations.
 
 Checks:
-- no test for the G-code parser, drill cycles, tool profile, or collisions;
 - tests depend on private functions (fragile under refactoring);
 - `tools/check.ps1` (`pnpm guard`) does not run `bench_viewer.py` — performance regressions are not caught.
 

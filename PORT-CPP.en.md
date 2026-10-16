@@ -146,6 +146,13 @@ unchanged.** Every stage leaves the Python backend working; switching is a flag.
 | **5** | The `GcodeToolpath` controller: properties, slots, signals 1:1, async via `QThreadPool`, tokens via atomics | `smoke_test_qml`, `test_solid_skin`, `render_probe`, `preview_3d` (offscreen and live window), not one `[QML warning]` | Back to the Python type registration |
 | **6** | Periphery: cache, `_scan_collisions`, `_tool_check_report`, STL outline, `GridGeometry` and `AxisArrowGeometry` | As a leftover | — |
 
+**The oracle (stage 0) is ready.** `modules/gcode-viewer/oracle_dump.py` computes the intermediate arrays of
+the Python path (STEP: mesh, edges, normals; silhouette topology; silhouette at five fixed eyes; STL: soup and
+outline) and compares their `sha256` with the `oracle_manifest.json` manifest. Only the manifest is in the
+repository - the arrays are tens of megabytes and are produced by running the script (`--write` rewrites the
+manifest deliberately, together with the change that altered the result). The check runs in the guard: 17
+entries, a mismatch means an intermediate result has changed.
+
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.
 

@@ -50,6 +50,11 @@
 | `modules/gcode-viewer/cpp/qt/gv_geometry.h` / `.cpp` | C++-геометрии Qt Quick 3D: траектория, рёбра HLR, сетка, оси, меш, инструмент |
 | `modules/gcode-viewer/cpp/geometry_probe.cpp` | Пробник геометрий: дампы буферов и `sha256` против питоновских геометрий |
 | `modules/gcode-viewer/test_geometry_core.py` | Headless-сверка буферов C++-геометрий с `geometry.py` побайтово |
+| `modules/gcode-viewer/cpp/occt/step_import.h` / `.cpp` | C++-импорт STEP: B-rep, тесселяция, ориентация оболочки (OCCT SDK) |
+| `modules/gcode-viewer/cpp/core/normals.h` / `.cpp` | C++-нормали кожи: сварка, кластеризация по крейзу, среднее по площади |
+| `modules/gcode-viewer/cpp/sha256.h` | Общий SHA-256 для пробников (вынесен из `gcode_probe.cpp`) |
+| `modules/gcode-viewer/cpp/step_probe.cpp` | Пробник STEP: суп вершин, треугольники, нормали, `sha256` |
+| `modules/gcode-viewer/test_step_core.py` | Headless-сверка STEP-тесселяции и нормалей C++ с `load_step_model` и оракулом |
 | `modules/gcode-viewer/oracle_dump.py` | Оракул промежуточных результатов: эталон для переноса на C++ |
 | `modules/gcode-viewer/test_ribbon_width.py` | Живая проверка толщины ленты (2 px по вертикали и горизонтали) |
 | `modules/gcode-viewer/test_solid_skin.py` | Живая проверка: сплошная кожа закрывает скрытые рёбра (без просвечивания) |
@@ -57,11 +62,32 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.16.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.17.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.17.0 — 2026-10-16
+
+- **STEP-тесселяция и нормали кожи на C++ (этап 4, часть 1).** Импорт STEP перенесён на OCCT SDK напрямую
+  (`cpp/occt/step_import.{h,cpp}`, цель `gvstep`): чтение B-rep, `BRepMesh_IncrementalMesh` (линейный 0.05,
+  угловой 0.1, параллельно), обход граней с локацией и разворотом, ориентация оболочки наружу. Нормали
+  кожи перенесены в `cpp/core/normals.{h,cpp}`: сварка 0.001 мм, сид по наибольшей площади, кластеризация
+  20 градусов, среднее по площади.
+- **Совпадение бит-в-бит.** `step.verts` [136194,3], `step.tri` [45398,3,3], `step.normals` [45398,3,3] —
+  `sha256` C++ равен эталону `load_step_model` и оракулу, расхождение 0 из 408582 элементов нормалей.
+  Порядок суммирования numpy был измерен (аккумуляция по столбцам, плоская редукция буферами по 8192 с
+  парным суммированием, `np.round` как пол-к-чётному) и вписан скалярно; Eigen осознанно не применялся —
+  переассоциация ломает бит-в-бит. Проверка не слепая: подмена байта в дампе нормалей даёт ровно 1
+  расхождение из 408582.
+- **Что тронуто:** `cpp/CMakeLists.txt`, `scripts/build-viewer.ps1`, `tools/check.ps1`, `cpp/gcode_probe.cpp`
+  (общий `sha256.h`); добавлены `cpp/occt/step_import.{h,cpp}`, `cpp/core/normals.{h,cpp}`, `cpp/sha256.h`,
+  `cpp/step_probe.cpp`, `test_step_core.py`. Питоновские модули, QML, шейдеры и оракул не менялись.
+- **Остаток этапа 4:** аналитические поверхности (`step_surfaces`), STL-импорт, топология силуэта, обводка
+  STL — это части 2 и 3. Версия OCCT для бит-в-бит одна и та же (8.0.1) у локального SDK и `cadquery-ocp`.
+- **Проверки.** Сторож гоняет 67 проверок, зелёный; этапы 1-3 целы, оракул без изменений (22 записи).
+  Версия 0.16.0 -> 0.17.0.
 
 ### 0.16.0 — 2026-10-16
 

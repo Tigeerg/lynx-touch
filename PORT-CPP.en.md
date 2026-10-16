@@ -185,6 +185,13 @@ parallel implementation, switched by a flag in stage 3/5.
 ones byte for byte — 14 cases match, including empty geometries and the float32 arithmetic of the ribbons.
 The classes are not QML types yet and are not wired into the controller: switching the backend is stage 5.
 
+**The STEP tessellation and skin normals (stage 4, part 1) are in place.** The STEP import is ported to the
+OCCT SDK directly (`cpp/occt/step_import`, target `gvstep`), the skin normals live in `cpp/core/normals`.
+The match is bit-exact: `step.verts` [136194,3], `step.tri` [45398,3,3] and `step.normals` [45398,3,3]
+produce the same `sha256` as the reference and the oracle; the `cpp/step_probe.cpp` probe and
+`test_step_core.py` do the comparison. Still to do in stage 4: `step_surfaces`, STL, the silhouette
+topology and the STL outline.
+
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.
 

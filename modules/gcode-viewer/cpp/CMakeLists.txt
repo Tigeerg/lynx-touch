@@ -1,6 +1,8 @@
 # QML-плагин "CNC.Edges" — StepEdges: рёбра B-Rep модели как Lines-геометрия.
-# Рядом собирается чистое ядро gvcore (парсер G-кода, теги UI_*) и его пробник
-# gcode_probe — они в плагин не входят и Qt не требуют.
+# Рядом собирается чистое ядро gvcore (парсер G-кода, теги UI_*, crease-aware
+# нормали) и его пробник gcode_probe — они в плагин не входят и Qt не требуют.
+# Там же слой STEP и нормалей gvstep (этап 4a плана переноса) с пробником
+# step_probe: они читают OCCT напрямую, Qt им не нужен.
 #
 # Сборка (скрипт делает то же самое):
 #   powershell -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
@@ -28,14 +30,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Quick3D)
 find_package(OpenCASCADE REQUIRED)
 
-# Чистое ядро gvcore (этап 2 плана переноса): парсер G-кода, теги UI_*. Ни Qt, ни
-# OCCT не нужны - только стандартная библиотека. Цель отдельная от плагина, чтобы
-# ядро можно было собрать и сверить с Python без Qt.
+# Чистое ядро gvcore (этап 2 плана переноса): парсер G-кода, теги UI_*, crease-aware
+# нормали кожи (этап 4a). Ни Qt, ни OCCT не нужны - только стандартная библиотека.
+# Цель отдельная от плагина, чтобы ядро можно было собрать и сверить с Python без Qt.
 #
 # /fp:precise обязателен: ядро сверяется с Python побайтово, а /fp:fast разрешает
 # переассоциацию и слияние умножения со сложением (FMA), что сдвигает результат.
 add_library(gvcore STATIC
     core/gcode_parser.cpp
+    core/normals.cpp
     core/path_prep.cpp
     core/text_util.cpp
     core/ui_tags.cpp
@@ -88,6 +91,51 @@ if (MSVC)
     target_compile_options(geometry_probe PRIVATE /utf-8)
 endif()
 target_link_libraries(geometry_probe PRIVATE gvqtgeom Qt6::Core Qt6::Gui Qt6::Quick3D)
+
+# STEP и crease-aware нормали (этап 4a плана переноса): зеркало
+# modules/gcode-viewer/step_import.py и normals.py на OCCT SDK напрямую (нормали
+# лежат в gvcore - они от Qt и OCCT не зависят). Цель отдельная от плагина:
+# слой сверяется с питоновским эталоном побитово, а в бэкенд его подключит этап 5.
+# Qt сюда не тянется: STEP-слой читает OCCT, больше ему ничего не нужно.
+#
+# /fp:precise обязателен так же, как у gvcore и gvqtgeom: и суп вершин, и
+# нормали сверяются с Python бит-в-бит, а /fp:fast разрешает переассоциацию и
+# слияние умножения со сложением (FMA), что сдвигает младшие биты.
+add_library(gvstep STATIC occt/step_import.cpp)
+target_include_directories(gvstep PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(gvstep PUBLIC gvcore)
+if (MSVC)
+    target_compile_options(gvstep PRIVATE /utf-8 /fp:precise)
+else()
+    target_compile_options(gvstep PRIVATE -ffp-contract=off -fno-fast-math)
+endif()
+
+# OpenCASCADE: TKMesh - тесселяция (BRepMesh_IncrementalMesh, Poly_Triangulation),
+# TKDESTEP/TKXSBase - чтение STEP, TKBRep/TKTopAlgo - обход топологии.
+set(OCC_STEP_NEEDED TKernel TKMath TKTopAlgo TKGeomBase TKBRep TKMesh TKDESTEP TKXSBase)
+foreach(lib IN LISTS OCC_STEP_NEEDED)
+    if (TARGET OpenCASCADE::${lib})
+        target_link_libraries(gvstep PRIVATE OpenCASCADE::${lib})
+    else()
+        target_link_libraries(gvstep PRIVATE ${lib})
+    endif()
+endforeach()
+target_include_directories(gvstep PRIVATE ${OpenCASCADE_INCLUDE_DIR})
+
+# Пробник STEP и нормалей: отдельная цель, в плагин не входит. Печатает число
+# вершин и треугольников и sha256 вершин, треугольников и нормалей в тех же
+# сериализациях, что Python, и пишет те же массивы дампом; сверку ведёт
+# modules/gcode-viewer/test_step_core.py.
+add_executable(step_probe step_probe.cpp)
+set_target_properties(step_probe PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+if (MSVC)
+    target_compile_options(step_probe PRIVATE /utf-8)
+endif()
+target_link_libraries(step_probe PRIVATE gvstep)
+# Заголовок слоя включает TopoDS_Shape.hxx: инклюды OCCT у gvstep приватные.
+target_include_directories(step_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
 qt_standard_project_setup()
 if(COMMAND qt_policy)

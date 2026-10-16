@@ -3,6 +3,7 @@
 # Запуск:  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunProbe
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunCoreProbe
+#          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunStepProbe
 #
 # Генератор — Ninja, конфигурация Release, компилятор MSVC. Пути SDK берутся из
 # окружения с умолчаниями: CNC_QT_DIR (Qt6 с Quick3D), CNC_OCC_DIR (OCCT + Eigen),
@@ -26,6 +27,10 @@
 # modules/gcode-viewer/test_geometry_core.py, поэтому отдельного ключа запуска у
 # скрипта нет - он только следит, что пробник собран.
 #
+# Той же сборкой собирается слой STEP и crease-aware нормалей (цель gvstep, пробник
+# <build>/step_probe.exe, этап 4a плана переноса); сверку с эталоном ведёт
+# modules/gcode-viewer/test_step_core.py. Qt этой цели не нужен: только OCCT.
+#
 # Код возврата: 0 — собрано, плагин на месте; 1 — инструмент не найден или ошибка сборки.
 
 [CmdletBinding()]
@@ -40,6 +45,8 @@ param(
     [switch]$RunProbe,
     # Дополнительно прогнать пробник ядра на data/cad-testdata/Test_model.ngc.
     [switch]$RunCoreProbe,
+    # Дополнительно прогнать пробник STEP и нормалей на data/cad-testdata/Test_model.STEP.
+    [switch]$RunStepProbe,
     # Только конфигурирование, без сборки.
     [switch]$ConfigureOnly
 )
@@ -186,6 +193,13 @@ if (Test-Path -LiteralPath $geomProbe) {
     Fail "геометрии не собраны: нет $geomProbe"
 }
 
+$stepProbe = Join-Path $BuildDir 'step_probe.exe'
+if (Test-Path -LiteralPath $stepProbe) {
+    Write-Host ("build-viewer: пробник STEP и нормалей " + $stepProbe)
+} else {
+    Fail "слой STEP и нормалей не собран: нет $stepProbe"
+}
+
 if ($RunProbe) {
     if (-not (Test-Path -LiteralPath $probe)) { Fail "пробника нет: $probe" }
     if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
@@ -201,6 +215,17 @@ if ($RunCoreProbe) {
     New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
     & $coreProbe $probeNgc $dumpDir
     if ($LASTEXITCODE -ne 0) { Fail "пробник ядра вернул $LASTEXITCODE" }
+}
+
+if ($RunStepProbe) {
+    if (-not (Test-Path -LiteralPath $stepProbe)) { Fail "пробника нет: $stepProbe" }
+    if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
+    # Пробнику нужны только DLL OCCT: Qt в цели gvstep нет.
+    $env:PATH = "$OccDir\bin;$env:PATH"
+    $dumpDir = Join-Path $env:TEMP 'gvstep_build_probe'
+    New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
+    & $stepProbe $probeStep $dumpDir
+    if ($LASTEXITCODE -ne 0) { Fail "пробник STEP вернул $LASTEXITCODE" }
 }
 
 Write-Host 'build-viewer: OK' -ForegroundColor Green

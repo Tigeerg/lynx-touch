@@ -13,6 +13,15 @@
 | `modules/gcode-viewer/gcode_parser.py` | Парсер УП: перемещения, дуги, циклы сверления, допуски и скорости |
 | `modules/gcode-viewer/ui_tags.py` | Теги постпроцессора `UI_*`: поворот, начало, матрица, инструмент, оправка, заготовка, этапы |
 | `modules/gcode-viewer/gv_common.py` | Общий низ слоёв: numpy и замок OCCT |
+| `modules/gcode-viewer/cache_store.py` | Дисковый кэш подготовленных данных: траектория, меш, обводка |
+| `modules/gcode-viewer/stl_import.py` | Импорт STL (бинарный и ASCII) в суп треугольников |
+| `modules/gcode-viewer/packing.py` | Упаковка отрезков и дуг в буферы геометрии |
+| `modules/gcode-viewer/step_import.py` | Импорт STEP: B-rep, тесселяция, истинные рёбра, ориентация оболочки |
+| `modules/gcode-viewer/step_surfaces.py` | Аналитические поверхности вращения из STEP: цилиндры и конусы |
+| `modules/gcode-viewer/tangents.py` | Аналитические касательные контура (семейства цилиндров и конусов) |
+| `modules/gcode-viewer/silhouette.py` | Силуэт по топологии меша: сварка вершин, горизонт поверхности |
+| `modules/gcode-viewer/normals.py` | Crease-aware нормали кожи |
+| `modules/gcode-viewer/outline.py` | Обводка меша: рёбра по двугранному углу и склейка цепочек |
 | `modules/gcode-viewer/test_tangent_policy.py` | Headless-проверка политики касательного контура на STEP-модели |
 | `modules/gcode-viewer/test_normals_orientation.py` | Headless-проверка ориентации нормалей кожи (наружу по обходу оболочки) |
 | `modules/gcode-viewer/test_outline_segments.py` | Headless-проверка контура меша: звенья склеены, покрытие не потеряно |
@@ -23,11 +32,28 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.13.7` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.13.8` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.13.8 — 2026-10-16
+
+- **Продолжено разбиение монолита (этап 0 плана переноса на C++).** Вынесены девять слоёв: `cache_store.py`
+  (дисковый кэш траектории, меша и обводки), `stl_import.py`, `packing.py` (упаковка отрезков и дуг),
+  `step_import.py` (B-rep, тесселяция, истинные рёбра и ориентация оболочки), `step_surfaces.py`
+  (аналитические цилиндры и конусы), `tangents.py` (касательные семейства), `silhouette.py` (топология меша
+  и горизонт), `normals.py` (crease-aware нормали) и `outline.py` (обводка меша со склейкой цепочек).
+  `mock_backend.py` стал 2297 строк вместо 4620; вынесено около 2330 строк, фасад реэкспортирует имена для
+  тестов, `bench_viewer.py`, `oracle_dump.py` и QML.
+- Зависимости односторонние: `outline` -> `packing`, `step_import` -> `normals` + `packing`,
+  `step_surfaces` -> `step_import`, `cache_store` -> `gcode_parser`. OCCT (OCP) импортируется внутри
+  функций, поэтому без пакета модули всё равно импортируются, а STEP просто не читается.
+- Проверки: оракул совпал со старым манифестом без единого изменения (22 записи), сторож зелёный
+  (37 проверок). Перенос нашёл и одну свою ошибку: `step_surfaces` звал `_step_shape` без импорта, а
+  исключение глушилось `except Exception: return []` — поймал `test_tangent_policy.py`. Поведение вьювера
+  не менялось, версия 0.13.7 -> 0.13.8.
 
 ### 0.13.7 — 2026-10-16
 

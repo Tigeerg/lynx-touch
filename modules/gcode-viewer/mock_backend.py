@@ -3894,6 +3894,11 @@ class GcodeToolpath(QObject):
                 self._set_model_path(os.path.abspath(p))
                 return
         stl = base + ".stl"
+        if not os.path.exists(stl):
+            for ext in (".STL", ".Stl"):
+                if os.path.exists(base + ext):
+                    stl = base + ext
+                    break
         self._set_model_path(os.path.abspath(stl) if os.path.exists(stl) else "")
 
     @staticmethod
@@ -3959,6 +3964,11 @@ class GcodeToolpath(QObject):
             except Exception as exc:
                 print("[GcodeToolpath] STEP load failed:", exc)
                 stl = os.path.splitext(model_path)[0] + ".stl"
+                if not os.path.exists(stl):
+                    for ext in (".STL", ".Stl"):
+                        if os.path.exists(os.path.splitext(model_path)[0] + ext):
+                            stl = os.path.splitext(model_path)[0] + ext
+                            break
                 if os.path.exists(stl):
                     self._model_path = os.path.abspath(stl)
                     try:
@@ -4329,6 +4339,7 @@ class GcodeToolpath(QObject):
         model_path = ""
         verts = None
         segs = None
+        norms = None
         base = os.path.splitext(filepath)[0]
         for ext in (".step", ".stp"):
             if os.path.exists(base + ext):
@@ -4336,6 +4347,11 @@ class GcodeToolpath(QObject):
                 break
         if not model_path and os.path.exists(base + ".stl"):
             model_path = os.path.abspath(base + ".stl")
+        if not model_path:
+            for ext in (".STL", ".Stl"):
+                if os.path.exists(base + ext):
+                    model_path = os.path.abspath(base + ext)
+                    break
         if model_path:
             with _occt:
                 verts, segs, norms = self._load_model_verts(model_path)

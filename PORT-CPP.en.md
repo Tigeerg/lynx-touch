@@ -250,6 +250,15 @@ differs for the already accepted reason). `render_probe` does not give parity ye
 the layers not ported in step 5.4c (tool, holder, rings, the collision scan). Still to do in stage 5: the tool
 and holder, the stock, the collisions and `toolCheck`, the cache.
 
+**The tool, the collisions and the tool check are ported (stage 5, part 4c; stage 5 is closed).**
+`tooling.py` and `collision.py` moved into `cpp/core`; the controller publishes all six tool and holder
+geometries, the stick-out and the radii, the collisions, `toolCheck` and `toolIssueCount`; the scan runs in the
+background on a `QThreadPool`. Exactness required repeating the CPython functions: `vector_norm` instead of
+`sqrt` (differs by 1 ulp in 8 pairs out of 51) and a half-to-even `round` (otherwise the sign differs at
+12.345, 2.675, 0.005). The tool and holder buffers and the collision/`toolCheck` structures matched the
+reference; `render_probe` converged (without the flag `edge_px 7905`, `stock_px 67235`; with the flag the same
+numbers). What remains: the disk cache — a separate decision.
+
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.
 

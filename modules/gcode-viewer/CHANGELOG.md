@@ -78,6 +78,8 @@
 | `modules/gcode-viewer/cpp/qmlbackend/gv_qmlgeom.h` / `.cpp` | QML-обёртки C++-геометрий в модуле `MockBackend` 1.0 |
 | `modules/gcode-viewer/cpp/qmlbackend/gv_toolpath.h` / `.cpp` | C++-контроллер `GcodeToolpath`: каркас, загрузка УП, буферы, свойства и слоты выборки |
 | `modules/gcode-viewer/test_controller_cpp.py` | Сверка C++- и питоновского контроллеров на одном УП |
+| `modules/gcode-viewer/cpp/core/tooling.h` / `.cpp` | C++-профили инструмента и оправки: режущая часть, кольца, вылет |
+| `modules/gcode-viewer/cpp/core/collision.h` / `.cpp` | C++-скан коллизий оправки с заготовкой и проверка инструмента |
 | `modules/gcode-viewer/oracle_dump.py` | Оракул промежуточных результатов: эталон для переноса на C++ |
 | `modules/gcode-viewer/test_ribbon_width.py` | Живая проверка толщины ленты (2 px по вертикали и горизонтали) |
 | `modules/gcode-viewer/test_solid_skin.py` | Живая проверка: сплошная кожа закрывает скрытые рёбра (без просвечивания) |
@@ -85,11 +87,44 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.25.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.26.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.26.0 — 2026-10-16
+
+- **Инструмент, оправка, коллизии и проверка инструмента в C++ (этап 5, часть 4в; этап 5 закрыт).**
+  `tooling.py` перенесён в `cpp/core/tooling.{h,cpp}`: профили режущей части по типам `UI_TOOL`, обводка,
+  вылет, секции оправки ER20, кольца и их точки. `collision.py` перенесён в `cpp/core/collision.{h,cpp}`:
+  `circleRectHit`, `scanCollisions` (шаг выборки, порог 0.05 мм) и `toolCheckReport` (статусы
+  `ok`/`short`/`limit`/`missing`). В контроллере наполнены все шесть геометрий инструмента и оправки,
+  `toolLength`, `toolRadius`, `holderRadius`, `holderGauge` (в том числе из тега `UI_HOLDER`), `collisions`,
+  `collisionCount`, `toolCheck`, `toolIssueCount`; слоты `analyzeCollisions` (фоновый скан на `QThreadPool`
+  с атомарным токеном и публикацией на GUI-потоке), `setMachineTools`, `setMachineLimits`, `runToolCheck`.
+  Заглушек в контроллере не осталось.
+- **Точность опирается на повтор функций CPython.** `math.hypot` в CPython — свой алгоритм (масштабирование
+  на степень двойки, `fma`, компенсация, дифференциальная поправка): на профилях Test_model он расходится
+  с CRT на 1 ulp в 8 парах из 51, поэтому в C++ повторён он же. `round(x, 2)` через умножение на 100 даёт
+  другой знак на 12.345, 2.675 и 0.005 — написан `pyRound2` (половина к чётному), сверен на 40012
+  значениях без расхождений.
+- **Совпадение с эталоном.** Шесть буферов инструмента и оправки (288/336/192/768/672/672 вершин) —
+  `sha256` совпали; `toolLength 35.08`, `toolRadius 1.5`, `holderRadius 23.0`, `holderGauge 0.0` и 32.0 в
+  случае с тегом; `collisions` 12 = 12 (структуры целиком, глубины вида 4.75906 и 2.75906); `toolCheck`
+  3 строки со статусами `short`/`limit`/`missing`, `toolIssueCount` 3; все восемь форм режущей части по
+  этапам и границы `circleRectHit` (касание стенки и угла, промах на 1 мкм).
+- **`render_probe` сошёлся.** Без флага `edge_px 7905`, `stock_px 67235`; под `CNC_CPP=controller` —
+  `edge_px 7905`, `stock_px 67235`. Полный режим: 8395/79132 против 8396/79131 — расхождение 1 px на
+  сглаживании.
+- **Что тронуто:** `cpp/core/tooling.{h,cpp}`, `cpp/core/collision.{h,cpp}`, `cpp/core/gv_types.h`,
+  `cpp/CMakeLists.txt`, `cpp/qmlbackend/gv_toolpath.{h,cpp}`, `test_controller_cpp.py`. Оракул не тронут.
+- **Проверки.** Сторож гоняет 99 проверок, зелёный; `oracle_dump.py` — `RESULT: OK` при флаге и без;
+  `preview_3d.py` offscreen под флагом — `loaded OK` без `Traceback`, `WARNING` и `ERROR`;
+  `smoke_test_qml.py` — `RESULT: OK`; `test_controller_cpp.py` — `RESULT: OK`. `test_solid_skin.py` под
+  флагом ведёт себя как без флага (11787 против 11786 px) — предсуществующая краснота.
+- **Остаток:** дисковый кэш (`cache_store.py`) в C++-путь не переносился — отдельное решение; питоновский
+  путь по умолчанию и остаётся эталоном. Версия 0.25.0 -> 0.26.0.
 
 ### 0.25.0 — 2026-10-16
 

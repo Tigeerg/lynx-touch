@@ -62,13 +62,15 @@ find_package(OpenCASCADE REQUIRED)
 
 # Чистое ядро gvcore (этапы 2 и 4 плана переноса): парсер G-кода, теги UI_*,
 # crease-aware нормали кожи (этап 4a), импорт STL и обводка меша (этап 4b),
-# топология силуэта (этап 4c), семейства касательных (этап 4d). Ни Qt, ни OCCT
-# не нужны - только стандартная библиотека. Цель отдельная от плагина, чтобы ядро
-# можно было собрать и сверить с Python без Qt.
+# топология силуэта (этап 4c), семейства касательных (этап 4d), инструмент с
+# оправкой и коллизии (этап 5.4в). Ни Qt, ни OCCT не нужны - только стандартная
+# библиотека. Цель отдельная от плагина, чтобы ядро можно было собрать и сверить
+# с Python без Qt.
 #
 # /fp:precise обязателен: ядро сверяется с Python побайтово, а /fp:fast разрешает
 # переассоциацию и слияние умножения со сложением (FMA), что сдвигает результат.
 add_library(gvcore STATIC
+    core/collision.cpp
     core/gcode_parser.cpp
     core/normals.cpp
     core/outline.cpp
@@ -78,6 +80,7 @@ add_library(gvcore STATIC
     core/stl_import.cpp
     core/tangents.cpp
     core/text_util.cpp
+    core/tooling.cpp
     core/ui_tags.cpp
 )
 target_include_directories(gvcore PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

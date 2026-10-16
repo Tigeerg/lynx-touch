@@ -14,23 +14,22 @@
 // поверхности за один проход через gvstep; STL - суп, ориентация оболочки,
 // crease-aware нормали и обводка по двугранному углу), кожа partGeometry,
 // обводка partEdges и hlrEdges (stride 48), силуэт hlrTangents на текущий глаз,
-// частьMeshCenter/partRadius и трансформа детали partRotation/partPosition из
+// partMeshCenter/partRadius и трансформа детали partRotation/partPosition из
 // UI_ROTATION/UI_ORIGIN/UI_CAD_MATRIX/UI_STOCK. Заготовка публикуется
 // (stockCenter/stockSize/hasStock) потому, что трансформа эталона подгоняет
 // модель под её нижний угол: без заготовки положение детали разошлось бы.
 //
-// Что заглушено до следующих частей шага (контракт заведён, поведение пустое и
-// безопасное - чтобы QML не ругался):
-//   * инструмент и оправка - toolGeometry, toolOutline, toolRings,
-//     holderGeometry, holderOutline, holderRings, toolLength, toolRadius,
-//     holderRadius: геометрии пусты, метаданные UI_TOOL публикуются;
-//   * станок - скан коллизий (collisions/analyzeCollisions) и сверка инструмента
-//     (toolCheck, setMachineTools, setMachineLimits, runToolCheck) (шаг 5.4в).
-// Отказ выполненной стадии виден в журнале (qCWarning), молчаливого отказа нет;
-// вызов заглушки, чей результат отличается от питоновского эталона, пишет
-// предупреждение один раз (warnDeferred). Call-time предупреждений у слотов,
-// которые QML зовёт постоянно (refreshTangents на движении камеры), нет: там
-// поведение совпадает с питоновским путём без модели.
+// Инструмент, оправка и станок (этап 5.4в): профиль инструмента по UI_TOOL
+// (toolGeometry, toolOutline, toolRings, toolLength, toolRadius), постоянная
+// оправка ER20 (holderGeometry, holderOutline, holderRings, holderRadius),
+// вылет оправки из UI_HOLDER (holderGauge), скан коллизий оправки о заготовку
+// в фоне (collisions/collisionCount, слот analyzeCollisions) и сверка
+// инструмента с таблицей стойки (toolCheck/toolIssueCount, слоты
+// setMachineTools/setMachineLimits/runToolCheck). Ядро - gvcore: core/tooling и
+// core/collision, те же числа и порядок операций, что у tooling.py и collision.py.
+//
+// Заглушек этого шага не осталось: отказ любой стадии виден в журнале
+// (qCWarning плюс строка в stderr), молчаливого отказа нет.
 //
 // Сосуществование с питоновской регистрацией: QML-типы модуля MockBackend
 // объявляет либо питоновский controller.py (@QmlElement), либо этот плагин.
@@ -39,9 +38,11 @@
 // плагина (см. gv_cpp.controller_enabled). Пустое значение флага - питоновский
 // путь, как было.
 //
-// Потоки: разбор УП и сборка буферов идут на пуле QThreadPool (объектов Qt ядро
-// не создаёт); на GUI-поток результат возвращает сигнал toolpathReady, а
-// устаревший результат отбрасывает токен - std::atomic<int>, а не threading.
+// Потоки: разбор УП, обводка, модель и скан коллизий идут на пуле QThreadPool
+// (объектов Qt ядро не создаёт); на GUI-поток результат возвращает сигнал
+// toolpathReady или вызов очереди событий, а устаревший результат отбрасывает
+// токен - int на GUI-потоке (скан коллизий, обводка) и std::atomic<int> у
+// загрузки, чей результат читает рабочий поток.
 #pragma once
 
 #include <QObject>
@@ -54,11 +55,16 @@
 
 #include <array>
 #include <atomic>
+#include <map>
 #include <memory>
+#include <optional>
 
+#include "core/collision.h"
 #include "core/path_prep.h"
 #include "core/silhouette.h"
 #include "core/tangents.h"
+#include "core/tooling.h"
+#include "core/ui_tags.h"
 #include "qmlbackend/gv_qmlgeom.h"
 
 class QQuick3DGeometry;
@@ -163,7 +169,7 @@ public:
     QVector3D stockCenter() const { return stock_center_; }
     QVector3D stockSize() const { return stock_size_; }
     bool hasStock() const { return has_stock_; }
-    double holderGauge() const { return 0.0; }
+    double holderGauge() const { return holder_gauge_; }
     QVariantMap toolInfo() const { return tool_info_; }
     double toolLength() const { return tool_length_; }
     double toolRadius() const { return tool_radius_; }
@@ -241,7 +247,7 @@ private:
     // GUI-поток: применить траекторию, подготовленную рабочим потоком.
     void onToolpathReady(const QVariant &payload);
     void applyToolpathData(const std::shared_ptr<const gv::PathData> &data, const QString &text);
-    void applyToolInfo(const QVariantMap &info);
+    void applyToolInfo(const gv::ToolInfo &spec);
     void setLoading(bool v);
     void setModelPath(const QString &path);
     void setTool(double x, double y, double z);
@@ -277,6 +283,17 @@ private:
     // Публикация силуэта: сегменты (M,2,3) float32, пустой вектор - убрать.
     void setSilhouetteSegments(const std::vector<float> &segments);
 
+    // ---- инструмент, оправка и коллизии (этап 5.4в) ------------------------
+    // Тело вращения по профилю инструмента (пустой профиль - пустая геометрия).
+    static void setToolProfile(ToolGeometry *geo, const std::vector<gv::ProfilePoint> &profile);
+    // Кольца профиля в Lines-буфер: тот же _pack_edge_segments, что у эталона.
+    static void setRingSegments(ToolpathGeometry *geo,
+                                const std::vector<gv::RingSegment> &segments);
+    // Отчёт сверки строкой контракта QML (None у эталона - недействительный QVariant).
+    static QVariantMap toolCheckMap(const gv::ToolCheckRow &row);
+    // Строка коллизии картой контракта QML: d, depth, scene, scene_hb.
+    static QVariantMap collisionMap(const gv::CollisionRange &range);
+
     std::shared_ptr<const gv::PathData> data_;
 
     ToolpathGeometry *rapid_ = nullptr;
@@ -293,12 +310,13 @@ private:
     ToolpathGeometry *holder_rings_geo_ = nullptr;
 
     QVariantList stages_;                 // [{start, end, label, tool}]
-    QVector<QVariantMap> stage_tools_;    // метаданные UI_TOOL по этапам
+    std::vector<gv::ToolInfo> stage_specs_;  // метаданные UI_TOOL по этапам
     QVariantList collisions_;             // коллизии оправки с заготовкой
     QVariantList tool_check_;             // отчёт сверки инструмента
-    QVariantList machine_tools_;          // станочная таблица (заглушка)
-    QVariantMap machine_limits_;          // пределы осей (заглушка)
-    QVariantMap tool_info_;               // разобранный UI_TOOL
+    std::map<int, gv::MachineTool> machine_tools_;  // таблица стойки, мм
+    gv::MachineLimits machine_limits_;    // пределы осей стойки
+    gv::ToolInfo tool_spec_;              // текущий инструмент (профиль и геометрии)
+    QVariantMap tool_info_;               // разобранный UI_TOOL для QML
     QString model_path_;                  // сайдкар модели рядом с УП
 
     // ---- состояние модели, обводки и трансформы ---------------------------
@@ -320,6 +338,11 @@ private:
     std::array<double, 3> cad_origin_{0.0, 0.0, 0.0}; // UI_CAD_MATRIX_ORIGIN
     std::array<double, 3> stock_lower_m_{0.0, 0.0, 0.0};  // нижний угол, машинные
     std::array<double, 3> part_offset_{0.0, 0.0, 0.0};    // поправка CNC_OFS_M*
+    // Габарит заготовки в машинных координатах: по нему идёт скан коллизий.
+    std::optional<std::array<double, 6>> stock_bounds_;
+    // UI_HOLDER: вылет оправки (он же holderGauge) и имя.
+    std::optional<gv::HolderTag> holder_tag_;
+    int collision_token_ = 0;             // отменяет устаревший скан (GUI-поток)
 
     // Токены: устаревший результат рабочего потока отбрасывается. Атомарный
     // счётчик взят по указателю: рабочий поток читает счётчик, а не контроллер
@@ -332,6 +355,7 @@ private:
     double tool_length_ = 0.0;
     double tool_radius_ = 0.0;
     double holder_radius_ = 0.0;
+    double holder_gauge_ = 0.0;
     double tool_[3] = {0.0, 0.0, 0.0};
     bool loading_ = false;
     bool has_stock_ = false;

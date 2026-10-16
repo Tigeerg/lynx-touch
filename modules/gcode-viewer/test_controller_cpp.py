@@ -19,8 +19,23 @@
 toolPosition (и toolX/Y/Z), toolInfo, этапы (диапазоны, подписи, теги UI_TOOL),
 holderGauge, modelPath, заготовка (hasStock/stockCenter/stockSize), буферы
 rapid/feed (число вершин, длина и sha256 байт, stride-контракт тот же), выборка
-sampleAt/isRapidAt/speedAt на фиксированных длинах, пустой toolCheck и число
-предупреждений движка (у C++-пути их не должно быть ни одного).
+sampleAt/isRapidAt/speedAt на фиксированных длинах, число предупреждений движка
+(у C++-пути их не должно быть ни одного).
+
+Инструмент, оправка и станок (шаг 5.4в) сверяются в том же прогоне: буферы всех
+шести геометрий (toolGeometry, toolOutline, toolRings, holderGeometry,
+holderOutline, holderRings) с sha256 вершинного буфера, свойства toolLength,
+toolRadius, holderRadius, структуры toolInfo/collisions/toolCheck (ключи и
+значения), collisionCount и toolIssueCount. Таблица стойки и пределы осей
+подставляются тем же списком в обоих процессах - setMachineTools,
+setMachineLimits, runToolCheck.
+
+Скан коллизий идёт в фоне, поэтому его результат ждут прокруткой очереди
+событий (_settle_collisions). Границы _circle_rect_hit проверяются отдельным
+блоком на коротких программах (load_string): оправка касается стенки заготовки
+и проходит в 1 мкм мимо неё, плюс касание по диагонали (расстояние до угла);
+после этого те же слоты прогоняют сверку инструмента во всех состояниях
+(ok, short, limit, missing - в том числе с None у измеренной длины).
 
 Модель сверяется двумя снимками - после load_gcode (ветка STEP) и после
 loadModel (ветка STL, файл Test_model.STL рядом): буферы partGeometry, partEdges,
@@ -30,10 +45,7 @@ hlrEdges и силуэт hlrTangents в обоих режимах CNC_SILHOUETTE
 Силуэт считается слотом refreshTangents с одним и тем же глазом в обоих
 процессах, поэтому числа сопоставимы.
 
-Чего в сверке нет (заглушки этого шага, следующие части этапа 5.4): скан коллизий
-(collisions/collisionCount) и инструмент (toolGeometry, toolOutline, toolRings,
-holderGeometry, holderOutline, holderRings, toolLength, toolRadius, holderRadius).
-Итог перечисляет их отдельной строкой, чтобы остаток был назван, а не замолчан.
+Заглушек шага 5.4в не осталось: все свойства контракта заполнены и сверяются.
 
 Без собранного модуля build/qmlbackend/MockBackend проверка пропускается с кодом 0:
 сборку стережёт scripts/build-viewer.ps1.
@@ -65,18 +77,81 @@ EYE = (120.0, 90.0, 140.0)
 
 # Числа, которые обязаны совпасть: сравнение идёт побитово (float64 у свойств и
 # у выборки, float32 внутри буферов), поэтому допуска здесь нет.
-SCALARS = ("moveLength", "radius", "minY", "toolX", "toolY", "toolZ", "holderGauge")
+SCALARS = ("moveLength", "radius", "minY", "toolX", "toolY", "toolZ", "holderGauge",
+           "toolLength", "toolRadius", "holderRadius")
 VECTORS = ("center", "toolPosition", "stockCenter", "stockSize")
-LISTS = ("stages", "toolCheck")
+LISTS = ("stages", "toolCheck", "collisions")
 MAPS = ("toolInfo",)
 FLAGS = ("loading", "hasStock")
-INTS = ("toolIssueCount",)
+INTS = ("toolIssueCount", "collisionCount")
 
-# Заглушки шага: у питоновского пути они заполнены, у C++ - пусты по замыслу
-# (скан коллизий и инструмент).
-DEFERRED = ("collisions", "collisionCount", "toolLength", "toolRadius", "holderRadius",
-            "toolGeometry", "toolOutline", "toolRings", "holderGeometry", "holderOutline",
-            "holderRings")
+# Таблица стойки и пределы осей: одна и та же в обоих процессах. Три состояния
+# отчёта на трёх инструментах программы - короче УП (T1), длиннее лимита оси Z
+# (T2) и вовсе нет в таблице (T6, поля длины остаются None).
+MACHINE_TOOLS = ({"number": 1, "length": 10.0, "name": "T1"},
+                 {"number": 2, "length": 70.0, "name": "T2"})
+MACHINE_LIMITS = {"zMax": 0.0}
+
+# Геометрии инструмента и оправки: имя свойства и поле счётчика вершин.
+TOOL_BUFFERS = (("toolGeometry", "triangleCount"), ("toolOutline", "triangleCount"),
+                ("toolRings", "vertexCount"), ("holderGeometry", "triangleCount"),
+                ("holderOutline", "triangleCount"), ("holderRings", "vertexCount"))
+
+# Короткая программа для границы _circle_rect_hit: острие уходит на Z-35, поэтому
+# оправка (гайка R16.5 от вылета 30) входит в заготовку на 5 мм по Z; попадание
+# решает расстояние от оси до прямоугольника заготовки в XY.
+BOUNDARY_NGC = """(UI_STOCK: XMIN=-50. XMAX=0. YMIN=-50. YMAX=50. ZMIN=-20. ZMAX=0.)
+(UI_TOOL: T=1 TYPE=FLAT D=4. CR=0. TIPD=0. FL=0. SL=0. BL=30. OL=30. NF=2)
+G0 X%(x)s Y%(y)s Z5.
+G1 Z-35. F100.
+"""
+# Границы _circle_rect_hit: касание стенки (dx ровно равен R), 1 мкм мимо неё,
+# угол заготовки (обе разности ненулевые, 0.01 мм внутрь и наружу) и та же стенка
+# с вылетом оправки из UI_HOLDER (holderGauge перекрывает вылет профиля).
+BOUNDARY_CASES = (("touch", 16.5, 0.0, False),         # dx == R: касание стенки XMAX=0
+                  ("miss", 16.501, 0.0, False),        # 1 мкм мимо той же стенки
+                  ("diag", 9.9, -63.19, False),        # угол: dx 9.9, dy 13.19 -> внутрь
+                  ("diag_miss", 9.9, -63.21, False),   # угол: dy 13.21 -> наружу
+                  ("gauge", 16.5, 0.0, True))          # вылет 32 мм вместо 30 по UI_HOLDER
+HOLDER_LINE = "(UI_HOLDER: GAUGE=32. NAME=ER20)\n"
+
+# Программа со сменой инструмента по этапам: каждая форма режущей части из
+# tooling.py - плоская, радиусная, шаровая, сверло, метчик, фаска, коническое
+# острие вместо плоской (пост не разобрал форму) и хвостовик без длин канавок.
+TOOL_STAGE_NGC = """(UI_STOCK: XMIN=-50. XMAX=0. YMIN=-50. YMAX=0. ZMIN=-20. ZMAX=0.)
+G0 X0. Y0. Z5.
+(UI_OP: 1)
+(UI_TOOL: T=1 TYPE=FLAT D=6. CR=0. TIPD=0. FL=20. SL=20. BL=40. OL=45. NF=2)
+G1 Z0. F100.
+(UI_OP: 2)
+(UI_TOOL: T=2 TYPE=BULL D=10. CR=2. FL=20. SL=25. BL=45. OL=45. NF=4)
+G1 X1.
+(UI_OP: 3)
+(UI_TOOL: T=3 TYPE=BALL D=3. CR=1.5 TIPD=0. FL=14. SL=14. BL=40. OL=63. NF=2)
+G1 X2.
+(UI_OP: 4)
+(UI_TOOL: T=4 TYPE=DRILL D=3. CR=0. TAPER=118 TIPD=0. FL=30. SL=30. BL=40. OL=35.08 NF=1)
+G1 X3.
+(UI_OP: 5)
+(UI_TOOL: T=5 TYPE=TAP D=4. CR=0. TIPA=118 TIPD=0.5 FL=12. SL=16. BL=30. OL=32. NF=3)
+G1 X4.
+(UI_OP: 6)
+(UI_TOOL: T=6 TYPE=CHAMFER D=6. CR=0. TAPER=90 TIPD=1. FL=8. SL=12. BL=20. OL=25. NF=2)
+G1 X5.
+(UI_OP: 7)
+(UI_TOOL: T=7 TYPE=FLAT D=5. CR=0. TAPER=60 TIPD=0. FL=0. SL=0. BL=20. OL=26. NF=2)
+G1 X6.
+(UI_OP: 8)
+(UI_TOOL: T=8 TYPE=FLAT D=6. CR=0. SD=8 TIPD=0. FL=0. SL=0 BL=0 OL=0 NF=2)
+G1 X7.
+"""
+
+# Сверка инструмента на границах: длина вровень (ok), короче глубины (short),
+# отключён в стойке (missing).
+TOOL_CHECK_CASES = (("checkOk", {"number": 1, "length": 40.0, "name": "T1"}, {}),
+                    ("checkShortDepth", {"number": 1, "length": 30.0, "name": "T1"}, {}),
+                    ("checkDisabled", {"number": 1, "length": 40.0, "name": "T1",
+                                       "enabled": False}, {"zMax": 0.0}))
 
 # Поля снимка модели: сверяются и для STEP, и для STL.
 MODEL_FIELDS = ("partMeshCenter", "partRadius", "partRotation", "partPosition",
@@ -233,6 +308,78 @@ def _model_snapshot(app, backend):
     return snap
 
 
+def _settle_collisions(app, backend, expect_nonempty, timeout_s=30.0):
+    """Дождаться фонового скана коллизий.
+
+    Готовности скан не сообщает (у эталона тоже нет сигнала), поэтому результат
+    ждут появлением непустого списка; у программы без коллизий скан короткий, и
+    ему хватает ограниченной прокрутки очереди событий.
+    """
+    deadline = time.time() + (timeout_s if expect_nonempty else 2.0)
+    while time.time() < deadline:
+        app.processEvents()
+        if int(backend.property("collisionCount") or 0) > 0:
+            app.processEvents()
+            return
+        time.sleep(0.02)
+    app.processEvents()
+
+
+def _tool_snapshot(backend):
+    """Снимок инструмента и оправки: буферы шести геометрий и их размеры."""
+    snap = {}
+    for name, field in TOOL_BUFFERS:
+        snap[name] = _buffer(backend, name, field)
+    for name in ("toolLength", "toolRadius", "holderRadius", "holderGauge"):
+        snap[name] = backend.property(name)
+    return snap
+
+
+def _boundary_block(app, backend):
+    """Границы _circle_rect_hit и все состояния сверки инструмента.
+
+    Границы проверяются через контракт: короткая программа ставит оправку
+    касательно к стенке заготовки и в 1 мкм мимо неё, поэтому попадание решает
+    именно сравнение `<=` в _circle_rect_hit. Третий случай - касание угла, где
+    работают обе разности (dx и dy).
+    """
+    out = {}
+    for name, x, y, with_holder in BOUNDARY_CASES:
+        text = BOUNDARY_NGC % {"x": repr(x), "y": repr(y)}
+        if with_holder:
+            text = text.replace("(UI_TOOL:", HOLDER_LINE + "(UI_TOOL:", 1)
+        backend.load_string(text)
+        _settle_collisions(app, backend, not name.endswith("miss"))
+        out[name] = {"count": int(backend.property("collisionCount") or 0),
+                     "collisions": backend.property("collisions"),
+                     "holderGauge": backend.property("holderGauge")}
+    for name, tool, limits in TOOL_CHECK_CASES:
+        backend.setMachineTools([tool])
+        backend.setMachineLimits(limits)
+        backend.runToolCheck()
+        out[name] = {"toolCheck": backend.property("toolCheck"),
+                     "toolIssueCount": int(backend.property("toolIssueCount") or 0)}
+    return out
+
+
+def _stage_tool_block(app, backend):
+    """Профиль каждого инструмента программы: слот setToolStage по этапам.
+
+    Программа TOOL_STAGE_NGC несёт по одному UI_TOOL на этап, поэтому смена этапа
+    проходит все формы режущей части (плоская, радиусная, шаровая, сверло, метчик,
+    фаска, коническое острие, хвостовик) и буферы тела, обводки и колец сверяются с
+    питоновским эталоном побайтово.
+    """
+    backend.load_string(TOOL_STAGE_NGC)
+    app.processEvents()
+    out = {}
+    for index in range(len(backend.property("stages") or [])):
+        backend.setToolStage(index)
+        app.processEvents()
+        out[str(index)] = _tool_snapshot(backend)
+    return out
+
+
 def _samples(backend, total):
     """Выборка вдоль пути: те же длины в обоих процессах."""
     dists = [0.0, 1.0, 100.0, 2303.0, total * 0.001, total * 0.25, total * 0.5,
@@ -248,6 +395,13 @@ def _backend_values(app):
     backend, cpp, warnings, keep_alive = _backend()
     _ = keep_alive                       # движок и компонент живут до конца чтения
     segments = int(backend.load_gcode(NGC))
+    # Станочная таблица и пределы осей: те же вызовы в обоих процессах (от них
+    # зависит отчёт toolCheck, снимаемый ниже).
+    backend.setMachineTools(list(MACHINE_TOOLS))
+    backend.setMachineLimits(dict(MACHINE_LIMITS))
+    backend.runToolCheck()
+    # Скан коллизий идёт в фоне: без него снимок был бы пустым у обоих путей.
+    _settle_collisions(app, backend, True)
     values = {"cpp": cpp,
               "python_registration": ("mock_backend" in sys.modules
                                       or "geometry" in sys.modules),
@@ -270,11 +424,17 @@ def _backend_values(app):
     values["samples"] = _samples(backend, total)
     # Этапы QML читает по полям: сверяем именно словари, а не их число.
     values["stage_count"] = len(values["stages"] or [])
+    # Инструмент и оправка: геометрии, длины и метаданные.
+    values["tool"] = _tool_snapshot(backend)
     # Модель рядом с УП (STEP) и та же деталь в формате STL: обе ветки чтения.
     values["step"] = _model_snapshot(app, backend)
     if os.path.exists(STL):
         backend.loadModel(STL)
         values["stl"] = _model_snapshot(app, backend)
+    # Границы коллизий и состояния сверки инструмента: короткие программы.
+    values["boundary"] = _boundary_block(app, backend)
+    # Профили всех форм режущей части: смена инструмента по этапам.
+    values["stage_tools"] = _stage_tool_block(app, backend)
     return values
 
 
@@ -329,6 +489,12 @@ def _compare(ref, got, problems):
     _diff(ref.get("feed"), got.get("feed"), problems)
     _diff(ref.get("samples"), got.get("samples"), problems)
     _diff(ref.get("modelPath"), got.get("modelPath"), problems)
+    # Инструмент и оправка (буферы шести геометрий, длины, метаданные).
+    _diff(ref.get("tool"), got.get("tool"), problems)
+    # Границы коллизий и все состояния сверки инструмента.
+    _diff(ref.get("boundary"), got.get("boundary"), problems)
+    # Профили инструмента по этапам (все формы режущей части).
+    _diff(ref.get("stage_tools"), got.get("stage_tools"), problems)
     # Снимки модели (STEP и STL) сверяются целиком: и буферы, и трансформа.
     for folder in ("step", "stl"):
         _diff(ref.get(folder), got.get(folder), problems)
@@ -419,7 +585,40 @@ def main() -> int:
                  block_ref["partRadius"], block_got["partRadius"],
                  block_ref["partPosition"], block_got["partPosition"]))
         print("   partRotation %s|%s" % (block_ref["partRotation"], block_got["partRotation"]))
-    print("заглушки шага (не сверяются): %s" % ", ".join(DEFERRED))
+    tool_ref, tool_got = ref.get("tool") or {}, got.get("tool") or {}
+    print("инструмент: toolLength %r|%r toolRadius %r|%r holderRadius %r|%r"
+          % (tool_ref.get("toolLength"), tool_got.get("toolLength"),
+             tool_ref.get("toolRadius"), tool_got.get("toolRadius"),
+             tool_ref.get("holderRadius"), tool_got.get("holderRadius")))
+    for name, _field in TOOL_BUFFERS:
+        print("   %-14s nv %s->%s, sha %s -> %s"
+              % (name,
+                 (tool_ref.get(name) or {}).get("nv"), (tool_got.get(name) or {}).get("nv"),
+                 ((tool_ref.get(name) or {}).get("sha256") or "")[:16],
+                 ((tool_got.get(name) or {}).get("sha256") or "")[:16]))
+    print("коллизий: эталон %d, C++ %d; сверка инструмента: строк %d, проблем %s"
+          % (ref["collisionCount"], got["collisionCount"], len(ref["toolCheck"] or []),
+             [row["status"] for row in (got["toolCheck"] or [])]))
+    boundary_ref, boundary_got = ref.get("boundary") or {}, got.get("boundary") or {}
+    print("границы _circle_rect_hit: касание %s|%s, мимо на 1 мкм %s|%s, угол %s|%s, "
+          "угол мимо %s|%s"
+          % ((boundary_ref.get("touch") or {}).get("count"),
+             (boundary_got.get("touch") or {}).get("count"),
+             (boundary_ref.get("miss") or {}).get("count"),
+             (boundary_got.get("miss") or {}).get("count"),
+             (boundary_ref.get("diag") or {}).get("count"),
+             (boundary_got.get("diag") or {}).get("count"),
+             (boundary_ref.get("diag_miss") or {}).get("count"),
+             (boundary_got.get("diag_miss") or {}).get("count")))
+    print("состояния сверки: %s"
+          % ", ".join("%s=%s" % (name, [row["status"] for row in
+                                        (boundary_ref.get(name) or {}).get("toolCheck") or []])
+                      for name in ("checkOk", "checkShortDepth", "checkDisabled")))
+    stages_ref, stages_got = ref.get("stage_tools") or {}, got.get("stage_tools") or {}
+    print("инструментов по этапам: эталон %d, C++ %d; длины %s"
+          % (len(stages_ref), len(stages_got),
+             [stages_ref[key].get("toolLength") for key in sorted(stages_ref, key=int)]))
+    print("заглушек шага 5.4в нет: все свойства контракта сверяются")
 
     if problems:
         for text in problems:

@@ -1,8 +1,13 @@
-// cpp/qmlbackend/gv_toolpath.cpp - контроллер вьювера на C++ (этапы 5.4а и 5.4б).
+// cpp/qmlbackend/gv_toolpath.cpp - контроллер вьювера на C++ (этапы 5.4а - 5.4в).
 //
-// Разбор УП, подготовка траектории, модель STEP/STL, обводка и силуэт считаются
-// ядром gvcore и слоем gvstep (Qt-free), установка буферов - геометрии этапа 3
-// (gvqtgeom). Здесь только состояние контроллера и его контракт с QML.
+// Разбор УП, подготовка траектории, модель STEP/STL, обводка и силуэт, профиль
+// инструмента с оправкой и коллизии считаются ядром gvcore и слоем gvstep
+// (Qt-free), установка буферов - геометрии этапа 3 (gvqtgeom). Здесь только
+// состояние контроллера и его контракт с QML.
+//
+// Скан коллизий идёт на пуле потоков: данные пути лежат за shared_ptr, результат
+// возвращается вызовом очереди событий и применяется только при совпадении
+// токена (collision_token_), поэтому устаревший скан не публикуется.
 #include "qmlbackend/gv_toolpath.h"
 
 #include <QByteArray>
@@ -93,6 +98,20 @@ QVariantMap toolMap(const gv::ToolInfo &info)
     }
     out.insert(QStringLiteral("type"), QString::fromUtf8(info.type));
     return out;
+}
+
+// Один и тот же инструмент: у эталона это сравнение двух dict, здесь - полей.
+// setToolStage зовётся на каждую смену этапа, и без сравнения геометрия
+// инструмента пересобиралась бы на каждый вызов.
+bool sameTool(const gv::ToolInfo &a, const gv::ToolInfo &b)
+{
+    return a.present == b.present && a.number == b.number && a.type == b.type
+        && a.diameter == b.diameter && a.corner_radius == b.corner_radius
+        && a.taper_deg == b.taper_deg && a.tip_angle_deg == b.tip_angle_deg
+        && a.tip_diameter == b.tip_diameter && a.flute_length == b.flute_length
+        && a.shoulder_length == b.shoulder_length && a.body_length == b.body_length
+        && a.shank_diameter == b.shank_diameter && a.overall_length == b.overall_length
+        && a.flutes == b.flutes;
 }
 
 // Буфер ядра (std::vector) -> QByteArray: пустой вектор остаётся пустым массивом.
@@ -355,6 +374,19 @@ GcodeToolpath::GcodeToolpath(QObject *parent)
         qEnvironmentVariable("CNC_OFS_MZ", QStringLiteral("0")).toDouble(),
     };
 
+    // Оправка постоянна (гайка ER20 и корпус шпинделя): тело, обводка
+    // перевёрнутой оболочкой и кольца строятся один раз, как у эталона.
+    const std::vector<gv::ProfilePoint> holder_profile = gv::holderSolidProfile();
+    setToolProfile(holder_geo_, holder_profile);
+    setToolProfile(holder_outline_geo_,
+                   gv::toolOutlineProfile(gv::holderOutlineProfile(), 0.1));
+    setRingSegments(holder_rings_geo_,
+                    gv::ringsSegments(gv::profileRingPoints(holder_profile)));
+    holder_radius_ = 1.0;
+    for (const gv::ProfilePoint &point : holder_profile) {
+        holder_radius_ = std::max(holder_radius_, point.radius_mm);
+    }
+
     // Результат рабочего потока приходит сигналом контракта; соединение прямое:
     // сигнал испускается уже на GUI-потоке (см. load_gcode_async).
     connect(this, &GcodeToolpath::toolpathReady, this, &GcodeToolpath::onToolpathReady);
@@ -440,45 +472,114 @@ QQuick3DGeometry *GcodeToolpath::holderRings() const { return holder_rings_geo_;
 // ---------------------------------------------------------------------------
 void GcodeToolpath::setToolStage(int index)
 {
-    if (stage_tools_.isEmpty())
+    if (stage_specs_.empty())
         return;
-    const int i = std::max(0, std::min(int(stage_tools_.size()) - 1, index));
-    const QVariantMap info = stage_tools_[i];
-    if (!info.isEmpty() && info != tool_info_)
-        applyToolInfo(info);
+    const int i = std::max(0, std::min(int(stage_specs_.size()) - 1, index));
+    const gv::ToolInfo &spec = stage_specs_[std::size_t(i)];
+    if (spec.present && !sameTool(spec, tool_spec_))
+        applyToolInfo(spec);
 }
 
 void GcodeToolpath::analyzeCollisions()
 {
-    // Скан оправки о заготовку (collision._scan_collisions) и разбор UI_STOCK
-    // ещё не перенесены: заготовки в контроллере нет, поэтому результат пуст -
-    // так же ведёт себя эталон без тега UI_STOCK (он тоже не заводит поток).
-    collisions_.clear();
-    emit collisionsChanged();
+    // Скан идёт вне GUI-потока (эталон - свой поток). Без пути, этапов или
+    // заготовки сканировать нечего: результат пуст, как у эталона без UI_STOCK.
+    if (!data_ || data_->stages.empty() || !stock_bounds_) {
+        collisions_.clear();
+        emit collisionsChanged();
+        return;
+    }
+    const double total = data_->total;
+    std::vector<double> starts;
+    starts.reserve(data_->stages.size());
+    for (const gv::StageRange &stage : data_->stages)
+        starts.push_back(stage.start * total);
+    std::vector<double> lens;
+    lens.reserve(std::size_t(stage_specs_.size()));
+    for (const gv::ToolInfo &spec : stage_specs_)
+        lens.push_back(gv::toolExposedLength(spec));
+    // Вылет оправки из UI_HOLDER перекрывает профиль: это настоящий вылет.
+    const double gauge = holder_tag_ && holder_tag_->has_gauge ? holder_tag_->gauge : 0.0;
+    if (gauge > 0.0)
+        lens.assign(std::max(std::size_t(1), starts.size()), gauge);
+    if (lens.empty())
+        lens.push_back(0.0);
+    while (lens.size() < starts.size())
+        lens.push_back(lens.back());
+
+    const int token = ++collision_token_;
+    const std::shared_ptr<const gv::PathData> data = data_;
+    const std::array<double, 6> stock = *stock_bounds_;
+    const double step = gv::collisionStep();
+    QThreadPool::globalInstance()->start(QRunnable::create([this, token, data, starts, lens,
+                                                            stock, step] {
+        std::vector<gv::CollisionRange> ranges;
+        try {
+            ranges = gv::scanCollisions(data->pts, data->cum, data->total, starts, lens,
+                                        stock, step);
+        } catch (const std::exception &exc) {
+            reportRefusal(QStringLiteral("скан коллизий не прошёл: %1")
+                              .arg(QString::fromUtf8(exc.what())));
+            return;
+        }
+        QMetaObject::invokeMethod(this, [this, token, ranges] {
+            if (token != collision_token_)
+                return;                              // скан устарел
+            collisions_.clear();
+            for (const gv::CollisionRange &range : ranges)
+                collisions_.append(collisionMap(range));
+            emit collisionsChanged();
+        }, Qt::QueuedConnection);
+    }));
 }
 
 void GcodeToolpath::setMachineTools(const QVariantList &tools)
 {
-    machine_tools_ = tools;
-    warnDeferred("tool-check",
-                 QStringLiteral("станочная таблица инструмента принята, но сверка УП со "
-                                "станком (toolCheck) ещё не перенесена: отчёт пуст"));
+    // Таблица стойки: [{number, length, name, enabled}], length - измеренный
+    // вылет (мм). Номер без числа (нераспознанный) пропускается, как у эталона.
+    machine_tools_.clear();
+    for (const QVariant &item : tools) {
+        const QVariantMap map = item.toMap();
+        bool ok = false;
+        const int number = map.value(QStringLiteral("number")).toInt(&ok);
+        if (!ok)
+            continue;
+        gv::MachineTool tool;
+        tool.length = map.value(QStringLiteral("length"), 0.0).toDouble();
+        tool.name = map.value(QStringLiteral("name")).toString().toStdString();
+        tool.enabled = map.value(QStringLiteral("enabled"), true).toBool();
+        machine_tools_[number] = tool;
+    }
     runToolCheck();
 }
 
 void GcodeToolpath::setMachineLimits(const QVariantMap &limits)
 {
-    machine_limits_ = limits;
-    warnDeferred("tool-check",
-                 QStringLiteral("пределы осей приняты, но сверка УП со станком "
-                                "(toolCheck) ещё не перенесена: отчёт пуст"));
+    // Пустая карта у эталона ложна: пределы тогда не заданы, а не нулевые.
+    machine_limits_ = gv::MachineLimits{};
+    if (!limits.isEmpty()) {
+        machine_limits_.present = true;
+        machine_limits_.z_max = limits.value(QStringLiteral("zMax"), 0.0).toDouble();
+    }
     runToolCheck();
 }
 
 void GcodeToolpath::runToolCheck()
 {
-    // Отчёт collision._tool_check_report не перенесён: контракт тот же, список пуст.
     tool_check_.clear();
+    if (data_ && !machine_tools_.empty()) {
+        try {
+            const std::vector<gv::ToolCheckRow> rows = gv::toolCheckReport(
+                stage_specs_, data_->stages, data_->pts, data_->cum,
+                data_->total, machine_tools_, machine_limits_);
+            for (const gv::ToolCheckRow &row : rows)
+                tool_check_.append(toolCheckMap(row));
+        } catch (const std::exception &exc) {
+            reportRefusal(QStringLiteral("сверка инструмента не прошла: %1")
+                              .arg(QString::fromUtf8(exc.what())));
+            tool_check_.clear();
+        }
+    }
     emit toolCheckChanged();
 }
 
@@ -744,23 +845,24 @@ void GcodeToolpath::applyToolpathData(const std::shared_ptr<const gv::PathData> 
     // Теги сцены идут первыми, как у эталона: трансформа детали собирается из них
     // и из габарита кожи, а путь публикуется уже с готовым положением детали.
     applySceneTags(text);
-    stage_tools_.clear();
+    stage_specs_.clear();
+    stage_specs_.reserve(data->stages.size());
     for (const gv::StageRange &stage : data->stages)
-        stage_tools_.append(toolMap(stage.info));
-    QVariantMap first;
-    for (const QVariantMap &info : stage_tools_) {
-        if (!info.isEmpty()) {
-            first = info;
+        stage_specs_.push_back(stage.info);
+    gv::ToolInfo first;
+    for (const gv::ToolInfo &spec : stage_specs_) {
+        if (spec.present) {
+            first = spec;
             break;
         }
     }
     // Инструмент без единого UI_TOOL в этапах берётся из тега в тексте УП - как у
     // эталона (_apply_tool_info(parse_ui_tool(text))).
-    applyToolInfo(first.isEmpty() ? toolMap(gv::parseUiTool(text.toStdString())) : first);
+    applyToolInfo(first.present ? first : gv::parseUiTool(text.toStdString()));
 
     // Заготовка (UI_STOCK) публикуется до трансформы: подгонка модели под её
-    // нижний угол без заготовки не работает. Оправка (UI_HOLDER) и её вылет ещё
-    // не перенесены (holderGauge = 0), скан коллизий - шаг 5.4в.
+    // нижний угол без заготовки не работает. Оправка (UI_HOLDER) и её вылет
+    // разобраны в applySceneTags; скан коллизий и сверка со станком идут ниже.
     emit stockChanged();
     rebuildPartTransform();
 
@@ -783,18 +885,103 @@ void GcodeToolpath::applyToolpathData(const std::shared_ptr<const gv::PathData> 
     rapid_->setPacked(toByteArray(data->rapid_stream.bytes), bounds, data->rapid_stream.nv);
     feed_->setPacked(toByteArray(data->feed_stream.bytes), bounds, data->feed_stream.nv);
     emit pathChanged();
-    analyzeCollisions();                 // скан коллизий ещё не перенесён (шаг 5.4в)
-    runToolCheck();                      // сверка со станком ещё не перенесена
+    analyzeCollisions();                 // скан коллизий оправки с заготовкой
+    runToolCheck();                      // сверка УП со станочной таблицей
 }
 
-void GcodeToolpath::applyToolInfo(const QVariantMap &info)
+void GcodeToolpath::applyToolInfo(const gv::ToolInfo &spec)
 {
-    tool_info_ = info;
-    // Профиль инструмента (tooling.py) и оправка ещё не перенесены: геометрия
-    // инструмента, его обводка и кольца остаются пустыми, toolLength и toolRadius -
-    // нулевыми, но метаданные UI_TOOL доступны QML, как у эталона.
+    // Профиль инструмента (core/tooling): тело вращения, обводка перевёрнутой
+    // оболочкой и кольца рёбер. Пустой профиль оставляет геометрии пустыми, как
+    // у эталона set_profile(None).
+    tool_spec_ = spec;
+    tool_info_ = toolMap(spec);
+    const std::vector<gv::ProfilePoint> profile =
+        spec.present ? gv::toolProfile(spec) : std::vector<gv::ProfilePoint>{};
+    setToolProfile(tool_geo_, profile);
+    tool_length_ = 0.0;
+    tool_radius_ = 0.0;
+    for (const gv::ProfilePoint &point : profile) {
+        tool_length_ = std::max(tool_length_, point.height_mm);
+        tool_radius_ = std::max(tool_radius_, point.radius_mm);
+    }
+    // Обводка силуэта: профиль, раздвинутый на `pad`; QML гасит ближние грани,
+    // поэтому виден только наружный контур.
+    const double pad = std::max(0.12, 0.05 * tool_radius_);
+    setToolProfile(tool_outline_geo_,
+                   profile.empty() ? profile : gv::toolOutlineProfile(profile, pad));
+    setRingSegments(tool_rings_geo_,
+                    profile.empty() ? std::vector<gv::RingSegment>{}
+                                    : gv::ringsSegments(gv::profileRingPoints(profile)));
     emit toolInfoChanged();
 }
+
+// ---------------------------------------------------------------------------
+// Инструмент, оправка и коллизии
+// ---------------------------------------------------------------------------
+void GcodeToolpath::setToolProfile(ToolGeometry *geo, const std::vector<gv::ProfilePoint> &profile)
+{
+    if (profile.empty()) {
+        geo->setProfile(nullptr, 0);
+        return;
+    }
+    std::vector<double> flat;
+    flat.reserve(profile.size() * 2);
+    for (const gv::ProfilePoint &point : profile) {
+        flat.push_back(point.radius_mm);
+        flat.push_back(point.height_mm);
+    }
+    geo->setProfile(flat.data(), int(profile.size()));
+}
+
+void GcodeToolpath::setRingSegments(ToolpathGeometry *geo,
+                                    const std::vector<gv::RingSegment> &segments)
+{
+    std::vector<double> p0;
+    std::vector<double> p1;
+    p0.reserve(segments.size() * 3);
+    p1.reserve(segments.size() * 3);
+    for (const gv::RingSegment &segment : segments) {
+        p0.push_back(segment.x0);
+        p0.push_back(segment.y0);
+        p0.push_back(segment.z0);
+        p1.push_back(segment.x1);
+        p1.push_back(segment.y1);
+        p1.push_back(segment.z1);
+    }
+    const gv::PackedEdges packed = gv::packEdgesNp(p0, p1);
+    geo->setPacked(toByteArray(packed.raw), packed.has_bounds ? &packed.bounds : nullptr,
+                   packed.nv);
+}
+
+QVariantMap GcodeToolpath::toolCheckMap(const gv::ToolCheckRow &row)
+{
+    QVariantMap map;
+    map.insert(QStringLiteral("number"), row.number);
+    map.insert(QStringLiteral("name"), QString::fromUtf8(row.name.c_str()));
+    map.insert(QStringLiteral("ncLength"), row.nc_length);
+    map.insert(QStringLiteral("depth"), row.depth);
+    // Нет измеренной длины у стойки - None, как у эталона.
+    map.insert(QStringLiteral("machineLength"),
+               row.has_machine_length ? QVariant(row.machine_length) : QVariant());
+    map.insert(QStringLiteral("delta"), row.has_delta ? QVariant(row.delta) : QVariant());
+    map.insert(QStringLiteral("status"), QString::fromLatin1(row.status.c_str()));
+    map.insert(QStringLiteral("message"), QString::fromUtf8(row.message.c_str()));
+    return map;
+}
+
+QVariantMap GcodeToolpath::collisionMap(const gv::CollisionRange &range)
+{
+    QVariantMap map;
+    map.insert(QStringLiteral("d"), range.d);
+    map.insert(QStringLiteral("depth"), range.depth);
+    map.insert(QStringLiteral("scene"),
+               QVariantList{range.scene[0], range.scene[1], range.scene[2]});
+    map.insert(QStringLiteral("scene_hb"),
+               QVariantList{range.scene_hb[0], range.scene_hb[1], range.scene_hb[2]});
+    return map;
+}
+
 
 // ---------------------------------------------------------------------------
 // Модель, обводка и трансформа детали
@@ -812,6 +999,7 @@ void GcodeToolpath::applySceneTags(const QString &text)
     cad_origin_ = origin ? *origin : std::array<double, 3>{0.0, 0.0, 0.0};
 
     const std::optional<std::array<double, 6>> stock = gv::parseUiStock(utf8);
+    stock_bounds_ = stock;                               // габарит для скана коллизий
     if (stock) {
         const std::array<double, 6> &s = *stock;         // xmin, xmax, ymin, ymax, zmin, zmax
         const std::array<double, 3> center{(s[0] + s[1]) / 2.0,
@@ -827,6 +1015,11 @@ void GcodeToolpath::applySceneTags(const QString &text)
         // hasStock).
         has_stock_ = false;
     }
+
+    // Оправка: вылет (holderGauge) и имя. Без тега вылет нулевой, и скан
+    // коллизий берёт вылет из профиля инструмента, как у эталона.
+    holder_tag_ = gv::parseUiHolder(utf8);
+    holder_gauge_ = holder_tag_ && holder_tag_->has_gauge ? holder_tag_->gauge : 0.0;
 }
 
 void GcodeToolpath::rebuildPartTransform()

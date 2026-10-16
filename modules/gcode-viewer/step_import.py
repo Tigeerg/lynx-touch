@@ -168,7 +168,7 @@ def load_step_model(path, deflection=0.05, shape=None):
         exp.Next()
 
     segments = _coalesce_segments(segments)
-    if _np is not None and soup:
+    if soup:
         tri = _orient_shell_outward(soup)
         return tri.reshape(-1, 3), segments, _smooth_face_normals(tri)
     return soup, segments, None

@@ -24,7 +24,7 @@ CACHE_MAX_BYTES = 200 * 1024 * 1024
 
 
 def _cache_enabled():
-    return _np is not None and os.environ.get("CNC_NO_CACHE") != "1"
+    return os.environ.get("CNC_NO_CACHE") != "1"
 
 
 def _cache_key(filepath, kind):
@@ -114,7 +114,7 @@ def _cache_read_path(key):
 
 def _cache_write_path(key, data):
     """Store the _prepare_ordered() dict in one .npz (atomic write)."""
-    if _np is None or data.get("pts") is None:
+    if data.get("pts") is None:
         return
     np = _np
     path = _cache_file(key)
@@ -170,8 +170,6 @@ def _cache_read_edges(key):
 
 def _cache_write_edges(key, packed):
     """Store the (raw_bytes, nv, bounds) outline tuple (atomic write)."""
-    if _np is None:
-        return
     np = _np
     raw, nv, bounds = packed
     path = _cache_file(key)

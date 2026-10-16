@@ -64,7 +64,7 @@ from tangents import (_pt_tri_dist2, _CONE_MIN_SLANT_MM, _CONE_PROBE_AZIMUTHS, _
 from silhouette import (_SILHOUETTE_WELD_MM, _SILHOUETTE_MAX_EDGE_DEG, _SILHOUETTE_MIN_FACE_AREA, _build_silhouette_topology, _mesh_silhouette_segments)  # noqa: F401
 from step_surfaces import (load_step_surfaces)  # noqa: F401
 from normals import (_smooth_face_normals)  # noqa: F401
-from outline import (_FEATURE_SIMPLIFY_MM, _rdp_indices, _simplify_edge_chains, _feature_edges, _feature_edges_np, _feature_edges_py)  # noqa: F401
+from outline import (_FEATURE_SIMPLIFY_MM, _rdp_indices, _simplify_edge_chains, _feature_edges, _feature_edges_np)  # noqa: F401
 # ---- геометрии и контроллер (этап 0 переноса на C++) ----------------------
 # QML-тип "MockBackend" регистрирует controller.py (QML_IMPORT_* там же, где класс);
 # импорт этой строки и запускает регистрацию.
@@ -80,7 +80,7 @@ from controller import GcodeToolpath                                     # noqa:
 
 # ---- слои аналитики и периферии (этап 0 переноса на C++) ----------
 from gv_common import _to_3d                                     # noqa: F401
-from path_prep import (_scene_bounds_lo_hi, _pack_stream_np, _pack_stream_py, _stages_norm, _prepare_ordered)  # noqa: F401
+from path_prep import (_scene_bounds_lo_hi, _pack_stream_np, _stages_norm, _prepare_ordered)  # noqa: F401
 from tooling import (_HOLDER_NUT_D, _HOLDER_NUT_H, _HOLDER_BODY_D, _HOLDER_BODY_H)  # noqa: F401
 from tooling import (_tool_profile, _tool_outline_profile, _tool_exposed_length, _holder_profile, _holder_solid_profile, _holder_outline_profile, _rings_segments, _profile_ring_points)  # noqa: F401
 from collision import (_circle_rect_hit, _scan_collisions, _tool_check_report)  # noqa: F401

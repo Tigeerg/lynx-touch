@@ -38,7 +38,7 @@ def _build_silhouette_topology(verts, weld=_SILHOUETTE_WELD_MM):
     f0/f1 (K,) - индексы смежных граней, n (F,3) - нормали граней,
     d (F,) - предвычисленное n·cen (центроиды граней) для скоростного
     знакового теста s = n·E - d на кадре; None без numpy."""
-    if _np is None or verts is None:
+    if verts is None:
         return None
     tri = _np.asarray(verts, dtype=_np.float64).reshape(-1, 3, 3)
     F = tri.shape[0]
@@ -110,7 +110,7 @@ def _mesh_silhouette_segments(topo, E):
     видимую и невидимую грань, т.е. лежит на горизонте поверхности. Никаких
     аналитических образующих и фильтров - знак перехода нормали и есть силуэт.
     Возвращает (K,2,3) float32 (пустой массив без силуэта) или None."""
-    if topo is None or _np is None:
+    if topo is None:
         return None
     ev = _np.asarray(E, dtype=_np.float32)
     # Знаковый тест остался «произведение < 0» (грань с s == 0 - глаз в

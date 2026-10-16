@@ -177,7 +177,6 @@ Code against the CLAUDE.md rules:
 - many magic numbers without a name or unit;
 - development-history comments (the rules forbid them);
 - mixed comment languages (Russian and English);
-- the optional numpy is spread as `if _np is not None` branches across the code;
 - no type annotations.
 
 Checks:
@@ -218,7 +217,6 @@ Functionality:
 Engineering:
 - split the monolith and introduce a single `dataclass` contract QML <-> Python;
 - `dataclass` instead of tuples/dicts, with type hints;
-- make numpy a hard dependency (remove the pure-Python fallbacks);
 - a performance gate in `pnpm guard` via `bench_viewer.py`;
 - centralized logging;
 - port the compute core to C++ (the OCCT SDK directly instead of bindings, Eigen instead of

@@ -144,7 +144,7 @@ class HLRLineGeometry(QQuick3DGeometry):
 
     def set_reference(self, center):
         """Model-frame point that endpoints float away from."""
-        if _np is not None and center is not None:
+        if center is not None:
             self._ref = _np.asarray(center, dtype=_np.float32).reshape(3)
         else:
             self._ref = None
@@ -159,7 +159,7 @@ class HLRLineGeometry(QQuick3DGeometry):
         upload); the view-ray cam-float lives in stepledges.vert (uniform
         eyeRaw + camFloatMm), so a camera move costs no repack of this
         buffer."""
-        if _np is None or segs is None or len(segs) == 0:
+        if segs is None or len(segs) == 0:
             self._raw = b''
             self._nv = 0
             self._bounds = None
@@ -456,7 +456,7 @@ class MeshGeometry(QQuick3DGeometry):
         self._rebuild()
 
     def set_triangles(self, verts, normals=None):
-        if _np is not None and isinstance(verts, _np.ndarray) and verts.size:
+        if isinstance(verts, _np.ndarray) and verts.size:
             tri = _np.ascontiguousarray(verts, dtype=_np.float32).reshape(-1, 3, 3)
             if normals is not None:
                 nrm = _np.ascontiguousarray(normals, dtype=_np.float32).reshape(-1, 3, 3)

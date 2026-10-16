@@ -58,9 +58,6 @@ def _check(label, verts, normals):
 
 
 def main() -> int:
-    if _np is None:
-        print("numpy отсутствует - проверка пропущена")
-        return 0
     ok = True
     if os.path.exists(STEP):
         verts, _segments, normals = load_step_model(STEP)

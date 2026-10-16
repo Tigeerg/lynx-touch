@@ -133,7 +133,7 @@ def _tangent_families(surfs, packed_edges=None, skin=None):
     feeds the cone concavity policy (_cone_keeps_silhouette)."""
     skcen = skirm = sktri = None
     skin_tris = None
-    if skin is not None and _np is not None and skin[0] is not None \
+    if skin is not None and skin[0] is not None \
             and skin[1] is not None:
         try:
             vv = _np.asarray(skin[0], dtype=float).reshape(-1, 3, 3)

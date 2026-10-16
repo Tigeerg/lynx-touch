@@ -448,7 +448,7 @@ class GcodeToolpath(QObject):
     def _stl_normals(verts):
         """Crease-smooth vertex normals for an STL triangle soup (position
         list); None when numpy is absent (caller keeps flat normals)."""
-        if _np is None or verts is None or len(verts) < 3:
+        if verts is None or len(verts) < 3:
             return None
         try:
             return _smooth_face_normals(_np.asarray(verts, dtype=_np.float64)
@@ -468,8 +468,7 @@ class GcodeToolpath(QObject):
                 self._rev_surfaces = None
                 self._tan_fams = None
                 verts = load_stl_vertices(model_path)
-                if _np is not None:
-                    verts = _orient_shell_outward(verts).reshape(-1, 3)
+                verts = _orient_shell_outward(verts).reshape(-1, 3)
                 self._mesh_topo = _build_silhouette_topology(verts)
                 return verts, None, self._stl_normals(verts)
             except Exception as exc:
@@ -503,7 +502,7 @@ class GcodeToolpath(QObject):
                 self._tan_fams = _tangent_families(self._rev_surfaces, packed,
                                                    (verts, normals))
                 self._mesh_topo = _build_silhouette_topology(verts)
-                if ck and _np is not None and normals is not None:
+                if ck and normals is not None:
                     _cache_write_model(ck, verts, normals, packed)
                 return verts, packed, normals
             except Exception as exc:
@@ -518,8 +517,7 @@ class GcodeToolpath(QObject):
                     self._model_path = os.path.abspath(stl)
                     try:
                         sv = load_stl_vertices(self._model_path)
-                        if _np is not None:
-                            sv = _orient_shell_outward(sv).reshape(-1, 3)
+                        sv = _orient_shell_outward(sv).reshape(-1, 3)
                         self._mesh_topo = _build_silhouette_topology(sv)
                         return sv, None, None
                     except Exception:
@@ -581,7 +579,7 @@ class GcodeToolpath(QObject):
                     return                  # модель без меша: силуэта нет
                 segments = _mesh_silhouette_segments(self._mesh_topo, eye_raw)
             has = segments is not None and len(segments) > 0
-            if _np is not None and has:
+            if has:
                 self._sync_hlr_reference()
                 self._hlr_tangents.set_segments(
                     _np.asarray(segments, dtype=_np.float32))
@@ -674,7 +672,7 @@ class GcodeToolpath(QObject):
 
     def _sync_hlr_reference(self):
         """Share the model raw-frame AABB center with both line layers."""
-        if _np is None or self._mesh_lo is None or self._mesh_hi is None:
+        if self._mesh_lo is None or self._mesh_hi is None:
             return
         c = (0.5 * (self._mesh_lo[0] + self._mesh_hi[0]),
              0.5 * (self._mesh_lo[1] + self._mesh_hi[1]),
@@ -748,7 +746,7 @@ class GcodeToolpath(QObject):
             return 0
         if d >= cum[n - 1]:
             return n - 2
-        if _np is not None and isinstance(cum, _np.ndarray):
+        if isinstance(cum, _np.ndarray):
             i = int(_np.searchsorted(cum, d, side="right")) - 1
         else:
             i = _bisect_right(cum, d) - 1

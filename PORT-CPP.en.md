@@ -16,7 +16,7 @@ plugin, not buildable: the system has no Qt6 dev packages).
 
 | # | Layer | Key entities | Dependencies |
 |---|-------|--------------|--------------|
-| 1 | Common plumbing | `_occt` lock, optional numpy import, `CNC_*` environment constants | threading, numpy (optional) |
+| 1 | Common plumbing | `_occt` lock, numpy import, `CNC_*` environment constants | threading, numpy |
 | 2 | G-code parser | `parse_gcode`, `_run_cycle` (drilling), `_arc_points`, `_arc_sweep` | re, math |
 | 3 | `UI_*` tags | `parse_ui_rotation/origin/tool/holder/stock`, `stage_label`, `quat_from_cols` | re, math, QQuaternion |
 | 4 | STL import | `load_stl_vertices` (binary and ASCII), `_verts_bounds` | struct, numpy |
@@ -37,7 +37,7 @@ plugin, not buildable: the system has no Qt6 dev packages).
 Order of magnitude: **about 4.1 thousand lines of Python**, of which roughly 2.6 thousand are the
 compute core, 1.0 thousand the controller and 0.5 thousand the Qt geometries.
 
-Key dependencies: **numpy** (formally optional), **OCP** (`cadquery-ocp`) for STEP only, **PySide6**,
+Key dependencies: **numpy**, **OCP** (`cadquery-ocp`) for STEP only, **PySide6**,
 and `threading` with a lock around OCCT.
 
 ## 2. The QML contract that must not break
@@ -97,8 +97,8 @@ removal, gouge check), not in the orbit. A port for the orbit alone is not worth
 ## 5. What is not worth porting
 
 1. **Python fallbacks without numpy** (`_pack_stream_py`, `_feature_edges_py`, the Python branches of
-   `_pack_edge_segments` and `MeshGeometry.set_triangles`) — already marked as the slow reserve;
-   delete rather than translate.
+   `_pack_edge_segments` and `MeshGeometry.set_triangles`) **are already removed** together with the
+   hard dependency: there is nothing left to port.
 2. **`GridGeometry` and `AxisArrowGeometry`** — static procedural geometry, small buffers, rebuilt
    rarely: the gain is about zero.
 3. **The disk cache** in `.npz` format — moving the format breaks compatibility with the Python cache.
@@ -159,7 +159,7 @@ facade; the code is spread over 17 modules: `gv_common`, `gcode_parser`, `ui_tag
 `path_prep`, `tooling`, `collision`, `geometry`, `controller`. The names used by the tests,
 `bench_viewer.py`, `oracle_dump.py` and QML are re-exported by the facade, so the outside code never
 changed, and the oracle confirmed on every step that no result moved. Stage 0 still has to do: types
-instead of tuples, numpy as a hard dependency, `print` -> logging.
+instead of tuples and `print` -> logging (numpy became a hard dependency, 0.13.11).
 
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.

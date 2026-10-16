@@ -92,10 +92,6 @@ def collect():
 
 
 def main() -> int:
-    if mb._np is None:
-        print("numpy отсутствует - оракул не считается")
-        return 0
-
     arrays = collect()
     manifest = {name: _digest(arr) for name, arr in sorted(arrays.items())}
 

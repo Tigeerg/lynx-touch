@@ -31,9 +31,6 @@ MIN_TOTAL_MM = 3000.0       # покрытие контура не должно 
 
 
 def main() -> int:
-    if _np is None:
-        print("numpy отсутствует - проверка пропущена")
-        return 0
     if not os.path.exists(STL):
         print("STL: пропущено (нет %s)" % STL)
         return 0

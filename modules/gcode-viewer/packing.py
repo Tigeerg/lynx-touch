@@ -30,7 +30,7 @@ def _pack_edges_np(p0, p1):
 def packed_positions(packed):
     """Extract (M,2,3) endpoint positions from a packed Lines buffer."""
     raw, nv, _bounds = packed
-    if not raw or nv < 2 or _np is None:
+    if not raw or nv < 2:
         return None
     f = _np.frombuffer(raw, dtype=_np.float32)
     stride = f.size // (nv // 2 * 2) if nv else 5
@@ -38,28 +38,11 @@ def packed_positions(packed):
 
 
 def _pack_edge_segments(segments):
-    """Pack a list of (p0, p1) segments into a Lines buffer (fallback path)."""
+    """Pack a list of (p0, p1) segments into a Lines buffer."""
     if not segments:
         return (b'', 0, None)
-    if _np is not None:
-        arr = _np.asarray(segments, dtype=float)          # (M, 2, 3)
-        return _pack_edges_np(arr[:, 0], arr[:, 1])
-    flat = array('f')
-    ap = flat.append
-    lo = [math.inf, math.inf, math.inf]
-    hi = [-math.inf, -math.inf, -math.inf]
-    for a, b in segments:
-        for p in (a, b):
-            ap(p[0]); ap(p[1]); ap(p[2]); ap(1.0); ap(0.0)
-            if p[0] < lo[0]: lo[0] = p[0]
-            if p[1] < lo[1]: lo[1] = p[1]
-            if p[2] < lo[2]: lo[2] = p[2]
-            if p[0] > hi[0]: hi[0] = p[0]
-            if p[1] > hi[1]: hi[1] = p[1]
-            if p[2] > hi[2]: hi[2] = p[2]
-    return (flat.tobytes(), len(flat) // 5,
-            (lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]))
-
+    arr = _np.asarray(segments, dtype=float)          # (M, 2, 3)
+    return _pack_edges_np(arr[:, 0], arr[:, 1])
 
 def _coalesce_segments(segments, dist_tol=0.12, gap_tol=0.5):
     """Merge near-coincident straight edge segments. STEP files (especially
@@ -71,7 +54,7 @@ def _coalesce_segments(segments, dist_tol=0.12, gap_tol=0.5):
     Vectorized per direction bucket on a foot-cell grid (0.12 mm cells): the
     earlier per-segment numpy calls cost 1.05 s over the raw 4884-segment
     outline of Test_model - more than reading the STEP and meshing it."""
-    if _np is None or not segments:
+    if not segments:
         return segments
     S = _np.asarray([[a, b] for a, b in segments], dtype=float)
     A, B = S[:, 0], S[:, 1]

@@ -10,13 +10,13 @@
 
 | id | Проект | Путь | Тип |
 |----|--------|------|-----|
-| `react-interface` | React интерфейс (панель оператора) | `.` (`app/`, `components/`, `lib/`) | Next.js |
+| `react-interface` | React интерфейс (панель оператора) | `apps/react-interface` (`app/`, `components/`, `lib/`) | Next.js |
 | `qt-interface` | Qt-порт интерфейса | `apps/qt-interface` (`main.qml`, `preview.qml`, …) | QML |
-| `gcode-viewer` | 3D-вьювер УП | `apps/qt-interface` (`GcodeViewer3D.qml`, `mock_backend.py`, `toolpath.*`, …) | QML + Python |
-| `cad-testdata` | Тестовые УП/модели и постпроцессор | `CAD` (`Test_model.ngc`, `Test_model.STL`, `linuxcnc_ui.cps`) | данные |
+| `gcode-viewer` | 3D-вьювер УП | `modules/gcode-viewer` (`GcodeViewer3D.qml`, `mock_backend.py`, `toolpath.*`, …) | QML + Python |
+| `cad-testdata` | Тестовые УП/модели и постпроцессор | `data/cad-testdata` (`Test_model.ngc`, `Test_model.STL`, `linuxcnc_ui.cps`) | данные |
 
-`qt-interface` и `gcode-viewer` физически лежат в одной папке `apps/qt-interface`,
-но это **разные проекты** с независимыми версиями.
+`qt-interface` и `gcode-viewer` — разные проекты с независимыми версиями; лежат они
+в разных папках: `apps/qt-interface` и `modules/gcode-viewer`.
 
 ## 2. Схема версий
 

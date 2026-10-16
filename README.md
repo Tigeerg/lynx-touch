@@ -32,8 +32,10 @@
 - `mock_backend.py` — парсер G-кода, геометрии, инструмент/оправка, этапы,
   скорости 1:1, анализ столкновений, проверка инструмента
 - `toolpath.vert` / `toolpath.frag` — шейдеры линий
-- Зависимость: `pip install cadquery-ocp` — импорт STEP (модель и обводка
-  граней из B-rep); без него STEP не читается, вьювер использует STL
+- Зависимость: `pip install cadquery-ocp==8.0.1.1.0` — импорт STEP (модель и обводка
+  граней из B-rep); без него STEP не читается, вьювер использует STL. Версия
+  зафиксирована: 7.7.2 не читает STEP вовсе, а `test_normals_golden.py` сверяет
+  тесселяцию бит-в-бит и к версии OCP чувствителен
 - Запуск: `python modules/gcode-viewer/preview_3d.py "data/cad-testdata/Test_model.ngc"`
   (рядом подхватывается `Test_model.step`, иначе — `Test_model.stl`)
 - Журнал изменений: [`modules/gcode-viewer/CHANGELOG.md`](modules/gcode-viewer/CHANGELOG.md)

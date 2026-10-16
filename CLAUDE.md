@@ -14,7 +14,7 @@
   `toolpath.vert`/`toolpath.frag`).
 * **`cad-testdata`** — тестовые УП/модели и постпроцессор (`data/cad-testdata/`).
 
-`qt-interface` и `gcode-viewer` лежат в одной папке `apps/qt-interface` — это **разные проекты**: правка
+`qt-interface` (`apps/qt-interface`) и `gcode-viewer` (`modules/gcode-viewer`) — **разные проекты**: правка
 интерфейса не поднимает версию вьювера и наоборот. До первой правки определи проект; порядок внесения
 изменения — `VERSIONING.md`, раздел 4. Этот файл его не отменяет, он его требует.
 

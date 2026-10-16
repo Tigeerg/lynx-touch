@@ -63,14 +63,15 @@ def _scan_collisions(scene_pts, cum, total, stage_starts, stage_len, stock, step
         si = stage_at(d)
         L = stage_len[si] if si < len(stage_len) else 0.0
         worst = 0.0
-        for (r, hz0, hz1) in holders[si]:
-            hb = z + hz0                  # holder bottom (machine Z)
+        for sec in holders[si]:
+            hb = z + sec.z0_mm            # holder bottom (machine Z)
             if hb >= zmax:                # entirely above the stock top
                 continue
-            ht = z + hz1
+            ht = z + sec.z1_mm
             if ht <= zmin:                # entirely below the stock
                 continue
-            if not _circle_rect_hit(x, y, r, xmin, xmax, ymin, ymax):
+            if not _circle_rect_hit(x, y, sec.radius_mm,
+                                    xmin, xmax, ymin, ymax):
                 continue
             pen = min(ht, zmax) - max(hb, zmin)
             if pen > worst:

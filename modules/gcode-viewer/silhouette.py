@@ -5,6 +5,7 @@
 import math
 
 from gv_common import _np
+from gv_types import MeshTopology
 
 np = _np          # код слоя читает numpy как np
 
@@ -34,7 +35,7 @@ def _build_silhouette_topology(verts, weld=_SILHOUETTE_WELD_MM):
     фаска). Острые переходы и вырожденные (сляйверные) грани отсеяны - см.
     константы _SILHOUETTE_MAX_EDGE_DEG / _SILHOUETTE_MIN_FACE_AREA.
 
-    Возвращает dict с полями ea/eb (K,3) - концы силуэтных кандидатов,
+    Возвращает MeshTopology: ea/eb (K,3) - концы силуэтных кандидатов,
     f0/f1 (K,) - индексы смежных граней, n (F,3) - нормали граней,
     d (F,) - предвычисленное n·cen (центроиды граней) для скоростного
     знакового теста s = n·E - d на кадре; None без numpy."""
@@ -88,18 +89,18 @@ def _build_silhouette_topology(verts, weld=_SILHOUETTE_WELD_MM):
     f1 = f1[keep_edge]
     ends = ends[keep_edge]
     cen = tri.mean(axis=1).astype(_np.float32)
-    return {
-        "ea": pos[ends[:, 0]].astype(_np.float32),
-        "eb": pos[ends[:, 1]].astype(_np.float32),
-        "f0": f0,
-        "f1": f1,
-        "n": n.astype(_np.float32),
+    return MeshTopology(
+        ea=pos[ends[:, 0]].astype(_np.float32),
+        eb=pos[ends[:, 1]].astype(_np.float32),
+        f0=f0,
+        f1=f1,
+        n=n.astype(_np.float32),
         # n·cen предвычислено здесь, один раз на модель: на кадре остаётся
         # s = n·E - d (BLAS-матвектор) вместо einsum с материализацией
         # (E - cen) на все F граней (замер на Test_model: этап s подешевел
         # ~9.1 -> ~0.6 мс, всё событие камеры - см. _mesh_silhouette_segments).
-        "d": _np.einsum("ij,ij->i", n.astype(_np.float32), cen),
-    }
+        d=_np.einsum("ij,ij->i", n.astype(_np.float32), cen),
+    )
 
 
 def _mesh_silhouette_segments(topo, E):
@@ -117,10 +118,10 @@ def _mesh_silhouette_segments(topo, E):
     # её плоскости - не силуэтная, как и раньше), но знаки собраны в int8:
     # сбор sg[f0]/sg[f1] гоняет 1 байт на ребро вместо 4 у float32
     # (замер на Test_model: ~9.1 -> ~6.2 мс на событие камеры).
-    s = topo["n"] @ ev - topo["d"]
+    s = topo.n @ ev - topo.d
     sg = _np.sign(s).astype(_np.int8)
-    sel = sg[topo["f0"]] * sg[topo["f1"]] < 0
+    sel = sg[topo.f0] * sg[topo.f1] < 0
     if not sel.any():
         return _np.empty((0, 2, 3), dtype=_np.float32)
     k = _np.flatnonzero(sel)
-    return _np.stack([topo["ea"][k], topo["eb"][k]], axis=1)
+    return _np.stack([topo.ea[k], topo.eb[k]], axis=1)

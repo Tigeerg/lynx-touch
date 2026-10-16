@@ -63,8 +63,10 @@ The controller exposes finished data; QML never receives the per-point path list
 - `stages` — program operations as normalized `[start, end]` path ranges;
 - `collisions` — collision ranges with a representative scene point.
 
-A group of values that travels together must be a named type (CLAUDE.md). Some of it is still passed as raw
-tuples or dicts — see section 12.
+A group of values that travels together is a named type (CLAUDE.md): the module-boundary structures live in
+`gv_types.py` (`PathPoint`, `Stage`, `Aabb`, `PackedEdges`, `PathData`, `CylinderSurface`/`ConeSurface`,
+`TangentFamilies`, `MeshTopology`, `ProfilePoint`/`HolderSection`). A dict remains only where QML reads it
+(`toolInfo`, `stages`, `collisions`, `toolCheck`): that is the QML contract, not debt.
 
 ## 5. Coordinate system
 
@@ -171,8 +173,8 @@ Architecture:
 - Several launch points (`preview_3d.py`, `preview_qml.py`, `preview_pyqt5.py`) create ambiguity.
 
 Code against the CLAUDE.md rules:
-- groups of values are passed as tuples/dicts instead of `dataclass` (`Tool`, `HolderSection`, `Stage`,
-  `PathData`);
+- module-boundary structures are no longer tuples/dicts: they live in `gv_types.py` (0.13.13); a dict remains
+  only where QML reads it (`toolInfo`, `stages`, `collisions`, `toolCheck`) — a contract, not debt;
 - the display toggles (`showPartVisible`, `xray`, `showBrepEdges`, ...) are a run of booleans, not a mode;
 - many magic numbers without a name or unit;
 - development-history comments (the rules forbid them);
@@ -215,7 +217,8 @@ Functionality:
 
 Engineering:
 - split the monolith and introduce a single `dataclass` contract QML <-> Python;
-- `dataclass` instead of tuples/dicts, with type hints;
+- `dataclass` instead of tuples/dicts, with type hints: module-boundary structures are in place
+  (`gv_types.py`, 0.13.13); core type annotations remain;
 - a performance gate in `pnpm guard` via `bench_viewer.py`;
 - centralized logging;
 - port the compute core to C++ (the OCCT SDK directly instead of bindings, Eigen instead of

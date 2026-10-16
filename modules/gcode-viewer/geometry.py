@@ -102,7 +102,8 @@ class ToolpathGeometry(QQuick3DGeometry):
         self.addAttribute(_POSITION, 0, _F32)
         self.addAttribute(_TEXCOORD0, 3 * 4, _F32)
         if self._bounds is not None:
-            x0, y0, z0, x1, y1, z1 = self._bounds
+            x0, y0, z0 = self._bounds.lo
+            x1, y1, z1 = self._bounds.hi
         else:
             x0 = y0 = z0 = x1 = y1 = z1 = 0.0
         pad = 1.0
@@ -469,7 +470,8 @@ class MeshGeometry(QQuick3DGeometry):
             inter = _np.concatenate([tri, nrm], axis=2)
             self._data = _np.ascontiguousarray(inter, dtype=_np.float32).tobytes()
             self._nv = tri.shape[0] * 3
-            self._lo, self._hi = _verts_bounds(verts)
+            bounds = _verts_bounds(verts)
+            self._lo, self._hi = bounds.lo, bounds.hi
             self._rebuild()
             return
         flat = array('f')
@@ -538,7 +540,7 @@ class MeshGeometry(QQuick3DGeometry):
 
 @QmlElement
 class ToolGeometry(QQuick3DGeometry):
-    """Solid of revolution (triangle mesh) from a 2D profile [(r, y), ...].
+    """Solid of revolution (triangle mesh) from a 2D profile [ProfilePoint].
 
     Built from a tool-info dict so the panel draws the actual cutter shape
     (flat/ball/bull/chamfer/drill) instead of a fixed placeholder.
@@ -564,7 +566,8 @@ class ToolGeometry(QQuick3DGeometry):
 
     def set_profile(self, profile, segments=None):
         seg = int(segments) if segments else self._SEGMENTS
-        prof = [(max(0.0, float(r)), float(y)) for r, y in (profile or [])]
+        prof = [(max(0.0, float(p.radius_mm)), float(p.height_mm))
+                for p in (profile or [])]
         cleaned = []
         for p in prof:                       # drop consecutive duplicate points
             if not cleaned or abs(p[0] - cleaned[-1][0]) > 1e-9 \

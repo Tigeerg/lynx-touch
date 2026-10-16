@@ -6,6 +6,7 @@
 import math
 
 from gv_common import _np
+from gv_types import ConeSurface, CylinderFamilies, CylinderSurface, TangentFamilies
 
 np = _np          # код слоя читает numpy как np
 
@@ -49,22 +50,22 @@ def _cone_keeps_silhouette(cone, skin_tris):
     образующих, вращающуюся вслед за камерой в 0.35-1.5 мм от статического
     ребра перехода - то самое «призрачное» удвоение. Без кожи (skin_tris is
     None) проверка вогнутости пропускается, остаётся порог длины."""
-    slant = abs(float(cone["s1"]) - float(cone["s0"]))
+    slant = abs(float(cone.s1) - float(cone.s0))
     if slant < _CONE_MIN_SLANT_MM:
         return False
     if skin_tris is None:
         return True
     sktri, skcen, skirm = skin_tris
-    d = _np.array(cone["d"], dtype=float)
+    d = _np.array(cone.d, dtype=float)
     d = d / max(float(_np.linalg.norm(d)), 1e-12)
-    apex = _np.array(cone["a"], dtype=float)
-    psi = float(cone["psi"])
+    apex = _np.array(cone.a, dtype=float)
+    psi = float(cone.psi)
     # любые два ортогональных к оси орта: проба идёт по обороту конуса
     ref = _np.array([0.0, 0.0, 1.0]) if abs(d[2]) < 0.9 else _np.array([1.0, 0.0, 0.0])
     u1 = ref - d * float(d @ ref)
     u1 /= max(float(_np.linalg.norm(u1)), 1e-12)
     u2 = _np.cross(d, u1)
-    s_mid = (float(cone["s0"]) + float(cone["s1"])) / 2.0
+    s_mid = (float(cone.s0) + float(cone.s1)) / 2.0
     side = 1.0 if s_mid >= 0.0 else -1.0       # вторая полость конуса: радиус наружу меняет знак
     try:
         for k in range(_CONE_PROBE_AZIMUTHS):
@@ -101,17 +102,17 @@ def _dedupe_cones(cones):
     out = []
     seen = set()
     for c in cones:
-        d = _np.array(c["d"], dtype=float)
+        d = _np.array(c.d, dtype=float)
         d = d / max(float(_np.linalg.norm(d)), 1e-12)
         sig = [j for j in range(3) if abs(float(d[j])) > 1e-4]
         if sig and float(d[sig[0]]) < 0.0:
             d = -d
-            s0, s1 = -float(c["s1"]), -float(c["s0"])
+            s0, s1 = -float(c.s1), -float(c.s0)
         else:
-            s0, s1 = float(c["s0"]), float(c["s1"])
-        key = (tuple(round(float(v), 3) for v in c["a"]),
+            s0, s1 = float(c.s0), float(c.s1)
+        key = (tuple(round(float(v), 3) for v in c.a),
                tuple(round(float(v), 4) for v in d),
-               round(float(c["psi"]), 4),
+               round(float(c.psi), 4),
                tuple(sorted((round(s0, 3), round(s1, 3)))))
         if key in seen:
             continue
@@ -147,15 +148,15 @@ def _tangent_families(surfs, packed_edges=None, skin=None):
     cyls = {}
     cones = []
     for s in surfs:
-        if s["k"] != "cyl":
+        if not isinstance(s, CylinderSurface):
             cones.append(s)
             continue
-        d = _np.array(s["d"], dtype=float)
+        d = _np.array(s.d, dtype=float)
         dn = float(_np.linalg.norm(d))
         if dn <= 1e-12:
             continue
         d = d / dn
-        o = _np.array(s["o"], dtype=float)
+        o = _np.array(s.o, dtype=float)
         o_perp = o - d * float(d @ o)
         # lexicographically canonical axis direction - the old rule missed
         # Z-parallel lines ((0,0,±1) kept both signs), so one cylinder split
@@ -167,7 +168,7 @@ def _tangent_families(surfs, packed_edges=None, skin=None):
                     dref = -d
                 break
         key = (tuple(_np.round(o_perp, 1)), tuple(_np.round(dref, 2)),
-               round(float(s["r"]), 2))
+               round(float(s.r), 2))
         cyls.setdefault(key, []).append(s)
     O = []; D = []; E1 = []; E2 = []; FULL = []; R = []
     T0 = []; T1 = []; ARCS = []; A0 = []; A1 = []
@@ -179,14 +180,14 @@ def _tangent_families(surfs, packed_edges=None, skin=None):
         # exact axis foot and radius, not the rounded key: a key rounded to
         # 0.1 mm slid every generator off the true axis, visibly offset from
         # the static junction edges it is supposed to coincide with
-        feet = [_np.array(s["o"], dtype=float)
-                - d * float(d @ _np.array(s["o"], dtype=float)) for s in faces]
+        feet = [_np.array(s.o, dtype=float)
+                - d * float(d @ _np.array(s.o, dtype=float)) for s in faces]
         o = sum(feet) / len(feet)
-        e10 = _np.array(faces[0]["e1"], dtype=float)
-        e20 = _np.array(faces[0]["e2"], dtype=float)
+        e10 = _np.array(faces[0].e1, dtype=float)
+        e20 = _np.array(faces[0].e2, dtype=float)
         full = False
         for s in faces:
-            a0, a1 = s.get("arc", (None, None))
+            a0, a1 = s.arc
             if a0 is None:
                 full = True
                 break
@@ -198,20 +199,20 @@ def _tangent_families(surfs, packed_edges=None, skin=None):
         spans = []
         tbs = []
         for s in faces:
-            lo, hi = float(s["t0"]), float(s["t1"])
+            lo, hi = float(s.t0), float(s.t1)
             # t0/t1 are measured along the face's own axis: a member whose
             # axis opposes the canonical direction has its span mirrored
             # (tangents floated past the bore - the "shifted duplicates")
-            if float(d @ _np.array(s["d"], dtype=float)) < 0.0:
+            if float(d @ _np.array(s.d, dtype=float)) < 0.0:
                 lo, hi = -hi, -lo
-            c = float(d @ (_np.array(s["o"], dtype=float) - o))
+            c = float(d @ (_np.array(s.o, dtype=float) - o))
             tbs.append((c + lo, c + hi))
         for tb in sorted(tbs):
             if spans and tb[0] <= spans[-1][1] + 1e-6:
                 spans[-1][1] = max(spans[-1][1], tb[1])
             else:
                 spans.append([tb[0], tb[1]])
-        rrep = float(sum(float(s["r"]) for s in faces) / len(faces))
+        rrep = float(sum(float(s.r) for s in faces) / len(faces))
         # Политика силуэта: view-зависимая образующая - силуэт тела вращения,
         # её получают и вогнутые стенки (отверстия), и выпуклые наружные
         # галтели (скругления). Порог arc >= 85 гр и пролёт >= 2.5 мм оставляют
@@ -221,7 +222,7 @@ def _tangent_families(surfs, packed_edges=None, skin=None):
         # рядом образующая и стыковая кромка - это силуэт и кромка, не дубль.
         wmax = 0.0
         for s in faces:
-            a0b, a1b = s.get("arc", (None, None))
+            a0b, a1b = s.arc
             if a0b is None:
                 wmax = 2 * math.pi
                 break
@@ -243,7 +244,7 @@ def _tangent_families(surfs, packed_edges=None, skin=None):
         abins = _np.zeros(64, dtype=bool)
         fa0 = math.nan; fa1 = math.nan
         for s in faces:
-            a0b, a1b = s.get("arc", (None, None))
+            a0b, a1b = s.arc
             if a0b is None:
                 abins[:] = True
                 break
@@ -314,8 +315,8 @@ def _tangent_families(surfs, packed_edges=None, skin=None):
     # line: same direction as the axis, same radius, axially overlapping.
     DROP = _np.full((len(O), 8), math.nan)
     if packed_edges is not None and O:
-        raw = packed_edges[0]
-        nv = packed_edges[1]
+        raw = packed_edges.raw
+        nv = packed_edges.nv
         if raw and nv >= 2:
             v = _np.frombuffer(raw, dtype=_np.float32).reshape(-1, 5)
             SA, SB = v[0::2, 0:3].astype(float), v[1::2, 0:3].astype(float)
@@ -366,51 +367,48 @@ def _tangent_families(surfs, packed_edges=None, skin=None):
                 if len(uniq) > 1 and uniq[0] + two_pi - uniq[-1] < 0.03:
                     uniq.pop()
                 DROP[i, :min(len(uniq), 8)] = uniq[:8]
-    arr = {"O": _np.array(O, dtype=float).reshape(-1, 3),
-           "D": _np.array(D, dtype=float).reshape(-1, 3),
-           "E1": _np.array(E1, dtype=float).reshape(-1, 3),
-           "E2": _np.array(E2, dtype=float).reshape(-1, 3),
-           "FULL": _np.array(FULL, dtype=bool),
-           "DROP": DROP,
-           "R": _np.array(R, dtype=float),
-           "T0": _np.array(T0, dtype=float),
-           "T1": _np.array(T1, dtype=float)}
+    O_arr = _np.array(O, dtype=float).reshape(-1, 3)
+    D_arr = _np.array(D, dtype=float).reshape(-1, 3)
+    E1_arr = _np.array(E1, dtype=float).reshape(-1, 3)
+    E2_arr = _np.array(E2, dtype=float).reshape(-1, 3)
+    FULL_arr = _np.array(FULL, dtype=bool)
+    R_arr = _np.array(R, dtype=float)
+    T0_arr = _np.array(T0, dtype=float)
+    T1_arr = _np.array(T1, dtype=float)
     # coaxial sections (stepped bores) must share one tangent azimuth: each
     # cylinder's own eye-tangent angle differs by ~0.2 deg, so a step like
     # R=3.42 over R=2.75 drew its contour as two offset stubs - the "doubled,
     # shifted lines that rotate with the camera". Reference = largest radius
     # on the same axis line; sections render placed on their own radius but
     # at the group azimuth, making the outline one straight line per side.
-    Rr = arr["R"].copy()
-    Oa2, Da2, Ra2 = arr["O"], arr["D"], arr["R"]
-    if Oa2.shape[0]:
-        PD = _np.abs(Da2 @ Da2.T)
-        wo = Oa2[None, :, :] - Oa2[:, None, :]
-        alo = _np.einsum("ijk,jk->ij", wo, Da2)
-        pfo = wo - Da2[:, None, :] * alo[:, :, None]
+    Rr = R_arr.copy()
+    if O_arr.shape[0]:
+        PD = _np.abs(D_arr @ D_arr.T)
+        wo = O_arr[None, :, :] - O_arr[:, None, :]
+        alo = _np.einsum("ijk,jk->ij", wo, D_arr)
+        pfo = wo - D_arr[:, None, :] * alo[:, :, None]
         gap = _np.linalg.norm(pfo, axis=2)
         coax = (PD > 0.999) & (gap < 0.4)
-        coax |= _np.eye(Oa2.shape[0], dtype=bool)
-        Rr = _np.where(coax, Ra2[None, :], -1.0).max(axis=1)
-    arr["RREF"] = Rr
+        coax |= _np.eye(O_arr.shape[0], dtype=bool)
+        Rr = _np.where(coax, R_arr[None, :], -1.0).max(axis=1)
     # Азимутальное покрытие цилиндра. Меш кожи даёт честные 360 гр у
     # сквозного отверстия, но у скругления рядом с отверстием ловит лишние
     # корзины (118 гр вместо 90 гр) - образующая вылезает за дугу на плоскость
     # («фантом»). Поэтому маску по мешу ОГРАНИЧИВАЕМ аналитической дугой грани
     # (ARCS), но только у частичных дуг: полное отверстие (меш ~64 корзины)
     # оставляем как есть - его полу-грани дают одинаковые 180-гр дуги.
-    ARC = _np.zeros((arr["O"].shape[0], 64), dtype=bool)
-    if sktri is not None and arr["O"].shape[0]:
+    ARC = _np.zeros((O_arr.shape[0], 64), dtype=bool)
+    if sktri is not None and O_arr.shape[0]:
         two_pi = 2.0 * math.pi
-        for i in range(arr["O"].shape[0]):
-            if not arr["FULL"][i]:
+        for i in range(O_arr.shape[0]):
+            if not FULL_arr[i]:
                 continue
-            u = arr["D"][i]
-            o = arr["O"][i]
-            e1 = arr["E1"][i]
-            e2 = arr["E2"][i]
-            Ri = arr["R"][i]
-            lo, hi = arr["T0"][i], arr["T1"][i]
+            u = D_arr[i]
+            o = O_arr[i]
+            e1 = E1_arr[i]
+            e2 = E2_arr[i]
+            Ri = R_arr[i]
+            lo, hi = T0_arr[i], T1_arr[i]
             wv = sktri - o[None, None, :]
             al = _np.einsum("mjk,k->mj", wv, u)
             pp = wv - u[None, None, :] * al[:, :, None]
@@ -421,8 +419,8 @@ def _tangent_families(surfs, packed_edges=None, skin=None):
                 cen = pp[ontri].mean(axis=1)
                 ang = _np.arctan2(cen @ e2, cen @ e1) % two_pi
                 ARC[i, _np.unique((ang / two_pi * 64).astype(int) % 64)] = True
-        for i in range(arr["O"].shape[0]):
-            if not arr["FULL"][i]:
+        for i in range(O_arr.shape[0]):
+            if not FULL_arr[i]:
                 continue
             m = ARC[i]
             if m.sum() >= 56:
@@ -433,19 +431,28 @@ def _tangent_families(surfs, packed_edges=None, skin=None):
                 ARC[i] = cut if cut.any() else an
             # слишком редкую маску не форсим в полную: честная дуга режет
             # образующую по границе скругления (иначе был «фантомный» край)
-    arr["ARC"] = ARC
     # непрерывная дуга (a0, a0+span) для точной обрезки на скользящих углах;
     # полные отверстия (маска ~360 гр) помечаем NaN - их не режем
     a0 = _np.array(A0, dtype=float); a1 = _np.array(A1, dtype=float)
     fullm = ARC.sum(axis=1) >= 56
     a0[fullm] = _np.nan; a1[fullm] = _np.nan
-    arr["A0"] = a0; arr["A1"] = a1
     # Примечание: полный генератор НЕ запрещается обрезанным дугам -
     # гейт по покрытию убирал и законный контур скруглений. Рельсовый
     # culling по корзинам ARC ниже в рантайме: линия живёт, пока её
     # азимут внутри дуги, и сходит за её край в стыковое ребро.
-    return arr, _dedupe_cones([c for c in cones
-                               if _cone_keeps_silhouette(c, skin_tris)])
+    families = CylinderFamilies(O=O_arr, D=D_arr, E1=E1_arr, E2=E2_arr,
+                                FULL=FULL_arr, DROP=DROP, R=R_arr, T0=T0_arr,
+                                T1=T1_arr, RREF=Rr, ARC=ARC, A0=a0, A1=a1)
+    cones = _dedupe_cones([c for c in cones
+                           if _cone_keeps_silhouette(c, skin_tris)])
+    return TangentFamilies(families, cones)
+
+
+def _empty_families():
+    """Пустые цилиндрические массивы: силуэт только по конусам (проверки)."""
+    e = _np.empty((0,), dtype=float)
+    return CylinderFamilies(O=e, D=e, E1=e, E2=e, FULL=e, DROP=e, R=e,
+                            T0=e, T1=e, RREF=e, ARC=e, A0=e, A1=e)
 
 
 def _tangent_from_families(fam, E):
@@ -455,9 +462,10 @@ def _tangent_from_families(fam, E):
     present, never censored per arc (that made them flicker/appear
     intermittently), and they are drawn in the occlusion-free edgeView
     layer. Cones keep the scalar path."""
-    cyls, cones = fam
+    cyls = fam.cylinders
+    cones = fam.cones
     segments = []
-    O, D, R = cyls["O"], cyls["D"], cyls["R"]
+    O, D, R = cyls.O, cyls.D, cyls.R
     Ev = _np.asarray(E, dtype=float)
     if O.shape[0]:
         w = Ev[None, :] - O
@@ -470,18 +478,18 @@ def _tangent_from_families(fam, E):
             # sections of one stepped bore line up on a single outline per
             # side; fall back to the section's own radius when the eye sits
             # inside the reference cylinder (reference tangent undefined)
-            Rref = cyls["RREF"]
+            Rref = cyls.RREF
             Rp_ = _np.maximum(Rp, 1e-9)
             Rang = _np.where(Rp > Rref, Rref, R)
             cg = _np.clip(Rang / Rp_, -1.0, 1.0)                # cos(gamma)
             sg = _np.sqrt(_np.maximum(1.0 - cg * cg, 0.0))
             mh = perp / _np.maximum(Rp, 1e-9)[:, None]
             rot = _np.cross(D, mh)
-            e1, e2 = cyls["E1"], cyls["E2"]
-            full = cyls["FULL"]
-            drop = cyls["DROP"]
+            e1, e2 = cyls.E1, cyls.E2
+            full = cyls.FULL
+            drop = cyls.DROP
             anydrop = _np.isfinite(drop).any(axis=1)
-            T0, T1 = cyls["T0"], cyls["T1"]
+            T0, T1 = cyls.T0, cyls.T1
             base_a = O + D * T0[:, None]
             base_b = O + D * T1[:, None]
             for sgn in (1.0, -1.0):
@@ -511,15 +519,14 @@ def _tangent_from_families(fam, E):
                 # непрерывная обрезка по аналитической дуге (a0..a1) с малым
                 # допуском: корзиночная маска теряла до 5.6 гр на границе и
                 # контур скругления пропадал на скользящих углах раньше времени
-                aa0 = cyls.get("A0") if hasattr(cyls, "get") else None
+                aa0 = cyls.A0
                 arcok = _np.ones(len(phi), dtype=bool)
-                if aa0 is not None:
-                    part = _np.isfinite(aa0)
-                    rel = (phi - aa0) % (2.0 * math.pi)
-                    span = (_np.asarray(cyls["A1"]) - aa0) % (2.0 * math.pi)
-                    tol = math.radians(2.0)
-                    arcok = (~part) | (rel <= span + tol) \
-                        | (rel >= 2.0 * math.pi - tol)
+                part = _np.isfinite(aa0)
+                rel = (phi - aa0) % (2.0 * math.pi)
+                span = (cyls.A1 - aa0) % (2.0 * math.pi)
+                tol = math.radians(2.0)
+                arcok = (~part) | (rel <= span + tol) \
+                    | (rel >= 2.0 * math.pi - tol)
                 ok &= arcok
                 drows = _np.nonzero(ok & anydrop)[0]
                 if drows.size:
@@ -538,13 +545,13 @@ def _tangent_from_families(fam, E):
                     b = base_b[keep] + n[keep] * R[keep][:, None]
                     segments.extend((tuple(p), tuple(q)) for p, q in zip(a, b))
     for s in cones:
-        sd = _np.array(s["d"], dtype=float)
+        sd = _np.array(s.d, dtype=float)
         dn = float(_np.linalg.norm(sd))
         if dn <= 1e-12:
             continue
         sd = sd / dn
-        A = _np.array(s["a"], dtype=float)
-        psi = float(s["psi"])
+        A = _np.array(s.a, dtype=float)
+        psi = float(s.psi)
         w = Ev - A
         W = float(_np.linalg.norm(w))
         if W < 1e-6 or abs(math.cos(psi)) <= 1e-6:
@@ -567,7 +574,7 @@ def _tangent_from_families(fam, E):
         for sign in (1.0, -1.0):
             gdir = (sd * math.cos(psi)
                     + (u1 * cf + u2 * (sign * sf)) * math.sin(psi))
-            a = A + gdir * float(s["s0"])
-            b = A + gdir * float(s["s1"])
+            a = A + gdir * float(s.s0)
+            b = A + gdir * float(s.s1)
             segments.append((tuple(a), tuple(b)))
     return segments

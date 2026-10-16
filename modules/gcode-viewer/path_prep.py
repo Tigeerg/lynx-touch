@@ -6,6 +6,7 @@ Qt, ни от OCCT, поэтому переносится вместе с пар
 import math
 
 from gv_common import _np, _to_3d
+from gv_types import Aabb, PathData
 
 np = _np          # код слоя читает numpy как np
 
@@ -14,8 +15,8 @@ np = _np          # код слоя читает numpy как np
 #  Tool-path preparation (pure, thread-safe: usable from a worker thread)
 # ==========================================================================
 def _scene_bounds_lo_hi(lo, hi):
-    """Machine (X, Y, Z) bounds -> scene (X, Z, -Y) bounds (x0,y0,z0,x1,y1,z1)."""
-    return (lo[0], lo[2], -hi[1], hi[0], hi[2], -lo[1])
+    """Machine (X, Y, Z) bounds -> scene (X, Z, -Y) Aabb."""
+    return Aabb((lo[0], lo[2], -hi[1]), (hi[0], hi[2], -lo[1]))
 
 
 def _pack_stream_np(pts, flags, cum, total, want_rapid, machine=True):
@@ -65,11 +66,11 @@ def _stages_norm(stages, cum, total):
         return float(cum[idx]) * inv
 
     for i, st in enumerate(stages):
-        idx = st[0]
-        label = st[1]
-        info = st[2] if len(st) > 2 else {}
+        idx = st.index
+        label = st.label
+        info = st.info
         s = at(idx)
-        e = at(stages[i + 1][0]) if i + 1 < n else 1.0
+        e = at(stages[i + 1].index) if i + 1 < n else 1.0
         s = max(0.0, min(1.0, s))
         e = max(s, min(1.0, e))
         out.append({"start": s, "end": e, "label": label, "tool": info})
@@ -79,25 +80,24 @@ def _stages_norm(stages, cum, total):
 def _prepare_ordered(ordered, stages=None):
     """Turn a parsed ordered path into everything needed to display it.
 
-    Pure and thread-safe (no Qt objects): returns a dict with the packed line
-    buffers for both streams, the animation polyline and its metrics. This is
-    the heavy part of a load, so it may run on a worker thread."""
+    Pure and thread-safe (no Qt objects): returns a PathData with the packed
+    line buffers for both streams, the animation polyline and its metrics. This
+    is the heavy part of a load, so it may run on a worker thread."""
     n = len(ordered)
     if n == 0:
-        return {
-            "seg_count": 0, "last": (0.0, 0.0, 0.0),
-            "pts": None, "cum": None, "rapid": None, "speeds": None, "total": 0.0,
-            "rapid_bytes": b"", "rapid_nv": 0,
-            "feed_bytes": b"", "feed_nv": 0,
-            "bounds": None, "center": [0.0, 0.0, 0.0],
-            "radius": 50.0, "min_y": 0.0, "stages": [],
-        }
-    last = tuple(ordered[-1][0])
+        return PathData(
+            seg_count=0, last=(0.0, 0.0, 0.0),
+            pts=None, cum=None, rapid=None, speeds=None, total=0.0,
+            rapid_bytes=b"", rapid_nv=0,
+            feed_bytes=b"", feed_nv=0,
+            bounds=None, center=[0.0, 0.0, 0.0],
+            radius=50.0, min_y=0.0, stages=[])
+    last = tuple(ordered[-1].point)
 
     np = _np
-    pts = np.array([p for p, _, _ in ordered], dtype=float)          # (N, 3)
-    flags = np.fromiter((bool(f) for _, f, _ in ordered), dtype=bool, count=n)
-    spds = np.fromiter((float(spd) for _, _, spd in ordered), dtype=float, count=n)
+    pts = np.array([p.point for p in ordered], dtype=float)          # (N, 3)
+    flags = np.fromiter((bool(p.is_rapid) for p in ordered), dtype=bool, count=n)
+    spds = np.fromiter((float(p.speed_mm_s) for p in ordered), dtype=float, count=n)
     if n > 1:
         d = np.diff(pts, axis=0)
         seg = np.sqrt((d * d).sum(axis=1))
@@ -118,16 +118,15 @@ def _prepare_ordered(ordered, stages=None):
     rapid_bytes, rapid_nv = _pack_stream_np(pts, flags, cum_np, total, True)
     feed_bytes, feed_nv = _pack_stream_np(pts, flags, cum_np, total, False)
     cm = [(lo[i] + hi[i]) / 2.0 for i in range(3)]
-    return {
-        "seg_count": n - 1, "last": last,
-        "pts": scene, "cum": cum_np, "rapid": flags, "speeds": spds,
-        "total": total,
-        "rapid_bytes": rapid_bytes, "rapid_nv": rapid_nv,
-        "feed_bytes": feed_bytes, "feed_nv": feed_nv,
-        "bounds": _scene_bounds_lo_hi(lo, hi),
-        "center": list(_to_3d(cm)),
-        "radius": 0.5 * math.sqrt(sum((hi[i] - lo[i]) ** 2 for i in range(3))),
-        "min_y": float(pts[:, 2].min()),       # scene Y = machine Z
-        "stages": _stages_norm(stages, cum_np, total),
-    }
+    return PathData(
+        seg_count=n - 1, last=last,
+        pts=scene, cum=cum_np, rapid=flags, speeds=spds,
+        total=total,
+        rapid_bytes=rapid_bytes, rapid_nv=rapid_nv,
+        feed_bytes=feed_bytes, feed_nv=feed_nv,
+        bounds=_scene_bounds_lo_hi(lo, hi),
+        center=list(_to_3d(cm)),
+        radius=0.5 * math.sqrt(sum((hi[i] - lo[i]) ** 2 for i in range(3))),
+        min_y=float(pts[:, 2].min()),       # scene Y = machine Z
+        stages=_stages_norm(stages, cum_np, total))
 

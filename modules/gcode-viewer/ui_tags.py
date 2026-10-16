@@ -9,6 +9,8 @@ import re
 
 from PySide6.QtGui import QQuaternion
 
+from gv_types import Stage
+
 _UI_ROT_RE = re.compile(
     r"UI_ROTATION:\s*RX\s*(-?\d+(?:\.\d+)?)\.?\s+RY\s*(-?\d+(?:\.\d+)?)\.?\s+RZ\s*(-?\d+(?:\.\d+)?)\.?",
     re.IGNORECASE,
@@ -78,26 +80,26 @@ def _ops_with_tools(op_marks, tool_marks):
     The post writes the operation comment (one per section) just before that
     section's tool change, so the cutter of an operation is the first UI_TOOL
     mark inside its range; operations that reuse the previous tool inherit it.
-    `op_marks`/`tool_marks` are (point_index, name[, info]) tuples."""
-    tmarks = sorted(tool_marks, key=lambda m: m[0])
+    `op_marks`/`tool_marks` are Stage marks (index, label[, info])."""
+    tmarks = sorted(tool_marks, key=lambda m: m.index)
     n = len(op_marks)
     out = []
     last_info = {}
     for i, mark in enumerate(op_marks):
-        idx = mark[0]
-        name = mark[1]
-        end = op_marks[i + 1][0] if i + 1 < n else float("inf")
+        idx = mark.index
+        name = mark.label
+        end = op_marks[i + 1].index if i + 1 < n else float("inf")
         info = {}
         for tm in tmarks:
-            if idx <= tm[0] < end:
-                info = tm[2] if len(tm) > 2 else {}
+            if idx <= tm.index < end:
+                info = tm.info
                 break
         if info:
             last_info = info
         else:
             info = last_info                       # same cutter as the previous op
         label = name + (" · " + stage_label(info) if info else "")
-        out.append((idx, label, info))
+        out.append(Stage(idx, label, info))
     return out
 
 

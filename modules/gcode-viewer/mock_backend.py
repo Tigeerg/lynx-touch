@@ -39,6 +39,10 @@ from PySide6.QtQuick3D import QQuick3DGeometry
 # mock_backend остаётся фасадом: имена, которые берут тесты, bench_viewer,
 # oracle_dump и QML, реэкспортируются отсюда, поэтому внешний код не меняется.
 from gv_common import _np, _occt                                        # noqa: F401
+from gv_types import (PathPoint, Stage, Aabb, PackedEdges, PathData,     # noqa: F401
+                      CylinderSurface, ConeSurface, MeshTopology,
+                      CylinderFamilies, TangentFamilies, ProfilePoint,
+                      HolderSection)
 from gcode_parser import (parse_gcode, _run_cycle, _arc_points,          # noqa: F401
                           _arc_sweep, _to_mms, _DECIMATE_TOL, _DECIMATE_TOL2,
                           _ARC_DECIMATE_TOL, _ARC_DECIMATE_TOL2,
@@ -60,7 +64,7 @@ from cache_store import (CACHE_VER, CACHE_DIR, CACHE_MAX_BYTES, _cache_enabled, 
 from stl_import import (load_stl_vertices, _verts_bounds)  # noqa: F401
 from packing import (_pack_edges_np, packed_positions, _pack_edge_segments, _coalesce_segments)  # noqa: F401
 from step_import import (_step_shape, _orient_shell_outward, load_step_model)  # noqa: F401
-from tangents import (_pt_tri_dist2, _CONE_MIN_SLANT_MM, _CONE_PROBE_AZIMUTHS, _cone_keeps_silhouette, _dedupe_cones, _tangent_families, _tangent_from_families)  # noqa: F401
+from tangents import (_pt_tri_dist2, _CONE_MIN_SLANT_MM, _CONE_PROBE_AZIMUTHS, _cone_keeps_silhouette, _dedupe_cones, _tangent_families, _tangent_from_families, _empty_families)  # noqa: F401
 from silhouette import (_SILHOUETTE_WELD_MM, _SILHOUETTE_MAX_EDGE_DEG, _SILHOUETTE_MIN_FACE_AREA, _build_silhouette_topology, _mesh_silhouette_segments)  # noqa: F401
 from step_surfaces import (load_step_surfaces)  # noqa: F401
 from normals import (_smooth_face_normals)  # noqa: F401

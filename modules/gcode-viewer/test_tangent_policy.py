@@ -25,7 +25,8 @@ import numpy as np  # noqa: E402
 from mock_backend import (load_step_model, load_step_surfaces,  # noqa: E402
                           _tangent_families, _tangent_from_families,
                           _build_silhouette_topology, _mesh_silhouette_segments,
-                          _pack_edge_segments)
+                          _pack_edge_segments, _empty_families,
+                          CylinderSurface, ConeSurface, TangentFamilies)
 
 MODEL = os.path.abspath(os.path.join(HERE, "..", "..", "data", "cad-testdata", "Test_model.STEP"))
 # Простая диагностическая модель для приёмки силуэта (одно отверстие + четыре
@@ -48,7 +49,7 @@ def main() -> int:
     verts, segments, normals = load_step_model(MODEL)
     surfs = load_step_surfaces(MODEL)
     fams = _tangent_families(surfs, _pack_edge_segments(segments), (verts, normals))
-    arr, cones = fams
+    arr, cones = fams.cylinders, fams.cones
     fails = []
 
     # -- 1) static outline holds no near-coincident parallel duplicates
@@ -80,11 +81,11 @@ def main() -> int:
     # Число цилиндрических касательных постоянно; конические образующие
     # существуют только в окне направлений (проверка 6) - в общий дрейф
     # не входят.
-    ctr = np.array([s["o"] for s in surfs if s["k"] == "cyl"], dtype=float).mean(axis=0)
+    ctr = np.array([s.o for s in surfs if isinstance(s, CylinderSurface)], dtype=float).mean(axis=0)
     ext = 200.0
     counts = set()
     ghosts = 0
-    cyl_only = (arr, [])
+    cyl_only = TangentFamilies(arr, [])
     for i in range(24):
         az = i * math.pi / 12
         for el in (0.05, 0.3, 0.6, 1.0):
@@ -130,7 +131,7 @@ def main() -> int:
     bolt_axes = [(-40.0, 60.0), (40.0, 60.0), (44.0, 0.0),
                  (-44.0, 0.0), (40.0, -60.0), (-40.0, -60.0)]
     covered = 0
-    O, Dv, R, F = arr["O"], arr["D"], arr["R"], arr["FULL"]
+    O, Dv, R, F = arr.O, arr.D, arr.R, arr.FULL
     yv = np.array([0.0, 1.0, 0.0])
     for bx, bz in bolt_axes:
         hit = False
@@ -140,7 +141,7 @@ def main() -> int:
             # O already is the foot of the axis line (x, any y, z): the
             # through-wall section is the long one (span > 30 mm), R=2.75
             if abs(O[i][0] - bx) < 0.6 and abs(O[i][2] - bz) < 0.6:
-                span = float(arr["T1"][i] - arr["T0"][i])
+                span = float(arr.T1[i] - arr.T0[i])
                 if bool(F[i]) and span > 30.0 and abs(float(R[i]) - 2.75) < 0.1:
                     hit = True
         covered += int(hit)
@@ -156,7 +157,7 @@ def main() -> int:
     if cb < 6:
         fails.append(f"bolt counterbores tangented: {cb}/6")
     for i in range(O.shape[0]):     # 45-deg edge blends and 1-2 mm dishes
-        span = float(arr["T1"][i] - arr["T0"][i])
+        span = float(arr.T1[i] - arr.T0[i])
         if bool(F[i]) and span < 2.5:
             fails.append(f"shallow dish tangented at fam {i} "
                          f"(span {span:.1f} R {float(R[i]):.2f})")
@@ -180,14 +181,14 @@ def main() -> int:
     #       faces in Test_model; a wrong OCP method name used to drop them all
     #       silently), and the policy keeps only deep concave ones: 45-deg
     #       edge chamfers of 0.7 mm slant would orbit as ghost pairs.
-    n_cone_surfs = sum(1 for s in surfs if s["k"] == "cone")
+    n_cone_surfs = sum(1 for s in surfs if isinstance(s, ConeSurface))
     if n_cone_surfs == 0:
         fails.append("no cone descriptors loaded from STEP (cone faces dropped)")
     for c in cones:
-        slant = float(c["s1"]) - float(c["s0"])
+        slant = float(c.s1) - float(c.s0)
         if slant < 2.5:
             fails.append(f"shallow cone tangented (slant {slant:.2f} mm, "
-                         f"half-angle {math.degrees(float(c['psi'])):.0f} deg)")
+                         f"half-angle {math.degrees(float(c.psi)):.0f} deg)")
     if n_cone_surfs and not cones:
         fails.append("every cone dropped: drill-tip cones of the bolt holes "
                      "must keep their silhouette")
@@ -196,7 +197,8 @@ def main() -> int:
     # 6b) эмиссия ровно в геометрическом окне: образующая конуса существует,
     #     только если |cos(направление на глаз, ось)| <= cos(psi); тогда их
     #     ровно две, иначе ноль - «исчезновение у оси» здесь корректно.
-    empty_arr = {k: v[:0] for k, v in arr.items()}
+    empty_cyl = _empty_families()
+    empty_cones = TangentFamilies(empty_cyl, cones)
     dup_pairs = 0
     window_bad = 0
     cone_seen = 0
@@ -206,7 +208,7 @@ def main() -> int:
             E = (ctr[0] + ext * math.cos(el) * math.cos(az),
                  ctr[1] + ext * math.cos(el) * math.sin(az),
                  ctr[2] + ext * math.sin(el))
-            segs_k = _tangent_from_families((empty_arr, cones), E)
+            segs_k = _tangent_from_families(empty_cones, E)
             cone_seen += int(bool(segs_k))
             if len(segs_k):
                 Sk = np.array(segs_k, dtype=float)
@@ -218,11 +220,12 @@ def main() -> int:
                         dup_pairs += int(same)
             Ev = np.array(E, dtype=float)
             for c in cones:
-                d = np.array(c["d"], dtype=float)
-                w = Ev - np.array(c["a"], dtype=float)
+                d = np.array(c.d, dtype=float)
+                w = Ev - np.array(c.a, dtype=float)
                 ct = abs(float(d @ w) / float(np.linalg.norm(w)))
-                want = 2 if ct <= abs(math.cos(float(c["psi"]))) + 1e-9 else 0
-                got = len(_tangent_from_families((empty_arr, [c]), E))
+                want = 2 if ct <= abs(math.cos(float(c.psi))) + 1e-9 else 0
+                got = len(_tangent_from_families(
+                    TangentFamilies(empty_cyl, [c]), E))
                 window_bad += int(got != want)
     if dup_pairs:
         fails.append(f"duplicate cone silhouette drawn at one place: {dup_pairs}")
@@ -242,11 +245,12 @@ def main() -> int:
     shift = gp_Trsf()
     shift.SetTranslation(gp_Vec(100.0, 0.0, 0.0))
     moved = cyl.Moved(TopLoc_Location(shift))
-    got = [s for s in load_step_surfaces("", shape=moved) if s["k"] == "cyl"]
+    got = [s for s in load_step_surfaces("", shape=moved)
+           if isinstance(s, CylinderSurface)]
     if not got:
         fails.append("moved cylinder produced no descriptor")
     else:
-        ox = float(got[0]["o"][0])
+        ox = float(got[0].o[0])
         if abs(ox - 100.0) > 1e-6:
             fails.append(f"moved face transformed twice: axis x={ox:.1f} mm, "
                          f"expected 100.0")

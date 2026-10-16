@@ -6,6 +6,8 @@
 import math
 import os
 
+from gv_types import HolderSection, ProfilePoint
+
 # Оправка (гайка ER20 и корпус шпинделя) над вылетом инструмента; на конкретном
 # станке переопределяется окружением. Те же константы берут коллизии.
 _HOLDER_NUT_D = float(os.environ.get("CNC_HOLDER_NUT_D", "33.0"))    # ER20 nut OD
@@ -14,7 +16,7 @@ _HOLDER_BODY_D = float(os.environ.get("CNC_HOLDER_BODY_D", "46.0"))  # holder bo
 _HOLDER_BODY_H = float(os.environ.get("CNC_HOLDER_BODY_H", "50.0"))  # holder body length
 
 def _tool_profile(info):
-    """Build a 2D profile [(r, y)] for a tool-info dict, tip at y=0, axis +Y.
+    """Build a 2D profile [ProfilePoint] for a tool-info dict, tip at y=0, axis +Y.
 
     Supports the shapes the panel must draw: flat/bull end mills, ball nose,
     chamfer/taper (V-bit), and drill/tap points. Returns None if no diameter."""
@@ -111,7 +113,7 @@ def _tool_profile(info):
     if bl_v > sl_v:
         prof.append((rb, bl_v))                    # body up to the stick-out
     prof.append((0.0, bl_v))
-    return prof
+    return [ProfilePoint(r, y) for r, y in prof]
 
 
 def _tool_outline_profile(profile, pad):
@@ -123,10 +125,10 @@ def _tool_outline_profile(profile, pad):
     profile normal (a proper outline/dilation) gives a uniform-thickness
     silhouette all the way around, including the tip and the top faces.
 
-    Returns [] for an empty profile."""
-    pts = [(float(r), float(y)) for r, y in profile]
+    Returns [ProfilePoint] for an empty profile."""
+    pts = [(float(p.radius_mm), float(p.height_mm)) for p in profile]
     if len(pts) < 2:
-        return pts
+        return [ProfilePoint(r, y) for r, y in pts]
     # Outward normal of each segment in the (r, y) plane: outward = (ty, -tr)/L.
     seg = []
     for i in range(len(pts) - 1):
@@ -146,25 +148,25 @@ def _tool_outline_profile(profile, pad):
             L = math.hypot(nr, ny)
             nr, ny = (nr / L, ny / L) if L > 1e-9 else seg[i]
         out.append((max(0.0, r + nr * pad), y + ny * pad))
-    return out
+    return [ProfilePoint(r, y) for r, y in out]
 
 
 def _tool_exposed_length(info):
     """Visible cutter stick-out (mm) = profile top (body length, capped by OL)."""
     prof = _tool_profile(info) if info else None
-    return max((p[1] for p in prof), default=0.0) if prof else 0.0
+    return max((p.height_mm for p in prof), default=0.0) if prof else 0.0
 
 
 def _holder_profile(tool_len):
-    """Holder as (radius, z0, z1) cylinders relative to the tool tip, in machine
+    """Holder as [HolderSection] cylinders relative to the tool tip, in machine
     Z (up positive): the ER20 collet nut, then the holder body above it. Its
     bottom sits at the stick-out."""
     rn = _HOLDER_NUT_D / 2.0
     rb = _HOLDER_BODY_D / 2.0
     return [
-        (rn, tool_len, tool_len + _HOLDER_NUT_H),
-        (rb, tool_len + _HOLDER_NUT_H,
-         tool_len + _HOLDER_NUT_H + _HOLDER_BODY_H),
+        HolderSection(rn, tool_len, tool_len + _HOLDER_NUT_H),
+        HolderSection(rb, tool_len + _HOLDER_NUT_H,
+                      tool_len + _HOLDER_NUT_H + _HOLDER_BODY_H),
     ]
 
 
@@ -175,7 +177,7 @@ def _holder_solid_profile():
     rb = _HOLDER_BODY_D / 2.0
     hn = _HOLDER_NUT_H
     hb = _HOLDER_BODY_H
-    return [
+    return [ProfilePoint(r, y) for r, y in [
         (0.0, 0.0),
         (rn - 3.0, 0.0),          # bottom face
         (rn, 3.0),                # bottom chamfer
@@ -186,7 +188,7 @@ def _holder_solid_profile():
         (rb, hn + 6.0),           # widen into the holder body
         (rb, hn + hb),            # holder body (spindle side)
         (0.0, hn + hb),
-    ]
+    ]]
 
 
 def _holder_outline_profile():
@@ -194,7 +196,7 @@ def _holder_outline_profile():
 
     The flat bottom/top disks are dropped (axis points removed) so the enlarged
     copy does not show them as dark caps — only the side silhouette remains."""
-    return [(r, y) for (r, y) in _holder_solid_profile() if r > 1e-6]
+    return [p for p in _holder_solid_profile() if p.radius_mm > 1e-6]
 
 
 def _rings_segments(profile, segments=48):
@@ -203,9 +205,9 @@ def _rings_segments(profile, segments=48):
         return []
     two_pi = 2.0 * math.pi
     segs = []
-    for r, y in profile:
-        r = float(r)
-        y = float(y)
+    for p in profile:
+        r = float(p.radius_mm)
+        y = float(p.height_mm)
         if r <= 1e-6:
             continue
         for s in range(segments):
@@ -220,7 +222,7 @@ def _profile_ring_points(profile, min_deg=20.0):
     """Profile vertices that are real edges (direction change > min_deg) plus the
     endpoints — the horizontal rings of the outline. Smooth sections (e.g. a ball
     nose) get no rings, so the wireframe does not turn into a cage."""
-    pts = [(float(r), float(y)) for r, y in profile]
+    pts = [(float(p.radius_mm), float(p.height_mm)) for p in profile]
     n = len(pts)
     if n < 2:
         return []
@@ -240,5 +242,5 @@ def _profile_ring_points(profile, min_deg=20.0):
         c = (d0[0] * d1[0] + d0[1] * d1[1]) / (L0 * L1)
         if c < cos_t:
             out.append((r, y))
-    return out
+    return [ProfilePoint(r, y) for r, y in out]
 

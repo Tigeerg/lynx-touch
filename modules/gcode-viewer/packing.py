@@ -6,12 +6,13 @@ import math
 from array import array
 
 from gv_common import _np
+from gv_types import Aabb, PackedEdges
 
 np = _np          # код слоя читает numpy как np
 
 def _pack_edges_np(p0, p1):
     """Pack edge endpoints (M,3) float arrays into a Lines buffer
-    (position 3f + texcoord 2f, fully visible). Returns (bytes, nv, bounds)."""
+    (position 3f + texcoord 2f, fully visible). Returns PackedEdges."""
     np = _np
     m = p0.shape[0]
     buf = np.empty((m, 2, 5), dtype=np.float32)
@@ -22,14 +23,14 @@ def _pack_edges_np(p0, p1):
     allp = np.concatenate([p0, p1], axis=0)
     lo = allp.min(axis=0)
     hi = allp.max(axis=0)
-    return (buf.tobytes(), m * 2,
-            (float(lo[0]), float(lo[1]), float(lo[2]),
-             float(hi[0]), float(hi[1]), float(hi[2])))
+    return PackedEdges(buf.tobytes(), m * 2,
+                       Aabb((float(lo[0]), float(lo[1]), float(lo[2])),
+                            (float(hi[0]), float(hi[1]), float(hi[2]))))
 
 
 def packed_positions(packed):
     """Extract (M,2,3) endpoint positions from a packed Lines buffer."""
-    raw, nv, _bounds = packed
+    raw, nv = packed.raw, packed.nv
     if not raw or nv < 2:
         return None
     f = _np.frombuffer(raw, dtype=_np.float32)
@@ -40,7 +41,7 @@ def packed_positions(packed):
 def _pack_edge_segments(segments):
     """Pack a list of (p0, p1) segments into a Lines buffer."""
     if not segments:
-        return (b'', 0, None)
+        return PackedEdges(b'', 0, None)
     arr = _np.asarray(segments, dtype=float)          # (M, 2, 3)
     return _pack_edges_np(arr[:, 0], arr[:, 1])
 

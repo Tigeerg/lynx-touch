@@ -80,7 +80,7 @@ def main():
     t, prep = timed("gcode.prepare", lambda: mb._prepare_ordered(ordered, stages))
     results["gcode.prepare"] = ms(t)
     print("  moves=%d feed nv=%d rapid nv=%d" %
-          (nmove, prep.get("feed_nv", 0), prep.get("rapid_nv", 0)))
+          (nmove, prep.feed_nv, prep.rapid_nv))
 
     if os.path.exists(STEP):
         # ---- cold STEP open: one B-rep read shared by skin and surfaces ----
@@ -117,8 +117,8 @@ def main():
             results["families.build"] = ms(t)
 
     # ---- interactive orbit path (GUI thread) ----------------------------
-    arr, cones = fams
-    O = arr["O"]
+    arr, cones = fams.cylinders, fams.cones
+    O = arr.O
     cx = float(O[:, 0].mean()) if O.shape[0] else 0.0
     cy = float(O[:, 1].mean()) if O.shape[0] else 0.0
     cz = float(O[:, 2].mean()) if O.shape[0] else 0.0

@@ -5,6 +5,7 @@
 import struct
 
 from gv_common import _np
+from gv_types import Aabb
 
 np = _np          # код слоя читает numpy как np
 
@@ -44,15 +45,15 @@ def load_stl_vertices(path):
         .astype(_np.float64)
 
 def _verts_bounds(verts):
-    """Return (lo, hi) as Python lists for a list or numpy (N, 3) vertex array."""
+    """Return an Aabb for a list or numpy (N, 3) vertex array."""
     if isinstance(verts, _np.ndarray):
         if verts.size == 0:
-            return [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]
+            return Aabb((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
         lo = verts.min(axis=0).tolist()
         hi = verts.max(axis=0).tolist()
-        return lo, hi
+        return Aabb(tuple(lo), tuple(hi))
     if not verts:
-        return [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]
+        return Aabb((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
     lo = [min(v[i] for v in verts) for i in range(3)]
     hi = [max(v[i] for v in verts) for i in range(3)]
-    return lo, hi
+    return Aabb(tuple(lo), tuple(hi))

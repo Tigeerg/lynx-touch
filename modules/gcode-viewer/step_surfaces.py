@@ -5,6 +5,7 @@
 import math
 
 from gv_common import _np
+from gv_types import ConeSurface, CylinderSurface
 from step_import import _step_shape
 
 np = _np          # код слоя читает numpy как np
@@ -12,12 +13,9 @@ np = _np          # код слоя читает numpy как np
 def load_step_surfaces(path, shape=None):
     """Analytic surfaces of revolution from a STEP file.
 
-    Returns descriptors for every face whose underlying surface is a cylinder
-    or a cone - the shapes that make up machined bores, rounds and chamfers:
-      cylinder: {"k":"cyl","o":base,"d":axis unit,"r":radius,"t0","t1": face
-                 extent along the axis, from its vertices}
-      cone:     {"k":"cone","a":apex,"d":axis unit,"psi":half angle,
-                 "s0","s1": generatrix parameter range}
+    Returns CylinderSurface/ConeSurface descriptors for every face whose
+    underlying surface is a cylinder or a cone - the shapes that make up
+    machined bores, rounds and chamfers.
     Feeds GcodeToolpath.refreshTangents: view-dependent tangent generatrices
     computed from the exact CAD geometry (analytic silhouette of bores and
     rounds) - no post-processing shaders, plain Lines geometry like the
@@ -131,13 +129,13 @@ def load_step_surfaces(path, shape=None):
                         start = sa[(gi + 1) % len(sa)]
                         arc0 = start
                         arc1 = (start + 2 * math.pi - max(gaps)) % (2 * math.pi)
-                    out.append({"k": "cyl",
-                                "o": o, "d": dn,
-                                "e1": e1 or (1.0, 0.0, 0.0),
-                                "e2": e2 or (0.0, 0.0, 1.0),
-                                "arc": (arc0, arc1),
-                                "r": float(cyl.Radius()),
-                                "t0": min(tl), "t1": max(tl)})
+                    out.append(CylinderSurface(
+                        o=o, d=dn,
+                        e1=e1 or (1.0, 0.0, 0.0),
+                        e2=e2 or (0.0, 0.0, 1.0),
+                        arc=(arc0, arc1),
+                        r=float(cyl.Radius()),
+                        t0=min(tl), t1=max(tl)))
                 else:
                     cn = surf.Cone()
                     ap = cn.Apex(); ad = cn.Axis().Direction()
@@ -154,9 +152,9 @@ def load_step_surfaces(path, shape=None):
                     ca = max(math.cos(psi), 1e-6)
                     sl = [((q[0] - a2[0]) * dn[0] + (q[1] - a2[1]) * dn[1]
                            + (q[2] - a2[2]) * dn[2]) / ca for q in pts]
-                    out.append({"k": "cone",
-                                "a": a2, "d": dn,
-                                "psi": psi, "s0": min(sl), "s1": max(sl)})
+                    out.append(ConeSurface(
+                        a=a2, d=dn,
+                        psi=psi, s0=min(sl), s1=max(sl)))
             except Exception:
                 pass
             exp.Next()

@@ -21,7 +21,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-MODULES = ["gv_common", "gcode_parser", "ui_tags", "cache_store", "stl_import", "packing",
+MODULES = ["gv_types", "gv_common", "gcode_parser", "ui_tags", "cache_store", "stl_import", "packing",
            "step_import", "step_surfaces", "tangents", "silhouette", "normals", "outline",
            "path_prep", "tooling", "collision", "geometry", "controller", "mock_backend"]
 

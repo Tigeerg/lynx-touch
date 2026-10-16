@@ -5,6 +5,7 @@
 import math
 
 from packing import _pack_edges_np, _pack_edge_segments
+from gv_types import PackedEdges
 
 from gv_common import _np
 
@@ -109,7 +110,7 @@ def _simplify_edge_chains(lo_ids, hi_ids, pos, tol_mm):
 
 
 def _feature_edges(scene, angle_deg=25.0):
-    """Return a packed Lines buffer (bytes, vertex_count, bounds) for the
+    """Return a packed Lines buffer (PackedEdges) for the
     feature-edge outline of a triangle soup.
 
     Keeps boundary edges and edges whose dihedral angle exceeds `angle_deg`,
@@ -126,7 +127,7 @@ def _feature_edges_np(scene, angle_deg):
     V = np.asarray(scene, dtype=float).reshape(-1, 3)
     F = V.shape[0] // 3
     if F == 0:
-        return (b'', 0, None)
+        return PackedEdges(b'', 0, None)
     T = V.reshape(F, 3, 3)
 
     # Unique vertex ids via a quantised grid (0.001 units). Computed once (also
@@ -189,12 +190,12 @@ def _feature_edges_np(scene, angle_deg):
             keep_hi.append(e[:, 1])
 
     if not keep_lo:
-        return (b'', 0, None)
+        return PackedEdges(b'', 0, None)
     u = uq.astype(float) / 1000.0
     lo_ids, hi_ids = _simplify_edge_chains(np.concatenate(keep_lo),
                                            np.concatenate(keep_hi), u,
                                            _FEATURE_SIMPLIFY_MM)
     if lo_ids.size == 0:
-        return (b'', 0, None)
+        return PackedEdges(b'', 0, None)
     return _pack_edges_np(u[lo_ids], u[hi_ids])
 

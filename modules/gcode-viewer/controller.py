@@ -16,6 +16,7 @@ from PySide6.QtQml import QmlElement, QQmlEngine
 
 from gv_common import (_np, _occt, _to_3d, QML_IMPORT_NAME,
                        QML_IMPORT_MAJOR_VERSION, QML_IMPORT_MINOR_VERSION)
+from gv_types import PackedEdges
 from gcode_parser import parse_gcode
 from ui_tags import (parse_ui_rotation, parse_ui_origin, parse_ui_tool,
                      parse_ui_holder, parse_ui_stock, parse_ui_cad_matrix,
@@ -108,13 +109,13 @@ class GcodeToolpath(QObject):
         self._holder_geo.set_profile(hprof)
         self._holder_outline_geo.set_profile(
             _tool_outline_profile(_holder_outline_profile(), 0.1))
-        raw, nv, bounds = _pack_edge_segments(_rings_segments(_profile_ring_points(hprof)))
-        self._holder_rings_geo.set_packed(raw, bounds, nv)
+        rings = _pack_edge_segments(_rings_segments(_profile_ring_points(hprof)))
+        self._holder_rings_geo.set_packed(rings.raw, rings.bounds, rings.nv)
         self._tool = [0.0, 0.0, 0.0]
         self._tool_info = {}                # parsed UI_TOOL metadata
         self._tool_length = 0.0             # cutter length (tip -> top, scene units)
         self._tool_radius = 0.0             # cutter max radius (for the outline width)
-        self._holder_radius = max((r for r, _ in hprof), default=1.0)
+        self._holder_radius = max((p.radius_mm for p in hprof), default=1.0)
         self._center = [0.0, 0.0, 0.0]      # scene-space center of the toolpath
         self._radius = 50.0                 # half diagonal of the toolpath bounds
         self._min_y = 0.0                   # lowest point of the toolpath (scene Y)
@@ -186,19 +187,19 @@ class GcodeToolpath(QObject):
         """Store UI_TOOL metadata and rebuild the cutter mesh (tip at origin)."""
         self._tool_info = info or {}
         prof = _tool_profile(self._tool_info) if self._tool_info else None
-        self._tool_length = max((p[1] for p in prof), default=0.0) if prof else 0.0
+        self._tool_length = max((p.height_mm for p in prof), default=0.0) if prof else 0.0
         self._tool_geo.set_profile(prof)
         # Silhouette outline (inverted hull): the profile dilated outward by a
         # uniform `pad`, rendered by the QML side with the near faces culled so
         # only the outer silhouette rim remains.
-        maxr = max((p[0] for p in prof), default=0.0) if prof else 0.0
+        maxr = max((p.radius_mm for p in prof), default=0.0) if prof else 0.0
         self._tool_radius = maxr
         pad = max(0.12, 0.05 * maxr)
         self._tool_outline_geo.set_profile(
             _tool_outline_profile(prof, pad) if prof else None)
-        raw, nv, bounds = _pack_edge_segments(
+        rings = _pack_edge_segments(
             _rings_segments(_profile_ring_points(prof)) if prof else [])
-        self._tool_rings_geo.set_packed(raw, bounds, nv)
+        self._tool_rings_geo.set_packed(rings.raw, rings.bounds, rings.nv)
         self.toolInfoChanged.emit()
 
     @Property("QVariantMap", notify=toolInfoChanged)
@@ -637,7 +638,8 @@ class GcodeToolpath(QObject):
                 # raw model coords (no scene mapping); STEP supplies crease-
                 # grouped smooth normals, STL falls back to flat per-face
                 self._mesh.set_triangles(verts, self._model_normals)
-                lo, hi = _verts_bounds(verts)
+                vb = _verts_bounds(verts)
+                lo, hi = vb.lo, vb.hi
             except Exception:
                 lo = hi = [0.0, 0.0, 0.0]
                 verts = None
@@ -665,10 +667,9 @@ class GcodeToolpath(QObject):
     def _set_edges_packed(self, packed):
         """Publish a pre-packed outline buffer (built by the worker thread)
         and mirror it into the depth-tested main-scene geometry."""
-        raw, nv, bounds = packed
         g = ToolpathGeometry()
         QQmlEngine.setObjectOwnership(g, QQmlEngine.CppOwnership)
-        g.set_packed(raw, bounds, nv)
+        g.set_packed(packed.raw, packed.bounds, packed.nv)
         self._edges = g
         self._sync_hlr_reference()
         self._hlr_edges.set_segments(packed_positions(packed))
@@ -691,7 +692,7 @@ class GcodeToolpath(QObject):
         model: dihedral-angle feature edges of the mesh, disk-cached."""
         if self._step_edges is not None:
             packed = self._step_edges
-            logger.debug("outline: source=STEP segments=%d", packed[1] // 2)
+            logger.debug("outline: source=STEP segments=%d", packed.nv // 2)
         else:
             ck = _cache_key(model_path, "edges") if (model_path and _cache_enabled()) else None
             packed = _cache_read_edges(ck) if ck else None
@@ -699,10 +700,10 @@ class GcodeToolpath(QObject):
                 try:
                     packed = _feature_edges(verts, 20.0)
                 except Exception:
-                    packed = (b'', 0, None)
+                    packed = PackedEdges(b'', 0, None)
                 if ck:
                     _cache_write_edges(ck, packed)
-            logger.debug("outline: source=MESH angle=20deg segments=%d", packed[1] // 2)
+            logger.debug("outline: source=MESH angle=20deg segments=%d", packed.nv // 2)
         try:
             self.edgesReady.emit((token, packed))
         except RuntimeError:
@@ -922,7 +923,7 @@ class GcodeToolpath(QObject):
         self._mesh.reset()               # replaced by the mesh phase
         self._clear_edges()
         self.meshChanged.emit()
-        self.toolpathLoaded.emit(data["seg_count"])
+        self.toolpathLoaded.emit(data.seg_count)
 
     def _on_mesh_ready(self, payload):
         """GUI thread: apply the STL mesh prepared by the worker."""
@@ -942,7 +943,7 @@ class GcodeToolpath(QObject):
         self._cad_matrix_origin = parse_ui_cad_matrix_origin(text)
         # Per-stage cutter info (one UI_TOOL block per operation) so the drawn
         # tool changes together with the active stage / tool in the program.
-        self._stage_tools = [s.get("tool", {}) for s in data.get("stages", [])]
+        self._stage_tools = [s.get("tool", {}) for s in data.stages]
         first_info = next((t for t in self._stage_tools if t), None)
         self._apply_tool_info(first_info if first_info else parse_ui_tool(text))
         self._holder_info = parse_ui_holder(text)            # UI_HOLDER: gauge (optional)
@@ -961,18 +962,18 @@ class GcodeToolpath(QObject):
         self.stockChanged.emit()
         self._rebuild_part_transform()
 
-        self._set_tool(*data["last"])
-        self._sample_pts = data["pts"]
-        self._sample_cum = data["cum"]
-        self._sample_rapid = data["rapid"]
-        self._sample_speeds = data["speeds"]
-        self._stages = data.get("stages", [])
-        self._move_length = data["total"]
-        self._rapid.set_packed(data["rapid_bytes"], data["bounds"], data["rapid_nv"])
-        self._feed.set_packed(data["feed_bytes"], data["bounds"], data["feed_nv"])
-        self._center = list(data["center"])
-        self._radius = data["radius"]
-        self._min_y = data["min_y"]
+        self._set_tool(*data.last)
+        self._sample_pts = data.pts
+        self._sample_cum = data.cum
+        self._sample_rapid = data.rapid
+        self._sample_speeds = data.speeds
+        self._stages = data.stages
+        self._move_length = data.total
+        self._rapid.set_packed(data.rapid_bytes, data.bounds, data.rapid_nv)
+        self._feed.set_packed(data.feed_bytes, data.bounds, data.feed_nv)
+        self._center = list(data.center)
+        self._radius = data.radius
+        self._min_y = data.min_y
         self.pathChanged.emit()
         self._start_collision_scan()      # background holder-vs-stock check
         self._rebuild_tool_check()        # NC-vs-machine tool check (skeleton)

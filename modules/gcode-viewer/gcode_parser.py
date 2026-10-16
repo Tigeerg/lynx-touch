@@ -9,6 +9,7 @@ import math
 import os
 import re
 
+from gv_types import PathPoint, Stage
 from ui_tags import (parse_ui_tool, stage_label, _comment_text,          # noqa: F401
                      _TOOLCHANGE_RE, _ops_with_tools)
 
@@ -51,20 +52,21 @@ def _to_mms(mm_per_min):
 def parse_gcode(text):
     """Return (ordered, last_machine_point, segment_count, stages).
 
-    `ordered` is the full tool path in program order as (point, rapid) pairs;
-    rapid and feed are split from it later. Handles line moves, arcs in every
-    plane (G17/G18/G19) and the canned drilling cycles G73/G81/G82/G83.
+    `ordered` is the full tool path in program order as PathPoint entries (each
+    carries the scene speed of its outgoing segment); rapid and feed are split
+    from it later. Handles line moves, arcs in every plane (G17/G18/G19) and the
+    canned drilling cycles G73/G81/G82/G83.
 
-    `stages` is a list of (first_point_index, label, tool) operation blocks in
-    program order. Operations come from the `(UI_OP: ...)` tags when present,
+    `stages` is a list of Stage (first_point_index, label, tool) operation blocks
+    in program order. Operations come from the `(UI_OP: ...)` tags when present,
     else from the per-section operation-comment lines, else from the `UI_TOOL`
     tags (tool changes), else a single stage.
     """
-    ordered = []                 # (machine point, is_rapid) in program order
-    ui_tool_marks = []           # (idx, label, info) from UI_TOOL tags
-    ui_op_marks = []             # (idx, name) from explicit UI_OP tags
-    op_marks = []                # (idx, name) from operation-comment lines
-    tool_marks = []              # (idx, label, {}) from tool changes (fallback)
+    ordered = []                 # PathPoint entries in program order
+    ui_tool_marks = []           # Stage from UI_TOOL tags (label + info)
+    ui_op_marks = []             # Stage from explicit UI_OP tags
+    op_marks = []                # Stage from operation-comment lines
+    tool_marks = []              # Stage from tool changes (fallback)
     seen_code = False            # a motion/code line has been seen
     prev_code = ""               # last code line (to skip tool comments)
     pos = [0.0, 0.0, 0.0]
@@ -84,27 +86,27 @@ def parse_gcode(text):
         pb = tuple(b)
         seg_speed = _RAPID_SPEED_MMS if is_rapid else _to_mms(feed)
         if not ordered:
-            ordered.append((tuple(a), is_rapid, seg_speed))
-            ordered.append((pb, is_rapid, seg_speed))
+            ordered.append(PathPoint(tuple(a), is_rapid, seg_speed))
+            ordered.append(PathPoint(pb, is_rapid, seg_speed))
             return
         if decimate:
             # Only keep points at least `tol2`^0.5 away from the last kept point;
             # the polyline simply connects to it.
-            last = ordered[-1][0]
+            last = ordered[-1].point
             dx = pb[0] - last[0]
             dy = pb[1] - last[1]
             dz = pb[2] - last[2]
             if dx * dx + dy * dy + dz * dz < tol2:
                 return
-            ordered[-1] = (last, is_rapid, seg_speed)
-            ordered.append((pb, is_rapid, seg_speed))
+            ordered[-1] = PathPoint(last, is_rapid, seg_speed)
+            ordered.append(PathPoint(pb, is_rapid, seg_speed))
             return
         pa = tuple(a)
-        if ordered[-1][0] == pa:
-            ordered[-1] = (pa, is_rapid, seg_speed)
+        if ordered[-1].point == pa:
+            ordered[-1] = PathPoint(pa, is_rapid, seg_speed)
         else:
-            ordered.append((pa, is_rapid, seg_speed))
-        ordered.append((pb, is_rapid, seg_speed))
+            ordered.append(PathPoint(pa, is_rapid, seg_speed))
+        ordered.append(PathPoint(pb, is_rapid, seg_speed))
 
     for raw in text.splitlines():
         up = raw.upper()
@@ -113,11 +115,11 @@ def parse_gcode(text):
         if "UI_TOOL" in up:
             # Tool change: gives the cutter geometry for the following section.
             info = parse_ui_tool(raw)
-            ui_tool_marks.append((max(0, len(ordered) - 1), stage_label(info), info))
+            ui_tool_marks.append(Stage(max(0, len(ordered) - 1), stage_label(info), info))
         elif "UI_OP" in up:
             # Explicit operation marker (newer post): unambiguous section start.
             inner = re.sub(r"(?i)^\s*UI_OP\s*:\s*", "", _comment_text(raw)).strip()
-            ui_op_marks.append((max(0, len(ordered) - 1), inner or "Операция"))
+            ui_op_marks.append(Stage(max(0, len(ordered) - 1), inner or "Операция"))
         elif standalone_comment:
             # A bare comment after the program has started is the section's
             # operation-comment (one per operation). Skip UI tags and the tool
@@ -126,11 +128,11 @@ def parse_gcode(text):
                 inner = _comment_text(raw)
                 if inner and not inner.upper().startswith("UI_") \
                         and not _TOOLCHANGE_RE.search(prev_code):
-                    op_marks.append((max(0, len(ordered) - 1), inner))
+                    op_marks.append(Stage(max(0, len(ordered) - 1), inner))
         else:
             mt = _TOOLCHANGE_RE.search(up)
             if mt:
-                tool_marks.append((max(0, len(ordered) - 1), "T" + mt.group(1), {}))
+                tool_marks.append(Stage(max(0, len(ordered) - 1), "T" + mt.group(1)))
         line = raw.split(";", 1)[0]
         line = _COMMENT_RE.sub("", line).strip().upper()
         if not line:
@@ -234,8 +236,9 @@ def parse_gcode(text):
             pos = target
 
     # Always keep the exact program end point (it may have been decimated away).
-    if ordered and ordered[-1][0] != tuple(pos):
-        ordered.append((tuple(pos), ordered[-1][1], ordered[-1][2]))
+    if ordered and ordered[-1].point != tuple(pos):
+        ordered.append(PathPoint(tuple(pos), ordered[-1].is_rapid,
+                                 ordered[-1].speed_mm_s))
 
     # Operation stages, most specific source first: explicit UI_OP tags, then
     # the per-section operation-comment lines, then UI_TOOL tool changes, else
@@ -249,10 +252,10 @@ def parse_gcode(text):
     elif tool_marks:
         stages = tool_marks
     else:
-        stages = [(0, "УП")]
+        stages = [Stage(0, "УП")]
     # The first stage always starts at the very beginning of the program (any
     # leading approach rapids belong to it).
-    stages[0] = (0,) + tuple(stages[0][1:])
+    stages[0] = Stage(0, stages[0].label, stages[0].info)
     return ordered, tuple(pos), max(0, len(ordered) - 1), stages
 
 

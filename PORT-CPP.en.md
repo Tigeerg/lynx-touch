@@ -154,13 +154,14 @@ manifest deliberately, together with the change that altered the result). The ch
 entries, a mismatch means an intermediate result has changed.
 
 **The monolith split (stage 0) is done as well.** `mock_backend.py` was 4620 lines and is now a 104-line
-facade; the code is spread over 17 modules: `gv_common`, `gcode_parser`, `ui_tags`, `cache_store`,
+facade; the code is spread over 18 modules: `gv_types`, `gv_common`, `gcode_parser`, `ui_tags`, `cache_store`,
 `stl_import`, `packing`, `step_import`, `step_surfaces`, `tangents`, `silhouette`, `normals`, `outline`,
 `path_prep`, `tooling`, `collision`, `geometry`, `controller`. The names used by the tests,
 `bench_viewer.py`, `oracle_dump.py` and QML are re-exported by the facade, so the outside code never
-changed, and the oracle confirmed on every step that no result moved. Stage 0 still has to do: types
-instead of tuples, and the missing tests (numpy became a hard dependency, 0.13.11; the library prints
-became logging, 0.13.12).
+changed, and the oracle confirmed on every step that no result moved. Stage 0 still has to do: **types
+instead of tuples are in place** (`gv_types.py`, 0.13.13 — path points, stages, bounds, buffers, STEP
+surfaces, silhouette topology, tool and holder profiles); the missing tests (numpy became a hard
+dependency, 0.13.11; the library prints became logging, 0.13.12).
 
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.
@@ -201,7 +202,8 @@ lines and almost all of the exactness risk.
   `_tangent_families`, `_pack_edge_segments`, `_prepare_ordered` and others. In a port those names
   become a public contract: either stabilise them, or move the tests together with the oracle.
 - **Tuples and dicts instead of structures:** path points, stages, cylinder and cone descriptors,
-  tool profiles.
+  tool profiles. **Resolved (0.13.13):** module-boundary types live in `gv_types.py`; a dict remains only
+  where QML reads it.
 - **Magic numbers without a name or unit** — the port must name them, or exactness drifts silently.
 - **`print` instead of logging** — in C++ these become `qCInfo`/`qCWarning` categories.
 - **No type annotations** — for C++ that means "guess the type"; stage 0 is mandatory.

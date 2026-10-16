@@ -27,7 +27,7 @@
     {
       "id": "gcode-viewer",
       "name": "3D-вьювер УП",
-      "version": "0.13.12",
+      "version": "0.13.13",
       "path": "modules/gcode-viewer",
       "kind": "qml+python",
       "entry": "GcodeViewer3D.qml",

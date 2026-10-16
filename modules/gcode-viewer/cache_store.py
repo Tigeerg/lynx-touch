@@ -10,6 +10,7 @@ import os
 from gcode_parser import _DECIMATE_TOL, _ARC_DECIMATE_TOL
 
 from gv_common import _np
+from gv_types import Aabb, PackedEdges, PathData
 
 np = _np          # код слоя читает numpy как np
 
@@ -74,7 +75,7 @@ def _cache_prune():
 
 
 def _cache_read_path(key):
-    """Restore the _prepare_ordered() dict from disk, or None (cache miss)."""
+    """Restore the _prepare_ordered() PathData from disk, or None (cache miss)."""
     np = _np
     path = _cache_file(key)
     try:
@@ -99,45 +100,46 @@ def _cache_read_path(key):
             pass
         return None
     has_bounds = bool(meta[6])
-    return {
-        "seg_count": int(meta[0]), "last": last,
-        "pts": pts, "cum": cum, "rapid": rapid, "speeds": speeds,
-        "total": float(meta[1]),
-        "rapid_bytes": rapid_bytes, "rapid_nv": int(meta[2]),
-        "feed_bytes": feed_bytes, "feed_nv": int(meta[3]),
-        "bounds": tuple(float(v) for v in bounds_arr) if has_bounds else None,
-        "center": center,
-        "radius": float(meta[4]), "min_y": float(meta[5]),
-        "stages": stages,
-    }
+    return PathData(
+        seg_count=int(meta[0]), last=last,
+        pts=pts, cum=cum, rapid=rapid, speeds=speeds,
+        total=float(meta[1]),
+        rapid_bytes=rapid_bytes, rapid_nv=int(meta[2]),
+        feed_bytes=feed_bytes, feed_nv=int(meta[3]),
+        bounds=(Aabb(tuple(float(v) for v in bounds_arr[:3]),
+                     tuple(float(v) for v in bounds_arr[3:6]))
+                if has_bounds else None),
+        center=center,
+        radius=float(meta[4]), min_y=float(meta[5]),
+        stages=stages)
 
 
 def _cache_write_path(key, data):
-    """Store the _prepare_ordered() dict in one .npz (atomic write)."""
-    if data.get("pts") is None:
+    """Store the _prepare_ordered() PathData in one .npz (atomic write)."""
+    if data.pts is None:
         return
     np = _np
     path = _cache_file(key)
     tmp = path + ".tmp.npz"
     try:
         os.makedirs(CACHE_DIR, exist_ok=True)
-        bounds = data["bounds"]
-        stages = np.frombuffer(json.dumps(data.get("stages", [])).encode("utf-8"),
+        bounds = data.bounds
+        stages = np.frombuffer(json.dumps(data.stages).encode("utf-8"),
                                dtype=np.uint8)
-        meta = np.asarray([data["seg_count"], data["total"], data["rapid_nv"],
-                           data["feed_nv"], data["radius"], data["min_y"],
+        meta = np.asarray([data.seg_count, data.total, data.rapid_nv,
+                           data.feed_nv, data.radius, data.min_y,
                            1.0 if bounds is not None else 0.0], dtype=np.float64)
         np.savez(tmp,
-                 pts=np.asarray(data["pts"], dtype=np.float64),
-                 cum=np.asarray(data["cum"], dtype=np.float64),
-                 rapid=np.asarray(data["rapid"], dtype=bool),
-                 speeds=np.asarray(data["speeds"], dtype=np.float64),
-                 rapid_bytes=np.frombuffer(data["rapid_bytes"], dtype=np.uint8),
-                 feed_bytes=np.frombuffer(data["feed_bytes"], dtype=np.uint8),
-                 last=np.asarray(data["last"], dtype=np.float64),
-                 bounds=np.asarray(bounds if bounds is not None
+                 pts=np.asarray(data.pts, dtype=np.float64),
+                 cum=np.asarray(data.cum, dtype=np.float64),
+                 rapid=np.asarray(data.rapid, dtype=bool),
+                 speeds=np.asarray(data.speeds, dtype=np.float64),
+                 rapid_bytes=np.frombuffer(data.rapid_bytes, dtype=np.uint8),
+                 feed_bytes=np.frombuffer(data.feed_bytes, dtype=np.uint8),
+                 last=np.asarray(data.last, dtype=np.float64),
+                 bounds=np.asarray(bounds.flatten() if bounds is not None
                                    else (0.0,) * 6, dtype=np.float64),
-                 center=np.asarray(data["center"], dtype=np.float64),
+                 center=np.asarray(data.center, dtype=np.float64),
                  meta=meta, stages=stages)
         os.replace(tmp, path)
         _cache_prune()
@@ -149,7 +151,7 @@ def _cache_write_path(key, data):
 
 
 def _cache_read_edges(key):
-    """Restore the (raw_bytes, nv, bounds) outline tuple, or None (miss)."""
+    """Restore the packed outline (PackedEdges), or None (miss)."""
     np = _np
     path = _cache_file(key)
     try:
@@ -164,14 +166,16 @@ def _cache_read_edges(key):
         except OSError:
             pass
         return None
-    bounds = tuple(float(v) for v in bounds_arr) if has_bounds else None
-    return (raw, nv, bounds)
+    bounds = (Aabb(tuple(float(v) for v in bounds_arr[:3]),
+                   tuple(float(v) for v in bounds_arr[3:6]))
+              if has_bounds else None)
+    return PackedEdges(raw, nv, bounds)
 
 
 def _cache_write_edges(key, packed):
-    """Store the (raw_bytes, nv, bounds) outline tuple (atomic write)."""
+    """Store the packed outline (PackedEdges) atomically."""
     np = _np
-    raw, nv, bounds = packed
+    raw, nv, bounds = packed.raw, packed.nv, packed.bounds
     path = _cache_file(key)
     tmp = path + ".tmp.npz"
     try:
@@ -179,7 +183,7 @@ def _cache_write_edges(key, packed):
         np.savez(tmp,
                  raw=np.frombuffer(raw or b"", dtype=np.uint8),
                  nv=np.int64(nv),
-                 bounds=np.asarray(bounds if bounds is not None
+                 bounds=np.asarray(bounds.flatten() if bounds is not None
                                    else (0.0,) * 6, dtype=np.float64),
                  has_bounds=np.int64(1 if bounds is not None else 0))
         os.replace(tmp, path)
@@ -192,7 +196,7 @@ def _cache_write_edges(key, packed):
 
 
 def _cache_read_model(key):
-    """Restore the STEP model (verts, packed outline segments, smooth
+    """Restore the STEP model (verts, PackedEdges outline, smooth
     normals), or None on miss/corrupt."""
     np = _np
     path = _cache_file(key)
@@ -215,8 +219,10 @@ def _cache_read_model(key):
         except OSError:
             pass
         return None
-    bounds = tuple(float(v) for v in bounds_arr) if has_bounds else None
-    return verts, (raw, nv, bounds), normals
+    bounds = (Aabb(tuple(float(v) for v in bounds_arr[:3]),
+                   tuple(float(v) for v in bounds_arr[3:6]))
+              if has_bounds else None)
+    return verts, PackedEdges(raw, nv, bounds), normals
 
 
 def _cache_write_model(key, verts, normals, packed):
@@ -224,7 +230,7 @@ def _cache_write_model(key, verts, normals, packed):
     np = _np
     if np is None:
         return
-    raw, nv, bounds = packed
+    raw, nv, bounds = packed.raw, packed.nv, packed.bounds
     path = _cache_file(key)
     tmp = path + ".tmp.npz"
     try:
@@ -234,7 +240,7 @@ def _cache_write_model(key, verts, normals, packed):
                  normals=np.asarray(normals, dtype=np.float32),
                  raw=np.frombuffer(raw or b"", dtype=np.uint8),
                  nv=np.int64(nv),
-                 bounds=np.asarray(bounds if bounds is not None
+                 bounds=np.asarray(bounds.flatten() if bounds is not None
                                    else (0.0,) * 6, dtype=np.float64),
                  has_bounds=np.int64(1 if bounds is not None else 0))
         os.replace(tmp, path)

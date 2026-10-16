@@ -63,7 +63,7 @@ def collect():
         topo = mb._build_silhouette_topology(verts)
         if topo is not None:
             for key in ("n", "d", "f0", "f1", "ea", "eb"):
-                out["topo." + key] = np.asarray(topo[key])
+                out["topo." + key] = np.asarray(getattr(topo, key))
             for i, eye in enumerate(EYES):
                 segs = mb._mesh_silhouette_segments(topo, eye)
                 out["silhouette.eye%d" % i] = np.asarray(
@@ -73,18 +73,18 @@ def collect():
         with open(NGC, "r", encoding="utf-8", errors="ignore") as fh:
             text = fh.read()
         ordered, last, seg_count, stages = mb.parse_gcode(text)
-        out["path.points"] = np.asarray([p[0] for p in ordered], dtype=np.float64)
+        out["path.points"] = np.asarray([p.point for p in ordered], dtype=np.float64)
         out["path.flags"] = np.asarray(
-            [[1.0 if p[1] else 0.0, float(p[2])] for p in ordered], dtype=np.float64)
+            [[1.0 if p.is_rapid else 0.0, float(p.speed_mm_s)] for p in ordered], dtype=np.float64)
         out["path.last"] = np.asarray(last, dtype=np.float64)
         out["path.segments"] = np.asarray([seg_count], dtype=np.int64)
-        out["path.stages"] = np.asarray([str((s[0], s[1])) for s in stages], dtype="U64")
+        out["path.stages"] = np.asarray([str((s.index, s.label)) for s in stages], dtype="U64")
 
     if os.path.exists(STL):
         soup = np.asarray(mb.load_stl_vertices(STL), dtype=np.float64)
         out["stl.soup"] = soup
-        raw, nv, _bounds = mb._feature_edges_np(soup, 20.0)
-        segs = mb.packed_positions((raw, nv, _bounds))
+        packed = mb._feature_edges_np(soup, 20.0)
+        segs = mb.packed_positions(packed)
         out["stl.feature_edges"] = np.asarray(
             segs if segs is not None else np.empty((0, 2, 3)), dtype=np.float32)
 

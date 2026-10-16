@@ -36,11 +36,11 @@ def main() -> int:
         return 0
 
     soup = _np.asarray(load_stl_vertices(STL), dtype=_np.float64)
-    raw, nv, bounds = _feature_edges_np(soup, 20.0)
-    if not raw or nv < 2:
+    packed = _feature_edges_np(soup, 20.0)
+    if not packed.raw or packed.nv < 2:
         print("FAIL: контур пуст")
         return 1
-    segs = _np.asarray(packed_positions((raw, nv, bounds)), dtype=_np.float64)
+    segs = _np.asarray(packed_positions(packed), dtype=_np.float64)
     ln = _np.linalg.norm(segs[:, 1] - segs[:, 0], axis=1)
     short = float((ln < 0.5).mean())
     total = float(ln.sum())

@@ -142,10 +142,11 @@ if ($pythonReal) {
   Skipped 'python: py_compile, offscreen-прогоны, test_tangent_policy.py, test_normals_golden.py'
 }
 
-# 6. Сборка QML-плагина CNC.Edges (StepEdges), C-ABI-моста gvbridge и сверка
-#    рёбер STEP, супа, обводки STL, топологии силуэта, аналитических поверхностей
-#    и семейств касательных с питоновским эталоном. Нужен полный C++-тулчейн:
-#    Qt6, OCCT, cmake, ninja, vcvars64. Тулчейна нет — шаг пропускается, как
+# 6. Сборка QML-плагина CNC.Edges (StepEdges), C-ABI-моста gvbridge, шима
+#    Qt-геометрий gvqtshim и сверка рёбер STEP, супа, обводки STL, топологии
+#    силуэта, аналитических поверхностей, семейств касательных и буферов всех
+#    шести геометрий Qt с питоновским эталоном. Нужен полный C++-тулчейн:
+#    Qt6, OCCT, cmake, ninja, vcvars64. Тулчейна нет - шаг пропускается, как
 #    остальные инструментальные проверки.
 $qtDir = if ($env:CNC_QT_DIR) { $env:CNC_QT_DIR } else { 'C:\Qt\6.12.0\msvc2022_64' }
 $occDir = if ($env:CNC_OCC_DIR) { $env:CNC_OCC_DIR }
@@ -219,8 +220,16 @@ if ($cppReady -and $pythonReal) {
   } else {
     Bad 'нет моста build/cpp/gvbridge.dll'
   }
+  # C++-геометрии Qt и QML-модуль внутри процесса PySide6: буферы всех шести
+  # геометрий против питоновского эталона, переключение классов флагом и загрузка
+  # CNC.Edges при правильной проводке PATH. Та же оговорка: без шима это красное.
+  if (Test-Path -LiteralPath 'build/cpp/gvqtshim.dll') {
+    Run-Tool 'test_qt_bridge.py' { python modules/gcode-viewer/test_qt_bridge.py }
+  } else {
+    Bad 'нет шима Qt-геометрий build/cpp/gvqtshim.dll'
+  }
 } else {
-  Skipped 'сборка плагина CNC.Edges, ядра gvcore, геометрий, STEP, STL, силуэта и касательных: нет тулчейна'
+  Skipped 'сборка плагина CNC.Edges, ядра gvcore, геометрий, STEP, STL, силуэта, касательных и Qt-геометрий: нет тулчейна'
 }
 
 Write-Host ''

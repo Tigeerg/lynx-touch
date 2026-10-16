@@ -59,6 +59,10 @@ public:
     // bounds == nullptr - габарита нет, как set_packed(raw, None, nv) в Python.
     void setPacked(const QByteArray &raw, const gv::Aabb *bounds, int nv);
 
+    // Непокрытый габарит (без pad=1.0 из setBounds): питоновская оболочка кладёт
+    // его в то же поле _bounds эталона и установку ведёт унаследованный _rebuild.
+    const BoundsOrNone &boundsOrNone() const { return bounds_; }
+
 private:
     void rebuild();
 
@@ -85,6 +89,9 @@ public:
 
     // segs - count отрезков по 6 float32 (две точки по три), кадр модели как есть.
     void setSegments(const float *segs, int count);
+
+    // Непокрытый габарит: см. ToolpathGeometry::boundsOrNone.
+    const BoundsOrNone &boundsOrNone() const { return bounds_; }
 
 private:
     void rebuild();
@@ -176,6 +183,10 @@ public:
     void setTriangles(const double *verts, int nFloats, const double *normals);
     void reset();
 
+    // Габарит без покрытия: у сетки setBounds ставится ровно из этих чисел.
+    const std::array<double, 3> &lo() const { return lo_; }
+    const std::array<double, 3> &hi() const { return hi_; }
+
 private:
     void rebuild();
 
@@ -201,6 +212,10 @@ public:
 
     // profile - count пар (radius_mm, height_mm). segments <= 0 - умолчание 48.
     void setProfile(const double *profile, int count, int segments = 0);
+
+    // Габарит без покрытия: см. MeshGeometry::lo.
+    const std::array<double, 3> &lo() const { return lo_; }
+    const std::array<double, 3> &hi() const { return hi_; }
 
 private:
     void rebuild();

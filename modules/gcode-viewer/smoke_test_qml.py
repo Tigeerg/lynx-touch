@@ -21,6 +21,11 @@ sys.path.insert(0, HERE)
 # что в preview_3d.py. Без него QML не резолвит типы (@QmlElement) и
 # дым-тест падал на 'module "MockBackend" is not installed'.
 import mock_backend  # noqa: E402,F401
+import gv_qtgeom  # noqa: E402
+
+# Каталог QML-модуля CNC/Edges и DLL OCCT - в PATH до создания движка (см.
+# preview_3d.py): без сборки helper ничего не меняет.
+gv_qtgeom.prepare_dll_path()
 
 
 def main() -> int:

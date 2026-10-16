@@ -342,6 +342,17 @@ already passed as arguments (`deflection`, edge and coalescing tolerances, `weld
 hard-coded is the outline simplification threshold, the silhouette angle, the cone policy and DROP — those
 are what should move into the presets.
 
+**Qt runtime constraints (established by experiment).**
+- the PySide6 process carries its own Qt 6.12.0; the loader resolves `Qt6Core.dll` by name to the already
+  loaded PySide6 Qt, so `C:\Qt` is not needed in `PATH` and must not get there;
+- ordinary SHARED libraries with Qt objects (the `gvqtshim` shim, the bridge) load into the PySide6 process
+  unconditionally: `shiboken6.wrapInstance` yields a live object and the ownership stays with the C++;
+- the QML plugin (`CNC.Edges`) loads only if the module directory and `OCCT/bin` are in `PATH` BEFORE the
+  engine is created (or the companion library is preloaded via ctypes); `os.add_dll_directory` does not help
+  the plugin entry point, and a load failure is cached in the process, so a retry there does not help;
+- a C++ build against a different minor Qt than PySide6's still links by name to the PySide6 Qt: the ABI
+  mismatch is silent, so the versions must match (6.12.0 on both sides today).
+
 **Priority list.**
 1. An opaque handle on the silhouette topology — remove about 2.6 MB of copies per frame (medium risk: an ABI
    change).

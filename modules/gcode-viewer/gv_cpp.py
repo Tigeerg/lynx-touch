@@ -21,6 +21,10 @@ out-параметры и структуры из C-полей, память б�
                         семейства касательных считает C++;
   CNC_CPP=parser      - разбор УП и подготовку траектории (parse_gcode +
                         _prepare_ordered) считает C++;
+  CNC_CPP=qtgeom      - буферы геометрий Qt Quick 3D (траектория, меш,
+                        инструмент, контур) собирает C++ (gvgeom через шим
+                        gvqtshim.dll, оболочка gv_qtgeom.py); типы QML
+                        по-прежнему регистрирует Python и контракт не меняется;
   CNC_CPP=all         - всё перечисленное;
   пусто/off/0         - всё на Python (умолчание).
 
@@ -52,9 +56,9 @@ ABI_VERSION = 1
 # Слой, который включает значение флага: ключ -> нужные значения CNC_CPP.
 _PART_MODES = {"normals": ("normals", "all"), "step": ("step", "all"),
                "surfaces": ("surfaces", "all"), "silhouette": ("silhouette", "all"),
-               "parser": ("parser", "all")}
+               "parser": ("parser", "all"), "qtgeom": ("qtgeom", "all")}
 _OFF_VALUES = ("", "off", "0", "no", "false")
-_MODE_VALUES = ("normals", "step", "surfaces", "silhouette", "parser", "all")
+_MODE_VALUES = ("normals", "step", "surfaces", "silhouette", "parser", "qtgeom", "all")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
@@ -167,7 +171,7 @@ def occt_bin_dir() -> str:
 
 def mode() -> str:
     """Значение CNC_CPP: '', 'normals', 'step', 'surfaces', 'silhouette',
-    'parser' или 'all'. Незнакомое - отказ."""
+    'parser', 'qtgeom' или 'all'. Незнакомое - отказ."""
     raw = os.environ.get(MODE_ENV, "").strip().lower()
     if raw in _OFF_VALUES:
         return ""
@@ -213,6 +217,17 @@ def silhouette_enabled() -> bool:
 def parser_enabled() -> bool:
     """Разбирать УП и готовить траекторию на C++ (CNC_CPP=parser|all)."""
     return _requested("parser")
+
+
+def qtgeom_enabled() -> bool:
+    """Собирать буферы геометрий Qt Quick 3D на C++ (CNC_CPP=qtgeom|all).
+
+    Мост у этого слоя свой - шим gvqtshim.dll (cpp/exp/gvqtshim), а не gvbridge:
+    геометрии Qt живут в процессе PySide6 и на уже загруженной там Qt. Поэтому
+    здесь только значение флага; жив ли шим, решает gv_qtgeom (он же пишет
+    предупреждение и оставляет питоновский путь).
+    """
+    return mode() in _PART_MODES["qtgeom"]
 
 
 def smooth_face_normals(verts, crease_deg: float = 20.0):

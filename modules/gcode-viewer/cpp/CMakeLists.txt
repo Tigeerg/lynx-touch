@@ -242,6 +242,31 @@ else()
     target_compile_options(gvbridge PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
 
+# Эксперимент этапа 5.3 плана переноса: обычная SHARED-библиотека с Qt-объектами
+# (настоящая gvgeom::ToolpathGeometry этапа 3), которую грузит интерпретатор
+# PySide6 через ctypes. Цель собрана против Qt из CMAKE_PREFIX_PATH, а процесс
+# несёт свою Qt в site-packages/PySide6: проверяется, разрешит ли загрузчик
+# Windows импорт Qt6Core.dll на уже загруженную DLL и заведётся ли объект.
+# Кладётся рядом с мостом (GV_BRIDGE_DIR), исходники - в exp/, проверка -
+# modules/gcode-viewer/test_qt_bridge.py.
+#
+# /fp:precise обязателен: буфер ToolpathGeometry сверяется с Python побайтово.
+add_library(gvqtshim SHARED exp/gvqtshim.cpp)
+target_include_directories(gvqtshim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(gvqtshim PRIVATE gvqtgeom Qt6::Core Qt6::Gui Qt6::Quick3D)
+set_target_properties(gvqtshim PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${GV_BRIDGE_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${GV_BRIDGE_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${GV_BRIDGE_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_BRIDGE_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${GV_BRIDGE_DIR}
+)
+if (MSVC)
+    target_compile_options(gvqtshim PRIVATE /utf-8 /fp:precise)
+else()
+    target_compile_options(gvqtshim PRIVATE -ffp-contract=off -fno-fast-math)
+endif()
+
 qt_standard_project_setup()
 if(COMMAND qt_policy)
     # Префикс ресурсов QML-модуля ':/qt/qml/' — значение по умолчанию для новых проектов.

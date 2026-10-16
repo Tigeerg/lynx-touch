@@ -40,6 +40,20 @@ from tooling import (_tool_profile, _tool_outline_profile, _tool_exposed_length,
 from collision import _scan_collisions, _tool_check_report, _COLLISION_STEP
 from geometry import (ToolpathGeometry, HLRLineGeometry, GridGeometry,
                       AxisArrowGeometry, MeshGeometry, ToolGeometry)
+import gv_qtgeom
+
+# Геометрии, которыми владеет бэкенд (траектория, меш, инструмент, лента
+# контура), при CNC_CPP=qtgeom|all собирает C++ (gvgeom через шим gvqtshim):
+# подмена класса ниже - единственное место выбора пути, API у оболочки тот же,
+# поэтому вызовы в контроллере не меняются. Регистрация QML-типов остаётся за
+# Python (geometry.py и GcodeToolpath регистрируются как раньше), контракт -
+# URI MockBackend 1.0 и имена типов - не меняется. Сетка и указатель оси
+# остаются питоновскими: их создаёт сам QML по именам из MockBackend.
+if gv_qtgeom.enabled():
+    ToolpathGeometry = gv_qtgeom.ToolpathGeometry
+    HLRLineGeometry = gv_qtgeom.HLRLineGeometry
+    MeshGeometry = gv_qtgeom.MeshGeometry
+    ToolGeometry = gv_qtgeom.ToolGeometry
 
 np = _np          # код слоя читает numpy как np
 

@@ -72,6 +72,9 @@
 | `modules/gcode-viewer/cpp/occt/step_bundle.h` / `.cpp` | Комплект STEP (суп, нормали, рёбра до склейки) для моста |
 | `modules/gcode-viewer/gv_cpp.py` | Python-шим моста: загрузка через `ctypes`, поиск DLL, каталог OCCT в путь |
 | `modules/gcode-viewer/test_cpp_bridge.py` | Проверка моста: разбор флага, нормали и STEP бит-в-бит, фолбэк на Python |
+| `modules/gcode-viewer/gv_qtgeom.py` | Оболочка C++-геометрий Qt: буфер считает `gvgeom`, установку делает эталонный `_rebuild()` |
+| `modules/gcode-viewer/cpp/exp/gvqtshim.h` / `.cpp` | C-ABI шим к геометриям Qt: сборка буферов и обёртка объектов для процесса PySide6 |
+| `modules/gcode-viewer/test_qt_bridge.py` | Проверка: буферы шести C++-геометрий и проводка QML в процессе PySide6 |
 | `modules/gcode-viewer/oracle_dump.py` | Оракул промежуточных результатов: эталон для переноса на C++ |
 | `modules/gcode-viewer/test_ribbon_width.py` | Живая проверка толщины ленты (2 px по вертикали и горизонтали) |
 | `modules/gcode-viewer/test_solid_skin.py` | Живая проверка: сплошная кожа закрывает скрытые рёбра (без просвечивания) |
@@ -79,11 +82,42 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.22.1` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.23.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.23.0 — 2026-10-16
+
+- **C++-геометрии подключены к живому вьюверу (этап 5, часть 3).** Регистрация QML-типов осталась на
+  Python: URI `MockBackend` 1.0 и имена не тронуты, `GcodeViewer3D.qml` не правился. Новый
+  `gv_qtgeom.py` — тонкие наследники четырёх геометрий, которыми владеет бэкенд; перекрыт только вход
+  сборки (`set_packed`, `set_segments`, `set_triangles`, `set_profile`): буфер считает `gvgeom`, а
+  оболочка вызывает унаследованный `_rebuild()` эталона, поэтому контракт не дублируется. Значение флага
+  `CNC_CPP=qtgeom` (или `all`); отказ C++ — предупреждение в журнал и питоновский путь.
+- **Проводка загрузки.** Точки входа (`preview_3d.py`, `smoke_test_qml.py`, `render_probe.py`,
+  `test_solid_skin.py`, `test_ribbon_width.py`) ставят каталог модуля и `OCCT/bin` в `PATH` до создания
+  движка — только если каталоги сборки существуют, иначе поведение прежнее.
+- **Проверено, что Qt-код живёт в процессе PySide6.** Загрузчик разрешает `Qt6Core.dll` по имени на Qt из
+  PySide6 (путь подтверждён: `site-packages\PySide6\Qt6Core.dll`); обычные SHARED-библиотеки с Qt-объектами
+  грузятся без условий, `shiboken6.wrapInstance` даёт живой объект, владение остаётся у C++. Qt-плагин QML
+  грузится только при каталоге модуля и `OCCT/bin` в `PATH` до создания движка; это и потребовало правки
+  точек входа.
+- **Совпадение буферов.** Все шесть геометрий в живом процессе PySide6 (14 случаев): траектория 138676
+  вершин, 2773520 байт, stride 20; далее HLR 48, сетка 28, оси 12, меш и инструмент 24 — буфер, `sha256`,
+  атрибуты, тип примитива и габарит совпадают с питоновскими. Оболочка вьювера прошла те же числа.
+- **Что тронуто:** `controller.py`, `gv_cpp.py`, `cpp/CMakeLists.txt`, `cpp/qt/gv_geometry.h`,
+  `scripts/build-viewer.ps1`, `tools/check.ps1`, точки входа; добавлены `gv_qtgeom.py`,
+  `cpp/exp/gvqtshim.{h,cpp}`, `test_qt_bridge.py` (шаг сторожа со `skip` без тулчейна). `GcodeViewer3D.qml`,
+  шейдеры, питоновские модули ядра и оракул не менялись.
+- **Найдена вторая предсуществующая краснота:** `test_ribbon_width.py` красный и на чистом `HEAD`
+  (0.00 px против 2.0) — как и `test_solid_skin.py`, это живая проверка кадра, требующая аппаратного GL;
+  записано в `DESIGN.md` §12.
+- **Проверки.** Сторож гоняет 98 проверок, зелёный; `oracle_dump.py` — `RESULT: OK` при флаге и без;
+  под `CNC_CPP=qtgeom` offscreen `preview_3d.py` — `loaded OK` без `Traceback`, `WARNING` и `ERROR`,
+  `smoke_test_qml.py` — `RESULT: OK`, `render_probe.py` — `edge_px 8396`, `stock_px 79126` (прежние
+  значения). Версия 0.22.1 -> 0.23.0.
 
 ### 0.22.1 — 2026-10-16
 

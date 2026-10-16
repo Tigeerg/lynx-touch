@@ -23,6 +23,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import mock_backend  # noqa: E402,F401  (registers "MockBackend" via @QmlElement)
+import gv_qtgeom  # noqa: E402
+
+# Каталог QML-модуля CNC/Edges и DLL OCCT - в PATH до создания движка: точка
+# входа Qt-плагина ищет свои зависимости по PATH, а не через add_dll_directory
+# (разбор - test_qt_bridge.py, cpp/exp/exp_qml_diag.py). Каталогов сборки нет -
+# PATH не трогаем: на машине без тулчейна поведение прежнее.
+gv_qtgeom.prepare_dll_path()
 
 
 def main() -> int:

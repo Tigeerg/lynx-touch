@@ -72,6 +72,11 @@ def main() -> int:
     engine = QQmlApplicationEngine()
     engine.addImportPath(HERE)
     import mock_backend  # noqa: F401  (регистрирует "MockBackend")
+    import gv_qtgeom
+
+    # Каталог QML-модуля CNC/Edges и DLL OCCT - в PATH до создания движка (см.
+    # preview_3d.py): без сборки helper ничего не меняет.
+    gv_qtgeom.prepare_dll_path()
 
     done = {"ok": False, "started": False}
     cam = {}

@@ -56,6 +56,17 @@
 # modules/gcode-viewer/gv_cpp.py; C++ включается одним слоем по флагу CNC_CPP.
 # Проверка - modules/gcode-viewer/test_cpp_bridge.py.
 #
+# Эксперимент этапа 5.3 плана переноса: цель gvqtshim кладёт рядом с мостом
+# <repo>/build/cpp/gvqtshim.dll - обычную SHARED-библиотеку с настоящими
+# геометриями Qt Quick 3D, собранную против Qt из CNC_QT_DIR. Её грузит в свой
+# процесс интерпретатор PySide6 (ctypes + shiboken6.wrapInstance); проверка -
+# modules/gcode-viewer/test_qt_bridge.py, разбор - cpp/exp/.
+#
+# Та же библиотека (этап 5.3а) собирает буферы геометрий для живого вьювера:
+# экспорты gvq_build_* отдают настоящие gvgeom-геометрии, а питоновская оболочка
+# modules/gcode-viewer/gv_qtgeom.py ставит их буферы в геометрии контроллера при
+# CNC_CPP=qtgeom|all. Регистрация QML-типов остаётся за Python.
+#
 # Код возврата: 0 — собрано, плагин на месте; 1 — инструмент не найден или ошибка сборки.
 
 [CmdletBinding()]
@@ -258,6 +269,13 @@ if (Test-Path -LiteralPath $bridge) {
     Write-Host ("build-viewer: мост C-ABI " + $bridge)
 } else {
     Fail "мост C-ABI не собран: нет $bridge"
+}
+
+$shim = Join-Path $root 'build\cpp\gvqtshim.dll'
+if (Test-Path -LiteralPath $shim) {
+    Write-Host ("build-viewer: шим Qt-геометрий " + $shim)
+} else {
+    Fail "шим эксперимента не собран: нет $shim"
 }
 
 if ($RunProbe) {

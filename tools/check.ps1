@@ -142,9 +142,10 @@ if ($pythonReal) {
   Skipped 'python: py_compile, offscreen-прогоны, test_tangent_policy.py, test_normals_golden.py'
 }
 
-# 6. Сборка QML-плагина CNC.Edges (StepEdges) и сверка рёбер STEP с питоновским
-#    эталоном. Нужен полный C++-тулчейн: Qt6, OCCT, cmake, ninja, vcvars64.
-#    Тулчейна нет — шаг пропускается, как остальные инструментальные проверки.
+# 6. Сборка QML-плагина CNC.Edges (StepEdges) и сверка рёбер STEP, супа и обводки
+#    STL с питоновским эталоном. Нужен полный C++-тулчейн: Qt6, OCCT, cmake,
+#    ninja, vcvars64. Тулчейна нет — шаг пропускается, как остальные
+#    инструментальные проверки.
 $qtDir = if ($env:CNC_QT_DIR) { $env:CNC_QT_DIR } else { 'C:\Qt\6.12.0\msvc2022_64' }
 $occDir = if ($env:CNC_OCC_DIR) { $env:CNC_OCC_DIR }
           elseif ($env:CONDA_PREFIX) { Join-Path $env:CONDA_PREFIX 'Library' }
@@ -194,8 +195,13 @@ if ($cppReady -and $pythonReal) {
   } else {
     Bad 'нет пробника STEP и нормалей build/edges/step_probe.exe'
   }
+  if (Test-Path -LiteralPath 'build/edges/stl_probe.exe') {
+    Run-Tool 'test_stl_core.py' { python modules/gcode-viewer/test_stl_core.py }
+  } else {
+    Bad 'нет пробника STL и обводки build/edges/stl_probe.exe'
+  }
 } else {
-  Skipped 'сборка плагина CNC.Edges, ядра gvcore и сверка с эталоном: нет Qt6/OCCT/cmake/ninja/vcvars64'
+  Skipped 'сборка плагина CNC.Edges, ядра gvcore, геометрий, STEP и STL: нет Qt6/OCCT/cmake/ninja/vcvars64'
 }
 
 Write-Host ''

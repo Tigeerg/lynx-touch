@@ -2,7 +2,8 @@
 # Рядом собирается чистое ядро gvcore (парсер G-кода, теги UI_*, crease-aware
 # нормали) и его пробник gcode_probe — они в плагин не входят и Qt не требуют.
 # Там же слой STEP и нормалей gvstep (этап 4a плана переноса) с пробником
-# step_probe: они читают OCCT напрямую, Qt им не нужен.
+# step_probe: они читают OCCT напрямую, Qt им не нужен. Импорт STL и обводка меша
+# (этап 4b) лежат в ядре gvcore, их пробник - stl_probe.
 #
 # Сборка (скрипт делает то же самое):
 #   powershell -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
@@ -30,16 +31,20 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Quick3D)
 find_package(OpenCASCADE REQUIRED)
 
-# Чистое ядро gvcore (этап 2 плана переноса): парсер G-кода, теги UI_*, crease-aware
-# нормали кожи (этап 4a). Ни Qt, ни OCCT не нужны - только стандартная библиотека.
-# Цель отдельная от плагина, чтобы ядро можно было собрать и сверить с Python без Qt.
+# Чистое ядро gvcore (этапы 2 и 4 плана переноса): парсер G-кода, теги UI_*,
+# crease-aware нормали кожи (этап 4a), импорт STL и обводка меша (этап 4b). Ни Qt,
+# ни OCCT не нужны - только стандартная библиотека. Цель отдельная от плагина,
+# чтобы ядро можно было собрать и сверить с Python без Qt.
 #
 # /fp:precise обязателен: ядро сверяется с Python побайтово, а /fp:fast разрешает
 # переассоциацию и слияние умножения со сложением (FMA), что сдвигает результат.
 add_library(gvcore STATIC
     core/gcode_parser.cpp
     core/normals.cpp
+    core/outline.cpp
+    core/packing.cpp
     core/path_prep.cpp
+    core/stl_import.cpp
     core/text_util.cpp
     core/ui_tags.cpp
 )
@@ -136,6 +141,21 @@ endif()
 target_link_libraries(step_probe PRIVATE gvstep)
 # Заголовок слоя включает TopoDS_Shape.hxx: инклюды OCCT у gvstep приватные.
 target_include_directories(step_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
+
+# Пробник STL и обводки меша (этап 4b плана переноса): отдельная цель, в плагин
+# не входит. Читает STL (бинарный или ASCII) в суп треугольников, считает рёбра
+# по двугранному углу со склейкой цепочек, печатает число вершин и отрезков и
+# sha256 супа и рёбер в тех же сериализациях, что Python, и пишет те же массивы
+# дампом; сверку ведёт modules/gcode-viewer/test_stl_core.py. Ни Qt, ни OCCT:
+# слой живёт в gvcore.
+add_executable(stl_probe stl_probe.cpp)
+set_target_properties(stl_probe PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+if (MSVC)
+    target_compile_options(stl_probe PRIVATE /utf-8)
+endif()
+target_link_libraries(stl_probe PRIVATE gvcore)
 
 qt_standard_project_setup()
 if(COMMAND qt_policy)

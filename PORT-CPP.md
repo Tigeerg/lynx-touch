@@ -190,7 +190,11 @@ Ninja (MSVC, Qt 6.12 Quick3D, OCCT 8.0.1, Eigen) в `build/edges`. Сегмен�
 (`cpp/occt/step_import`, цель `gvstep`), нормали кожи — в `cpp/core/normals`. Совпадение бит-в-бит:
 `step.verts` [136194,3], `step.tri` [45398,3,3] и `step.normals` [45398,3,3] дают тот же `sha256`, что
 эталон и оракул; проверяет пробник `cpp/step_probe.cpp` и `test_step_core.py`. Остаток этапа 4:
-`step_surfaces`, STL, топология силуэта, обводка STL.
+`step_surfaces`, топология силуэта, `_tangent_families`.
+
+**STL и обводка (этап 4, часть 2) готовы.** Импорт STL, обводка меша и упаковка рёбер перенесены в
+`cpp/core` (цель `gvcore`), совпадение бит-в-бит: `stl.soup` [562776,3] и `stl.feature_edges` [1435,2,3]
+дают тот же `sha256`, что эталон и оракул; сверяют `cpp/stl_probe.cpp` и `test_stl_core.py`.
 
 **Основную часть выигрыша даёт этап 4.** Этапы 2 и 3 дешёвые и безопасные; этап 5 нужен, чтобы
 совсем отпустить Python, но сам по себе почти ничего не ускоряет.

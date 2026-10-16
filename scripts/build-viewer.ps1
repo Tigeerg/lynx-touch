@@ -4,6 +4,7 @@
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunProbe
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunCoreProbe
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunStepProbe
+#          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunStlProbe
 #
 # Генератор — Ninja, конфигурация Release, компилятор MSVC. Пути SDK берутся из
 # окружения с умолчаниями: CNC_QT_DIR (Qt6 с Quick3D), CNC_OCC_DIR (OCCT + Eigen),
@@ -31,6 +32,10 @@
 # <build>/step_probe.exe, этап 4a плана переноса); сверку с эталоном ведёт
 # modules/gcode-viewer/test_step_core.py. Qt этой цели не нужен: только OCCT.
 #
+# Импорт STL и обводка меша (этап 4b плана переноса) лежат в ядре gvcore, их
+# пробник - <build>/stl_probe.exe; сверку с эталоном ведёт
+# modules/gcode-viewer/test_stl_core.py. Ни Qt, ни OCCT этой цели не нужны.
+#
 # Код возврата: 0 — собрано, плагин на месте; 1 — инструмент не найден или ошибка сборки.
 
 [CmdletBinding()]
@@ -47,6 +52,8 @@ param(
     [switch]$RunCoreProbe,
     # Дополнительно прогнать пробник STEP и нормалей на data/cad-testdata/Test_model.STEP.
     [switch]$RunStepProbe,
+    # Дополнительно прогнать пробник STL и обводки меша на data/cad-testdata/Test_model.STL.
+    [switch]$RunStlProbe,
     # Только конфигурирование, без сборки.
     [switch]$ConfigureOnly
 )
@@ -56,6 +63,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $srcDir = Join-Path $root 'modules\gcode-viewer\cpp'
 $probeStep = Join-Path $root 'data\cad-testdata\Test_model.STEP'
+$probeStl = Join-Path $root 'data\cad-testdata\Test_model.STL'
 $probeNgc = Join-Path $root 'data\cad-testdata\Test_model.ngc'
 if (-not [System.IO.Path]::IsPathRooted($BuildDir)) {
     $BuildDir = Join-Path $root $BuildDir
@@ -200,6 +208,13 @@ if (Test-Path -LiteralPath $stepProbe) {
     Fail "слой STEP и нормалей не собран: нет $stepProbe"
 }
 
+$stlProbe = Join-Path $BuildDir 'stl_probe.exe'
+if (Test-Path -LiteralPath $stlProbe) {
+    Write-Host ("build-viewer: пробник STL и обводки " + $stlProbe)
+} else {
+    Fail "слой STL и обводки не собран: нет $stlProbe"
+}
+
 if ($RunProbe) {
     if (-not (Test-Path -LiteralPath $probe)) { Fail "пробника нет: $probe" }
     if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
@@ -226,6 +241,16 @@ if ($RunStepProbe) {
     New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
     & $stepProbe $probeStep $dumpDir
     if ($LASTEXITCODE -ne 0) { Fail "пробник STEP вернул $LASTEXITCODE" }
+}
+
+if ($RunStlProbe) {
+    if (-not (Test-Path -LiteralPath $stlProbe)) { Fail "пробника нет: $stlProbe" }
+    if (-not (Test-Path -LiteralPath $probeStl)) { Fail "нет тестовой модели: $probeStl" }
+    # Пробнику STL DLL не нужны: он целиком в gvcore, Qt и OCCT в ней не участвуют.
+    $dumpDir = Join-Path $env:TEMP 'gvstl_build_probe'
+    New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
+    & $stlProbe $probeStl $dumpDir
+    if ($LASTEXITCODE -ne 0) { Fail "пробник STL вернул $LASTEXITCODE" }
 }
 
 Write-Host 'build-viewer: OK' -ForegroundColor Green

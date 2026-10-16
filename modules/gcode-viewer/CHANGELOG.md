@@ -55,6 +55,11 @@
 | `modules/gcode-viewer/cpp/sha256.h` | Общий SHA-256 для пробников (вынесен из `gcode_probe.cpp`) |
 | `modules/gcode-viewer/cpp/step_probe.cpp` | Пробник STEP: суп вершин, треугольники, нормали, `sha256` |
 | `modules/gcode-viewer/test_step_core.py` | Headless-сверка STEP-тесселяции и нормалей C++ с `load_step_model` и оракулом |
+| `modules/gcode-viewer/cpp/core/stl_import.h` / `.cpp` | C++-импорт STL (бинарный и ASCII) в суп треугольников |
+| `modules/gcode-viewer/cpp/core/outline.h` / `.cpp` | C++-обводка меша: рёбра по двугранному углу, склейка цепочек, упрощение |
+| `modules/gcode-viewer/cpp/core/packing.h` / `.cpp` | C++-упаковка рёбер в буферы геометрии (`_pack_edges_np`, `packed_positions`) |
+| `modules/gcode-viewer/cpp/stl_probe.cpp` | Пробник STL: суп и рёбра обводки, `sha256` |
+| `modules/gcode-viewer/test_stl_core.py` | Headless-сверка STL-импорта и обводки C++ с оракулом |
 | `modules/gcode-viewer/oracle_dump.py` | Оракул промежуточных результатов: эталон для переноса на C++ |
 | `modules/gcode-viewer/test_ribbon_width.py` | Живая проверка толщины ленты (2 px по вертикали и горизонтали) |
 | `modules/gcode-viewer/test_solid_skin.py` | Живая проверка: сплошная кожа закрывает скрытые рёбра (без просвечивания) |
@@ -62,11 +67,31 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.17.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.18.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.18.0 — 2026-10-16
+
+- **STL-импорт и обводка меша на C++ (этап 4, часть 2).** Импорт STL (бинарный и ASCII) перенесён в
+  `cpp/core/stl_import.{h,cpp}`, обводка меша — в `cpp/core/outline.{h,cpp}` (сварка вершин по сетке
+  0.001 мм с полом-к-чётному, нормали граней, двугранный угол 20 градусов, склейка цепочек и упрощение
+  `_rdp_indices` с допуском 0.15 мм), упаковка рёбер — в `cpp/core/packing.{h,cpp}` (`_pack_edges_np`,
+  `packed_positions`). Всё в цель `gvcore`, без Qt и OCCT.
+- **Совпадение бит-в-бит.** `stl.soup` [562776,3] и `stl.feature_edges` [1435,2,3] дают тот же `sha256`,
+  что `load_stl_vertices`/`_feature_edges_np` и оракул. Пробник `cpp/stl_probe.cpp` пишет дампы,
+  `test_stl_core.py` сверяет побайтово. Тест гоняет и три малых STL (куб ASCII, тетраэдр бинарный,
+  пустой): именно ASCII-ветка дала расхождение до фикса (счётчик полей пропускал первое число), а
+  Test_model.STL бинарный — иначе эта ветка осталась бы непроверенной.
+- **Что тронуто:** `cpp/CMakeLists.txt`, `scripts/build-viewer.ps1`, `tools/check.ps1`; добавлены
+  `cpp/core/{stl_import,outline,packing}.{h,cpp}`, `cpp/stl_probe.cpp`, `test_stl_core.py`. Питоновские
+  модули, QML, шейдеры и оракул не менялись.
+- **Остаток этапа 4:** аналитические поверхности (`step_surfaces`), топология силуэта и
+  `_tangent_families` — часть 3.
+- **Проверки.** Сторож гоняет 68 проверок, зелёный; этапы 1-4a целы, оракул без изменений (22 записи).
+  Версия 0.17.0 -> 0.18.0.
 
 ### 0.17.0 — 2026-10-16
 

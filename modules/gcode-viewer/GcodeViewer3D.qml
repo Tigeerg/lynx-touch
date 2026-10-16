@@ -17,7 +17,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.12.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.12.1"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -487,6 +487,8 @@ Item {
                     property real viewportW: view3d.width
                     property real viewportH: view3d.height
                     property color edgeColor: "#000000"
+                    property vector3d eyeRaw: path ? path.eyeRaw : Qt.vector3d(0, 0, 0)
+                    property real camFloatMm: 0.0   // сдвиг к глазу в stepledges.vert
                     cullMode: Material.NoCulling
                     vertexShader: "stepledges.vert"
                     fragmentShader: "stepledges.frag"
@@ -510,6 +512,8 @@ Item {
                     property real viewportW: view3d.width
                     property real viewportH: view3d.height
                     property color edgeColor: "#000000"
+                    property vector3d eyeRaw: path ? path.eyeRaw : Qt.vector3d(0, 0, 0)
+                    property real camFloatMm: 0.0   // сдвиг к глазу в stepledges.vert
                     cullMode: Material.NoCulling
                     vertexShader: "stepledges.vert"
                     fragmentShader: "stepledges.frag"

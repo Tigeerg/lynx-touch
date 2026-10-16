@@ -12,16 +12,28 @@
 // the opaque skin hides what the body covers - real CAD visibility, live
 // while orbiting.
 //
-// lineWidthPx, viewportW and viewportH are uniforms from the material's QML
-// properties - the mechanism toolpath.frag uses for cutoff/pathEnd.
+// lineWidthPx, viewportW, viewportH, eyeRaw and camFloatMm are uniforms from
+// the material's QML properties - the mechanism toolpath.frag uses for
+// cutoff/pathEnd. eyeRaw is the camera eye in the model raw frame (backend
+// recomputes it per refresh); the view-ray cam-float used to be a CPU repack
+// of the whole edge buffer on every camera move (~22 ms/frame on
+// Test_model), now it is a per-vertex shift here at zero CPU cost.
 
 VARYING float vSide;
 
 void MAIN()
 {
     vSide = UV0.x;
-    vec4 clip = MODELVIEWPROJECTION_MATRIX * vec4(VERTEX, 1.0);
-    vec4 head = MODELVIEWPROJECTION_MATRIX * vec4(VERTEX + NORMAL, 1.0);
+    // cam-float: смещение К глазу вдоль луча зрения, проекционно-нейтральное
+    // (на экране позицию не двигает), выводит линию из-под отсечения буфером
+    // глубины при нормальном падении взгляда. ray = точка - глаз, сдвиг -
+    // минус ray, нормированный на camFloatMm (0.0 = выключен).
+    vec3 vpnt = VERTEX;
+    vec3 ray = vpnt - eyeRaw;
+    float rl = max(length(ray), 1e-6);
+    vpnt -= ray / rl * camFloatMm;
+    vec4 clip = MODELVIEWPROJECTION_MATRIX * vec4(vpnt, 1.0);
+    vec4 head = MODELVIEWPROJECTION_MATRIX * vec4(vpnt + NORMAL, 1.0);
     // Направление и перпендикуляр считаются в пикселях: оси NDC при
     // неквадратном вьюпорте имеют разный масштаб, и перпендикуляр,
     // построенный в NDC, давал вертикальным линиям толщину

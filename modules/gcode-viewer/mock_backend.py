@@ -2964,12 +2964,10 @@ class HLRLineGeometry(QQuick3DGeometry):
 
     STRIDE = 12 * 4
     FLOAT_SCALE = 1.0012
-    # cam-float: сдвиг К глазу вдоль луча зрения (проекционно-нейтральный).
-    # 0.5 мм вытаскивал из-под непрозрачной кожи короткие участки СКРЫТЫХ
-    # силуэтных рёбер на скользящем контуре («заусенцы»/штрихи). При 0 видимые
-    # линии держит клип-сдвиг polyOffset в stepledges.vert, а скрытые - честно
-    # режет буфер глубины.
-    CAM_FLOAT_MM = 0.0
+    # cam-float (сдвиг к глазу вдоль луча зрения) переехал в stepledges.vert:
+    # uniform camFloatMm, значение задаётся свойством материала в QML
+    # (0.0 - видимые линии держит клип-сдвиг polyOffset, скрытые честно
+    # режет буфер глубины).
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2990,13 +2988,12 @@ class HLRLineGeometry(QQuick3DGeometry):
     def vertexCount(self):
         return self._nv
 
-    def set_segments(self, segs, eye=None):
+    def set_segments(self, segs):
         """segs: (M,2,3) float array of endpoints, model raw frame.
-        eye (raw frame) adds a CAM_FLOAT_MM shift of every endpoint along
-        its own view ray: projection-neutral (the screen position does not
-        move) but strictly in front of the surface - fixes the lines the
-        depth buffer ate at normal incidence, where the radial FLOAT_SCALE
-        has too little margin. The radial scale stays for grazing walls."""
+        Radial FLOAT_SCALE float about _ref is baked here (static per
+        upload); the view-ray cam-float lives in stepledges.vert (uniform
+        eyeRaw + camFloatMm), so a camera move costs no repack of this
+        buffer."""
         if _np is None or segs is None or len(segs) == 0:
             self._raw = b''
             self._nv = 0
@@ -3010,16 +3007,6 @@ class HLRLineGeometry(QQuick3DGeometry):
             a_ = self._ref[None, None, :] + \
                 (a_ - self._ref[None, None, :]) * _np.float32(
                     self.FLOAT_SCALE)
-        if eye is not None:
-            ev = _np.asarray(eye, dtype=_np.float32)
-            # ray = точка - глаз (от глаза к точке). Смещение К глазу - это
-            # минус ray: знак был перепутан, и линия уходила ЗА стенку, а
-            # непрозрачная сплошная кожа срезала её буфером глубины (ближние
-            # кромки истоншались). Теперь линия честно впереди поверхности.
-            ray = a_ - ev[None, None, :]
-            rl = _np.linalg.norm(ray, axis=2, keepdims=True)
-            a_ = a_ - ray / _np.where(rl == 0.0, 1.0, rl) * _np.float32(
-                self.CAM_FLOAT_MM)
         pa = a_[:, 0, :]
         pb = a_[:, 1, :]
         d = pb - pa
@@ -3539,6 +3526,7 @@ class GcodeToolpath(QObject):
         self._mesh_topo = None                       # welded mesh topology (mesh silhouette)
         self._hlr_edges = HLRLineGeometry()          # GPU-tested B-rep outline
         self._hlr_tangents = HLRLineGeometry()       # GPU-tested silhouette
+        self._eye_raw = QVector3D(0, 0, 0)           # eye in raw model frame
         self._tool_geo = ToolGeometry()
         self._tool_outline_geo = ToolGeometry()    # inverted-hull outline solid
         self._holder_geo = ToolGeometry()          # ER20 nut + spindle body
@@ -4008,14 +3996,19 @@ class GcodeToolpath(QObject):
         переменной окружения CNC_SILHOUETTE: 'mesh' (по умолчанию) - силуэт по
         топологии меша, 'analytic' - прежние касательные образующие
         цилиндров/конусов (оставлены для сравнения). Сегменты обоих режимов
-        публикуются в один слой _hlr_tangents (HLRLineGeometry): общий шейдер
-        ленты, cam-float, depthBias и конвейер."""
+        публикуются в один слой _hlr_tangents (HLRLineGeometry). Cam-float
+        делает stepledges.vert по eyeRaw/camFloatMm, поэтому статические
+        B-rep рёбра загружаются один раз на модель и на движение камеры не
+        перепаковываются: раньше их репак на GUI-потоке стоил ~22 мс/кадр
+        (замер на Test_model, 18986 сегментов)."""
         try:
             eye = QVector3D(view_point.x() - self._part_pos[0],
                             view_point.y() - self._part_pos[1],
                             view_point.z() - self._part_pos[2])
             e = self._part_rot.inverted().rotatedVector(eye)
             eye_raw = (e.x(), e.y(), e.z())
+            self._eye_raw = QVector3D(*eye_raw)
+            self.eyeChanged.emit()
             mode = os.environ.get("CNC_SILHOUETTE", "mesh").strip().lower()
             if mode == "analytic":
                 if not self._rev_surfaces:
@@ -4032,23 +4025,19 @@ class GcodeToolpath(QObject):
             if _np is not None and has:
                 self._sync_hlr_reference()
                 self._hlr_tangents.set_segments(
-                    _np.asarray(segments, dtype=_np.float32), eye_raw)
-                # статические B-rep рёбра тоже перепакетываются с глазом:
-                # смещение вдоль луча зрения не двигает их на экране, но
-                # выводит из-под отсечения буфером глубины. _step_edges -
-                # упакованный буфер (raw, nv, bounds): в set_segments нужны
-                # (M,2,3)-координаты, их достаёт packed_positions. Раньше сюда
-                # шёл сам кортеж - np.asarray падал на неоднородной форме,
-                # исключение глоталось try/except, и статические рёбра вообще
-                # не получали cam-float (на скользящих видах их срезал буфер
-                # глубины).
-                if self._step_edges is not None:
-                    self._hlr_edges.set_segments(
-                        packed_positions(self._step_edges), eye_raw)
+                    _np.asarray(segments, dtype=_np.float32))
             else:
                 self._hlr_tangents.set_segments(None)
         except Exception:
             pass
+
+    eyeChanged = Signal()
+
+    @Property(QVector3D, notify=eyeChanged)
+    def eyeRaw(self):
+        """Глаз камеры в raw-кадре модели (обновляется в refreshTangents).
+        Привязан в QML к материалам рёбер: cam-float в stepledges.vert."""
+        return self._eye_raw
 
     @Property(QVector3D, notify=meshChanged)
     def partMeshCenter(self):

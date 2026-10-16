@@ -186,6 +186,14 @@ Checks:
 - `tools/check.ps1` (`pnpm guard`) does not run `bench_viewer.py` — performance regressions are not caught;
 - `print` instead of logging; `[outline] ...` prints on every load.
 
+Outline on the STL branch:
+- On a mesh only sharp transitions are drawn, so there are fewer internal contours than on STEP: B-rep face
+  boundaries where the surfaces meet tangentially (blend boundaries, seams) cannot be told from triangulation
+  edges by angle. Measured: the threshold 20 -> 2 degrees adds about 290 segments and does not reach the STEP
+  network (6825 mm), while below 1.5 degrees the outline explodes tenfold (15092 segments). Completion:
+  detect tangential boundaries by the curvature break between neighbouring faces (second derivative), with its
+  own check on Test_model. STL is an emergency path, so the work has not been started.
+
 Performance on weak hardware (Intel Atom + Nvidia Ion):
 - `MSAA High` on the whole frame is the main cost; the ribbons already have distance-field AA and do not need
   MSAA;

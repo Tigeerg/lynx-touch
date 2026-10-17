@@ -18,19 +18,21 @@ def main() -> None:
     with open(src_path, "r", encoding="utf-8") as f:
         src = f.read()
 
-    # 1. Drop the leading block comment of main.qml
+    # 1. Ведущий блочный комментарий main.qml не нужен: у preview.qml свой.
     body = re.sub(r"(?s)^/\*\*.*?\*/", "", src, count=1)
 
-    # 2. Drop the "import QtQuick ..." lines from body (we prepend our own)
-    body = re.sub(r"(?m)^import QtQuick[^\n]*\n", "", body)
+    # 2. Вырезаются только базовые импорты QtQuick/QtQuick.Controls/QtQuick.Layouts
+    # (их шапка ставит сама, с версией). Прочие импорты остаются как в main.qml:
+    # QtQuick3D (3D-траектория) и MockBackend (бэкенд) - без них файл не грузится.
+    body = re.sub(r"(?m)^import QtQuick(\.(Controls|Layouts))?( [0-9.]+)?\n", "", body)
 
-    # 3. Replace root "Item {" with "Window {"
+    # 3. Корневой "Item {" заменяется на "Window {": preview показывают отдельно.
     if not re.search(r"(?m)^Item \{", body):
         print("ERROR: no 'Item {' root found", file=sys.stderr)
         sys.exit(1)
     body = re.sub(r"(?m)^Item \{", "Window {", body, count=1)
 
-    # 4. Keep `id: root`; add window title right after `height: 600` (root).
+    # 4. `id: root` остаётся; сразу за `height: 600` корня добавляется заголовок окна.
     body = re.sub(
         r"(?m)^(\s*)height: 600(\s*)\n",
         '\\1height: 600\\2\n\\1title: "CNC Operator Panel — VMC-850 (QtQuick preview)"\n',

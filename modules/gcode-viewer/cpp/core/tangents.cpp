@@ -847,6 +847,112 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
     return out;
 }
 
+TangentFamilies profileTangentFamilies(const std::vector<ProfilePoint>& profile)
+{
+    TangentFamilies out;
+    if (profile.size() < 2) {
+        return out;
+    }
+    // Секция профиля: либо цилиндр (радиус постоянен), либо конус (радиус
+    // меняется линейно). Плоский торец (dy = 0) и участок на оси генераторов не
+    // дают - их рисует кольцо.
+    struct Section {
+        bool cylinder = true;
+        double r = 0.0;
+        double t0 = 0.0;
+        double t1 = 0.0;
+        ConeSurface cone;
+    };
+    const double eps = 1e-9;
+    std::vector<Section> sections;
+    for (std::size_t i = 0; i + 1 < profile.size(); ++i) {
+        const double r0 = profile[i].radius_mm;
+        const double y0 = profile[i].height_mm;
+        const double r1 = profile[i + 1].radius_mm;
+        const double y1 = profile[i + 1].height_mm;
+        const double dr = r1 - r0;
+        const double dy = y1 - y0;
+        if (std::fabs(dy) < eps || (r0 <= eps && r1 <= eps)) {
+            continue;
+        }
+        Section s;
+        if (std::fabs(dr) < eps) {
+            s.r = r0;
+            s.t0 = std::min(y0, y1);
+            s.t1 = std::max(y0, y1);
+            // Соседние цилиндры одного радиуса (тело и шейка на одном диаметре)
+            // дают одну общую образующую, а не две наложенные линии.
+            if (!sections.empty() && sections.back().cylinder
+                    && std::fabs(sections.back().r - s.r) < eps
+                    && std::fabs(sections.back().t1 - s.t0) < 1e-6) {
+                sections.back().t1 = s.t1;
+            } else {
+                sections.push_back(s);
+            }
+            continue;
+        }
+        // Ось конуса смотрит от вершины к секции: радиус вдоль неё растёт, поэтому
+        // параметр s обоих концов положителен, как у ConeSurface из STEP.
+        const double sgn = dr > 0.0 ? 1.0 : -1.0;
+        const double yApex = y0 - r0 * dy / dr;
+        const double psi = std::atan(std::fabs(dr / dy));
+        const double cosPsi = std::cos(psi);
+        if (!(cosPsi > eps) || !std::isfinite(yApex)) {
+            continue;
+        }
+        s.cylinder = false;
+        s.cone.a[1] = yApex;
+        // Ось задаётся целиком: ConeSurface по умолчанию несёт ось (0, 0, 1), и от
+        // одной записи d[1] ось уезжает в (0, sgn, 1) - образующая встала бы на
+        // радиус ~38 мм вместо настоящих 11.5..23 (замерено на оправке).
+        s.cone.d[0] = 0.0;
+        s.cone.d[1] = sgn;
+        s.cone.d[2] = 0.0;
+        s.cone.psi = psi;
+        s.cone.s0 = (y0 - yApex) * sgn / cosPsi;
+        s.cone.s1 = (y1 - yApex) * sgn / cosPsi;
+        sections.push_back(s);
+    }
+
+    std::size_t ncyl = 0;
+    for (const Section& s : sections) {
+        if (s.cylinder) {
+            ++ncyl;
+        }
+    }
+    CylinderFamilies& cyls = out.cylinders;
+    cyls.count = ncyl;
+    cyls.O.assign(ncyl * 3, 0.0);
+    cyls.D.assign(ncyl * 3, 0.0);
+    cyls.E1.assign(ncyl * 3, 0.0);
+    cyls.E2.assign(ncyl * 3, 0.0);
+    cyls.R.assign(ncyl, 0.0);
+    cyls.T0.assign(ncyl, 0.0);
+    cyls.T1.assign(ncyl, 0.0);
+    cyls.RREF.assign(ncyl, 0.0);
+    cyls.A0.assign(ncyl, NAN_);
+    cyls.A1.assign(ncyl, NAN_);
+    cyls.FULL.assign(ncyl, 1);
+    cyls.DROP.assign(ncyl * 8, NAN_);
+    cyls.ARC.assign(ncyl * 64, 0);
+    std::size_t ic = 0;
+    for (const Section& s : sections) {
+        if (!s.cylinder) {
+            out.cones.push_back(s.cone);
+            continue;
+        }
+        cyls.D[ic * 3 + 1] = 1.0;
+        cyls.E1[ic * 3 + 0] = 1.0;
+        cyls.E2[ic * 3 + 2] = 1.0;
+        cyls.R[ic] = s.r;
+        cyls.T0[ic] = s.t0;
+        cyls.T1[ic] = s.t1;
+        cyls.RREF[ic] = s.r;
+        ++ic;
+    }
+    return out;
+}
+
 const std::vector<double>& tangentFromFamilies(const TangentFamilies& fam, const double eyeMm[3],
                                                TangentScratch& scratch) {
     scratch.segments.clear();

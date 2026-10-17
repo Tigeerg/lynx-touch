@@ -7,6 +7,8 @@
 // пишется в том же порядке, что в Python: (pi / 2) * k / k_n, а не k * pi / 2 / k_n.
 #include "core/tooling.h"
 
+#include "core/text_util.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -50,7 +52,7 @@ double envDouble(const char* name, double fallback)
         return fallback;
     }
     char* end = nullptr;
-    const double value = std::strtod(raw, &end);
+    const double value = strtodC(raw, &end);
     if (end == raw || (end != nullptr && *end != '\0')) {
         return fallback;
     }

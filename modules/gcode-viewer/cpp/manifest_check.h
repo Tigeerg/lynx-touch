@@ -465,7 +465,21 @@ inline std::string repoRoot() {
     }
     return wideToUtf8(dir.wstring());
 #else
-    return {};
+    // Linux: путь процесса читается через /proc/self/exe (симлинк на
+    // исполняемый файл), далее та же догадка про build/edges и та же проверка
+    // каталога тестовых данных.
+    std::error_code ec;
+    const std::filesystem::path exe = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (ec) {
+        return {};
+    }
+    std::filesystem::path dir = exe.parent_path();
+    dir = dir.parent_path();          // build
+    dir = dir.parent_path();          // корень репозитория
+    if (!std::filesystem::exists(dir / "data" / "cad-testdata")) {
+        return {};
+    }
+    return dir.string();
 #endif
 }
 

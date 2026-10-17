@@ -58,7 +58,7 @@ bool readNum(const std::string& s, size_t& p, double& out) {
         ++p;
         while (p < s.size() && isDigitCh(s[p])) { ++p; }
     }
-    out = std::strtod(s.substr(start, p - start).c_str(), nullptr);
+    out = strtodC(s.substr(start, p - start).c_str(), nullptr);
     return true;
 }
 
@@ -253,7 +253,7 @@ std::optional<HolderTag> parseUiHolder(const std::string& text) {
             if (p < body.size() && (body[p] == '+' || body[p] == '-')) { ++p; }
             while (p < body.size() && (isDigitCh(body[p]) || body[p] == '.')) { ++p; }
             if (p > start) {
-                out.gauge = std::strtod(body.substr(start, p - start).c_str(), nullptr);
+                out.gauge = strtodC(body.substr(start, p - start).c_str(), nullptr);
                 out.has_gauge = true;
                 break;
             }

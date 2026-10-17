@@ -6,6 +6,11 @@
 # Запуск:  bash scripts/build-viewer.sh
 #          CNC_QT_DIR=<каталог Qt6> CNC_OCC_DIR=<каталог OCCT> bash scripts/build-viewer.sh
 #
+# Окружение SDK и компилятора на Linux собирает environment.yml в корне
+# (conda-forge): conda env create -f environment.yml. Компилятор в окружении -
+# не роскошь: conda-сборка OCCT линкуется символом __cxa_call_terminate@CXXABI_1.3.15,
+# которого нет в GCC 11 системных Ubuntu 22.04.
+#
 # Скрипт делает то же, что scripts/build-viewer.ps1 (разбор целей и артефактов - там
 # же), минус Windows: окружение MSVC не снимается, vcvars64.bat не нужен, компилятор
 # и загрузчик - системные. Пути SDK берутся из окружения: CNC_QT_DIR (Qt6 с Quick3D),
@@ -48,7 +53,9 @@ is_occ_dir() {
     [ -n "$1" ] && [ -f "$1/lib/cmake/opencascade/OpenCASCADEConfig.cmake" ]
 }
 
-# Инструмент: значение переменной окружения, иначе первая найденная команда из PATH.
+# Инструмент: значение переменной окружения, иначе первая найденная команда из
+# PATH, иначе - из bin каталогов Qt/OCCT/окружения: conda-окружение держит cmake
+# и ninja в своём bin, и без активации окружения их в PATH нет.
 find_tool() {
     override=$1
     shift
@@ -62,6 +69,15 @@ find_tool() {
             printf '%s' "$hit"
             return 0
         fi
+    done
+    for dir in "${qt_dir:+$qt_dir/bin}" "${occ_dir:+$occ_dir/bin}" "${CONDA_PREFIX:+$CONDA_PREFIX/bin}"; do
+        [ -n "$dir" ] || continue
+        for name in "$@"; do
+            if [ -x "$dir/$name" ]; then
+                printf '%s' "$dir/$name"
+                return 0
+            fi
+        done
     done
     return 0
 }
@@ -80,9 +96,9 @@ elif [ -n "$occ_dir" ] && ! is_occ_dir "$occ_dir"; then
 fi
 
 cmake=$(find_tool "${CNC_CMAKE:-}" cmake)
-[ -n "$cmake" ] || fail 'cmake не найден: задайте CNC_CMAKE=<путь к cmake>'
+[ -n "$cmake" ] || fail 'cmake не найден: задайте CNC_CMAKE=<путь к cmake> или активируйте окружение (conda activate gcode-cpp)'
 ninja=$(find_tool "${CNC_NINJA:-}" ninja ninja-build)
-[ -n "$ninja" ] || fail 'ninja не найден: задайте CNC_NINJA=<путь к ninja>'
+[ -n "$ninja" ] || fail 'ninja не найден: задайте CNC_NINJA=<путь к ninja> или активируйте окружение (conda activate gcode-cpp)'
 
 # CMAKE_PREFIX_PATH: найденные каталоги через точку с запятой. Ничего не задано -
 # ключ не передаётся вовсе: пути ищет find_package.

@@ -25,12 +25,17 @@ void stripInPlace(std::string& s);
 // str.upper() для ASCII-строки.
 std::string asciiUpper(const std::string& s);
 
+// strtod по правилам C-локали: значение не зависит от LC_NUMERIC процесса
+// (Qt при старте поднимает системную локаль, и в ru_RU разбор чисел УП
+// обрывался). Семантика strtod сохранена целиком - меняется только локаль.
+double strtodC(const char *s, char **end);
+
 // float(value): значение должно быть разобрано целиком; false там, где Python
 // поднял бы ValueError (вызывающий берёт значение по умолчанию).
 bool toDouble(const std::string& s, double& out);
 
 // То же, но байты берутся из среза [first, first + len) без создания std::string:
-// разбор идёт тем же strtod, поэтому результат совпадает бит в бит. Строка, из
+// разбор идёт тем же strtodC, поэтому результат совпадает бит в бит. Строка, из
 // которой взят срез, не должна изменять содержимое и перевыделять буфер, пока
 // значение читается.
 bool toDouble(const char *first, size_t len, double& out);

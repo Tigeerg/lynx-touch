@@ -3,6 +3,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <locale.h>
 
 namespace gv {
 
@@ -13,7 +14,7 @@ namespace {
 bool parseFull(const char *s, double& out) {
     if (s == nullptr || *s == '\0') { return false; }
     char *end = nullptr;
-    const double v = std::strtod(s, &end);
+    const double v = strtodC(s, &end);
     if (end == s) { return false; }
     while (*end != '\0' && isSpaceCh(static_cast<unsigned char>(*end))) { ++end; }
     if (*end != '\0') { return false; }
@@ -22,6 +23,24 @@ bool parseFull(const char *s, double& out) {
 }
 
 } // namespace
+
+// Разбор числа по правилам C-локали независимо от LC_NUMERIC процесса. Qt при
+// старте поднимает системную локаль: в ru_RU std::strtod читает "X2.081" как 2
+// и останавливается на точке, разбор УП обрывался на 785 сегментах вместо
+// 70914 (Test_model.ngc). Разбор - тот же strtod, меняется только локаль, так
+// что значения с эталоном сходятся бит в бит.
+double strtodC(const char *s, char **end) {
+#ifdef _WIN32
+    static const _locale_t loc = _create_locale(LC_NUMERIC, "C");
+    return _strtod_l(s, end, loc);
+#else
+    static const locale_t loc = newlocale(LC_NUMERIC_MASK, "C", static_cast<locale_t>(nullptr));
+    const locale_t prev = uselocale(loc);
+    const double v = std::strtod(s, end);
+    uselocale(prev);
+    return v;
+#endif
+}
 
 bool isSpaceCh(unsigned char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';

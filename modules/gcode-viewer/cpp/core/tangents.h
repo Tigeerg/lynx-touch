@@ -13,6 +13,7 @@
 
 #include "core/packing.h"     // gv::PackedEdges - упакованные рёбра STEP
 #include "core/quality.h"     // gv::QualityPreset - допуски силуэта и конусов
+#include "gv_types.h"         // gv::ProfilePoint - 2D-профиль тела вращения
 
 namespace gv {
 
@@ -114,6 +115,15 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
                                      const PackedEdges* packedEdges = nullptr,
                                      const SkinTriangles* skin = nullptr,
                                      const QualityPreset& quality = QualityPreset{});
+
+// Семейства касательных тела вращения по 2D-профилю (r, y), мм: постоянный
+// радиус -> полный цилиндр, наклонный участок -> конус. Пороги силуэта STEP
+// (дуга 85 гр, минимальный пролёт 2.5 мм, DROP стыковых рёбер) здесь не
+// применяются: у профиля инструмента короткие секции - это форма, а не шум
+// модели (острие сверла 1.75 мм, сегменты полусферы ~0.2 мм), и порог выбросил
+// бы их. Азимут генератора считает tangentFromFamilies, поэтому математика
+// силуэта одна и та же у детали и у тела вращения.
+TangentFamilies profileTangentFamilies(const std::vector<ProfilePoint>& profile);
 
 // Кадровый проход: обе касательные стороны каждого логического цилиндра и
 // образующие конусов на глазу eyeMm (raw-кадр модели). Результат - плоский ряд

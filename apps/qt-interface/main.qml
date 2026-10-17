@@ -23,9 +23,9 @@ Item {
     onActiveScreenChanged: { if (activeScreen === "service") svcFocus = "nav"; }
     property string machineMode: "AUTO"
 
-    // --- 3D-траектория: PySide6 backend (mock_backend.py) + QtQuick3D ---
+    // --- 3D-траектория: QML-плагин MockBackend (C++) + QtQuick3D ---
     readonly property string viewSample: "O1000 (3D DEMO)\nG21 G90 G54\nT1 M06\nS8000 M03\nG0 X0 Y0 Z5\nG1 Z-2 F200\nG1 X60 Y0 F600\nG1 X60 Y40\nG1 X0 Y40\nG1 X0 Y0\nG0 Z5\nG0 X10 Y10\nG1 Z-4 F150\nG1 X50 Y10\nG1 X50 Y30\nG1 X10 Y30\nG1 X10 Y10\nG0 Z5\nG0 X0 Y0\n"
-    Toolpath {
+    GcodeToolpath {
         id: toolpath
         Component.onCompleted: load_string(root.viewSample)
     }

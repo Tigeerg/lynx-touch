@@ -22,11 +22,15 @@ section 7).
 
 ## 2. Entry points
 
-- `preview_3d.py` — the main launch. Creates `QGuiApplication`, registers the QML module `MockBackend 1.0` by
-  importing `mock_backend`, loads `preview_3d.qml`; with an argument it calls `load_gcode_async`. In offscreen
-  mode it takes the synchronous path and prints `loaded OK`.
+- `build/viewer/gcodeviewer` (`cpp/viewer/main.cpp`) — the canonical viewer launch, no Python: a `QQuickView`
+  over `GcodeViewer3D.qml`, controller QML module `MockBackend` from `build/qmlbackend`. Build — README,
+  "Building and running the viewer (C++)".
+- `preview_3d.py` — a checks tool: the same QML loaded through PySide6 (both Python and the built
+  `MockBackend` plugin are required); in offscreen mode it takes the synchronous path and prints `loaded OK`.
+  `smoke_test_qml.py` and the `pnpm guard` watcher run through it.
 - `preview_3d.qml` — a 1024x600 `Window` holding `GcodeViewer3D`.
-- `preview_qml.py` — another launch point (the Qt interface). This duplication is listed in section 12.
+- `preview_qml.py` — a launch point of another project (the Qt interface, `apps/qt-interface`); it has nothing
+  to do with the viewer.
 
 Headless run: set `QT_QPA_PLATFORM=offscreen`.
 
@@ -169,7 +173,6 @@ Architecture:
   (`PORT-CPP.md` §7) and the outside code and QML still see the old names.
 - `GcodeViewer3D.qml` (about 1000 lines) holds JS camera, projection and stage logic; it belongs in backend
   slots.
-- Several launch points (`preview_3d.py`, `preview_qml.py`) create ambiguity.
 
 Code against the CLAUDE.md rules:
 - module-boundary structures are no longer tuples/dicts: they live in `gv_types.py` (0.13.13); a dict remains
@@ -184,12 +187,11 @@ Checks:
 - tests depend on private functions (fragile under refactoring);
 - `refreshTangents` is wrapped in an outer `try/except Exception: pass` — an unrelated per-frame error
   stays invisible; the C++ path failures report themselves;
-- the live frame checks (`test_solid_skin.py`, `test_ribbon_width.py`) are red on the development machine
-  and on a clean `HEAD` (11792 px against a threshold of 10500; 0.00 px against 2.0) — they were measured on
-  another machine and need a hardware GL; the guard does not run them;
-- `tools/check.ps1` (`pnpm guard`) does not run `bench_viewer.py` — performance regressions are not caught;
-- `apps/qt-interface/main.qml` instantiates a type `Toolpath` that no backend provides (the class is named
-  `GcodeToolpath`) — the file does not load regardless of the port; `preview.qml` does load.
+- the live frame checks (`test_solid_skin.py`, `test_ribbon_width.py`) need the reference stand: the
+  measurements were taken on another machine and on the development machine they are red on a clean `HEAD`
+  (11792 px against a threshold of 10500; 0.00 px against 2.0). The guard does run them as stand checks: they
+  execute under `CNC_LIVE_FRAMES=1` (a live window, hardware GL), otherwise they are a `skip` with the reason.
+  The thresholds are still tied to the stand — calibrating them for other GPUs remains debt.
 
 Remaining after the C++ port (open, with measurements):
 - the panel `apps/qt-interface/main.qml` (and the generated `preview.qml`) compares hotkeys by

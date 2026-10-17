@@ -1,0 +1,29 @@
+# environment.yml - окружение сборки и запуска 3D-вьювера УП на Linux
+# (README.md, «Сборка и запуск вьювера (C++)»).
+#
+# Создание:  conda env create -f environment.yml
+#            conda activate gcode-cpp
+# Каталоги SDK той же переменной, что у scripts/build-viewer.sh:
+#            CNC_QT_DIR="$CONDA_PREFIX" CNC_OCC_DIR="$CONDA_PREFIX" bash scripts/build-viewer.sh
+#
+# Окружение держит и компилятор (cxx-compiler), а не только SDK: conda-сборка
+# OCCT 8.0.1 линкуется символом __cxa_call_terminate@CXXABI_1.3.15 из libstdc++,
+# которого нет в GCC 11 системных Ubuntu 22.04, - сборка системным компилятором
+# падает на линковке. Сборка идёт компилятором окружения; при смене компилятора
+# каталог сборки чистят (rm -rf build), CMake помнит компилятор в кэше.
+#
+# Канал один - conda-forge: служебные каналы repo.anaconda.com не нужны и своих
+# условий использования не просят. Qt зафиксирован на 6.12.0 (документированная
+# версия проекта; нужно не ниже 6.7 из-за explicitTextureWidth/Height в
+# GcodeViewer3D.qml), OCCT - на 8.0.1 (версия сверки тесселяции,
+# test_normals_golden.py).
+name: gcode-cpp
+channels:
+  - conda-forge
+dependencies:
+  - qt6-main=6.12.0
+  - qt6-quick3d=6.12.0
+  - occt=8.0.1
+  - cxx-compiler
+  - cmake
+  - ninja

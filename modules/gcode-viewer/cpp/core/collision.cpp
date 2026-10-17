@@ -13,6 +13,7 @@
 
 #include "core/tooling.h"
 #include "core/ui_tags.h"
+#include "core/text_util.h"
 
 namespace gv {
 
@@ -96,7 +97,7 @@ double collisionStep()
             return 1.0;
         }
         char* end = nullptr;
-        const double value = std::strtod(raw, &end);
+        const double value = strtodC(raw, &end);
         if (end == raw || (end != nullptr && *end != '\0')) {
             return 1.0;
         }

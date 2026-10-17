@@ -18,6 +18,8 @@
 #include <cstddef>
 #include <cstdlib>
 
+#include "text_util.h"
+
 namespace gv {
 
 // Набор допусков одной загрузки. Величины с размерностью носят её в имени:
@@ -66,15 +68,15 @@ struct QualityPreset {
 };
 
 // Значение переменной окружения: пустая строка или отсутствие - значение по
-// умолчанию, иначе первый разобранный strtod (то же чтение, что envDouble в
-// core/gcode_parser.cpp).
+// умолчанию, иначе разобранное gv::strtodC - то же чтение, что у envDouble в
+// core/gcode_parser.cpp: разбор не зависит от локали процесса.
 inline double qualityEnvMm(const char *name, double fallback)
 {
     const char *raw = std::getenv(name);
     if (raw == nullptr || *raw == '\0') {
         return fallback;
     }
-    return std::strtod(raw, nullptr);
+    return strtodC(raw, nullptr);
 }
 
 // Шаг скана коллизий из окружения: правило разбора то же, что у collisionStep
@@ -86,7 +88,7 @@ inline double qualityEnvCollisionStepMm()
         return 1.0;
     }
     char *end = nullptr;
-    const double value = std::strtod(raw, &end);
+    const double value = strtodC(raw, &end);
     if (end == raw || (end != nullptr && *end != '\0')) {
         return 1.0;
     }

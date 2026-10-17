@@ -1,0 +1,83 @@
+# viewer-linux.yml - прогон 3D-вьювера УП на Linux: сборка C++ (scripts/build-viewer.sh),
+# смок и полный offscreen-прогон эталонной УП. Путь Linux долго не гонялся (README,
+# «Сборка и запуск вьювера (C++)»), и этот workflow держит его живым.
+#
+# Локаль ru_RU.UTF-8 генерируется и выставляется намеренно: разбор чисел УП когда-то
+# зависел от LC_NUMERIC, и под ru_RU траектория Test_model.ngc обрывалась на 785
+# сегментах из 70914 (журнал вьювера 0.41.1). Прогон под ru_RU страхует от повторения.
+#
+# Пробники сверки с оракулом (gcode_probe --manifest и прочие) здесь НЕ гоняются:
+# сверка бит-в-бит, а на Linux против эталона Windows 2 записи из 31 расходятся на
+# 1 ULP из-за разных libm (журнал вьювера 0.41.3, замер). Их место - машина
+# разработки и сторож pnpm guard.
+name: viewer-linux
+
+on:
+  push:
+    paths:
+      - 'modules/gcode-viewer/**'
+      - 'data/cad-testdata/**'
+      - 'scripts/build-viewer.sh'
+      - 'scripts/build-viewer.ps1'
+      - 'environment.yml'
+      - '.github/workflows/viewer-linux.yml'
+  pull_request:
+    paths:
+      - 'modules/gcode-viewer/**'
+      - 'data/cad-testdata/**'
+      - 'scripts/build-viewer.sh'
+      - 'scripts/build-viewer.ps1'
+      - 'environment.yml'
+      - '.github/workflows/viewer-linux.yml'
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+
+      - name: Локаль ru_RU.UTF-8
+        shell: bash -el {0}
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq locales
+          sudo locale-gen ru_RU.UTF-8
+
+      - name: Сборка вьювера
+        shell: bash -el {0}
+        run: |
+          CNC_QT_DIR="$CONDA_PREFIX" CNC_OCC_DIR="$CONDA_PREFIX" bash scripts/build-viewer.sh
+
+      - name: 'Смок (RESULT: OK)'
+        shell: bash -el {0}
+        run: |
+          LANG=ru_RU.UTF-8 QT_QPA_PLATFORM=offscreen ./build/viewer/gcodeviewer --smoke | tee smoke.log
+          grep -q 'RESULT: OK (parse-level)' smoke.log
+
+      - name: 'Полный offscreen-прогон (segments: 70914)'
+        shell: bash -el {0}
+        run: |
+          set +e
+          LANG=ru_RU.UTF-8 QT_QPA_PLATFORM=offscreen ./build/viewer/gcodeviewer data/cad-testdata/Test_model.ngc > run.log 2>&1
+          code=$?
+          set -e
+          cat run.log
+          grep -q 'loaded g-code from: data/cad-testdata/Test_model.ngc segments: 70914' run.log
+          grep -q 'offscreen mode - loaded OK.' run.log
+          if grep -q '\[QML warning\]' run.log; then
+            echo 'FAIL в прогоне есть [QML warning]'
+            exit 1
+          fi
+          # Известная проблема: полный offscreen-прогон завершается SIGSEGV на
+          # teardown после "loaded OK." (журнал вьювера, сегмент 0.41.x). Код 139
+          # допустим, пока не починен; любой другой ненулевой - отказ. Когда
+          # падение починят, заменить ветку на [ "$code" -ne 0 ].
+          if [ "$code" -ne 0 ] && [ "$code" -ne 139 ]; then
+            echo "FAIL код выхода $code"
+            exit 1
+          fi

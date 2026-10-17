@@ -1,0 +1,44 @@
+# tools/checks.txt - общий список прогонов сторожа. Его исполняют tools/check.sh
+# (Linux, bash) и tools/check.ps1 (Windows, pnpm guard). Строка - одна проверка:
+#
+#   метка|требование|команда
+#
+# Требования: python - нужен интерпретатор; ocp - нужен пакет cadquery-ocp
+# (импорт OCP, см. requirements-dev.txt); plugin - нужен собранный QML-плагин
+# MockBackend (build/qmlbackend/MockBackend/qmldir); live - живая проверка
+# кадра: нужен эталонный стенд (аппаратный GL и живое окно, offscreen отдаёт
+# чёрный кадр), пороги откалиброваны под него. live исполняется только при
+# CNC_LIVE_FRAMES=1 в окружении, иначе печатается как skip с этой причиной.
+#
+# Исполнитель зовёт команды из корня репозитория с QT_QPA_PLATFORM=offscreen и
+# считает проверку красной, если код возврата не нулевой или в выводе есть
+# Traceback либо строка, начинающаяся с WARNING/ или ERROR/: одного кода
+# возврата мало, падение внутри прогона его не меняет (тот же приём, что в
+# tools/check.ps1). Требование не закрыто - проверка печатается как skip.
+#
+# Текстовые правила CLAUDE.md, метки размеров файлов, сверка preview.qml с
+# генератором, pnpm-прогоны React и сборка C++ под MSVC остаются в
+# tools/check.ps1: им нужен Windows или node.
+#
+# У bench_viewer.py вторым аргументом идёт потолок, мс: сторож даёт 20 - в пять
+# раз выше потолка машины-эталона (4.0 мс), чтобы ловить катастрофический
+# регресс интерактивных фаз, а не разброс машин.
+
+py_compile mock_backend.py|python|python -m py_compile modules/gcode-viewer/mock_backend.py
+test_tangent_policy.py|ocp|python modules/gcode-viewer/test_tangent_policy.py
+test_normals_golden.py|ocp|python modules/gcode-viewer/test_normals_golden.py
+test_normals_orientation.py|ocp|python modules/gcode-viewer/test_normals_orientation.py
+test_outline_segments.py|python|python modules/gcode-viewer/test_outline_segments.py
+test_module_names.py|python|python modules/gcode-viewer/test_module_names.py
+test_gcode_parser.py|python|python modules/gcode-viewer/test_gcode_parser.py
+test_drill_cycles.py|python|python modules/gcode-viewer/test_drill_cycles.py
+test_tool_profile.py|python|python modules/gcode-viewer/test_tool_profile.py
+test_collision.py|python|python modules/gcode-viewer/test_collision.py
+oracle_dump.py|ocp|python modules/gcode-viewer/oracle_dump.py
+smoke_test_qml.py|plugin|python modules/gcode-viewer/smoke_test_qml.py
+preview_3d.py offscreen|plugin|python modules/gcode-viewer/preview_3d.py data/cad-testdata/Test_model.ngc
+main.qml offscreen|plugin|python apps/qt-interface/preview_qml.py apps/qt-interface/main.qml
+preview.qml offscreen|plugin|python apps/qt-interface/preview_qml.py
+test_solid_skin.py|live|python modules/gcode-viewer/test_solid_skin.py
+test_ribbon_width.py|live|python modules/gcode-viewer/test_ribbon_width.py
+bench_viewer.py hot|ocp|python modules/gcode-viewer/bench_viewer.py hot 20

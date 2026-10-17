@@ -7,6 +7,9 @@ import QtQuick.Layouts 1.15
  * Wraps the Item skeleton into a Window so PySide6/PyQt5 can display it.
  * Keep main.qml as the canonical source; regenerate via gen_preview_qml.py.
  */
+import QtQuick3D
+import MockBackend 1.0
+
 /**
  * CNC Operator Panel «VMC-850» — QtQuick UI 2.15 visual skeleton.
  * Stage 1: HeaderBar (top panel) fully ported from React/Tailwind prototype.
@@ -27,6 +30,13 @@ Window {
     property string activeScreen: "pos"
     onActiveScreenChanged: { if (activeScreen === "service") svcFocus = "nav"; }
     property string machineMode: "AUTO"
+
+    // --- 3D-траектория: QML-плагин MockBackend (C++) + QtQuick3D ---
+    readonly property string viewSample: "O1000 (3D DEMO)\nG21 G90 G54\nT1 M06\nS8000 M03\nG0 X0 Y0 Z5\nG1 Z-2 F200\nG1 X60 Y0 F600\nG1 X60 Y40\nG1 X0 Y40\nG1 X0 Y0\nG0 Z5\nG0 X10 Y10\nG1 Z-4 F150\nG1 X50 Y10\nG1 X50 Y30\nG1 X10 Y30\nG1 X10 Y10\nG0 Z5\nG0 X0 Y0\n"
+    GcodeToolpath {
+        id: toolpath
+        Component.onCompleted: load_string(root.viewSample)
+    }
 
     // --- Ladder (ClassicLadder) ---
     property var ladderRungs: [
@@ -335,7 +345,7 @@ Window {
         }
         return [];
     }
-    readonly property var screenIds: ["pos", "prog", "offset", "tool", "alarm", "service"]
+    readonly property var screenIds: ["pos", "prog", "offset", "tool", "alarm", "service", "view"]
 
     // --- Сервис: выбранный раздел (визуальная логика в QML) ---
     property string serviceSection: "system"
@@ -1214,6 +1224,44 @@ Window {
                 }
                 MouseArea { anchors.fill: parent; enabled: !tab5.locked; onClicked: root.activeScreen = "service" }
             }
+            // ----- Tab 7: 3D -----
+            Rectangle {
+                id: tab6
+                property bool on: root.activeScreen === "view"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.preferredWidth: 150
+                clip: true
+                color: cCard
+                border.color: cBorder
+                radius: 6
+                state: on ? "active" : "idle"
+                states: [
+                    State { name: "idle" },
+                    State {
+                        name: "active"
+                        PropertyChanges { target: tab6; color: cPrimary; border.color: cPrimary }
+                    }
+                ]
+                transitions: Transition { ColorAnimation { properties: "color,border.color"; duration: 150 } }
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    spacing: 4
+                    Rectangle {
+                        Layout.preferredWidth: 20; Layout.preferredHeight: 20
+                        Layout.minimumWidth: 20; Layout.maximumWidth: 20
+                        Layout.minimumHeight: 20; Layout.maximumHeight: 20
+                        color: tab6.on ? cPrimaryFg : cCard
+                        border.color: tab6.on ? cPrimaryFg : cBorderMuted
+                        radius: 4
+                        Text { anchors.centerIn: parent; text: "7"; color: tab6.on ? cPrimary : cForeground; font.bold: true; font.pixelSize: 10 }
+                    }
+                    Text { text: "\ue53e"; color: tab6.on ? cPrimaryFg : cForeground; font.family: "lucide"; font.pixelSize: 16 }
+                    Text { text: "3D"; Layout.fillWidth: true; color: tab6.on ? cPrimaryFg : cForeground; font.bold: true; font.pixelSize: 12; elide: Text.ElideRight }
+                }
+                MouseArea { anchors.fill: parent; onClicked: root.activeScreen = "view" }
+            }
         }   // tabsRow
 
         // ============ CONTENT ROW: POSITION SCREEN + SIDE STATUS ==========
@@ -1233,7 +1281,8 @@ Window {
                             : root.activeScreen === "offset" ? 2
                             : root.activeScreen === "tool" ? 3
                             : root.activeScreen === "alarm" ? 4
-                            : root.activeScreen === "service" ? 5 : 0
+                            : root.activeScreen === "service" ? 5
+                            : root.activeScreen === "view" ? 6 : 0
 
             // ============ STAGE 3 — POSITION SCREEN (Положение осей) ==========
             //      Единая таблица: Ось | Рабочие (G54) | Машинные | Остаток | Отн.
@@ -2537,6 +2586,55 @@ Window {
                             }
                         }
 }
+
+            // ============ STAGE 8 — 3D TOOLPATH (QtQuick3D) ============
+            Rectangle {
+                id: viewScreen
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                color: "#0E1319"
+                border.color: cBorder
+                border.width: 1
+                radius: 6
+                clip: true
+
+                View3D {
+                    anchors.fill: parent
+                    anchors.margins: 1
+
+                    environment: SceneEnvironment {
+                        clearColor: "#0E1319"
+                        backgroundMode: SceneEnvironment.Color
+                    }
+                    PerspectiveCamera {
+                        position: Qt.vector3d(190, 150, 210)
+                        eulerRotation: Qt.vector3d(-24, -40, 0)
+                        clipNear: 1
+                        clipFar: 4000
+                    }
+                    DirectionalLight {
+                        eulerRotation: Qt.vector3d(-45, -35, 0)
+                        brightness: 1.0
+                    }
+                    Model {
+                        geometry: toolpath.rapidGeometry
+                        materials: [ PrincipledMaterial { lighting: PrincipledMaterial.NoLighting; baseColor: "#F23333" } ]
+                    }
+                    Model {
+                        geometry: toolpath.feedGeometry
+                        materials: [ PrincipledMaterial { lighting: PrincipledMaterial.NoLighting; baseColor: "#338CFF" } ]
+                    }
+                }
+
+                RowLayout {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.margins: 10
+                    spacing: 8
+                    Text { text: "\ue53e"; color: cMutedForeground; font.family: "lucide"; font.pixelSize: 14 }
+                    Text { text: "3D ТРАЕКТОРИЯ · G0 — красный, G1 — синий"; color: cMutedForeground; font.bold: true; font.pixelSize: 12 }
+                }
+            }
 
             }   // screensStack
 

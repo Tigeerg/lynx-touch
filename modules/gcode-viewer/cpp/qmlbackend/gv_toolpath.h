@@ -220,6 +220,9 @@ public:
     Q_INVOKABLE void setMachineLimits(const QVariantMap &limits);
     Q_INVOKABLE void runToolCheck();
     Q_INVOKABLE void refreshTangents(const QVector3D &view_point);
+    // Положение острия инструмента в кадре сцены: глаз силуэта тела вращения
+    // отсчитывается от него. QML зовёт перед refreshTangents на каждом кадре.
+    Q_INVOKABLE void setToolTip(const QVector3D &tip);
     // Синхронная загрузка УП (тесты и headless): возвращает число сегментов.
     Q_INVOKABLE int load_gcode(const QString &filepath);
     // Загрузка только модели (STEP/STL): читает файл и публикует кожу с обводкой.
@@ -298,9 +301,15 @@ private:
     static void setRingSegments(ToolpathGeometry *geo,
                                 const std::vector<gv::RingSegment> &segments);
     // Рёбра тела вращения лентами stepledges: кольца (та же выборка, что у
-    // toolRings) плюс продольные образующие профиля на четырёх азимутах.
+    // toolRings) плюс касательные образующие профиля на глазу камеры - тем же
+    // tangentFromFamilies, что у силуэта детали.
     static void setProfileEdges(HLRLineGeometry *geo,
-                                const std::vector<gv::ProfilePoint> &profile);
+                                const std::vector<gv::ProfilePoint> &profile,
+                                const gv::TangentFamilies &families,
+                                const double eye_mm[3],
+                                gv::TangentScratch &scratch);
+    // Пересобрать рёбра инструмента и оправки на сохранённом глазу камеры.
+    void refreshProfileEdges();
     // Отчёт сверки строкой контракта QML (None у эталона - недействительный QVariant).
     static QVariantMap toolCheckMap(const gv::ToolCheckRow &row);
     // Строка коллизии картой контракта QML: d, depth, scene, scene_hb.
@@ -322,6 +331,18 @@ private:
     ToolpathGeometry *holder_rings_geo_ = nullptr;
     HLRLineGeometry *tool_profile_edges_ = nullptr;
     HLRLineGeometry *holder_profile_edges_ = nullptr;
+    // Профили и их семейства касательных: семейства зависят от профиля, а не от
+    // глаза, поэтому строятся при смене инструмента, а на кадре остаётся
+    // кадровый проход tangentFromFamilies.
+    std::vector<gv::ProfilePoint> tool_profile_;
+    std::vector<gv::ProfilePoint> holder_profile_;
+    gv::TangentFamilies tool_tan_fams_;
+    gv::TangentFamilies holder_tan_fams_;
+    gv::TangentScratch tool_profile_scratch_;
+    gv::TangentScratch holder_profile_scratch_;
+    QVector3D view_point_;                // последний глаз камеры в кадре сцены
+    bool has_view_point_ = false;
+    QVector3D tool_tip_;                  // острие инструмента в кадре сцены
 
     QVariantList stages_;                 // [{start, end, label, tool}]
     std::vector<gv::ToolInfo> stage_specs_;  // метаданные UI_TOOL по этапам

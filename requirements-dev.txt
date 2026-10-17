@@ -1,0 +1,17 @@
+# requirements-dev.txt - Python-зависимости проверок вьювера (VERSIONING.md,
+# раздел 5) и инструментов preview_3d.py / smoke_test_qml.py.
+#
+# Установка:  python -m pip install -r requirements-dev.txt
+#
+# Рантайм вьювера от Python не зависит: каноническая точка входа -
+# build/viewer/gcodeviewer (C++, см. README «Сборка и запуск вьювера (C++)»).
+# Эти пакеты нужны только проверкам и PySide6-инструментам.
+#
+# cadquery-ocp зафиксирован на 8.0.1.1.0: 7.7.2 не читает STEP вовсе, а
+# test_normals_golden.py сверяет тесселяцию бит-в-бит и к версии OCP чувствителен
+# (замерено: и на 7.9.3.1.1 сверка даёт расхождения бит-в-бит и RESULT: FAIL).
+# Колёса 8.0.1.1.0 есть не для всякой Python: для 3.10 PyPI отдаёт версии только
+# до 7.9.x, так что проверкам нужен Python, где пин ставится (3.11+).
+PySide6
+numpy
+cadquery-ocp==8.0.1.1.0

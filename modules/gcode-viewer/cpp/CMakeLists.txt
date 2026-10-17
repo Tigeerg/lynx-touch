@@ -437,6 +437,18 @@ if (MSVC)
     target_compile_options(stepledges_probe PRIVATE /utf-8 /MP)
 endif()
 target_link_libraries(stepledges_probe PRIVATE cncedgesplugin Qt6::Core Qt6::Qml Qt6::Quick3D)
+# Пробник включает заголовок плагина stepledgesgeometry.h, а его инлайны зовут
+# Standard::Free из TKernel. OCCT плагин линкует PRIVATE и эти символы наружу не
+# отдаёт: на Windows линковка проходила, на Linux ld отвечал "DSO missing from
+# command line" и требовал OCCT прямо в пробнике. Пробник берёт тот же набор
+# OCCT_NEEDED, что и плагин выше.
+foreach(lib IN LISTS OCC_NEEDED)
+    if (TARGET OpenCASCADE::${lib})
+        target_link_libraries(stepledges_probe PRIVATE OpenCASCADE::${lib})
+    else()
+        target_link_libraries(stepledges_probe PRIVATE ${lib})
+    endif()
+endforeach()
 target_include_directories(stepledges_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
 # C++-контроллер вьювера (этап 5.4а плана переноса): QML-модуль MockBackend 1.0 с
@@ -522,10 +534,11 @@ set_target_properties(gcodeviewer PROPERTIES
 )
 # Qt6::Quick нужен QQuickView (окно для Item-корня вьювера); QtQuick3D движок
 # находит как QML-модуль Qt, отдельной линковки не требует.
-target_link_libraries(gcodeviewer PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
-# core/quality.h - header-only пресеты качества: точка входа читает уровень тем
-# же чтением, что ядро (gv::presetFromEnv). Линковка не нужна, но каталог cpp/
-# обязан быть в путях поиска заголовков.
+# gvcore нужен: gv::presetFromEnv из core/quality.h зовёт gv::strtodC, а тот
+# живёт в core/text_util.cpp. Без линковки точка входа не собирается (LNK2019).
+target_link_libraries(gcodeviewer PRIVATE gvcore Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
+# core/quality.h читает уровень тем же разбором, что ядро (gv::presetFromEnv),
+# поэтому каталог cpp/ обязан быть в путях поиска заголовков.
 target_include_directories(gcodeviewer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(gcodeviewer PRIVATE
     GV_REPO_ROOT="${GV_REPO_ROOT}"

@@ -233,7 +233,7 @@ bool startsWithNoCase(const std::string& s, const char *prefix) {
 double envDouble(const char *name, double def) {
     const char *v = std::getenv(name);
     if (v == nullptr || *v == '\0') { return def; }
-    return std::strtod(v, nullptr);
+    return strtodC(v, nullptr);
 }
 
 bool samePoint(const std::array<double, 3>& a, const std::array<double, 3>& b) {
@@ -626,8 +626,8 @@ ParseResult parseGcode(const std::string& text) {
         for (const Word& w : words) {
             const char letter = w.letter;
             // Значение читают только эти буквы. У прочих (M, S, T, ...) оно не
-            // используется, и strtod для них не зовётся - на Test_model.ngc это
-            // 110587 вызовов из 342038 слов.
+            // используется, и число для них не разбирается - на Test_model.ngc
+            // это 110587 пропусков из 342038 слов.
             if (letter != 'G' && letter != 'X' && letter != 'Y' && letter != 'Z'
                     && letter != 'I' && letter != 'J' && letter != 'K'
                     && letter != 'R' && letter != 'Q' && letter != 'F') {

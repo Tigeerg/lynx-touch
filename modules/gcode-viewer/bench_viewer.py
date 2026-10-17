@@ -8,6 +8,7 @@ optimization to get a comparable delta:
 
     python modules/gcode-viewer/bench_viewer.py            # all stages
     python modules/gcode-viewer/bench_viewer.py hot        # interactive path only
+    python modules/gcode-viewer/bench_viewer.py hot 20.0   # hot + свой потолок, мс
 
 Stages and their interactive meaning:
   gcode.parse          program load (worker thread)
@@ -65,7 +66,20 @@ def timed(label, fn, repeat=1):
 
 
 def main():
-    only_hot = len(sys.argv) > 1 and sys.argv[1] == "hot"
+    args = sys.argv[1:]
+    only_hot = bool(args) and args[0] == "hot"
+    if only_hot:
+        args = args[1:]
+    # Потолок вторым аргументом: сторож даёт заведомо широкий (см.
+    # tools/checks.txt) и ловит катастрофический регресс, а не разброс машин;
+    # без аргумента работает потолок REFRESH_BUDGET_MS машины-эталона.
+    budget = REFRESH_BUDGET_MS
+    if args:
+        try:
+            budget = float(args[0])
+        except ValueError:
+            print("FAIL: потолок задан не числом (мс):", args[0])
+            return 2
     if not os.path.exists(NGC):
         print("SKIPPED: no", NGC)
         return 0
@@ -157,9 +171,9 @@ def main():
 
     # ---- verdict ---------------------------------------------------------
     bad = []
-    if results["frame.refresh"] + results["frame.pack"] > REFRESH_BUDGET_MS:
+    if results["frame.refresh"] + results["frame.pack"] > budget:
         bad.append("frame refresh+pack %.2f ms > budget %.2f ms" %
-                   (results["frame.refresh"] + results["frame.pack"], REFRESH_BUDGET_MS))
+                   (results["frame.refresh"] + results["frame.pack"], budget))
     if len(segs) == 0:
         bad.append("frame.refresh produced no tangents")
     for k in bad:
@@ -168,7 +182,7 @@ def main():
         return 1
     print("PASSED: interactive stages within %.1f ms budget "
           "(target %.1f ms for the next optimization round)"
-          % (REFRESH_BUDGET_MS, REFRESH_TARGET_MS))
+          % (budget, REFRESH_TARGET_MS))
     return 0
 
 

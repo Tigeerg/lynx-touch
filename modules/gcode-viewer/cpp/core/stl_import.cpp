@@ -6,9 +6,12 @@
 //
 // ASCII-ветка повторяет питоновский путь строка за строкой: декодирование UTF-8
 // с игнорированием битых байтов, разбиение на строки набором str.splitlines(),
-// снятие пробелов str.strip(), поиск слов vertex. Числа разбирает strtod - тот
-// же правильно округляющий разбор, что у float() для обычной десятичной записи.
+// снятие пробелов str.strip(), поиск слов vertex. Числа разбирает strtodC (тот
+// же правильно округляющий разбор, что у float() для обычной десятичной записи,
+// но в C-локали и независимо от LC_NUMERIC процесса).
 #include "core/stl_import.h"
+
+#include "core/text_util.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -115,7 +118,7 @@ std::vector<std::uint32_t> decodeUtf8(const std::string& data) {
     return out;
 }
 
-// Токен (кодпоинты) -> double: strtod по ASCII-байтам токена. Возвращает false,
+// Токен (кодпоинты) -> double: strtodC по ASCII-байтам токена. Возвращает false,
 // если число разобрано не полностью - у эталона это было бы исключение float().
 bool parseDouble(const std::vector<std::uint32_t>& text, std::size_t from, std::size_t to,
                  double& out) {
@@ -131,7 +134,7 @@ bool parseDouble(const std::vector<std::uint32_t>& text, std::size_t from, std::
     }
     const char* begin = token.c_str();
     char* end = nullptr;
-    const double v = std::strtod(begin, &end);
+    const double v = strtodC(begin, &end);
     if (end != begin + token.size()) {
         return false;
     }

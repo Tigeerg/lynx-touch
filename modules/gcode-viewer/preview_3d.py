@@ -2,6 +2,10 @@
 # -*- coding: utf-8 -*-
 """Запуск вьювера УП (preview_3d.qml + GcodeViewer3D.qml) - инструмент разработки.
 
+Каноническая точка запуска вьювера - build/viewer/gcodeviewer (без Python);
+этот скрипт грузит тот же QML через PySide6 и нужен проверкам (smoke_test_qml.py,
+сторож pnpm guard).
+
 Использование:
     python preview_3d.py [путь/к/файлу.ngc]
 

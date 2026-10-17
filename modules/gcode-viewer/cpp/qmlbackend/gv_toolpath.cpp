@@ -396,15 +396,15 @@ GcodeToolpath::GcodeToolpath(QObject *parent)
 
     // Оправка постоянна (гайка ER20 и корпус шпинделя): тело, обводка
     // перевёрнутой оболочкой и кольца строятся один раз, как у эталона.
-    const std::vector<gv::ProfilePoint> holder_profile = gv::holderSolidProfile();
-    setToolProfile(holder_geo_, holder_profile);
+    holder_profile_ = gv::holderSolidProfile();
+    setToolProfile(holder_geo_, holder_profile_);
     setToolProfile(holder_outline_geo_,
                    gv::toolOutlineProfile(gv::holderOutlineProfile(), 0.1));
     setRingSegments(holder_rings_geo_,
-                    gv::ringsSegments(gv::profileRingPoints(holder_profile)));
-    setProfileEdges(holder_profile_edges_, holder_profile);
+                    gv::ringsSegments(gv::profileRingPoints(holder_profile_)));
+    holder_tan_fams_ = gv::profileTangentFamilies(holder_profile_);
     holder_radius_ = 1.0;
-    for (const gv::ProfilePoint &point : holder_profile) {
+    for (const gv::ProfilePoint &point : holder_profile_) {
         holder_radius_ = std::max(holder_radius_, point.radius_mm);
     }
 
@@ -606,6 +606,11 @@ void GcodeToolpath::runToolCheck()
     emit toolCheckChanged();
 }
 
+void GcodeToolpath::setToolTip(const QVector3D &tip)
+{
+    tool_tip_ = tip;
+}
+
 void GcodeToolpath::refreshTangents(const QVector3D &view_point)
 {
     // Глаз приходит в кадре сцены; в raw-кадр модели его переводит обратная
@@ -616,6 +621,12 @@ void GcodeToolpath::refreshTangents(const QVector3D &view_point)
     const QVector3D raw = part_rotation_.inverted().rotatedVector(eye);
     eye_raw_ = raw;
     emit eyeChanged();
+
+    // Рёбра инструмента и оправки - тоже силуэт: генераторы на текущем глазу.
+    // Считаются до веток модели, чтобы тело вращения жило и без детали.
+    view_point_ = view_point;
+    has_view_point_ = true;
+    refreshProfileEdges();
 
     // Режим задаёт CNC_SILHOUETTE: mesh (умолчание) - силуэт по топологии меша,
     // analytic - касательные образующие цилиндров и конусов STEP.
@@ -929,8 +940,9 @@ void GcodeToolpath::applyToolInfo(const gv::ToolInfo &spec)
     // у эталона set_profile(None).
     tool_spec_ = spec;
     tool_info_ = toolMap(spec);
-    const std::vector<gv::ProfilePoint> profile =
-        spec.present ? gv::toolProfile(spec) : std::vector<gv::ProfilePoint>{};
+    tool_profile_ = spec.present ? gv::toolProfile(spec) : std::vector<gv::ProfilePoint>{};
+    const std::vector<gv::ProfilePoint> &profile = tool_profile_;
+    tool_tan_fams_ = gv::profileTangentFamilies(profile);
     setToolProfile(tool_geo_, profile);
     tool_length_ = 0.0;
     tool_radius_ = 0.0;
@@ -946,7 +958,7 @@ void GcodeToolpath::applyToolInfo(const gv::ToolInfo &spec)
     setRingSegments(tool_rings_geo_,
                     profile.empty() ? std::vector<gv::RingSegment>{}
                                     : gv::ringsSegments(gv::profileRingPoints(profile)));
-    setProfileEdges(tool_profile_edges_, profile);
+    refreshProfileEdges();
     emit toolInfoChanged();
 }
 
@@ -989,26 +1001,29 @@ void GcodeToolpath::setRingSegments(ToolpathGeometry *geo,
 }
 
 void GcodeToolpath::setProfileEdges(HLRLineGeometry *geo,
-                                    const std::vector<gv::ProfilePoint> &profile)
+                                    const std::vector<gv::ProfilePoint> &profile,
+                                    const gv::TangentFamilies &families,
+                                    const double eye_mm[3],
+                                    gv::TangentScratch &scratch)
 {
     // Рёбра тела вращения теми же лентами, что у детали (stepledges): набор
     // отрезков в кадре профиля (острие в нуле, ось +Y). Горизонтальные кольца -
     // та же выборка profileRingPoints, что у toolRings, поэтому кромки ложатся
-    // на настоящие рёбра профиля. Продольные образующие - профиль, провёрнутый
-    // на четырёх азимутах (0/90/180/270): 48 азимутов дали бы клетку, которой у
-    // детали нет, четыре читают форму и не забивают кожу. Смещения к глазу и
-    // перекрытие с телом даёт материал (polyOffset) и depthBias -50000, поэтому
-    // радиальный отжим FLOAT_SCALE (setReference) здесь не нужен.
+    // на настоящие рёбра профиля. Продольные образующие - настоящий силуэт:
+    // tangentFromFamilies по профилю на текущем глазу, поэтому на цилиндре
+    // остаются две касательные, а не шов на фиксированном азимуте. Смещение к
+    // глазу и перекрытие с телом даёт материал (polyOffset) и depthBias -50000,
+    // поэтому радиальный отжим FLOAT_SCALE (setReference) здесь не нужен.
     const std::vector<gv::ProfilePoint> ring_pts = gv::profileRingPoints(profile);
     if (ring_pts.empty()) {
         geo->setSegments(nullptr, 0);
         return;
     }
     const std::vector<gv::RingSegment> rings = gv::ringsSegments(ring_pts);
-    const double two_pi = 2.0 * 3.141592653589793;
-    const double azimuths[4] = {0.0, two_pi * 0.25, two_pi * 0.5, two_pi * 0.75};
+    const std::vector<double> &flat =
+        gv::tangentFromFamilies(families, eye_mm, scratch);
     std::vector<float> segs;
-    segs.reserve((rings.size() + 4 * (ring_pts.size() - 1)) * 6);
+    segs.reserve(rings.size() * 6 + flat.size());
     for (const gv::RingSegment &ring : rings) {
         segs.push_back(float(ring.x0));
         segs.push_back(float(ring.y0));
@@ -1017,21 +1032,29 @@ void GcodeToolpath::setProfileEdges(HLRLineGeometry *geo,
         segs.push_back(float(ring.y1));
         segs.push_back(float(ring.z1));
     }
-    for (double a : azimuths) {
-        const double ca = std::cos(a);
-        const double sa = std::sin(a);
-        for (std::size_t i = 0; i + 1 < ring_pts.size(); ++i) {
-            const gv::ProfilePoint &p0 = ring_pts[i];
-            const gv::ProfilePoint &p1 = ring_pts[i + 1];
-            segs.push_back(float(p0.radius_mm * ca));
-            segs.push_back(float(p0.height_mm));
-            segs.push_back(float(p0.radius_mm * sa));
-            segs.push_back(float(p1.radius_mm * ca));
-            segs.push_back(float(p1.height_mm));
-            segs.push_back(float(p1.radius_mm * sa));
-        }
+    for (double value : flat) {
+        segs.push_back(float(value));
     }
     geo->setSegments(segs.data(), int(segs.size() / 6));
+}
+
+void GcodeToolpath::refreshProfileEdges()
+{
+    // Профиль и оправка живут в кадре сцены без поворота: ось +Y, острие в
+    // tool_tip_, низ оправки сдвинут на holderBase (как в QML).
+    if (!has_view_point_) {
+        return;
+    }
+    const QVector3D tool_eye = view_point_ - tool_tip_;
+    const double tool_eye_mm[3] = {double(tool_eye.x()), double(tool_eye.y()),
+                                   double(tool_eye.z())};
+    setProfileEdges(tool_profile_edges_, tool_profile_, tool_tan_fams_, tool_eye_mm,
+                    tool_profile_scratch_);
+    const double holder_base = holder_gauge_ > 0.0 ? holder_gauge_ : tool_length_;
+    const double holder_eye_mm[3] = {tool_eye_mm[0], tool_eye_mm[1] - holder_base,
+                                     tool_eye_mm[2]};
+    setProfileEdges(holder_profile_edges_, holder_profile_, holder_tan_fams_,
+                    holder_eye_mm, holder_profile_scratch_);
 }
 
 QVariantMap GcodeToolpath::toolCheckMap(const gv::ToolCheckRow &row)

@@ -17,7 +17,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.44.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.45.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -876,15 +876,19 @@ Item {
     }
     function resetPath() { root.playing = false; root.pathDist = 0 }
 
-    // Keep the mesh silhouette current: recomputed when a part finishes
-    // loading and once per rendered frame during orbiting (events are
-    // batched); hidden parts are cut by the GPU depth test, not here.
+    // Силуэт детали и тела вращения (инструмент, оправка) пересчитывается по
+    // готовности детали и раз в отрисованный кадр при движении камеры (события
+    // копятся); скрытую деталь отсекает тест глубины GPU, а не этот слой.
     // low/safe пересчитывают силуэт каждый silhouetteStep-й кадр (quality).
     property bool tangentsPending: false
     property int silhouetteFrame: 0
     function refreshTangents() {
-        if (path && root.showPartVisible)
-            path.refreshTangents(camera.position)
+        if (!path)
+            return
+        // Острие инструмента в кадре сцены: от него отсчитывается глаз силуэта
+        // тела вращения, поэтому оно идёт вместе с глазом камеры.
+        path.setToolTip(toolNode.position)
+        path.refreshTangents(camera.position)
     }
     FrameAnimation {
         running: root.tangentsPending

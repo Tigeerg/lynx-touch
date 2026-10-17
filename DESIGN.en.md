@@ -234,7 +234,8 @@ Performance on weak hardware (Intel Atom + Nvidia Ion):
 
 Functionality:
 - material removal simulation (heightmap/dexel, in the background on a weak CPU): the height map as a dynamic
-  2D texture of the Z-buffer that a vertex shader extrudes into plane polygons;
+  2D texture of the Z-buffer that a vertex shader extrudes into plane polygons; the design, the cost and the
+  checks are in "Material removal simulation" at the end of this section;
 - gouge check of the tool against the part model and cutting-mode control: compare the Z depth of cut with
   the flute length and the tool diameter from a database (SQLite), so a smooth shank does not cut into the
   part;
@@ -313,6 +314,151 @@ Engineering:
 - centralized logging;
 - port the compute core to C++ (the OCCT SDK directly instead of bindings) — estimate, risks and stages in
   [`PORT-CPP.md`](PORT-CPP.md) / [`PORT-CPP.en.md`](PORT-CPP.en.md).
+
+### Material removal simulation (height map, in the background)
+
+The line above is the wish; this is what to build, what it costs and how to check it. The simulation shows
+what is left of the stock after the travelled part of the program: it continues the "hide the travelled path"
+idea (`toolpath.frag`, `cutoff`), and its progress is the same `pathDist`, not a separate clock.
+
+**Representation: a height map, not a dexel.** A grid over machine X/Y, one Z height per node (the top of the
+material in the column); the cut is a `min` over the node along the path.
+
+- The map expresses everything a surface of revolution with the tool axis along Z leaves behind: flat, corner
+  radius, ball, chamfer, cone, drill — the profile already exists for the collision scan (`gv::toolProfile`,
+  `cpp/core/tooling.h`). The column is computed from the lower envelope of the profile: at distance `r` from
+  the axis the cut level is `z_tip + h(r)`, where `h(r)` is a table over the cutting part (up to the stick-out,
+  `toolExposedLength`) and is built once per stage tool.
+- The map does not express undercuts: a lollipop, a dovetail, a T-slot wider at the top than at the bottom —
+  for those the map cuts material that stays on the machine. An axis not along Z (4-5 axis) is expressible by
+  neither a map nor a single dexel axis. That is why the map comes first, and the shapes that widen upwards are
+  not taken at all by the first version: the field is not enabled for them and the reason goes to the message
+  line.
+- The field lives in machine coordinates (Z up) and is drawn where the stock is: part rotation (`UI_ROTATION`)
+  does not affect it, because the machine cuts in machine coordinates.
+- Memory for a 200x200x60 mm stock (proposal, arithmetic): a 0.5 mm node -> 401x401 = 160 801 nodes, float32
+  = 643 204 B = 628 KiB; a 0.2 mm node -> 1001x1001 = 1 002 001 nodes = 4 008 004 B = 3.82 MiB. The 60 mm
+  depth adds no memory: one number per column.
+- The peak is three times larger — the field in the worker, the `QByteArray` in `QQuick3DTextureData` and the
+  copy in the GPU: about 1.9 and 11.5 MiB. R32F is the simple format; R16F halves it but at 60 mm depth its
+  step is about 0.03 mm (the relative precision of a half) — a lever if the prototype runs into memory. Store
+  the height as a depth below the stock top: the range is 0..60 mm, not an absolute Z.
+- A dexel (Z intervals per column) expresses undercuts and costs differently: at least two float32 = 8 B per
+  column -> already 8 MB at 0.2 mm, and 2-4 intervals on the walls -> 16-32 MB; on top of that it is not drawn
+  as polygons without building the surface of the interval union. The dexel is a second step, if undercuts are
+  ever needed.
+
+**Resolution and presets.** The node size is a preset tolerance (`cpp/core/quality.h`), like the other
+tolerances, and is read together with the level (`CNC_QUALITY`, the `quality` property). At `med` there is no
+earlier number to repeat here — it is a proposal, and it is named as a proposal, not as a measurement.
+
+- Proposal per level: `safe` does not draw the field (the software rasterizer level, like `xray` and MSAA
+  above in this section), `low` 0.5 mm, `med` 0.5 mm, `high` 0.2 mm.
+- On top there is a grid cap: the node is not finer than `max(X extent, Y extent) / N`, where N = 256 for
+  `low`, 512 for `med`, 1024 for `high`. The cap only coarsens: on 200x200 it gives 0.78 / 0.5 / 0.2 mm (the
+  proposed 0.5 mm of `low` does not fit into 256, those of `med` and `high` do), and on a large stock the node
+  gets coarser instead of the memory growing.
+- The drawn grid is the computed grid (one source of truth, no second sampling level): one vertex per node.
+  The worst case is the cap itself: about 130 000 / 522 000 / 2 093 000 triangles; on 200x200 at 0.78/0.5/0.2
+  mm nodes — about 130 000 / 318 000 / 2 000 000. That is no longer memory but frame cost, and the cap N is
+  what sets it. Nothing is smoothed per frame, so the texture fetch is nearest: R32F linear filtering is not
+  guaranteed on the OpenGL 3.3 branch, and the node coincides with the texel anyway.
+- A machine that cannot afford the memory: the node gets coarser up to the cap; if even that does not fit, the
+  simulation is not enabled, the reason goes to the message line (like a collision refusal through
+  `reportRefusal`), and the scene keeps the plain stock box. The allocation happens once per load, not once per
+  frame.
+
+**Where the cut is computed.** A clean core next to the collision scan: `cpp/core/stock_sim.{h,cpp}` — no Qt
+and no OCCT, like `core/collision`. The input is the path (`pts`, `cum`, `total`, `rapid`), the stock bounds
+(`stock_bounds_` from `parseUiStock`), the cutting profiles of the stages and the node size; the output is the
+field bytes.
+
+- Only the profile up to the stick-out cuts (`toolExposedLength`); the holder never cuts — otherwise the
+  simulation would hide the very collision the scan looks for.
+- The step along the path is not larger than the node (proposal: half the node), otherwise a column between
+  two positions is left untouched. This is the same rule the collision scan uses with its 1 mm step
+  (`CNC_COLLISION_STEP`; measured 2.1 ms on Test_model, i5-10400F, `bench_probe`, phase `collision_scan`,
+  CHANGELOG 0.28.0): the cut step is 2-5 times finer, and each position walks a disc of the tool radius rather
+  than a holder.
+- All moves are applied, rapids included: the machine really does drive the tool through the material, and
+  skipping `G0` would show material that is already cut away. That a rapid into the stock is a crash is the
+  collision scan's business, not the simulation's.
+- It runs in the background like the scan: `QThreadPool::globalInstance()` and its own token next to
+  `_collision_token`, the result returns to the GUI thread through `QMetaObject::invokeMethod`, a stale one is
+  dropped. The GUI never waits: the field may lag the tool — that is the price of the background, and it has to
+  be measured.
+- The field is monotone along the path and accumulates from 0 to the travelled distance. A rewind does not undo
+  it: the field is rebuilt from zero by the same background path, and while it is being computed the last
+  complete field is shown, never a mixture.
+- Nothing goes to the disk cache: the key would have to grow the stock, the node size and the profiles
+  (`_cache_key`, `CACHE_VER`), and the gain is unproven — the recompute cost is measured by the same probe.
+
+**How it is drawn.** The grid is extruded by a vertex shader from a dynamic texture — exactly as the line above
+says.
+
+- Data: `QQuick3DTextureData` (R32F, `setSize`/`setFormat`/`setTextureData`/`update`) as a controller property
+  next to the geometries; in QML `Texture { textureData: path.stockField }` plus a `TextureInput` in a
+  `CustomMaterial` (a property of type `TextureInput` becomes a `sampler2D` of the same name); the vertex
+  shader reads the height with `texture(stockField, UV0)` and derives the normal from the neighbouring texels
+  right there — the CPU computes no normals at all. This is the documented Qt Quick 3D height-map technique.
+- The grid is built once per load (position 3f + texcoord 2f, the same 20 B stride as `ToolpathGeometry`), and
+  only the texture changes. The update replaces the whole buffer (there is no partial upload in
+  `QQuick3DTextureData`), so the cadence is ours: the field is published as a band accumulates, not every
+  frame (proposal: about 10 times per second), otherwise megabytes per frame go over the bus.
+- The stock stops being `#Cube`: the field draws the top face, the side walls and the bottom become a plain
+  geometry of their own (about ten triangles) with the old micro-offset against z-fighting. The box top and
+  the untouched field nodes lie in the same plane, and the "1.5 px" offset is not allowed for the field: it
+  would lie about the geometry. Two models and two materials, because `alphaMode` cannot be switched at run
+  time: the walls stay translucent and `NeverDepthDraw` as today, the cut surface is opaque and writes depth.
+- There is one switch: `showStockVisible` (the S key, the "Габарит заготовки" button) shows both the box and
+  the field. There is no separate flag: a pile of toggles is already named as debt (§12). The outline and
+  silhouette ribbons are untouched — they already run the depth test.
+- An opaque cut surface hides the path under the material; that is the point of the simulation, but it changes
+  the familiar picture (today the box is deliberately `NeverDepthDraw`). The decision is made by a prototype
+  and a screenshot in `img/`, not by default.
+
+**What the simulation must not do.**
+
+- It must not slow the orbit: no per-frame work, no per-frame texture upload, no JS loop over hundreds of
+  thousands of vertices. But the grid is triangles in the frame, and its cap above is part of the orbit budget
+  (`PORT-CPP.md` §11: the orbit is cheap, the time goes into the cold load and heavy features).
+- It must not touch the bit-exact contract: the field is in neither `PathData`, nor `PackedStream`, nor the
+  geometry buffers, nor `oracle_manifest.json`; `prepareOrdered`, the parse and the packing stay as they are.
+  The field accumulates float minima, so sha256 is no use for it at all; if a Python mirror ever appears, it
+  must be compared with a millimetre tolerance, and that exception to the general rule is named, not implied.
+- It must not require Python: the computation is in the C++ core and QML draws it. The Python entry points
+  (`preview_3d.py`, `smoke_test_qml.py`) stay without the field: QML must survive a missing property (no field
+  shown, the load unchanged). The cache and the reference checks never see the field.
+
+**Checks and what to measure.**
+
+- These stay green: `test_gcode_core.py` (the path sha256), `test_normals_golden.py`, `test_geometry_core.py`
+  (the six geometry buffers, their `stride` is frozen), `test_controller_cpp.py`, `test_cpp_bridge.py`,
+  `oracle_dump.py`, the offscreen `loaded OK` and `RESULT: OK`. The seventh geometry is not part of the six-way
+  comparison set.
+- The new check of the same layer is a `cpp/stock_probe.cpp` probe with a thin wrapper, like the others: it cuts
+  a synthetic stock with a known path and compares the field against analysis, not against a sha256. Proposed
+  cases: (1) a plunge with no motion — the field equals the profile `h(r)`, tolerance about 1e-12 (the value at
+  a node is exact); (2) two plunges — a per-node `min`; (3) a pass to the side — nodes outside the swept band
+  are untouched; (4) the field is never above the stock top and never rises along the path; (5) a recompute
+  after a reset gives the same bytes — the rewind rests on that determinism. A millimetre tolerance is needed
+  only where a node does not coincide with the truth (a curved wall between nodes), and it is derived from the
+  node size, not tuned until green.
+- Measurements: `bench_probe` — a new phase (`stock_sim`) next to `collision_scan`; the frame with and without
+  the field, per level — the probe's `frame` lines and `bench_viewer.py` (`hot` mode), on weak hardware
+  mandatory. The live numbers to watch: the collision scan 2.1 ms at a 1 mm step (i5-10400F), the NC parse 174
+  ms and `ngc_parse` 69.7 ms (i5-13420H), the cold load about 690 ms, the mesh silhouette 0.0791-0.0868 ms,
+  the skin 45398 triangles (`med`), `stock_px 67235` (`render_probe.py`).
+- Proposals, not measurements: the 0.5/0.5/0.2 mm nodes, the caps 256/512/1024, the step = node/2, the R32F
+  format, the cadence about 10 Hz, `safe` not drawing at all, refusing the lollipop and the dovetail, the 628
+  KiB and 3.82 MiB of memory, the cap triangles 130 000/522 000/2 093 000. `render_probe.py` prints
+  `stock_px` — once the surface is drawn that number will move, and the move is recorded deliberately rather
+  than silently re-approved.
+- Not taken before a prototype: whether the ION samples an R32F texture in the vertex stage on the OpenGL 3.3
+  branch; what a whole-texture `update()` costs on a narrow bus; what an opaque surface does to path visibility
+  (a screenshot); whether to draw the whole grid or only the touched rectangle (the latter is cheaper in
+  triangles but needs a joint with the box top face); whether R16F is needed. The prototype is a measurement
+  only; it does not enter the tree.
 
 ## 14. Checks and tests
 

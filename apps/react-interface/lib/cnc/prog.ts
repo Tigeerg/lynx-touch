@@ -2,8 +2,11 @@
 // текста (поиск/замена, перенумерация). Вынесена из машины по образцу ladder.ts:
 // machine.ts сводит подсистемы, а не впитывает их — размер редуктора держит метка
 // tools/check.ps1. Возвращаем { s, msg, level }, сообщение показывает machine.ts.
-import { MODE_LABEL, SCREEN_LABEL } from './data'
+import { SCREEN_LABEL, WORKPLACE_LABEL } from './data'
 import { programLines, setLines } from './files'
+import { pushAlarm } from './messages'
+import { PROBE_TOOL } from './probe'
+import { BROKEN_TOL_MM, sensorLength } from './tool-check'
 import { MODE_LOCKED_SCREENS, type MachineState, type Message } from './types'
 
 const SIM_STEP_MS = 120
@@ -25,6 +28,7 @@ export type ProgAction =
   | { type: 'TOOL_LIFE' }
   | { type: 'PART_COUNTER_RESET' }
   | { type: 'BROKEN_TOOL_CHECK' }
+  | { type: 'HINT'; text: string }
 
 const PROG_TYPES = new Set<string>([
   'SIM',
@@ -37,6 +41,7 @@ const PROG_TYPES = new Set<string>([
   'TOOL_LIFE',
   'PART_COUNTER_RESET',
   'BROKEN_TOOL_CHECK',
+  'HINT',
 ])
 
 export const isProgAction = (a: { type: string }): a is ProgAction => PROG_TYPES.has(a.type)
@@ -94,7 +99,11 @@ export function progReducer(s: MachineState, a: ProgAction): Result {
       if (!q) return { s, msg: 'Введите, что заменить', level: 'warn' }
       if (isBusy(s)) return { s, msg: 'Замена недоступна во время выполнения', level: 'warn' }
       if (MODE_LOCKED_SCREENS[s.mode].includes('prog')) {
-        return { s, msg: `В режиме «${MODE_LABEL[s.mode]}» экран «${SCREEN_LABEL.prog}» заблокирован`, level: 'warn' }
+        return {
+          s,
+          msg: `В рабочем месте «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL.prog}» заблокирован`,
+          level: 'warn',
+        }
       }
       const re = new RegExp(escapeRegExp(q), 'gi')
       const replacement = s.search.replace
@@ -112,7 +121,11 @@ export function progReducer(s: MachineState, a: ProgAction): Result {
     case 'PROG_RENUMBER': {
       if (isBusy(s)) return { s, msg: 'Перенумерация недоступна во время выполнения', level: 'warn' }
       if (MODE_LOCKED_SCREENS[s.mode].includes('prog')) {
-        return { s, msg: `В режиме «${MODE_LABEL[s.mode]}» экран «${SCREEN_LABEL.prog}» заблокирован`, level: 'warn' }
+        return {
+          s,
+          msg: `В рабочем месте «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL.prog}» заблокирован`,
+          level: 'warn',
+        }
       }
       const lines = programLines(s)
       let changed = 0
@@ -146,11 +159,35 @@ export function progReducer(s: MachineState, a: ProgAction): Result {
     }
 
     case 'BROKEN_TOOL_CHECK': {
-      const t = s.tools.find((x) => x.number === s.tool)
-      return {
-        s,
-        msg: `Проверка слома: T${String(s.tool).padStart(2, '0')}${t ? ` (${t.name})` : ''} — вызовите обмер щупом`,
+      if (s.run === 'ESTOP' || s.run === 'ALARM') return { s, msg: 'Сначала сбросьте аварию', level: 'warn' }
+      if (isBusy(s)) return { s, msg: 'Остановите программу перед проверкой', level: 'warn' }
+      if (!s.toolClamped) return { s, msg: 'Инструмент разжат — проверка невозможна', level: 'error' }
+      if (s.spindleOn) return { s, msg: 'Остановите шпиндель перед проверкой', level: 'warn' }
+      if (s.tool === PROBE_TOOL) return { s, msg: 'В шпинделе щуп T99 — проверять нечего', level: 'warn' }
+      const i = s.tools.findIndex((t) => t.number === s.tool)
+      if (i < 0) return { s, msg: 'Инструмент не найден в таблице', level: 'warn' }
+
+      const tool = s.tools[i]
+      const num = `T${String(tool.number).padStart(2, '0')}`
+      const measured = sensorLength(s, i)
+      const delta = Math.round((measured - tool.length) * 1000) / 1000
+      if (tool.life <= 0 || Math.abs(delta) > BROKEN_TOL_MM) {
+        const alarmed = pushAlarm(
+          { ...s, run: 'ALARM' },
+          4010,
+          'error',
+          `Возможен слом ${num}: отклонение длины ${delta.toFixed(3)} мм`,
+        )
+        return {
+          s: alarmed,
+          msg: `Слом ${num}: отклонение ${delta.toFixed(3)} мм — проверьте инструмент`,
+          level: 'error',
+        }
       }
+      return { s, msg: `${num}: длина ${measured.toFixed(3)} мм, отклонение ${delta.toFixed(3)} мм — в норме` }
     }
+
+    case 'HINT':
+      return { s, msg: a.text, level: 'warn' }
   }
 }

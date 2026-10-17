@@ -99,9 +99,12 @@ TopoDS_Shape readStepShape(const std::string& utf8Path) {
     return reader.OneShape();
 }
 
-std::vector<double> tessellateSoup(const TopoDS_Shape& shape, double deflection) {
-    BRepMesh_IncrementalMesh mesher(shape, deflection, false, deflection * 2.0, true);
-    mesher.Perform();
+std::vector<double> tessellateSoup(const TopoDS_Shape& shape, double deflection,
+                                   bool shapeAlreadyMeshed) {
+    if (!shapeAlreadyMeshed) {
+        BRepMesh_IncrementalMesh mesher(shape, deflection, false, deflection * 2.0, true);
+        mesher.Perform();
+    }
 
     std::vector<double> pts;            // узлы всех граней подряд, как в эталоне
     std::vector<double> soup;
@@ -204,7 +207,7 @@ std::vector<double> orientShellOutward(const std::vector<double>& soup) {
     return out;
 }
 
-StepModel loadStepModel(const TopoDS_Shape& shape, double deflection) {
+StepModel loadStepModel(const TopoDS_Shape& shape, double deflection, double creaseDeg) {
     StepModel out;
     // Суп строится прямо в out.verts и разворачивается на месте: отдельные
     // материализации под тесселяцию, ориентацию и нормали больше не нужны.
@@ -212,13 +215,13 @@ StepModel loadStepModel(const TopoDS_Shape& shape, double deflection) {
     out.tri_count = static_cast<int>(out.verts.size() / 9);
     orientShellOutwardInPlace(out.verts);
     if (!out.verts.empty()) {
-        out.normals = smoothFaceNormals(out.verts);
+        out.normals = smoothFaceNormals(out.verts, creaseDeg);
     }
     return out;
 }
 
-StepModel loadStepModel(const std::string& utf8Path, double deflection) {
-    return loadStepModel(readStepShape(utf8Path), deflection);
+StepModel loadStepModel(const std::string& utf8Path, double deflection, double creaseDeg) {
+    return loadStepModel(readStepShape(utf8Path), deflection, creaseDeg);
 }
 
 } // namespace gv

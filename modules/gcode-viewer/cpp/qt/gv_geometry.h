@@ -99,6 +99,9 @@ private:
     QByteArray raw_;
     int nv_ = 0;
     std::vector<float> ref_;      // опорная точка в float32, как _ref в Python
+    // Ленты кадра: ёмкость переживает кадр, поэтому на кадр остаётся assign и
+    // заполнение (у Test_model на силуэт 64.5 КБ, на обводку 683 КБ).
+    std::vector<float> vert_;
     BoundsOrNone bounds_;         // упакованный (x0,y0,z0,x1,y1,z1)
 };
 

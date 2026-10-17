@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, type ComponentType, type PointerEvent, type ReactNode, type WheelEvent } from 'react'
+import { type ComponentType, type ReactNode, type WheelEvent } from 'react'
 import { cn } from '@/lib/utils'
 
 export type HwIcon = ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' | 'false' }>
@@ -238,98 +238,6 @@ export function Knob({
         </svg>
       </button>
       <span className="text-center font-mono text-base font-bold tabular-nums text-hw-label">{readout}</span>
-    </div>
-  )
-}
-
-const STEP_DEG = 15
-
-export function Handwheel({
-  onTurn,
-  axis,
-  step,
-  active,
-}: {
-  onTurn: (dir: 1 | -1) => void
-  axis: string
-  step: number
-  active: boolean
-}) {
-  const [angle, setAngle] = useState(0)
-  const ref = useRef<HTMLDivElement>(null)
-  const drag = useRef<{ last: number; acc: number } | null>(null)
-
-  const pointerAngle = (e: PointerEvent<HTMLDivElement>) => {
-    const r = ref.current!.getBoundingClientRect()
-    return (Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)) * 180) / Math.PI
-  }
-
-  const onDown = (e: PointerEvent<HTMLDivElement>) => {
-    e.currentTarget.setPointerCapture(e.pointerId)
-    drag.current = { last: pointerAngle(e), acc: 0 }
-  }
-
-  const onMove = (e: PointerEvent<HTMLDivElement>) => {
-    const d = drag.current
-    if (!d) return
-    const now = pointerAngle(e)
-    let delta = now - d.last
-    if (delta > 180) delta -= 360
-    if (delta < -180) delta += 360
-    d.last = now
-    d.acc += delta
-    setAngle((a) => a + delta)
-    while (Math.abs(d.acc) >= STEP_DEG) {
-      const dir = d.acc > 0 ? 1 : -1
-      onTurn(dir)
-      d.acc -= dir * STEP_DEG
-    }
-  }
-
-  const onWheel = (e: WheelEvent<HTMLDivElement>) => {
-    const dir = e.deltaY < 0 ? 1 : -1
-    setAngle((a) => a + dir * STEP_DEG)
-    onTurn(dir)
-  }
-
-  return (
-    <div className="flex flex-col items-center gap-1.5">
-      <div
-        ref={ref}
-        role="img"
-        aria-label="Маховик MPG. Вращайте мышью или колесом прокрутки"
-        onPointerDown={onDown}
-        onPointerMove={onMove}
-        onPointerUp={() => (drag.current = null)}
-        onPointerCancel={() => (drag.current = null)}
-        onWheel={onWheel}
-        className="relative size-[198px] cursor-grab touch-none select-none rounded-full border-[6px] border-hw-edge active:cursor-grabbing"
-      >
-        <div
-          className="absolute inset-0 rounded-full"
-          style={{
-            transform: `rotate(${angle}deg)`,
-            background: 'repeating-conic-gradient(var(--hw-key) 0deg 3deg, var(--hw-edge) 3deg 6deg)',
-          }}
-        >
-          <span
-            className="absolute left-1/2 top-3 size-[33px] -translate-x-1/2 rounded-full border-[3px] border-hw-edge bg-hw-plate"
-            aria-hidden="true"
-          />
-        </div>
-        <div className="pointer-events-none absolute inset-[45px] flex flex-col items-center justify-center rounded-full border-[3px] border-hw-edge bg-hw-key text-hw-key-foreground">
-          <span
-            className={cn(
-              'text-[13px] font-semibold uppercase tracking-wider',
-              active ? 'text-hw-green' : 'text-hw-key-foreground/70',
-            )}
-          >
-            MPG
-          </span>
-          <span className="font-mono text-2xl font-bold leading-none">{axis}</span>
-          <span className="font-mono text-sm tabular-nums text-hw-key-foreground/70">{step}</span>
-        </div>
-      </div>
     </div>
   )
 }

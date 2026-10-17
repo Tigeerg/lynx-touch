@@ -207,6 +207,12 @@ def main() -> int:
             app.quit()
             return
         refs.update(win=win, viewer=viewer, backend=backend)
+        # Уровень CNC_QUALITY -> свойство quality корня вьювера (см. preview_3d.py):
+        # без переменной или при неизвестном значении свойство не трогают, и
+        # картинка остаётся прежней (med).
+        level = os.environ.get("CNC_QUALITY", "").strip().lower()
+        if level in ("low", "med", "high", "safe"):
+            viewer.setProperty("quality", level)
         cam["yaw"] = viewer.property("yaw")
         cam["pitch"] = viewer.property("pitch")
         print("window version:", viewer.property("viewerVersion"))

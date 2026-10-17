@@ -61,6 +61,7 @@
 
 #include "core/collision.h"
 #include "core/path_prep.h"
+#include "core/quality.h"
 #include "core/silhouette.h"
 #include "core/tangents.h"
 #include "core/tooling.h"
@@ -95,6 +96,9 @@ struct ModelData {
     gv::StepSurfaceList surfaces;         // STEP: аналитические цилиндры и конусы
     gv::TangentFamilies families;         // STEP: семейства касательных
     gv::MeshTopology topo;                // топология силуэта меша
+    // Уровень качества, с которым прочитана модель (CNC_QUALITY): обводка STL и
+    // кадровый проход пересобираются с теми же допусками.
+    gv::QualityPreset quality;
 };
 
 // Токен загрузки, путь модели и её данные: то, что несёт сигнал meshReady.
@@ -327,7 +331,15 @@ private:
     gv::TangentFamilies tan_fams_;        // STEP: семейства касательных
     gv::MeshTopology mesh_topo_;          // топология силуэта меша
     bool has_topo_ = false;               // меш есть - силуэт считается по нему
+    // Буферы кадрового прохода: ёмкости переживают кадр (у Test_model 21
+    // выделение на кадр в режиме меша и 31 в аналитическом).
+    gv::MeshSilhouetteScratch sil_scratch_;
+    gv::TangentScratch tan_scratch_;
+    std::vector<float> tan_segments_;     // касательные float32 для буфера лент
     bool has_mesh_ = false;               // габарит кожи известен
+    // Уровень качества прочитанной модели (CNC_QUALITY): обводка STL и кадровый
+    // проход идут с теми же допусками, что и чтение. По умолчанию - med.
+    gv::QualityPreset quality_;
     std::array<double, 3> mesh_lo_{0.0, 0.0, 0.0};
     std::array<double, 3> mesh_hi_{0.0, 0.0, 0.0};
     int edge_token_ = 0;                  // отменяет устаревшую обводку (GUI-поток)

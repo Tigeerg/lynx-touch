@@ -4,12 +4,22 @@
 import { PATH_VIEWS } from './toolpath'
 import type { MachineState, Message, TestState } from './types'
 
-export const initialTest: TestState = { curtain: false, bbox: false, hidePath: false, view: 'ISO' }
+export const initialTest: TestState = { curtain: false, bbox: false, hidePath: false, autoCode: true, view: 'ISO' }
 
 export type TestAction =
-  { type: 'TEST_CURTAIN' } | { type: 'TEST_BBOX' } | { type: 'TEST_CLEAR_PATH' } | { type: 'PATH_VIEW_CYCLE' }
+  | { type: 'TEST_CURTAIN' }
+  | { type: 'TEST_BBOX' }
+  | { type: 'TEST_CLEAR_PATH' }
+  | { type: 'AUTO_VIEW_TOGGLE' }
+  | { type: 'PATH_VIEW_CYCLE' }
 
-const TEST_TYPES = new Set<string>(['TEST_CURTAIN', 'TEST_BBOX', 'TEST_CLEAR_PATH', 'PATH_VIEW_CYCLE'])
+const TEST_TYPES = new Set<string>([
+  'TEST_CURTAIN',
+  'TEST_BBOX',
+  'TEST_CLEAR_PATH',
+  'AUTO_VIEW_TOGGLE',
+  'PATH_VIEW_CYCLE',
+])
 
 export const isTestAction = (a: { type: string }): a is TestAction => TEST_TYPES.has(a.type)
 
@@ -30,6 +40,12 @@ export function testReducer(s: MachineState, a: TestAction): Result {
       return {
         s: { ...s, test: { ...s.test, hidePath: !s.test.hidePath } },
         msg: s.test.hidePath ? 'Графика возвращена' : 'Графика очищена — F6 вернёт отрисовку',
+      }
+
+    case 'AUTO_VIEW_TOGGLE':
+      return {
+        s: { ...s, test: { ...s.test, autoCode: !s.test.autoCode } },
+        msg: s.test.autoCode ? 'Вид: графика траектории' : 'Вид: код программы',
       }
 
     case 'PATH_VIEW_CYCLE': {

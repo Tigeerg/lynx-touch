@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <utility>
 
 // Порядок операций здесь - часть контракта: результат сверяется с питоновским
 // эталоном (silhouette.py) бит-в-бит, а не «примерно». Компилируется с
@@ -12,8 +13,6 @@
 namespace gv {
 namespace {
 
-constexpr double MAX_EDGE_DEG = 20.0;    // круче - острая кромка (её слой - статические рёбра)
-constexpr double MIN_FACE_AREA = 1e-6;   // мм^2: ниже - вырожденная грань, нормаль - мусор
 constexpr double DEG_TO_RAD = 3.14159265358979323846 / 180.0;
 
 // Ключ сварки вершины: позиция, округлённая до сетки weld (np.round(V / weld)).
@@ -60,7 +59,8 @@ inline double clipUnit(double x) {
 
 } // namespace
 
-MeshTopology buildSilhouetteTopology(const std::vector<double>& soup, double weldMm) {
+MeshTopology buildSilhouetteTopology(const std::vector<double>& soup,
+                                     const QualityPreset& quality) {
     MeshTopology topo;
     const std::size_t faces = soup.size() / 9;
     topo.faces = faces;
@@ -75,7 +75,7 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup, double wel
     std::vector<WeldKey> key(slots);
     for (std::size_t i = 0; i < slots; ++i) {
         for (int d = 0; d < 3; ++d) {
-            key[i].v[d] = std::nearbyint(soup[i * 3 + std::size_t(d)] / weldMm);
+            key[i].v[d] = std::nearbyint(soup[i * 3 + std::size_t(d)] / quality.silhouetteWeldMm);
         }
     }
     std::vector<std::uint32_t> order(slots);
@@ -104,7 +104,7 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup, double wel
     std::vector<double> pos(uniq.size() * 3);
     for (std::size_t g = 0; g < uniq.size(); ++g) {
         for (int d = 0; d < 3; ++d) {
-            pos[g * 3 + std::size_t(d)] = uniq[g].v[d] * weldMm;
+            pos[g * 3 + std::size_t(d)] = uniq[g].v[d] * quality.silhouetteWeldMm;
         }
     }
 
@@ -170,7 +170,7 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup, double wel
     // Фильтр кандидатов: только гладкие горизонты (без острых кромок - их рисует
     // слой статических рёбер) и без вырожденных граней (их нормаль - численный
     // мусор, знак скачет и родит короткие ложные усы).
-    const double angle_lim = MAX_EDGE_DEG * DEG_TO_RAD;
+    const double angle_lim = quality.silhouetteMaxEdgeDeg * DEG_TO_RAD;
     topo.ea.reserve(cand.size() * 3);
     topo.eb.reserve(cand.size() * 3);
     topo.f0.reserve(cand.size());
@@ -178,7 +178,8 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup, double wel
     for (const Candidate& c : cand) {
         const std::size_t f0 = std::size_t(c.f0);
         const std::size_t f1 = std::size_t(c.f1);
-        if (!(area[f0] > MIN_FACE_AREA) || !(area[f1] > MIN_FACE_AREA)) {
+        if (!(area[f0] > quality.silhouetteMinFaceAreaMm2)
+                || !(area[f1] > quality.silhouetteMinFaceAreaMm2)) {
             continue;
         }
         const double* n0 = &nrm[f0 * 3];
@@ -220,10 +221,17 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup, double wel
 }
 
 std::vector<float> meshSilhouetteSegments(const MeshTopology& topo, const double eyeMm[3]) {
-    std::vector<float> out;
+    MeshSilhouetteScratch scratch;
+    meshSilhouetteSegments(topo, eyeMm, scratch);
+    return std::move(scratch.out);      // перенос, а не копия: как был возврат out
+}
+
+const std::vector<float>& meshSilhouetteSegments(const MeshTopology& topo, const double eyeMm[3],
+                                                 MeshSilhouetteScratch& scratch) {
+    scratch.out.clear();
     const std::size_t faces = topo.n.size() / 3;
     if (faces == 0 || topo.edgeCount() == 0) {
-        return out;
+        return scratch.out;
     }
 
     // Глаз - float32, как в эталоне (np.asarray(E, dtype=float32)).
@@ -233,28 +241,28 @@ std::vector<float> meshSilhouetteSegments(const MeshTopology& topo, const double
 
     // Знак s = n·E - d по граням. Грань с s == 0 (глаз в её плоскости, включая
     // -0.0) получает 0 и силуэтной не считается - как произведение < 0 у эталона.
-    std::vector<std::int8_t> sign(faces, 0);
+    scratch.sign.assign(faces, 0);
     for (std::size_t f = 0; f < faces; ++f) {
         const float* nf = &topo.n[f * 3];
         const float s = ((nf[0] * ex + nf[1] * ey) + nf[2] * ez) - topo.d[f];
-        sign[f] = static_cast<std::int8_t>(s < 0.0f ? -1 : (s > 0.0f ? 1 : 0));
+        scratch.sign[f] = static_cast<std::int8_t>(s < 0.0f ? -1 : (s > 0.0f ? 1 : 0));
     }
 
     const std::size_t edges = topo.edgeCount();
     for (std::size_t k = 0; k < edges; ++k) {
         const std::int32_t f0 = topo.f0[k];
         const std::int32_t f1 = topo.f1[k];
-        if (sign[std::size_t(f0)] * sign[std::size_t(f1)] >= 0) {
+        if (scratch.sign[std::size_t(f0)] * scratch.sign[std::size_t(f1)] >= 0) {
             continue;
         }
         for (int d = 0; d < 3; ++d) {
-            out.push_back(topo.ea[k * 3 + std::size_t(d)]);
+            scratch.out.push_back(topo.ea[k * 3 + std::size_t(d)]);
         }
         for (int d = 0; d < 3; ++d) {
-            out.push_back(topo.eb[k * 3 + std::size_t(d)]);
+            scratch.out.push_back(topo.eb[k * 3 + std::size_t(d)]);
         }
     }
-    return out;
+    return scratch.out;
 }
 
 } // namespace gv

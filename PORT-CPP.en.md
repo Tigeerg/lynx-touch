@@ -387,10 +387,11 @@ the original order, the cone policy over the cones (hoisting the temporary vecto
 outline `p0/p1` assembly. Sorts and sums must not be parallelised: their order is part of the golden.
 
 **Hardware variability.** Presets `low`/`med`/`high` plus the fallback `safe`; the knobs and the
-auto-detection are in `DESIGN.md` §13 ("Performance and hardware adaptivity"). In the C++ the parameters are
-already passed as arguments (`deflection`, edge and coalescing tolerances, `weldMm`, `creaseDeg`); what stays
-hard-coded is the outline simplification threshold, the silhouette angle, the cone policy and DROP — those
-are what should move into the presets.
+auto-detection are in `DESIGN.md` §13 ("Performance and hardware adaptivity"). No hard-coded thresholds are left:
+the outline simplification thresholds, the silhouette angle, the cone policy and DROP have moved into the preset
+(`cpp/core/quality.h`, 0.32.0), together with the former arguments (`deflection`, edge and coalescing tolerances,
+`weldMm`, `creaseDeg`). The NC parse and the collision scan are not changed by the level: their numbers are still
+read from the environment (`CNC_DECIMATE_TOL`, `CNC_ARC_DECIMATE_TOL`, `CNC_COLLISION_STEP`).
 
 **Qt runtime constraints (established by experiment).**
 - the PySide6 process carries its own Qt 6.12.0; the loader resolves `Qt6Core.dll` by name to the already
@@ -404,30 +405,86 @@ are what should move into the presets.
   mismatch is silent, so the versions must match (6.12.0 on both sides today).
 
 **Priority list.**
-1. An opaque handle on the silhouette topology — remove about 2.6 MB of copies per frame (medium risk: an ABI
-   change).
+1. An opaque handle on the silhouette topology — remove about 2.6 MB of copies per call of the bridge.
+   **Refined by measurement (0.31.0):** the shipped viewer makes no copies at all — the QML controller
+   (`gv_toolpath.cpp`) keeps the topology and the families between frames and calls the core by `const&`, while
+   the 2.6 MB (2 577 312 B: `ea`/`eb` 694 104 each, `f0`/`f1` 231 368 each, `n` 544 776, `d` 181 592) is
+   assembled only in the C ABI bridge (`gv_mesh_silhouette_segments`, `gv_bridge.cpp`), that is, on the
+   comparison path (`gv_cpp.py`, `test_cpp_bridge.py`, `bench_viewer.py`). The gain for the hardware is zero;
+   the priority is dropped.
 2. A cached STEP shape in `StepEdgesGeometry` — minus 0.6-0.9 s per property change (low risk).
 3. Drop the second `BRepMesh` — one tessellation pass less on a cold load (low risk).
 4. Remove the copies on the STEP -> soup path (`move` instead of a copy, in-place flip) — 10-20 MB of peak
    memory and tens of ms (low risk).
-5. Presets `low`/`med`/`high` and `CNC_QUALITY` (medium risk: each level needs measurements).
+5. Presets `low`/`med`/`high`/`safe` and `CNC_QUALITY` — **done (0.32.0):** the tolerances of the model read
+   and of its processing are gathered in `cpp/core/quality.h`, and the level is read from the environment once
+   per model load. Measured (`bench_probe`, i5-13420H, median of three): tessellation 129.8 -> 61.3 / 416.4 /
+   56.0 ms and 45398 -> 7856 / 175808 / 4132 triangles, silhouette topology 20.4 -> 3.8 / 83.3 / 2.0 ms,
+   tangent families 17.1 -> 3.1 / 113.2 / 1.9 ms (the level order is `low` / `high` / `safe`); at `med` the
+   numbers are unchanged. The `low`/`high`/`safe` values are proposals, only the deflection is measured; what
+   remains is reconciling the non-`med` levels through the Python mirrors and the bridge.
 6. Auto-detect the level from the renderer/GL version and a reference frame run (medium risk: there is no
    VRAM-size API, and the RHI behaviour on ION can only be checked on hardware).
-7. Buffer reuse in `meshSilhouetteSegments`, `tangentFromFamilies` and `HLRLineGeometry` (low risk:
-   0.1-0.5 ms per frame).
-8. Parallelise the cold stages (medium risk: the traversal order is part of the sha256 contract).
-9. Drop the duplicated STEP reads and the dead code, and hoist the shared helpers (low risk).
-10. Reconcile the numbers in the docs and the code: 4884/2426 against 18986 for the Test_model outline
-    (zero risk).
+7. Buffer reuse in `meshSilhouetteSegments`, `tangentFromFamilies` and `HLRLineGeometry` —
+   **done (0.34.0):** the claimed 0.1-0.5 ms per frame is not there: the whole per-frame path is about
+   0.09 ms, and the allocations are about 5 us of the ~95 us frame path (about 6 %). The real per-frame cost
+   is arithmetic: the sign loop over 45398 faces and the scan of 57842 edges. Reusable scratch buffers were
+   added (a `MeshSilhouetteScratch` and a `TangentScratch` overload in `cpp/core/silhouette.{h,cpp}` and
+   `cpp/core/tangents.{h,cpp}`, a `vert_` member in `cpp/qt/gv_geometry.{h,cpp}`, and the scratch members in
+   `cpp/qmlbackend/gv_toolpath.{h,cpp}`); the old function signatures stayed as overloads that move the
+   scratch result out, so the bridge and the probes are unaffected. Allocations per frame went from 21 to 0
+   (mesh silhouette) and from 31 to 0 (tangent families); the ribbon buffer (64.5 KB for the silhouette,
+   683 KB for the outline) is no longer allocated and freed every frame, which also removed a dip of up to
+   0.25 ms in `frame setSegments_edges` where the freed memory was returned to the OS and had to be committed
+   again. A/B inside one binary (frame_reps 300-500): mesh silhouette 0.0873-0.0934 ms -> 0.0791-0.0868
+   (3-7 us, 4-8 %), analytic tangents 0.0090-0.0094 -> 0.0071-0.0082 (about 18 %). The time gain is small
+   (about 5-6 us per frame, about 6 % of the frame path), and the run-to-run spread of a single build is of
+   the same order, so the allocation count and the removed dip are the solid evidence, not the microseconds.
+   `setSegments_edges` and `packedPositions` are NOT per-frame phases - they run when a model is published -
+   and the plan's list should not imply otherwise.
+8. Parallelising the cold stages — **checked by measurement (0.33.0), no change needed:** the three targets
+   together are about 0.5 % of the cold load (about 690 ms; the STEP read 376 ms and `BRepMesh` 124 ms are
+   OCCT itself). The `step_tessellate` split (129.8 ms): `step_mesh` 123.8-125.5 ms (96-97 %, OCCT's mesher,
+   already `isInParallel=true`) plus `step_soup` 2.4-3.0 ms (about 2 %); the cone policy costs <= 2 ms inside
+   `step_families` (16.1-17.2 ms), and the `p0/p1` outline 0.050-0.053 ms for 2426 segments. A parallel soup
+   assembly (per-face blocks concatenated in the original face order) kept the byte order but measured
+   2.79-2.97 ms against 2.43-3.02 ms sequential — neutral, so it was reverted. The loops where the time
+   really sits (`step_topo` 20 ms, `step_families` 17 ms, `ngc_parse` 70 ms) cannot be parallelised: their
+   order is part of the golden. The probe gained the phases `step_mesh` and `step_soup` for this.
+9. Drop the duplicated STEP reads and the dead code, and hoist the shared helpers — **done (0.34.0):** the
+   duplicate STEP read is gone: `STEPControl_Reader` now exists in exactly one place, `gv::readStepShape`
+   (`cpp/occt/step_import.cpp`); the edge plugin, the probes, `step_bundle`, `step_surfaces` and
+   `bench_probe` all call it. The shared numeric helpers are in `cpp/core/np_helpers.h` (`dot3`, `cross3`,
+   `npMod`, `norm3Sqrt`, `norm3Pow`, `roundToInt`). The remaining item of the plan's "Structure and
+   duplication" block - the grid weld written three times (`cpp/core/normals.cpp`, `cpp/core/outline.cpp`,
+   and the silhouette's own grid) - is deliberately NOT merged: the three have different tolerances
+   (1/1000 mm against the silhouette's 1e-4 mm) and different semantics (a hash map against a sorted
+   `np.unique`), and `normals.cpp` iterates an `unordered_map` whose order affects the accumulation order of
+   the normals, so merging would touch the golden contract for no gain.
+10. The outline numbers are reconciled (0.31.0): 18986 is the STL outline before simplification
+    (`test_outline_segments.py`; 1435 after simplification), while 4884 and 2426 are the STEP edges before and
+    after coalescing (`test_stepledges_plugin.py`). These are different quantities, not a discrepancy; the
+    confusion in the `refreshTangents` docstring (`controller.py`) is fixed.
 
 **Status and measurements (part 1 done, 0.28.0).** A `bench_probe` was added; the measurements on an
 i5-10400F (this is NOT an Atom/Ion) show where the time actually goes: STEP read 610 ms and tessellation
 185 ms (OCCT itself), NC parse 174 ms, surfaces 70 ms, silhouette topology 35 ms, normals 28.5 ms, tangent
 families 25 ms; per frame: mesh silhouette 0.14 ms, analytic 0.019 ms. Done: the copies on the STEP -> soup
 path are gone (six soup materialisations became three, four normal ones became two; ~1.6 ms and 13 MB of
-peak), the second `BRepMesh` on the `loadStepBundleAll` path is gone (measured: on an already-meshed shape it
-was an empty pass, so the gain is about zero — kept as hygiene), dead code removed, the shared numeric
+peak), the second `BRepMesh` on the `loadStepBundleAll` path is gone (measured: a repeated `BRepMesh` on an
+already-meshed shape costs 46.9-50.0 ms, not an empty pass; the runtime does not pay it — it passes the
+already-meshed flag — kept as hygiene), dead code removed, the shared numeric
 helpers moved into `core/np_helpers.h`. Corrections to the list above: `packedPositions` is NOT dead (called
 at runtime from `gv_toolpath.cpp`), and the "one tessellation pass less" claim did not hold. The main
 remaining targets by payoff are the NC parse (176 ms) and the STEP shape cache in the plugin (0.6-0.9 s per
 deflection change), not the items 1-4.
+
+**Status and measurements (parts 2-4 done, 0.30.0 and 0.31.0).** The STEP shape cache in `StepEdgesGeometry`: a
+`deflection`/`hideFormEdges` change no longer re-reads the file — 550.1 -> 6.9 ms on an i5-13420H, and of the
+former 550.1 ms the STEP read took 466 ms; the edge counts are the same (2426 and 4884). NC parse: the line was
+prepared twice over 110585 lines, `findWords` allocated a `std::string` for each of the 342038 tokens, and
+`strtod` was called even for letters whose values are never read — `ngc_parse` 108.4 -> 69.7 ms (`bench_probe`,
+i5-13420H). The comparison oracle no longer depends on the numpy version (scalar sums instead of a batch
+`matmul`, stable segment sorting, an explicit face index width), and `oracle_manifest.json` was re-based to a
+single record (`step.segments`, order). Items 1 and 10 of the priority list are closed by the measurement
+refinement.

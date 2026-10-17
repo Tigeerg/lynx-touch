@@ -14,9 +14,10 @@ namespace {
 // Модель по уже прочитанной форме: тесселяция, ориентация оболочки, нормали и
 // рёбра до склейки. Отдельная функция - чтобы чтение STEP у loadStepBundle и
 // loadStepBundleAll было одно и то же, а не две редакции подряд.
-StepBundle bundleFromShape(const TopoDS_Shape &shape, double deflection)
+StepBundle bundleFromShape(const TopoDS_Shape &shape, double deflection,
+                           double edgeDeflection, double creaseDeg)
 {
-    StepModel model = loadStepModel(shape, deflection);
+    StepModel model = loadStepModel(shape, deflection, creaseDeg);
 
     StepBundle out;
     // Перемещение, а не копия: суп около 3 МБ, нормали около 1.6 МБ - набор
@@ -24,10 +25,10 @@ StepBundle bundleFromShape(const TopoDS_Shape &shape, double deflection)
     out.verts = std::move(model.verts);
     out.normals = std::move(model.normals);
 
-    // Допуск рёбер у эталона задан отдельно от тесселяции (0.05 мм жёстко), а
-    // склейку делает вызывающий: у Python её ведёт _coalesce_segments, и порядок
-    // буфера обводки остаётся тем же.
-    const std::vector<EdgeSegment> segs = stepRawSegments(shape, 0.05, true);
+    // Допуск рёбер у эталона задан отдельно от тесселяции, а склейку делает
+    // вызывающий: у Python её ведёт _coalesce_segments, и порядок буфера обводки
+    // остаётся тем же.
+    const std::vector<EdgeSegment> segs = stepRawSegments(shape, edgeDeflection, true);
     out.segments.resize(segs.size() * 6);
     for (std::size_t i = 0; i < segs.size(); ++i) {
         double *dst = &out.segments[i * 6];
@@ -41,17 +42,19 @@ StepBundle bundleFromShape(const TopoDS_Shape &shape, double deflection)
 
 } // namespace
 
-StepBundle loadStepBundle(const std::string &utf8Path, double deflection)
+StepBundle loadStepBundle(const std::string &utf8Path, double deflection,
+                          double edgeDeflection, double creaseDeg)
 {
-    return bundleFromShape(readStepShape(utf8Path), deflection);
+    return bundleFromShape(readStepShape(utf8Path), deflection, edgeDeflection, creaseDeg);
 }
 
-StepBundleAll loadStepBundleAll(const std::string &utf8Path, double deflection)
+StepBundleAll loadStepBundleAll(const std::string &utf8Path, double deflection,
+                                double edgeDeflection, double creaseDeg)
 {
     const TopoDS_Shape shape = readStepShape(utf8Path);
 
     StepBundleAll out;
-    out.bundle = bundleFromShape(shape, deflection);
+    out.bundle = bundleFromShape(shape, deflection, edgeDeflection, creaseDeg);
     // Поверхности - после тесселяции: эталон тоже читает форму один раз, а
     // тесселяцию кожи и обход граней ведёт по ней же. Форма уже размещена
     // (loadStepModel выше), поэтому тесселяция пропускается: тот же вызов с теми

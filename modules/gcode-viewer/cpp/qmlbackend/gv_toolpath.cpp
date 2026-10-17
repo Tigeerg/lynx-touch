@@ -225,8 +225,9 @@ QQuaternion quatFromCols(const std::array<double, 9> &matrix)
 
 // Рёбра STEP до склейки (N,2,3 float64 плоским рядом) -> склейка и упаковка:
 // повтор пары _coalesce_segments + _pack_edge_segments питоновского эталона
-// (controller._load_model_verts, ветка STEP).
-gv::PackedEdges packStepEdges(const std::vector<double> &flat)
+// (controller._load_model_verts, ветка STEP). Допуски склейки - из пресета.
+gv::PackedEdges packStepEdges(const std::vector<double> &flat,
+                              const gv::QualityPreset &quality)
 {
     std::vector<gv::EdgeSegment> segments;
     segments.reserve(flat.size() / 6);
@@ -236,7 +237,9 @@ gv::PackedEdges packStepEdges(const std::vector<double> &flat)
         segment.b = {flat[i + 3], flat[i + 4], flat[i + 5]};
         segments.push_back(segment);
     }
-    const std::vector<gv::EdgeSegment> merged = gv::coalesceStepSegments(segments);
+    const std::vector<gv::EdgeSegment> merged =
+        gv::coalesceStepSegments(segments, quality.coalesceDistTolMm,
+                                 quality.coalesceGapTolMm);
     std::vector<double> p0(merged.size() * 3);
     std::vector<double> p1(merged.size() * 3);
     for (std::size_t i = 0; i < merged.size(); ++i) {
@@ -252,7 +255,8 @@ gv::PackedEdges packStepEdges(const std::vector<double> &flat)
 // топология силуэта - тот же набор, что у питоновского _load_model_verts для STL.
 // Обводка STL приходит не отсюда: её считает отдельный проход (у эталона -
 // _feature_edges в своём потоке, 0.4 с на Test_model.STL).
-bool fillStlModel(const QString &path, ModelData *out, QString *error)
+bool fillStlModel(const QString &path, ModelData *out, QString *error,
+                  const gv::QualityPreset &quality)
 {
     const QByteArray utf8 = path.toUtf8();
     std::vector<double> soup =
@@ -264,8 +268,8 @@ bool fillStlModel(const QString &path, ModelData *out, QString *error)
     // Суп перемещается в кожу и разворачивается на месте: лишней копии супа нет.
     out->verts = std::move(soup);
     gv::orientShellOutwardInPlace(out->verts);
-    out->normals = gv::smoothFaceNormals(out->verts);
-    out->topo = gv::buildSilhouetteTopology(out->verts);
+    out->normals = gv::smoothFaceNormals(out->verts, quality.creaseDeg);
+    out->topo = gv::buildSilhouetteTopology(out->verts, quality);
     return true;
 }
 
@@ -284,13 +288,18 @@ std::shared_ptr<ModelData> readModelData(const QString &path, QString *used_path
     static std::mutex read_mutex;
     const std::lock_guard<std::mutex> guard(read_mutex);
 
+    // Уровень читается один раз на загрузку модели: им пользуются обе ветки
+    // чтения и обводка STL (startEdgesTask), а не кадровый проход.
+    const gv::QualityPreset quality = gv::presetFromEnv();
+
     const QString low = path.toLower();
     auto out = std::make_shared<ModelData>();
+    out->quality = quality;
     if (used_path != nullptr)
         *used_path = path;
 
     if (low.endsWith(QLatin1String(".stl")))
-        return fillStlModel(path, out.get(), error) ? out : nullptr;
+        return fillStlModel(path, out.get(), error, quality) ? out : nullptr;
 
     if (!low.endsWith(QLatin1String(".step")) && !low.endsWith(QLatin1String(".stp"))) {
         *error = QStringLiteral("неизвестное расширение модели: %1").arg(path);
@@ -300,20 +309,23 @@ std::shared_ptr<ModelData> readModelData(const QString &path, QString *used_path
     const QByteArray utf8 = path.toUtf8();
     const std::string file(utf8.constData(), std::size_t(utf8.size()));
     try {
-        gv::StepBundleAll all = gv::loadStepBundleAll(file);
+        gv::StepBundleAll all =
+            gv::loadStepBundleAll(file, quality.stepDeflectionMm,
+                                  quality.edgeDeflectionMm, quality.creaseDeg);
         out->is_step = true;
         // Перемещение: суп, нормали и поверхности едут в материал модели без
         // копии (на Test_model это около 5 МБ).
         out->verts = std::move(all.bundle.verts);
         out->normals = std::move(all.bundle.normals);
         out->surfaces = std::move(all.surfaces);
-        out->step_edges = packStepEdges(all.bundle.segments);
+        out->step_edges = packStepEdges(all.bundle.segments, quality);
         out->has_step_edges = true;
         // Семейства касательных строятся один раз на модель и живут до её смены:
         // режим CNC_SILHOUETTE=analytic берёт их на кадре (у эталона то же место).
         const gv::SkinTriangles skin = gv::buildSkinTriangles(out->verts, out->normals);
-        out->families = gv::buildTangentFamilies(out->surfaces, &out->step_edges, &skin);
-        out->topo = gv::buildSilhouetteTopology(out->verts);
+        out->families = gv::buildTangentFamilies(out->surfaces, &out->step_edges, &skin,
+                                                 quality);
+        out->topo = gv::buildSilhouetteTopology(out->verts, quality);
         return out;
     } catch (const std::exception &exc) {
         // Модель рядом бывает и STL: эталон при отказе STEP переходит на него.
@@ -339,7 +351,8 @@ std::shared_ptr<ModelData> readModelData(const QString &path, QString *used_path
         if (used_path != nullptr)
             *used_path = stl;
         auto fallback = std::make_shared<ModelData>();
-        return fillStlModel(stl, fallback.get(), error) ? fallback : nullptr;
+        fallback->quality = quality;
+        return fillStlModel(stl, fallback.get(), error, quality) ? fallback : nullptr;
     }
 }
 
@@ -607,24 +620,33 @@ void GcodeToolpath::refreshTangents(const QVector3D &view_point)
     // поэтому отказ считается один раз (warnDeferred), а не построчно.
     const double eye_mm[3] = {double(raw.x()), double(raw.y()), double(raw.z())};
     const QByteArray mode = qgetenv("CNC_SILHOUETTE").trimmed().toLower();
-    std::vector<float> segments;
+    // Буферы кадра лежат в объекте: на кадр остаются те же числа, но без
+    // заведения промежуточных векторов. Силуэт заполняется прямо в sil_scratch_,
+    // касательные - в tan_scratch_ (float64) с переводом в tan_segments_ (float32).
+    const std::vector<float> *segments = nullptr;
     try {
         if (mode == QByteArrayLiteral("analytic")) {
             if (rev_surfaces_.empty())
                 return;
             if (!has_tan_fams_) {
                 tan_fams_ = gv::buildTangentFamilies(
-                    rev_surfaces_, has_step_edges_ ? &step_edges_ : nullptr, nullptr);
+                    rev_surfaces_, has_step_edges_ ? &step_edges_ : nullptr, nullptr,
+                    quality_);
                 has_tan_fams_ = true;
             }
-            const std::vector<double> flat = gv::tangentFromFamilies(tan_fams_, eye_mm);
-            segments.reserve(flat.size());
+            const std::vector<double> &flat =
+                gv::tangentFromFamilies(tan_fams_, eye_mm, tan_scratch_);
+            tan_segments_.clear();
+            tan_segments_.reserve(flat.size());
             for (double v : flat)
-                segments.push_back(float(v));
+                tan_segments_.push_back(float(v));
+            segments = &tan_segments_;
         } else {
             if (!has_topo_)
                 return;
-            segments = gv::meshSilhouetteSegments(mesh_topo_, eye_mm);
+            const std::vector<float> &mesh =
+                gv::meshSilhouetteSegments(mesh_topo_, eye_mm, sil_scratch_);
+            segments = &mesh;
         }
     } catch (const std::exception &exc) {
         warnDeferred("silhouette",
@@ -632,7 +654,8 @@ void GcodeToolpath::refreshTangents(const QVector3D &view_point)
                          .arg(QString::fromUtf8(exc.what())));
         return;
     }
-    setSilhouetteSegments(segments);
+    // Публикация вне try, как было: отказ самого setSegments - не отказ силуэта.
+    setSilhouetteSegments(*segments);
 }
 
 // Публикация силуэта: у эталона - set_segments сегментов float32, пустой список
@@ -1102,6 +1125,10 @@ void GcodeToolpath::applyModelData(const std::shared_ptr<const ModelData> &model
     // эталон (их переписывает только удачная ветка STEP).
     has_step_edges_ = model ? model->has_step_edges : false;
     step_edges_ = model ? model->step_edges : gv::PackedEdges{};
+    // Уровень качества едет с моделью: им пользуются обводка STL (startEdgesTask)
+    // и кадровый проход по семействам. Без модели остаётся прежний.
+    if (model)
+        quality_ = model->quality;
     if (model && model->is_step) {
         rev_surfaces_ = model->surfaces;
         tan_fams_ = model->families;
@@ -1149,17 +1176,20 @@ void GcodeToolpath::applyModelData(const std::shared_ptr<const ModelData> &model
 void GcodeToolpath::startEdgesTask(const std::shared_ptr<const ModelData> &model, int token)
 {
     // Обводка вторым проходом (эталон - поток _compute_edges): STEP отдаёт её
-    // готовой из чтения модели, STL считает рёбра по двугранному углу
-    // (_feature_edges, 20 градусов). Работа идёт вне GUI-потока, результат
-    // применяется по токену: обводка устаревшей модели не публикуется.
+    // готовой из чтения модели, STL считает рёбра по двугранному углу и допуску
+    // упрощения пресета (у med - 20 градусов и 0.15 мм). Работа идёт вне
+    // GUI-потока, результат применяется по токену: обводка устаревшей модели не
+    // публикуется.
     const std::shared_ptr<const ModelData> shared = model;
-    QThreadPool::globalInstance()->start(QRunnable::create([this, token, shared] {
+    const gv::QualityPreset quality = model ? model->quality : gv::QualityPreset{};
+    QThreadPool::globalInstance()->start(QRunnable::create([this, token, shared, quality] {
         gv::PackedEdges packed;
         if (shared->has_step_edges) {
             packed = shared->step_edges;
         } else {
             try {
-                packed = gv::featureEdgesNp(shared->verts, 20.0);
+                packed = gv::featureEdgesNp(shared->verts, quality.outlineFeatureEdgeDeg,
+                                            quality.outlineFeatureSimplifyMm);
             } catch (const std::exception &exc) {
                 reportRefusal(QStringLiteral("обводка меша не посчитана: %1")
                                   .arg(QString::fromUtf8(exc.what())));

@@ -111,7 +111,7 @@ export function ProgramSide({
   return (
     <aside className="flex min-h-0 flex-col gap-2" aria-label="Обработка программы">
       <Panel title="Обработка" className="min-h-0 flex-1">
-        <div className={wide ? WIDE_SECTIONS : 'flex h-full flex-col overflow-hidden'}>
+        <div className={wide ? WIDE_SECTIONS : 'flex h-full flex-col overflow-y-auto'}>
           <Section
             icon={FileCode}
             title="Выполнение"
@@ -162,6 +162,9 @@ export function ProgramSide({
                     <span className="min-w-0 flex-1 truncate text-xs font-semibold">
                       {tool?.name ?? 'Не найден в таблице'}
                       {inSpindle && <span className="sr-only"> (в шпинделе)</span>}
+                    </span>
+                    <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground" title="Наработка">
+                      {formatTime(state.toolTime[n] ?? 0)}
                     </span>
                     {tool && (
                       <span

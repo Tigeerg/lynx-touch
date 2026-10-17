@@ -719,7 +719,9 @@ class GcodeToolpath(QObject):
         делает stepledges.vert по eyeRaw/camFloatMm, поэтому статические
         B-rep рёбра загружаются один раз на модель и на движение камеры не
         перепаковываются: раньше их репак на GUI-потоке стоил ~22 мс/кадр
-        (замер на Test_model, 18986 сегментов)."""
+        (замер на Test_model). Рёбер B-rep у модели 4884 до склейки и 2426 после
+        (test_stepledges_plugin.py); 18986 сегментов - это обводка STL до
+        упрощения (test_outline_segments.py), другое число."""
         try:
             eye = QVector3D(view_point.x() - self._part_pos[0],
                             view_point.y() - self._part_pos[1],

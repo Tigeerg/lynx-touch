@@ -278,12 +278,24 @@ CAD-style visualisation (Qt Quick 3D + OCCT):
   reference is no longer mandatory.
 
 Performance and hardware adaptivity:
-- quality presets `low`/`med`/`high` plus a fallback `safe` (software rasterizer): MSAA (off/4x/8x),
-  tessellation deflection (0.10/0.05/0.03 mm), edge tolerance and coalescing step, silhouette refresh rate
-  (every 4th frame / every frame), tangent layers, `lineWidthPx`, grid density, a DPR clamp, `xray` disabled
-  on weak hardware;
-- a manual level switch (`root.quality` and a key) and the `CNC_QUALITY` environment variable modelled on
-  `CNC_CPP` and `CNC_SILHOUETTE`;
+- done (0.32.0): quality presets `low`/`med`/`high` plus a fallback `safe` (software rasterizer) — one set of
+  tolerances in `modules/gcode-viewer/cpp/core/quality.h`: MSAA (off/4x/8x), tessellation deflection of the skin
+  and of the B-rep edge polylines (0.2/0.05/0.02 mm, 0.5 at `safe`), edge coalescing, silhouette weld and
+  thresholds, normal crease angle, outline feature angle and Douglas-Peucker simplification tolerance, cone
+  minimum slant and probe azimuths, silhouette arc angle and minimum span, DROP axial overlap; silhouette refresh
+  step (every frame / every 4th frame), grid density 20/24 against 40/48, at `safe` an outline ribbon of 1 px
+  against 2 and a deeper offset, a DPR clamp (logical pixels at `low`/`safe`) and `xray` disabled there;
+- `med` repeats the numbers that were in force before the presets, so an empty environment changes nothing:
+  `bench_probe` reports the same geometry (verts 136194, faces 45398, candidates 57842, edge_segs 2426,
+  tan_fams 124) and the reference checks stay green. The `low`/`high`/`safe` values are proposals; only the
+  deflection is measured (i5-13420H, median of three): tessellation 129.8 -> 61.3 / 416.4 / 56.0 ms and
+  45398 -> 7856 / 175808 / 4132 triangles, silhouette topology 20.4 -> 3.8 / 83.3 / 2.0 ms, tangent families
+  17.1 -> 3.1 / 113.2 / 1.9 ms;
+- the level is chosen by the `CNC_QUALITY` environment variable (case-insensitive, like `CNC_CPP` and
+  `CNC_SILHOUETTE`) and by the `root.quality` property; it is set by the entry point (`cpp/viewer/main.cpp`,
+  `preview_3d.py`, `smoke_test_qml.py`, `render_probe.py`), while the `Q` key cycles the levels; the NC parse and
+  the collision scan are not changed by the level, their numbers stay in the environment (`CNC_DECIMATE_TOL`,
+  `CNC_ARC_DECIMATE_TOL`, `CNC_COLLISION_STEP`);
 - auto-detection: the OpenGL version and renderer string via `QOpenGLContext`, a software rasterizer hint
   (llvmpipe/softpipe/Basic Render Driver) -> the `safe` level, the core count via
   `QThread::idealThreadCount`, and a reference run of a few frames after `sceneGraphInitialized`; keep the

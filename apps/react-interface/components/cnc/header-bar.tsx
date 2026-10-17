@@ -68,7 +68,9 @@ export function HeaderBar({
                   onClick={() => onWorkplace(w)}
                   className={cn(
                     'flex size-7 items-center justify-center rounded-sm border transition-colors',
-                    active ? 'border-primary bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent',
+                    active
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-accent',
                   )}
                 >
                   <Icon className="size-3.5" aria-hidden="true" />

@@ -5,7 +5,7 @@ import { AXES, type Axis, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { MdiInput } from '../mdi-input'
 import { ActiveCodes } from '../program-side'
-import { formatCoord, Lamp, Panel } from '../primitives'
+import { formatCoord, formatTime, Lamp, Panel } from '../primitives'
 import { LoadRow, OperatorPad, OverrideRow, RapidRow, Section } from '../side-status'
 
 // Рабочее место «НАЛАДКА»: слева — крупные рабочие и машинные координаты, строка
@@ -138,7 +138,7 @@ export function SetupSide({
   return (
     <aside className="flex min-h-0 flex-col gap-2" aria-label="Наладка: состояние">
       <Panel title="Наладка" className="min-h-0 flex-1">
-        <div className="flex h-full flex-col overflow-hidden">
+        <div className="flex h-full flex-col overflow-y-auto">
           <Section
             icon={Wrench}
             title="Инструмент"
@@ -151,7 +151,8 @@ export function SetupSide({
               <div className="min-w-0 leading-tight">
                 <p className="truncate text-sm font-semibold">{tool?.name ?? 'Не найден в таблице'}</p>
                 <p className="truncate font-mono text-xs text-muted-foreground">
-                  D{tool?.diameter} · L {tool?.length.toFixed(3)} · ресурс {tool?.life}%
+                  D{tool?.diameter} · L {tool?.length.toFixed(3)} · ресурс {tool?.life}% · наработка{' '}
+                  {formatTime(state.toolTime[state.tool] ?? 0)}
                 </p>
               </div>
             </div>

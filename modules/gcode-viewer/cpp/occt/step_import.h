@@ -37,7 +37,13 @@ TopoDS_Shape readStepShape(const std::string& utf8Path);
 // TopExp_Explorer(TopAbs_FACE), узлы грани подряд, треугольники - с разворотом
 // при ориентации REVERSED. Порядок обхода и порядок вершин внутри треугольника
 // - часть контракта с эталоном, менять нельзя.
-std::vector<double> tessellateSoup(const TopoDS_Shape& shape, double deflection = 0.05);
+//
+// shapeAlreadyMeshed=true пропускает BRepMesh: форма размещена выше тем же
+// вызовом с теми же параметрами (как у loadStepSurfaces). Рантайм этим не
+// пользуется, флагом меряют разбивку тесселяции на мешер и сборку супа
+// (bench_probe, step_mesh / step_soup).
+std::vector<double> tessellateSoup(const TopoDS_Shape& shape, double deflection = 0.05,
+                                   bool shapeAlreadyMeshed = false);
 
 // Разворот оболочки наружу, если площадь-взвешенная нормаль смотрит к центроиду:
 // одно решение на модель. Возвращает (F,3,3) float64, тот же суп при
@@ -51,9 +57,12 @@ std::vector<double> orientShellOutward(const std::vector<double>& soup);
 void orientShellOutwardInPlace(std::vector<double>& soup);
 
 // load_step_model по сетке и нормалям: тесселяция, ориентация, нормали кожи.
-StepModel loadStepModel(const TopoDS_Shape& shape, double deflection = 0.05);
+// creaseDeg - порог сглаживания нормалей (core/normals), у med 20 градусов.
+StepModel loadStepModel(const TopoDS_Shape& shape, double deflection = 0.05,
+                        double creaseDeg = 20.0);
 
 // То же по пути к файлу: чтение STEP внутри.
-StepModel loadStepModel(const std::string& utf8Path, double deflection = 0.05);
+StepModel loadStepModel(const std::string& utf8Path, double deflection = 0.05,
+                        double creaseDeg = 20.0);
 
 } // namespace gv

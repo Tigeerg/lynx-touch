@@ -152,6 +152,7 @@ export function useCncMachine() {
       e.preventDefault()
       const key = softkeys[Number(fn[1]) - 1]
       if (key && !key.disabled) dispatch(key.action)
+      else if (key?.disabled) dispatch({ type: 'HINT', text: key.reason ?? 'Сейчас недоступно' })
       return
     }
     if (state.editor) return

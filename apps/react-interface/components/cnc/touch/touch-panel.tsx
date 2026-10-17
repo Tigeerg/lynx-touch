@@ -8,7 +8,6 @@ import { CalcOverlay } from '../calc-overlay'
 import { ToolCallDialog } from '../tool-call-dialog'
 import { HelpOverlay } from '../help-overlay'
 import { ProgramSide } from '../program-side'
-import { PositionScreen } from '../screens/position-screen'
 import { SetupScreen, SetupSide } from '../screens/setup-screen'
 import { ProgramScreen } from '../screens/program-screen'
 import { TestScreen } from '../screens/test-screen'
@@ -63,17 +62,12 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
 
         <div className="relative flex min-h-0 flex-1 flex-col gap-1.5">
           <main className="min-h-0 flex-1">
-            {state.screen === 'pos' &&
-              (state.workplace === 'SETUP' ? (
-                <SetupScreen state={state} dispatch={dispatch} />
-              ) : (
-                <PositionScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
-              ))}
+            {state.screen === 'pos' && <SetupScreen state={state} dispatch={dispatch} />}
             {state.screen === 'prog' &&
               (testMode ? (
                 <TestScreen state={state} dispatch={dispatch} pathView={pathView} />
               ) : state.workplace === 'RUN' ? (
-                <AutoScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
+                <AutoScreen state={state} dispatch={dispatch} pathView={pathView} />
               ) : (
                 <ProgramScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
               ))}

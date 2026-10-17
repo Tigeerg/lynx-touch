@@ -69,6 +69,8 @@ export interface TestState {
   bbox: boolean
   /** Графика очищена: траектория не рисуется (F6). */
   hidePath: boolean
+  /** Работа: показывать код, а не графику (F8 «Вид»). */
+  autoCode: boolean
   view: PathView
 }
 
@@ -233,6 +235,7 @@ export interface MachineState {
   offsets: WorkOffset[]
   activeOffset: number
   tools: Tool[]
+  toolTime: Record<number, number>
   tool: number
   pendingTool: number
   line: number

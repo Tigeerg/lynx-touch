@@ -22,9 +22,10 @@ struct StepBundle {
 
 // Один проход STEP (readStepShape), тесселяция, разворот оболочки наружу,
 // crease-aware нормали (creaseDeg = 20, как у эталона) и рёбра формы с линейным
-// допуском рёбер 0.05 мм. Путь - в UTF-8: так его принимает OCCT. Ошибка чтения
-// - std::runtime_error.
-StepBundle loadStepBundle(const std::string &utf8Path, double deflection = 0.05);
+// допуском рёбер edgeDeflection (0.05 мм, как у эталона). Путь - в UTF-8: так его
+// принимает OCCT. Ошибка чтения - std::runtime_error.
+StepBundle loadStepBundle(const std::string &utf8Path, double deflection = 0.05,
+                          double edgeDeflection = 0.05, double creaseDeg = 20.0);
 
 // Модель и аналитические поверхности вращения одного файла за одно чтение:
 // проход STEPControl_Reader стоит около 0.8 с на модель, и второй проход ради
@@ -37,7 +38,8 @@ struct StepBundleAll {
     StepSurfaceList surfaces;
 };
 
-StepBundleAll loadStepBundleAll(const std::string &utf8Path, double deflection = 0.05);
+StepBundleAll loadStepBundleAll(const std::string &utf8Path, double deflection = 0.05,
+                                double edgeDeflection = 0.05, double creaseDeg = 20.0);
 
 // Только аналитические поверхности файла (чтение STEP внутри). Нужны там, где
 // STEP-ветка осталась на Python, а поверхности уже считает C++.

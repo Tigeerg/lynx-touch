@@ -5,8 +5,8 @@ import { useEffect, useMemo, useRef, type Dispatch } from 'react'
 import { currentFile, distanceToGo, programLines, toWork, type Action } from '@/lib/cnc/machine'
 import { AXES, type Axis, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
-import { buildToolpath, simPose, type PathView } from '@/lib/cnc/toolpath'
-import { formatCoord, Lamp, Panel } from '../primitives'
+import { buildToolpath, remainingLength, simPose, type PathView } from '@/lib/cnc/toolpath'
+import { formatCoord, formatDuration, Lamp, Panel } from '../primitives'
 import { ToolpathView } from '../toolpath-view'
 
 function highlight(line: string) {
@@ -271,6 +271,7 @@ export function ProgramList({ state, dispatch }: { state: MachineState; dispatch
   const running = !sim && (state.run === 'RUN' || state.run === 'HOLD')
   const follow = sim ? state.sim.line : running ? state.line : state.cursor.prog
   const file = currentFile(state)
+  const restMs = (remainingLength(file.lines, sim ? state.sim.line : state.line) / (state.programFeed || 1000)) * 60000
 
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>(`[data-index="${follow}"]`)?.scrollIntoView({ block: 'nearest' })
@@ -282,29 +283,34 @@ export function ProgramList({ state, dispatch }: { state: MachineState; dispatch
       icon={FileCode}
       className={cn('h-full', state.editMode && 'border-warning')}
       right={
-        state.editMode ? (
-          <span className="flex items-center gap-1.5 rounded-sm bg-warning px-2 py-0.5 text-xs font-bold text-warning-foreground">
-            <SquarePen className="size-3.5" aria-hidden="true" />
-            РЕДАКТИРОВАНИЕ
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-[11px] font-semibold text-muted-foreground" title="Оценка остатка времени">
+            ≈ {formatDuration(restMs)}
           </span>
-        ) : sim ? (
-          <span className="flex items-center gap-1.5 rounded-sm bg-warning px-2 py-0.5 text-xs font-bold text-warning-foreground">
-            <Play className="size-3.5 fill-current" aria-hidden="true" />
-            СИМУЛЯЦИЯ
-          </span>
-        ) : (
-          <div className="flex items-center gap-2 text-[11px] font-medium">
-            <span className="flex items-center gap-1">
-              <Lamp on={state.singleBlock} tone="warning" /> Покадр.
+          {state.editMode ? (
+            <span className="flex items-center gap-1.5 rounded-sm bg-warning px-2 py-0.5 text-xs font-bold text-warning-foreground">
+              <SquarePen className="size-3.5" aria-hidden="true" />
+              РЕДАКТИРОВАНИЕ
             </span>
-            <span className="flex items-center gap-1">
-              <Lamp on={state.optStop} tone="primary" /> M01
+          ) : sim ? (
+            <span className="flex items-center gap-1.5 rounded-sm bg-warning px-2 py-0.5 text-xs font-bold text-warning-foreground">
+              <Play className="size-3.5 fill-current" aria-hidden="true" />
+              СИМУЛЯЦИЯ
             </span>
-            <span className="flex items-center gap-1">
-              <Lamp on={state.dryRun} tone="warning" /> Холост.
-            </span>
-          </div>
-        )
+          ) : (
+            <div className="flex items-center gap-2 text-[11px] font-medium">
+              <span className="flex items-center gap-1">
+                <Lamp on={state.singleBlock} tone="warning" /> Покадр.
+              </span>
+              <span className="flex items-center gap-1">
+                <Lamp on={state.optStop} tone="primary" /> M01
+              </span>
+              <span className="flex items-center gap-1">
+                <Lamp on={state.dryRun} tone="warning" /> Холост.
+              </span>
+            </div>
+          )}
+        </div>
       }
     >
       <ol ref={listRef} className="h-full overflow-hidden py-0.5 font-mono text-sm" aria-label="Кадры программы">

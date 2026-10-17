@@ -38,6 +38,8 @@
 #include <QTextStream>
 #include <QUrl>
 
+#include "core/quality.h"   // gv::presetFromEnv: уровень CNC_QUALITY тем же чтением, что ядро
+
 #ifdef Q_OS_WIN
 #  include <windows.h>
 #endif
@@ -249,6 +251,12 @@ int main(int argc, char *argv[])
     // признаков нажатия (GcodeViewer3D.qml, keyLogRaw/keyLogState) - ею измеряют
     // доставку клавиш на разных раскладках. По умолчанию вывод молчит.
     root_item->setProperty("keyDebug", qEnvironmentVariableIsSet("CNC_KEY_DEBUG"));
+
+    // Уровень качества из CNC_QUALITY: им корень вьювера задаёт рендер-ручки
+    // (GcodeViewer3D.qml, свойство quality). Чтение то же, что у ядра
+    // (gv::presetFromEnv): пустое или неизвестное значение даёт med - прежнюю
+    // картинку, поэтому без переменной поведение не меняется.
+    root_item->setProperty("quality", QString::fromLatin1(gv::presetFromEnv().level));
 
     if (program.isEmpty()) {
         say(QStringLiteral("gcodeviewer: УП не задана: вьювер пуст "

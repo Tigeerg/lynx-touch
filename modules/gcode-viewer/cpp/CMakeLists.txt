@@ -453,6 +453,10 @@ set_target_properties(gcodeviewer PROPERTIES
 # Qt6::Quick нужен QQuickView (окно для Item-корня вьювера); QtQuick3D движок
 # находит как QML-модуль Qt, отдельной линковки не требует.
 target_link_libraries(gcodeviewer PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
+# core/quality.h - header-only пресеты качества: точка входа читает уровень тем
+# же чтением, что ядро (gv::presetFromEnv). Линковка не нужна, но каталог cpp/
+# обязан быть в путях поиска заголовков.
+target_include_directories(gcodeviewer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(gcodeviewer PRIVATE
     GV_REPO_ROOT="${GV_REPO_ROOT}"
     GV_VIEWER_QML="${CMAKE_CURRENT_SOURCE_DIR}/../GcodeViewer3D.qml")

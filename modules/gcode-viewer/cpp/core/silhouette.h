@@ -9,6 +9,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "core/quality.h"     // gv::QualityPreset - допуски сварки и отбора кандидатов
+
 namespace gv {
 
 // Топология меша для силуэта (MeshTopology в gv_types.py).
@@ -34,19 +36,36 @@ struct MeshTopology {
 // ряд, как у load_step_model и load_stl_vertices).
 //
 // Повтор _build_silhouette_topology бит-в-бит, включая порядок операций:
-//   * сварка вершин - по сетке weldMm (np.round(V / weld), округление
+//   * сварка вершин - по сетке weld (np.round(V / weld), округление
 //     пол-к-чётному), кластеры и их номера - в лексикографическом порядке
 //     ключей, как np.unique(axis=0);
 //   * рёбра треугольников (a,b) с a < b, группы ровно по двум граням -
 //     кандидаты в порядке лексикографической сортировки ключей;
 //   * нормали и площади - по самим треугольникам (сглаживание размыло бы
 //     горизонт), d - n·cen в float32 тем же порядком слагаемых, что numpy.
-MeshTopology buildSilhouetteTopology(const std::vector<double>& soup, double weldMm = 1e-4);
+// Допуски берутся из пресета (core/quality.h): у уровня med они те же, что
+// были у жёстко заданных чисел.
+MeshTopology buildSilhouetteTopology(const std::vector<double>& soup,
+                                     const QualityPreset& quality = QualityPreset{});
 
 // Силуэтные рёбра на глазу eyeMm (raw-кадр модели): (K,2,3) float32 плоским
 // рядом - концы кандидатов в порядке топологии; пустой вектор, если силуэта нет.
 // Ребро силуэтное, когда смежные грани лежат по разные стороны от глаза
 // (знак s у них разный): ребро разделяет видимую и невидимую грань.
 std::vector<float> meshSilhouetteSegments(const MeshTopology& topo, const double eyeMm[3]);
+
+// Буферы кадрового силуэта, переживающие кадр: у Test_model на кадр приходилось
+// 20 выделений и 63 КБ, из них 45 КБ - знак по граням. Ёмкости здесь, поэтому на
+// кадр остаётся заполнение, а не заведение буферов.
+struct MeshSilhouetteScratch {
+    std::vector<std::int8_t> sign;   // (F,) знак s = n*E - d по граням
+    std::vector<float> out;          // (K,2,3) float32 плоским рядом
+};
+
+// Силуэт в переданный буфер: scratch.out очищается и заполняется тем же порядком
+// операций, что и у версии выше (числа те же бит-в-бит); возврат - ссылка на него.
+const std::vector<float>& meshSilhouetteSegments(const MeshTopology& topo,
+                                                 const double eyeMm[3],
+                                                 MeshSilhouetteScratch& scratch);
 
 } // namespace gv

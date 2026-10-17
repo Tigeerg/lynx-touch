@@ -154,7 +154,11 @@ void HLRLineGeometry::setSegments(const float *segs, int count)
 
     static const int pick[6] = {0, 1, 1, 0, 1, 0};
     static const float sgn[6] = {1.0f, 1.0f, -1.0f, 1.0f, -1.0f, -1.0f};
-    std::vector<float> vert(std::size_t(m) * 6 * 12, 0.0f);
+    // Буфер тот же, что в прошлом кадре: assign сохраняет ёмкость, поэтому
+    // выделение 64.5 КБ (силуэт) и 683 КБ (обводка) теперь раз на модель, а не
+    // раз на кадр. Значения те же: assign заливает нулями, как прежний вектор.
+    std::vector<float> &vert = vert_;
+    vert.assign(std::size_t(m) * 6 * 12, 0.0f);
     LoHi range;
     for (int s = 0; s < m; ++s) {
         const float *ra = &segs[std::size_t(s) * 6];

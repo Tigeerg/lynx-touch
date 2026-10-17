@@ -39,6 +39,13 @@ export function buildToolpath(lines: string[]): Segment[] {
 
 export type Waypoint = { pos: Point3; dtg: Point3 | null }
 
+// Длина оставшихся перемещений от кадра fromLine: ориентир для оценки времени.
+export function remainingLength(lines: string[], fromLine: number): number {
+  return buildToolpath(lines)
+    .filter((s) => s.line >= fromLine)
+    .reduce((sum, s) => sum + Math.hypot(s.to.X - s.from.X, s.to.Y - s.from.Y, s.to.Z - s.from.Z), 0)
+}
+
 export function simPose(segments: Segment[], simLine: number): Waypoint {
   let pos: Point3 = { X: 0, Y: 0, Z: 0 }
   for (const s of segments) {

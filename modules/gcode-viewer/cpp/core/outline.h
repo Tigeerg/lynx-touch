@@ -19,6 +19,8 @@ constexpr double FEATURE_SIMPLIFY_MM = 0.15;
 // Зеркало _feature_edges_np: суп треугольников (9 координат float64 на
 // треугольник) -> упакованный Lines-буфер рёбер. Остаются рёбра границы, рёбра
 // с числом граней больше двух и рёбра с двугранным углом больше angle_deg.
-PackedEdges featureEdgesNp(const std::vector<double>& soup, double angle_deg);
+// simplifyMm - допуск упрощения цепочек (у уровня med - FEATURE_SIMPLIFY_MM).
+PackedEdges featureEdgesNp(const std::vector<double>& soup, double angle_deg,
+                           double simplifyMm = FEATURE_SIMPLIFY_MM);
 
 } // namespace gv

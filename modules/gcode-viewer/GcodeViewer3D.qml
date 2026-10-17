@@ -17,7 +17,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.31.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.34.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -26,6 +26,34 @@ Item {
     property real panX: 0          // pan offset along camera-right
     property real panY: 0          // pan offset along camera-up
     property bool invertX: false   // invert horizontal orbit (false = natural)
+
+    // ---- качество рендера: уровень low/med/high/safe (DESIGN.md, разд. 13) ----
+    // Уровень задаёт точку входа (CNC_QUALITY) или клавиша Q. Числа уровня med
+    // повторяют значения, действовавшие до пресетов, поэтому без CNC_QUALITY
+    // картинка та же; уровень влияет на рендер, геометрию разбирает ядро.
+    property string quality: "med"
+    readonly property bool qualityReduced: root.quality === "low" || root.quality === "safe"
+    readonly property bool qualitySafe: root.quality === "safe"
+    // MSAA View3D: med - 4x (сегодня), high - 8x, low/safe - выкл (главный
+    // тормоз кадра, см. комментарий у environment).
+    readonly property int msaaMode: root.qualityReduced ? SceneEnvironment.NoAA
+                                                        : SceneEnvironment.MSAA
+    readonly property int msaaQuality: root.quality === "high" ? SceneEnvironment.High
+                                        : SceneEnvironment.Medium
+    // Обводка: safe тоньше (1 px против 2) и смещение глубже - дешевле на
+    // программном растеризаторе; med/high/low держат сегодняшние числа.
+    readonly property real edgeLineWidthPx: root.qualitySafe ? 1.0 : 2.0
+    readonly property real edgePolyOffset: root.qualitySafe ? 0.00006 : 0.00003
+    readonly property real edgeDepthBias: root.qualitySafe ? -1500 : -1000
+    // Шаг пересчёта силуэта: low/safe - каждый 4-й кадр, med/high - каждый.
+    readonly property int silhouetteStep: root.qualityReduced ? 4 : 1
+    // Сетка пола: low/safe грубее - реже линии и шире затухание.
+    readonly property int gridStep: root.qualityReduced ? 40 : 20
+    readonly property int gridFeather: root.qualityReduced ? 48 : 24
+    // Ограничение DPR: low/safe рендерят сцену в логических пикселях (DPR 1)
+    // вместо логический размер * DPR; 0 - размер следует за элементом (сегодня).
+    readonly property int renderTextureWidth: root.qualityReduced ? Math.round(view3d.width) : 0
+    readonly property int renderTextureHeight: root.qualityReduced ? Math.round(view3d.height) : 0
 
     // ---- edge layer toggles (diagnostics: E / D) ----
     property bool showBrepEdges: true      // static STEP B-rep outline
@@ -243,14 +271,14 @@ Item {
         size: root.floorSize
         // Fixed cell/feather like the original layout (the field got wider,
         // the fade band must not grow with it - it was shrinking the visible
-        // area at the edges).
-        step: 20
+        // area at the edges). low/safe - грубее (quality).
+        step: root.gridStep
         // Dipped ~1 px below the true floor: the part bottom and the billet
         // bottom lie exactly in this plane; coplanar surfaces z-fight.
         level: root.floorLevel - 1.0 * root.outlineMmPerPx
         centerX: root.floorX
         centerZ: root.floorZ
-        feather: 24
+        feather: root.gridFeather
     }
 
     // Compact machine axes: X red (+X), Y green (-Z), Z blue (+Y, up)
@@ -301,6 +329,11 @@ Item {
     View3D {
         id: view3d
         anchors.fill: parent
+        // Ограничение DPR (quality): 0 - размер текстуры следует за элементом
+        // (логический размер * DPR, сегодняшнее поведение), low/safe - логические
+        // пиксели (DPR 1). Размеры меняются только на этих уровнях.
+        explicitTextureWidth: root.renderTextureWidth
+        explicitTextureHeight: root.renderTextureHeight
 
         environment: SceneEnvironment {
             clearColor: root.backgroundColor
@@ -314,8 +347,8 @@ Item {
             // разница в пределах семантики режима кожи, не разрывов нет).
             // На быстрой карте кадровая цена не видна: QSG_RENDER_TIMING
             // даёт render=0 мс при swap=16 мс - упор в vsync, не в растер.
-            antialiasingMode: SceneEnvironment.MSAA
-            antialiasingQuality: SceneEnvironment.Medium
+            antialiasingMode: root.msaaMode
+            antialiasingQuality: root.msaaQuality
         }
 
         PerspectiveCamera {
@@ -447,7 +480,7 @@ Item {
             // поэтому режимы разведены двумя моделями (visible), а не сменой
             // свойства на одном материале.
             Model {
-                visible: !root.xray
+                visible: !root.xrayOn
                 geometry: path ? path.partGeometry : null
                 materials: [
                     PrincipledMaterial {
@@ -463,7 +496,7 @@ Item {
             // Рентген (X включён): кожа полупрозрачная и глубину не пишет -
             // скрытые кромки и артефакты отрисовки видны для поиска дефектов.
             Model {
-                visible: root.xray
+                visible: root.xrayOn
                 geometry: path ? path.partGeometry : null
                 materials: [
                     PrincipledMaterial {
@@ -483,14 +516,15 @@ Item {
                 // Малый bias + cam-float (смещение к глазу в set_segments):
                 // видимые рёбра чёткие, скрытые отсекаются кожей.
                 // -50000 (передний слой) давал ложный «рентген» детали.
-                depthBias: -1000
+                // safe - глубже (quality): coarse-точность программного растра.
+                depthBias: root.edgeDepthBias
                 // Constant-width screen-space ribbons (2 px, distance-field AA):
                 // crisp at any zoom (three.js LineMaterial style: alpha falls off
                 // across fwidth() borders, not by MSAA coverage), depth-tested.
                 materials: CustomMaterial {
                     shadingMode: CustomMaterial.Unshaded
-                    property real lineWidthPx: 2.0
-                    property real polyOffset: 0.00003
+                    property real lineWidthPx: root.edgeLineWidthPx
+                    property real polyOffset: root.edgePolyOffset
                     property real viewportW: view3d.width
                     property real viewportH: view3d.height
                     property color edgeColor: "#000000"
@@ -507,15 +541,15 @@ Item {
                 // Силуэт по мешу (ребро на горизонте поверхности): нужен тест
                 // глубины, иначе дальние участки горизонта рисуются сквозь тело
                 // и сдваиваются со швами. Малый bias + cam-float держат их
-                // чёткими на видимых стенках.
-                depthBias: -1000
+                // чёткими на видимых стенках; safe - глубже (quality).
+                depthBias: root.edgeDepthBias
                 // Constant-width screen-space ribbons (2 px, distance-field AA):
                 // crisp at any zoom (three.js LineMaterial style: alpha falls off
                 // across fwidth() borders, not by MSAA coverage), depth-tested.
                 materials: CustomMaterial {
                     shadingMode: CustomMaterial.Unshaded
-                    property real lineWidthPx: 2.0
-                    property real polyOffset: 0.00003
+                    property real lineWidthPx: root.edgeLineWidthPx
+                    property real polyOffset: root.edgePolyOffset
                     property real viewportW: view3d.width
                     property real viewportH: view3d.height
                     property color edgeColor: "#000000"
@@ -789,7 +823,9 @@ Item {
                                           // режет FPS вдвое; включается
                                           // клавишей X для поиска артефактов
                                           // (два материала кожи разведены
-                                          // видимостью - см. Node детали)
+                                          // видимостью - см. Node детали).
+                                          // low/safe запрещают рентген (quality).
+    readonly property bool xrayOn: root.xray && !root.qualityReduced
     property bool showCollisions: true    // красные диски столкновений;
                                           // off в render_probe - не
                                           // заслоняют контур
@@ -808,7 +844,9 @@ Item {
     // Keep the mesh silhouette current: recomputed when a part finishes
     // loading and once per rendered frame during orbiting (events are
     // batched); hidden parts are cut by the GPU depth test, not here.
+    // low/safe пересчитывают силуэт каждый silhouetteStep-й кадр (quality).
     property bool tangentsPending: false
+    property int silhouetteFrame: 0
     function refreshTangents() {
         if (path && root.showPartVisible)
             path.refreshTangents(camera.position)
@@ -819,6 +857,9 @@ Item {
             if (!root.tangentsPending)
                 return
             root.tangentsPending = false
+            root.silhouetteFrame++
+            if (root.silhouetteFrame % root.silhouetteStep !== 0)
+                return
             root.refreshTangents()
         }
     }
@@ -834,7 +875,8 @@ Item {
 
     // ---- Playback: Space = play/pause, Esc = reset to start ----
     // ---- Hotkeys: S stock, M part model, L limit length, T stages,
-    // ----          PgUp/PgDn switch stage, P play ----
+    // ----          PgUp/PgDn switch stage, P play, E edges, D tangents,
+    // ----          X xray, F fps, Q - цикл качества (med -> low -> high -> safe).
     // Раскладка не должна гасить горячие клавиши: на русской раскладке Qt сообщает
     // для физической X код Key_Ch, а не Key_X, и буквенные ветки ниже не работают.
     // Буквы сверяются по nativeScanCode - скан-коду физической клавиши, он от
@@ -857,6 +899,15 @@ Item {
         return ev.nativeScanCode === scan || ev.key === qtkey
     }
 
+    // Клавиша Q: цикл уровней med -> low -> high -> safe -> med. Механизм тот
+    // же, что у прочих букв: физический скан-код 0x10 или Qt.Key_Q на раскладке,
+    // где Q стоит в другом месте.
+    function cycleQuality() {
+        var order = ["med", "low", "high", "safe"]
+        var i = order.indexOf(root.quality)
+        root.quality = order[(i + 1) % order.length]
+    }
+
     // Диагностика клавиатуры: печатает признаки события и состояние переключателей
     // после обработки. По умолчанию молчит (строка на каждое нажатие - шум), включает
     // точка входа переменной окружения CNC_KEY_DEBUG (cpp/viewer/main.cpp).
@@ -872,6 +923,7 @@ Item {
             + " all=" + root.showAllCode + " stages=" + root.stageMode
             + " edges=" + root.showBrepEdges + " tangents=" + root.showTangentLines
             + " xray=" + root.xray + " fps=" + root.showFps
+            + " quality=" + root.quality
             + " playing=" + root.playing + " dist=" + Math.round(root.pathDist))
     }
 
@@ -915,7 +967,12 @@ Item {
             root.showTangentLines = !root.showTangentLines
             event.accepted = true
         } else if (root.keyIs(event, 0x2D, Qt.Key_X)) {
-            root.xray = !root.xray
+            // low/safe запрещают рентген: нажатие молчит (quality).
+            if (!root.qualityReduced)
+                root.xray = !root.xray
+            event.accepted = true
+        } else if (root.keyIs(event, 0x10, Qt.Key_Q)) {
+            root.cycleQuality()
             event.accepted = true
         } else if (root.keyIs(event, 0x21, Qt.Key_F)) {
             root.showFps = !root.showFps
@@ -953,9 +1010,10 @@ Item {
               + "   \u00D7" + root.speed.toFixed(1)
               + "   ·   Пробел — пуск/пауза   ·   Esc — в начало   ·   \u2191/\u2193 — скорость"
               + "   ·   S заготовка · M деталь · L длина · T этапы · PgUp/PgDn кадры"
+              + " · Q качество: " + root.quality
               + "   ·   E рёбра: " + (root.showBrepEdges ? "вкл" : "выкл")
               + " · D касательные: " + (root.showTangentLines ? "вкл" : "выкл")
-              + " · X рентген: " + (root.xray ? "вкл" : "выкл")
+              + " · X рентген: " + (root.xrayOn ? "вкл" : "выкл")
               + " · F fps: " + (root.showFps ? "вкл" : "выкл")
         color: "#535C66"
         font.pixelSize: 12

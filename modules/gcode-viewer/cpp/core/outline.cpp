@@ -209,7 +209,8 @@ void simplifyEdgeChains(const std::vector<std::uint32_t>& lo_ids,
 
 } // namespace
 
-PackedEdges featureEdgesNp(const std::vector<double>& soup, double angle_deg) {
+PackedEdges featureEdgesNp(const std::vector<double>& soup, double angle_deg,
+                           double simplifyMm) {
     const std::size_t nverts = soup.size() / 3;
     const std::size_t faces = nverts / 3;
     if (faces == 0) {
@@ -347,7 +348,7 @@ PackedEdges featureEdgesNp(const std::vector<double>& soup, double angle_deg) {
 
     std::vector<std::uint32_t> lo_ids;
     std::vector<std::uint32_t> hi_ids;
-    simplifyEdgeChains(keep_lo, keep_hi, u, FEATURE_SIMPLIFY_MM, lo_ids, hi_ids);
+    simplifyEdgeChains(keep_lo, keep_hi, u, simplifyMm, lo_ids, hi_ids);
     if (lo_ids.empty()) {
         return PackedEdges{};
     }

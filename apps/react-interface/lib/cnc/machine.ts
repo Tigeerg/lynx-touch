@@ -42,11 +42,11 @@ import {
   MODES,
   MPG_STEPS,
   SERVICE_SECTIONS,
-  type AlarmLevel,
+  screenOfTab,
+  tabOfScreen,
   type Axes,
   type Axis,
   type MachineState,
-  type Message,
   type Mode,
   type Screen,
   type ServiceSection,
@@ -56,6 +56,9 @@ import {
 import { distanceToGo, motionSpeed, toWork, workOffset, zeroAxes } from './coords'
 import { currentFile, programLines, setLines } from './files'
 import { listLength } from './list'
+import { cancelEdit, markSaved, setParam } from './service-edit'
+import { notify, pushAlarm } from './messages'
+import { MACHINE_LOCK_MSG, blockedFromMotion, isBusy } from './guards'
 
 export { distanceToGo, motionSpeed, toWork, workOffset } from './coords'
 export { currentFile, programLines } from './files'
@@ -153,8 +156,6 @@ export type Action =
   | MpgAction
   | TestAction
 
-const MACHINE_LOCK_MSG = 'Включена блокировка станка — оси не перемещаются'
-
 export const initialState: MachineState = {
   ladder: initialLadder,
   files: PROGRAM_FILES,
@@ -175,6 +176,7 @@ export const initialState: MachineState = {
   offsets: INITIAL_OFFSETS,
   activeOffset: 0,
   tools: INITIAL_TOOLS,
+  toolTime: {},
   tool: 1,
   pendingTool: 1,
   line: 0,
@@ -243,52 +245,6 @@ export const initialState: MachineState = {
   test: initialTest,
   search: { open: false, query: '', replace: '' },
   params: defaultParams(),
-}
-
-const timeNow = () => new Date().toLocaleTimeString('ru-RU', { hour12: false })
-
-const notify = (s: MachineState, text: string, level: Message['level'] = 'info'): MachineState => ({
-  ...s,
-  message: { text, level, ttl: 3500 },
-})
-
-const pushAlarm = (s: MachineState, code: number, level: AlarmLevel, text: string): MachineState => ({
-  ...s,
-  alarms: [{ id: `a${s.alarmSeq}`, code, level, text, time: timeNow(), active: true }, ...s.alarms],
-  alarmSeq: s.alarmSeq + 1,
-})
-
-const isBusy = (s: MachineState) => s.run === 'RUN' || s.run === 'HOLD'
-
-// Общий пропуск для действий перемещения («безопасный отвод», «в нуль детали»):
-// занятость и блокировка станка проверяются одинаково во всех путях, чтобы один
-// из них не забыл условие и не двинул оси, когда это запрещено.
-const blockedFromMotion = (s: MachineState, busyMessage: string): MachineState | null => {
-  if (isBusy(s)) return notify(s, busyMessage, 'warn')
-  if (s.machineLock) return notify(s, MACHINE_LOCK_MSG, 'warn')
-  return null
-}
-
-const cancelEdit = (s: MachineState): MachineState => {
-  const editing = s.service.editing
-  if (!editing) return s
-  return { ...s, params: { ...s.params, [editing.id]: editing.original }, service: { ...s.service, editing: null } }
-}
-
-const markSaved = (s: MachineState, id: string, value: number): MachineState => ({
-  ...s,
-  service: { ...s.service, saved: { ...s.service.saved, [id]: value } },
-})
-
-function setParam(s: MachineState, def: ParamDef, value: number): MachineState {
-  const n: MachineState = {
-    ...s,
-    params: { ...s.params, [def.id]: value },
-    service: { ...s.service, restartPending: s.service.restartPending || !!def.restart },
-  }
-  if (def.id === MAX_FEED_PARAM) n.feedOverride = Math.min(n.feedOverride, value)
-  if (def.id === MAX_SPINDLE_PARAM) n.spindleOverride = Math.min(n.spindleOverride, value)
-  return n
 }
 
 function executeLine(state: MachineState, index: number): MachineState {
@@ -427,7 +383,7 @@ export function reducer(state: MachineState, a: Action): MachineState {
   switch (a.type) {
     case 'TICK': {
       let n = s
-      if (n.message) {
+      if (n.message && n.message.ttl > 0) {
         const ttl = n.message.ttl - a.dt
         n = { ...n, message: ttl > 0 ? { ...n.message, ttl } : null }
       }
@@ -441,6 +397,7 @@ export function reducer(state: MachineState, a: Action): MachineState {
         return r.msg ? notify(r.s, r.msg) : r.s
       }
       if (n.mode === 'AUTO') n = { ...n, cycleTime: n.cycleTime + a.dt }
+      if (n.spindleOn) n = { ...n, toolTime: { ...n.toolTime, [n.tool]: (n.toolTime[n.tool] ?? 0) + a.dt } }
       if (n.dwell > 0) return { ...n, dwell: Math.max(0, n.dwell - a.dt) }
       if (n.motion) return stepMotion(n, a.dt)
       return completeBlock(n)
@@ -491,7 +448,7 @@ export function reducer(state: MachineState, a: Action): MachineState {
         )
         return notify({ ...n, programEnd: false, stopAfterBlock: false }, `MDI: ${text}`)
       }
-      return notify(s, `ПУСК недоступен в режиме «${MODE_LABEL[s.mode]}»`, 'warn')
+      return notify(s, `ПУСК недоступен в рабочем месте «${WORKPLACE_LABEL[s.workplace]}»`, 'warn')
     }
 
     case 'FEED_HOLD':
@@ -557,8 +514,10 @@ export function reducer(state: MachineState, a: Action): MachineState {
     case 'SET_WORKPLACE': {
       if (isBusy(s)) return notify(s, 'Смена рабочего места во время выполнения запрещена', 'warn')
       const mode: Mode = a.workplace === 'SETUP' ? 'JOG' : 'AUTO'
+      const kept = screenOfTab(tabOfScreen(s.screen), a.workplace)
+      const screen = MODE_LOCKED_SCREENS[mode].includes(kept) ? screenOfTab('work', a.workplace) : kept
       return notify(
-        { ...s, workplace: a.workplace, mode, dryRun: a.workplace === 'TEST', screen: MODE_START_SCREEN[mode] },
+        { ...s, workplace: a.workplace, mode, dryRun: a.workplace === 'TEST', screen },
         `Рабочее место: ${WORKPLACE_LABEL[a.workplace]}`,
       )
     }
@@ -592,7 +551,11 @@ export function reducer(state: MachineState, a: Action): MachineState {
 
     case 'SET_SCREEN':
       if (MODE_LOCKED_SCREENS[s.mode].includes(a.screen)) {
-        return notify(s, `В режиме «${MODE_LABEL[s.mode]}» экран «${SCREEN_LABEL[a.screen]}» заблокирован`, 'warn')
+        return notify(
+          s,
+          `В рабочем месте «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL[a.screen]}» заблокирован`,
+          'warn',
+        )
       }
       if (a.screen !== 'service' && (s.service.editing || s.service.auth)) {
         const reverted = cancelEdit(s)
@@ -861,7 +824,7 @@ export function reducer(state: MachineState, a: Action): MachineState {
       if (!open && s.probe.running) return notify(s, 'Дождитесь окончания измерения или нажмите СБРОС', 'warn')
       if (open && isBusy(s)) return notify(s, 'Остановите программу', 'warn')
       if (open && MODE_LOCKED_SCREENS[s.mode].includes('offset'))
-        return notify(s, `Щуп недоступен в режиме «${MODE_LABEL[s.mode]}»`, 'warn')
+        return notify(s, `Щуп недоступен в рабочем месте «${WORKPLACE_LABEL[s.workplace]}»`, 'warn')
       return {
         ...s,
         screen: open ? 'offset' : s.screen,
@@ -1083,7 +1046,9 @@ export function reducer(state: MachineState, a: Action): MachineState {
     case 'TOOL_RESET_LIFE': {
       const i = s.cursor.tool
       const tools = s.tools.map((t, idx) => (idx === i ? { ...t, life: 100 } : t))
-      return notify({ ...s, tools }, 'Ресурс инструмента сброшен')
+      const number = s.tools[i]?.number
+      const toolTime = number === undefined ? s.toolTime : { ...s.toolTime, [number]: 0 }
+      return notify({ ...s, tools, toolTime }, 'Ресурс инструмента сброшен')
     }
 
     case 'ALARM_ACK': {
@@ -1151,7 +1116,11 @@ export function reducer(state: MachineState, a: Action): MachineState {
       const on = a.on ?? !s.editMode
       if (on && isBusy(s)) return notify(s, 'Редактирование доступно только в останове', 'warn')
       if (on && MODE_LOCKED_SCREENS[s.mode].includes('prog'))
-        return notify(s, `В режиме «${MODE_LABEL[s.mode]}» экран «${SCREEN_LABEL.prog}» заблокирован`, 'warn')
+        return notify(
+          s,
+          `В рабочем месте «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL.prog}» заблокирован`,
+          'warn',
+        )
       if (on)
         return notify(
           { ...s, editMode: true, screen: 'prog' },

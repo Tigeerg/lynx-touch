@@ -83,7 +83,18 @@ export interface Softkey {
   action: Action
   active?: boolean
   disabled?: boolean
+  /** Причина, по которой кей отключён: показывается подсказкой и в строке сообщений. */
+  reason?: string
 }
+
+const FALLBACK_REASON = 'Сейчас недоступно'
+
+// Выравнивает набор до восьми слотов и заполняет причину у отключённых кеев, чтобы
+// отключённый кей не молчал (правило проекта).
+const slots = (keys: (Softkey | null)[]): (Softkey | null)[] =>
+  [...keys, ...Array<null>(Math.max(0, SOFTKEY_SLOTS - keys.length)).fill(null)].map((k) =>
+    k && k.disabled && !k.reason ? { ...k, reason: FALLBACK_REASON } : k,
+  )
 
 export function getSoftkeys(s: MachineState): (Softkey | null)[] {
   const busy = s.run === 'RUN' || s.run === 'HOLD'
@@ -95,7 +106,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       { label: 'Открыть', icon: FolderOpen, action: { type: 'FILE_OPEN' } },
       { label: 'Закрыть', icon: X, action: { type: 'FILE_DIALOG', open: false } },
     ]
-    return [...keys, ...Array<null>(SOFTKEY_SLOTS - keys.length).fill(null)]
+    return slots(keys)
   }
 
   if (s.toolDialog) {
@@ -103,12 +114,12 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       { label: 'Вызвать', icon: CornerDownRight, action: { type: 'TOOL_RUN' } },
       { label: 'Отмена', icon: X, action: { type: 'TOOL_DIALOG', open: false } },
     ]
-    return [...keys, ...Array<null>(SOFTKEY_SLOTS - keys.length).fill(null)]
+    return slots(keys)
   }
 
   if (s.calc) {
     keys = [{ label: 'Закрыть', icon: X, action: { type: 'CALC', open: false }, active: true }]
-    return [...keys, ...Array<null>(SOFTKEY_SLOTS - keys.length).fill(null)]
+    return slots(keys)
   }
 
   if (s.search.open) {
@@ -117,7 +128,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       { label: 'Заменить всё', icon: Replace, action: { type: 'SEARCH_REPLACE_ALL' }, disabled: busy },
       { label: 'Закрыть', icon: X, action: { type: 'SEARCH', open: false }, active: true },
     ]
-    return [...keys, ...Array<null>(SOFTKEY_SLOTS - keys.length).fill(null)]
+    return slots(keys)
   }
 
   // Рабочее место «НАЛАДКА»: набор F1-F8 для ручной подготовки (обмер, привязка
@@ -149,7 +160,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       { label: 'Прогрев', icon: Flame, action: { type: 'SPINDLE_WARMUP' }, disabled: busy || s.spindleOn },
       { label: 'Калькулятор', icon: Calculator, action: { type: 'CALC', open: true }, active: s.calc },
     ]
-    return [...keys, ...Array<null>(SOFTKEY_SLOTS - keys.length).fill(null)]
+    return slots(keys)
   }
 
   // Рабочее место «ПРОГОН»: проверка УП без движения осей. Набор F1-F8 ведёт по
@@ -171,7 +182,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       { label: 'Вид', icon: Eye, action: { type: 'PATH_VIEW_CYCLE' } },
       { label: 'Скрыть код', icon: Eye, action: { type: 'TEST_CURTAIN' }, active: s.test.curtain },
     ]
-    return [...keys, ...Array<null>(SOFTKEY_SLOTS - keys.length).fill(null)]
+    return slots(keys)
   }
 
   // Рабочее место «АВТО»: набор F1-F8 для боевой обработки на экране программы.
@@ -191,13 +202,13 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       { label: 'Проверка слома', icon: ScanSearch, action: { type: 'BROKEN_TOOL_CHECK' } },
       null,
       {
-        label: s.params[TOOLPATH_PARAM] === 1 ? 'Вид: текст' : 'Вид: графика',
+        label: s.test.autoCode ? 'Вид: графика' : 'Вид: код',
         icon: Eye,
-        action: { type: 'TOOLPATH_TOGGLE' },
-        active: s.params[TOOLPATH_PARAM] === 1,
+        action: { type: 'AUTO_VIEW_TOGGLE' },
+        active: !s.test.autoCode,
       },
     ]
-    return [...keys, ...Array<null>(SOFTKEY_SLOTS - keys.length).fill(null)]
+    return slots(keys)
   }
 
   switch (s.screen) {
@@ -492,5 +503,5 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       break
   }
 
-  return [...keys.slice(0, SOFTKEY_SLOTS), ...Array<null>(Math.max(0, SOFTKEY_SLOTS - keys.length)).fill(null)]
+  return slots(keys)
 }

@@ -1,7 +1,7 @@
 import type { Softkey } from '@/lib/cnc/softkeys'
 import type { MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
-import { Info, CircleAlert, TriangleAlert } from 'lucide-react'
+import { Info, CircleAlert, Lock, TriangleAlert } from 'lucide-react'
 import { Keycap } from './primitives'
 
 export function MessageBar({ message }: { message: MachineState['message'] }) {
@@ -52,6 +52,7 @@ export function SoftkeyBar({ keys, onPress }: { keys: (Softkey | null)[]; onPres
             type="button"
             tabIndex={-1}
             disabled={k.disabled}
+            title={k.disabled ? (k.reason ?? 'Сейчас недоступно') : undefined}
             aria-pressed={k.active ?? undefined}
             onClick={() => onPress(k)}
             className={cn(
@@ -62,7 +63,14 @@ export function SoftkeyBar({ keys, onPress }: { keys: (Softkey | null)[]; onPres
             {k.active && <span className="absolute inset-x-0 top-0 h-0.5 bg-success" aria-hidden="true" />}
             <div className="flex items-center justify-between">
               <Keycap className="h-5 min-w-5 px-1 text-[10px]">{label}</Keycap>
-              <Icon className={cn('size-4', k.active ? 'text-primary' : 'text-muted-foreground')} aria-hidden="true" />
+              {k.disabled ? (
+                <Lock className="size-4 text-muted-foreground" aria-hidden="true" />
+              ) : (
+                <Icon
+                  className={cn('size-4', k.active ? 'text-primary' : 'text-muted-foreground')}
+                  aria-hidden="true"
+                />
+              )}
             </div>
             <span className="truncate text-xs font-semibold leading-tight">{k.label}</span>
           </button>

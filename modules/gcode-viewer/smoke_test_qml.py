@@ -13,7 +13,7 @@ GcodeToolpath) - дым-прогон вьювера не может зависе
 import os
 import sys
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import QObject, QTimer, QUrl
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication
 
@@ -23,6 +23,32 @@ QML = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "preview_3d.qml")
 sys.path.insert(0, HERE)
 
 import gv_cpp  # noqa: E402
+
+
+def _find_viewer(obj):
+    """Вложенный вьювер (GcodeViewer3D) или сам корень, если это он."""
+    if obj.property("viewerVersion") is not None:
+        return obj
+    for child in obj.findChildren(QObject):
+        viewer = _find_viewer(child)
+        if viewer is not None:
+            return viewer
+    return None
+
+
+def _apply_quality(roots):
+    """CNC_QUALITY -> свойство quality корня вьювера (см. preview_3d.py).
+
+    Без переменной или при неизвестном значении свойство не трогают: действует
+    med, и картинка остаётся прежней.
+    """
+    level = os.environ.get("CNC_QUALITY", "").strip().lower()
+    if level not in ("low", "med", "high", "safe"):
+        return
+    for root in roots:
+        viewer = _find_viewer(root)
+        if viewer is not None:
+            viewer.setProperty("quality", level)
 
 
 def main() -> int:
@@ -54,6 +80,7 @@ def main() -> int:
 
     roots = engine.rootObjects()
     print(f"Root object count: {len(roots)}")
+    _apply_quality(roots)
     if roots:
         root = roots[0]
         print(f"Root type: {type(root).__name__}")

@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "core/packing.h"     // gv::PackedEdges - упакованные рёбра STEP
+#include "core/quality.h"     // gv::QualityPreset - допуски силуэта и конусов
 
 namespace gv {
 
@@ -54,10 +55,11 @@ struct StepSurface {
 
 using StepSurfaceList = std::vector<StepSurface>;
 
-// Порог длины образующей конуса и число азимутов пробы вогнутости: те же
-// _CONE_MIN_SLANT_MM = 2.5 мм и _CONE_PROBE_AZIMUTHS = 8, что в эталоне.
-constexpr double CONE_MIN_SLANT_MM = 2.5;
-constexpr int CONE_PROBE_AZIMUTHS = 8;
+// Порог длины образующей конуса, число азимутов пробы вогнутости, порог дуги
+// силуэта цилиндра, минимальный пролёт образующей и перекрытие по оси политики
+// DROP теперь идут пресетом качества (core/quality.h): у уровня med это те же
+// _CONE_MIN_SLANT_MM = 2.5 мм, _CONE_PROBE_AZIMUTHS = 8, 85 градусов, 2.5 мм и
+// 2 мм, что в эталоне.
 
 // Суп кожи для политики конусов: треугольники (F,3,3), их центроиды (F,3) и
 // нормаль первого угла грани (F,3) - всё float64, как в эталоне после asarray.
@@ -106,14 +108,42 @@ SkinTriangles buildSkinTriangles(const std::vector<double>& soup,
 // Предвычисление семейств: зеркало _tangent_families. surfs - в порядке граней
 // STEP; packedEdges (STEP-обводка, если известна) помечает азимуты генераторов,
 // совпадающие со стыковыми рёбрами B-rep; skin - политика конусов. nullptr
-// означает, что данных нет (в эталоне None).
+// означает, что данных нет (в эталоне None). Допуски берутся из пресета
+// (core/quality.h): у уровня med они те же, что были у жёстко заданных чисел.
 TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
                                      const PackedEdges* packedEdges = nullptr,
-                                     const SkinTriangles* skin = nullptr);
+                                     const SkinTriangles* skin = nullptr,
+                                     const QualityPreset& quality = QualityPreset{});
 
 // Кадровый проход: обе касательные стороны каждого логического цилиндра и
 // образующие конусов на глазу eyeMm (raw-кадр модели). Результат - плоский ряд
 // (M,2,3) float64: две точки на отрезок, порядок тот же, что у эталона.
 std::vector<double> tangentFromFamilies(const TangentFamilies& fam, const double eyeMm[3]);
+
+// Буферы кадрового прохода касательных, переживающие кадр: у Test_model на кадр
+// приходилось 30 выделений и 35 КБ промежуточных векторов и готовых отрезков.
+// Ёмкости здесь, поэтому на кадр остаётся заполнение, а не заведение буферов.
+struct TangentScratch {
+    std::vector<double> along;      // (N,) проекция глаза на ось
+    std::vector<double> perp;       // (N,3) плечо глаза от оси
+    std::vector<double> rp;         // (N,) расстояние глаза до оси
+    std::vector<double> mh;         // (N,3) единичное плечо
+    std::vector<double> rot;        // (N,3) d x mh
+    std::vector<double> nrm;        // (N,3) касательная нормаль стороны
+    std::vector<double> cg;         // (N,) cos угла касания
+    std::vector<double> sg;         // (N,) sin угла касания
+    std::vector<double> phi;        // (N,) азимут касания
+    std::vector<double> baseA;      // (N,3) начало образующей (t0)
+    std::vector<double> baseB;      // (N,3) конец образующей (t1)
+    std::vector<std::uint8_t> ok;   // (N,) проходит ли сторона обрезку дуги и DROP
+    std::vector<double> segments;   // (M,2,3) float64 плоским рядом
+};
+
+// Касательные в переданный буфер: scratch.segments очищается и заполняется тем
+// же порядком операций, что и у версии выше (числа те же бит-в-бит); возврат -
+// ссылка на него.
+const std::vector<double>& tangentFromFamilies(const TangentFamilies& fam,
+                                               const double eyeMm[3],
+                                               TangentScratch& scratch);
 
 } // namespace gv

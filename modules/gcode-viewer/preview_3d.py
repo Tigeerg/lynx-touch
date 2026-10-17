@@ -30,6 +30,34 @@ sys.path.insert(0, HERE)
 import gv_cpp  # noqa: E402
 
 
+def _find_viewer(obj):
+    """Вложенный вьювер (GcodeViewer3D) или сам корень, если это он."""
+    if obj.property("viewerVersion") is not None:
+        return obj
+    for child in obj.findChildren(QObject):
+        viewer = _find_viewer(child)
+        if viewer is not None:
+            return viewer
+    return None
+
+
+def _apply_quality(roots):
+    """CNC_QUALITY -> свойство quality корня вьювера.
+
+    Уровень читается после загрузки QML: у обёртки preview_3d.qml корень - Window,
+    сам вьювер вложен, его находят по свойству viewerVersion. Без переменной или
+    при неизвестном значении свойство не трогают - действует med, и картинка
+    остаётся прежней.
+    """
+    level = os.environ.get("CNC_QUALITY", "").strip().lower()
+    if level not in ("low", "med", "high", "safe"):
+        return
+    for root in roots:
+        viewer = _find_viewer(root)
+        if viewer is not None:
+            viewer.setProperty("quality", level)
+
+
 def main() -> int:
     # Диагностика вьювера идёт через logging; уровень задаёт окружение
     # (CNC_LOG_LEVEL=DEBUG покажет и источник контура), по умолчанию INFO.
@@ -56,6 +84,8 @@ def main() -> int:
     if not roots:
         print("[preview_3d] FAILED to load QML", file=sys.stderr)
         return 1
+
+    _apply_quality(roots)
 
     # Необязательно: загрузить УП через бэкенд (модель <тем же именем>.stl/.obj
     # подхватывается сама).

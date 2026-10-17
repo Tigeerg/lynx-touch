@@ -29,7 +29,6 @@ import { cn } from '@/lib/utils'
 import { ProgramSide } from './program-side'
 import { OperatorPad, SideStatus } from './side-status'
 import { MessageBar, SoftkeyBar } from './softkey-bar'
-import { PositionScreen } from './screens/position-screen'
 import { SetupScreen, SetupSide } from './screens/setup-screen'
 import { ProgramScreen } from './screens/program-screen'
 import { TestScreen } from './screens/test-screen'
@@ -100,17 +99,12 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
         )}
       >
         <main className="min-h-0">
-          {state.screen === 'pos' &&
-            (state.workplace === 'SETUP' ? (
-              <SetupScreen state={state} dispatch={dispatch} />
-            ) : (
-              <PositionScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
-            ))}
+          {state.screen === 'pos' && <SetupScreen state={state} dispatch={dispatch} />}
           {state.screen === 'prog' &&
             (testMode ? (
               <TestScreen state={state} dispatch={dispatch} pathView={pathView} />
             ) : state.workplace === 'RUN' ? (
-              <AutoScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
+              <AutoScreen state={state} dispatch={dispatch} pathView={pathView} />
             ) : (
               <ProgramScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
             ))}

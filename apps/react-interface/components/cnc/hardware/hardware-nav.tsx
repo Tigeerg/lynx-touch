@@ -11,11 +11,10 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { SCREEN_LABEL } from '@/lib/cnc/data'
 import type { Action } from '@/lib/cnc/machine'
-import { MODE_LOCKED_SCREENS, SCREENS, type MachineState } from '@/lib/cnc/types'
+import { MODE_LOCKED_SCREENS, TAB_LABEL, TABS, screenOfTab, tabOfScreen, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
-import { SCREEN_ICON } from '../screen-tabs'
+import { TAB_ICON } from '../screen-tabs'
 import { HwKey } from './hw-parts'
 
 export function HardwareNav({
@@ -33,7 +32,7 @@ export function HardwareNav({
 
   const moveCursor = (delta: number) =>
     dispatch(state.fileDialog ? { type: 'FILE_CURSOR', delta } : { type: 'CURSOR', delta })
-  const mdi = state.mode === 'MDI'
+  const mdi = state.workplace === 'SETUP'
   const mdiBusy = state.run === 'RUN' || state.run === 'HOLD'
   const mdiCanRun = mdi && !mdiBusy && state.mdi.buffer.trim() !== ''
   const mdiCanCancel = mdi && !mdiBusy && state.mdi.buffer !== ''
@@ -71,19 +70,22 @@ export function HardwareNav({
         aria-label="Вкладки экранов"
         className="flex shrink-0 justify-center gap-2 rounded-md border border-hw-edge bg-hw-edge/40 px-3 pb-3 pt-5"
       >
-        {SCREENS.map((s, i) => (
-          <HwKey
-            key={s}
-            label={i + 1}
-            icon={SCREEN_ICON[s]}
-            title={SCREEN_LABEL[s]}
-            lit={state.screen === s}
-            disabled={MODE_LOCKED_SCREENS[state.mode].includes(s)}
-            tone="primary"
-            onClick={() => dispatch({ type: 'SET_SCREEN', screen: s })}
-            className="font-mono"
-          />
-        ))}
+        {TABS.map((tab, i) => {
+          const target = screenOfTab(tab, state.workplace)
+          return (
+            <HwKey
+              key={tab}
+              label={i + 1}
+              icon={TAB_ICON[tab]}
+              title={TAB_LABEL[tab]}
+              lit={tabOfScreen(state.screen) === tab}
+              disabled={MODE_LOCKED_SCREENS[state.mode].includes(target)}
+              tone="primary"
+              onClick={() => dispatch({ type: 'SET_SCREEN', screen: target })}
+              className="font-mono"
+            />
+          )
+        })}
       </div>
 
       <div

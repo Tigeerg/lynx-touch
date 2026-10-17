@@ -4,9 +4,10 @@
 // silhouette_probe). Он проходит тот же путь, что рантайм вьювера, по шагам и
 // печатает время каждого шага в миллисекундах (std::chrono::steady_clock):
 //
-//   * фазы модели STEP: чтение формы, тесселяция, ориентация оболочки, нормали
-//     кожи, рёбра B-Rep, поверхности вращения, топология силуэта, семейства
-//     касательных, упаковка обводки;
+//   * фазы модели STEP: чтение формы, тесселяция (и её разбивка на мешер OCCT и
+//     сборку супа по граням), ориентация оболочки, нормали кожи, рёбра B-Rep,
+//     поверхности вращения, топология силуэта, семейства касательных, упаковка
+//     обводки;
 //   * фазы УП: разбор G-кода, подготовка траектории, профиль инструмента с
 //     оправкой, скан коллизий, сверка инструмента;
 //   * цена кадра: meshSilhouetteSegments и tangentFromFamilies (по много прогонов
@@ -17,9 +18,11 @@
 // неразмещённой форме, а BRep_Mesh кэширует сетку на форме. Поэтому перед каждой
 // фазой форма читается заново, а время чтения печатается отдельной строкой.
 //
-// Запуск: bench_probe <файл.step> <файл.ngc> [повторы фаз] [повторы кадров]
+// Запуск: bench_probe <файл.step> <файл.ngc> [повторы фаз] [повторы кадров] [уровень]
+//   уровень - low|med|high|safe; без аргумента берётся CNC_QUALITY, иначе med
 //   (нужны DLL OCCT и Qt в PATH)
-// Вывод: строки "phase <имя> <мс>" и "frame <имя> <мс>", затем "RESULT: OK".
+// Вывод: строки "quality ..." с уровнем и его допусками, "phase <имя> <мс>" и
+// "frame <имя> <мс>", затем "RESULT: OK".
 // Код возврата: 0 - замер сделан; 1 - файл не прочитан или аргументов мало.
 
 // windows.h идёт до заголовков Qt и OCCT: цепочка OCCT объявляет _WINDOWS_ своим
@@ -48,11 +51,14 @@
 #include <string>
 #include <vector>
 
+#include <BRepMesh_IncrementalMesh.hxx>
+
 #include "core/collision.h"
 #include "core/gcode_parser.h"
 #include "core/normals.h"
 #include "core/packing.h"
 #include "core/path_prep.h"
+#include "core/quality.h"
 #include "core/silhouette.h"
 #include "core/tangents.h"
 #include "core/tooling.h"
@@ -60,11 +66,10 @@
 #include "occt/step_edges.h"
 #include "occt/step_import.h"
 #include "occt/step_surfaces.h"
+
 #include "qt/gv_geometry.h"
 
 namespace {
-
-constexpr double DEFLECTION = 0.05;
 
 // Глаз кадра - тот же, что у test_controller_cpp.py: числа сопоставимы.
 const double EYE[3] = {120.0, 90.0, 140.0};
@@ -141,13 +146,35 @@ int main(int argc, char** argv) {
     QGuiApplication app(argc, argv);
     const std::vector<std::string> args = probeArgs(argc, argv);
     if (args.size() < 3) {
-        std::fprintf(stderr, "usage: bench_probe <file.step> <file.ngc> [phase_reps] [frame_reps]\n");
+        std::fprintf(stderr, "usage: bench_probe <file.step> <file.ngc> [phase_reps] "
+                             "[frame_reps] [low|med|high|safe]\n");
         return 1;
     }
     const std::string stepPath = args[1];
     const std::string ngcPath = args[2];
     const int phaseReps = args.size() > 3 ? std::max(1, std::atoi(args[3].c_str())) : 3;
     const int frameReps = args.size() > 4 ? std::max(1, std::atoi(args[4].c_str())) : 30;
+    // Уровень: пятый аргумент, иначе CNC_QUALITY, иначе med (у med числа те же,
+    // что были до пресетов).
+    const gv::QualityPreset quality =
+        args.size() > 5 ? gv::presetFor(args[5].c_str()) : gv::presetFromEnv();
+
+    // Уровень и его допуски - до замеров: по этой строке видно, чем измеряли.
+    std::printf("quality level=%s step_deflection=%.4g edge_deflection=%.4g "
+                "coalesce_dist=%.4g coalesce_gap=%.4g weld=%.4g crease=%.4g "
+                "silhouette_max_edge=%.4g silhouette_min_area=%.4g "
+                "outline_edge=%.4g outline_simplify=%.4g cone_min_slant=%.4g "
+                "cone_azimuths=%d silhouette_arc=%.4g silhouette_min_span=%.4g "
+                "drop_overlap=%.4g decimate=%.4g arc_decimate=%.4g collision_step=%.4g\n",
+                quality.level, quality.stepDeflectionMm, quality.edgeDeflectionMm,
+                quality.coalesceDistTolMm, quality.coalesceGapTolMm,
+                quality.silhouetteWeldMm, quality.creaseDeg,
+                quality.silhouetteMaxEdgeDeg, quality.silhouetteMinFaceAreaMm2,
+                quality.outlineFeatureEdgeDeg, quality.outlineFeatureSimplifyMm,
+                quality.coneMinSlantMm, quality.coneProbeAzimuths,
+                quality.silhouetteArcDeg, quality.silhouetteMinSpanMm,
+                quality.dropOverlapMm, quality.decimateTolMm,
+                quality.arcDecimateTolMm, quality.collisionStepMm);
 
     // ---- фазы модели STEP ---------------------------------------------------
     // Храним последний результат, чтобы кадровые замеры шли на нём же.
@@ -175,7 +202,7 @@ int main(int argc, char** argv) {
         tRead.push_back(msSince(t0));
 
         t0 = Clock::now();
-        soup = gv::tessellateSoup(shape, DEFLECTION);
+        soup = gv::tessellateSoup(shape, quality.stepDeflectionMm);
         tTess.push_back(msSince(t0));
 
         t0 = Clock::now();
@@ -183,15 +210,18 @@ int main(int argc, char** argv) {
         tOrient.push_back(msSince(t0));
 
         t0 = Clock::now();
-        normals = gv::smoothFaceNormals(verts);
+        normals = gv::smoothFaceNormals(verts, quality.creaseDeg);
         tNormals.push_back(msSince(t0));
 
         t0 = Clock::now();
-        const std::vector<gv::EdgeSegment> rawSegs = gv::stepRawSegments(shape, DEFLECTION, true);
+        const std::vector<gv::EdgeSegment> rawSegs =
+            gv::stepRawSegments(shape, quality.edgeDeflectionMm, true);
         tRawEdges.push_back(msSince(t0));
 
         t0 = Clock::now();
-        const std::vector<gv::EdgeSegment> merged = gv::coalesceStepSegments(rawSegs);
+        const std::vector<gv::EdgeSegment> merged =
+            gv::coalesceStepSegments(rawSegs, quality.coalesceDistTolMm,
+                                     quality.coalesceGapTolMm);
         std::vector<double> p0(merged.size() * 3);
         std::vector<double> p1(merged.size() * 3);
         for (std::size_t i = 0; i < merged.size(); ++i) {
@@ -204,16 +234,16 @@ int main(int argc, char** argv) {
         tCoalesce.push_back(msSince(t0));
 
         t0 = Clock::now();
-        surfaces = gv::loadStepSurfaces(shape, DEFLECTION);
+        surfaces = gv::loadStepSurfaces(shape, quality.stepDeflectionMm);
         tSurfaces.push_back(msSince(t0));
 
         t0 = Clock::now();
-        topo = gv::buildSilhouetteTopology(verts);
+        topo = gv::buildSilhouetteTopology(verts, quality);
         tTopo.push_back(msSince(t0));
 
         t0 = Clock::now();
         const gv::SkinTriangles skin = gv::buildSkinTriangles(verts, normals);
-        fams = gv::buildTangentFamilies(surfaces, &packed, &skin);
+        fams = gv::buildTangentFamilies(surfaces, &packed, &skin, quality);
         tFamilies.push_back(msSince(t0));
 
         g_sink += soup.size() + normals.size() + topo.edgeCount();
@@ -237,11 +267,36 @@ int main(int argc, char** argv) {
         for (int r = 0; r < phaseReps; ++r) {
             const TopoDS_Shape shape2 = gv::readStepShape(stepPath);
             Clock::time_point t0 = Clock::now();
-            const gv::StepSurfaceList s2 = gv::loadStepSurfaces(shape2, DEFLECTION, false);
+            const gv::StepSurfaceList s2 =
+                gv::loadStepSurfaces(shape2, quality.stepDeflectionMm, false);
             tCold.push_back(msSince(t0));
             g_sink += s2.size();
         }
         printPhase("step_surfaces_cold", median(tCold));
+    }
+
+    // Разбивка тесселяции: сколько в ней стоит мешер OCCT и сколько - сборка супа
+    // по граням (tessellateSoup). Мешер меряется на свежей форме, сборка - тем же
+    // вызовом на уже размеченной форме (shapeAlreadyMeshed), поэтому
+    // step_mesh + step_soup = step_tessellate.
+    {
+        std::vector<double> tMesh;
+        std::vector<double> tSoup;
+        for (int r = 0; r < phaseReps; ++r) {
+            const TopoDS_Shape shape2 = gv::readStepShape(stepPath);
+            Clock::time_point t0 = Clock::now();
+            BRepMesh_IncrementalMesh mesher(shape2, quality.stepDeflectionMm, false,
+                                            quality.stepDeflectionMm * 2.0, true);
+            mesher.Perform();
+            tMesh.push_back(msSince(t0));
+            t0 = Clock::now();
+            const std::vector<double> s2 =
+                gv::tessellateSoup(shape2, quality.stepDeflectionMm, true);
+            tSoup.push_back(msSince(t0));
+            g_sink += s2.size();
+        }
+        printPhase("step_mesh", median(tMesh));
+        printPhase("step_soup", median(tSoup));
     }
 
     // Цена одной материализации супа и нормалей: столько копий (2b) убрано с
@@ -352,24 +407,33 @@ int main(int argc, char** argv) {
 
     // ---- цена кадра ---------------------------------------------------------
     // mesh-силуэт: на уже построенной топологии повторяем refreshTangents-часть
-    // (только meshSilhouetteSegments).
+    // (только meshSilhouetteSegments). Буферы кадра те же, что у контроллера:
+    // силуэт заполняется в переиспользуемый scratch, а не заводится заново.
     const double eye[3] = {EYE[0], EYE[1], EYE[2]};
     std::vector<float> silSegs;
     {
+        gv::MeshSilhouetteScratch scratch;
+        const std::vector<float> *sil = nullptr;
         Clock::time_point t0 = Clock::now();
         for (int r = 0; r < frameReps; ++r) {
-            silSegs = gv::meshSilhouetteSegments(topo, eye);
+            sil = &gv::meshSilhouetteSegments(topo, eye, scratch);
         }
-        g_sink += silSegs.size();
+        g_sink += (sil != nullptr) ? sil->size() : 0;
         printFrame("refresh_mesh_silhouette", msSince(t0) / frameReps);
+        if (sil != nullptr) {
+            silSegs = *sil;               // вне замера: содержимое нужно буферу лент
+        }
     }
 
-    // analytic: tangentFromFamilies + перевод float64 -> float32 (как контроллер).
+    // analytic: tangentFromFamilies + перевод float64 -> float32 (как контроллер),
+    // тоже в переиспользуемых буферах кадра.
     {
+        gv::TangentScratch scratch;
+        std::vector<float> segs;
         Clock::time_point t0 = Clock::now();
         for (int r = 0; r < frameReps; ++r) {
-            const std::vector<double> flat = gv::tangentFromFamilies(fams, eye);
-            std::vector<float> segs;
+            const std::vector<double> &flat = gv::tangentFromFamilies(fams, eye, scratch);
+            segs.clear();
             segs.reserve(flat.size());
             for (double v : flat) {
                 segs.push_back(float(v));

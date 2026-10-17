@@ -152,7 +152,7 @@ export function RapidRow({ value }: { value: number }) {
 }
 
 export const WIDE_SECTIONS =
-  'grid h-full grid-cols-2 content-start overflow-hidden [&>section:nth-child(odd)]:border-r [&>section]:py-1.5'
+  'grid h-full grid-cols-2 content-start overflow-y-auto [&>section:nth-child(odd)]:border-r [&>section]:py-1.5'
 
 export function SideStatus({
   state,
@@ -178,7 +178,7 @@ export function SideStatus({
   return (
     <aside className="flex min-h-0 flex-col gap-2" aria-label="Состояние станка">
       <Panel title="Режимы" className="min-h-0 flex-1">
-        <div className={wide ? WIDE_SECTIONS : 'flex h-full flex-col overflow-hidden'}>
+        <div className={wide ? WIDE_SECTIONS : 'flex h-full flex-col overflow-y-auto'}>
           <Section
             icon={FileCode}
             title="Кадр"

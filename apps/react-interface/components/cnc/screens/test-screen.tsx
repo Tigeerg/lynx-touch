@@ -62,29 +62,29 @@ export function TestScreen({
   dispatch: (a: Action) => void
   pathView: PathView
 }) {
+  const showCurtain = !state.test.curtain
+  const showViewer = !state.test.hidePath
+
   return (
-    <div className="relative h-full min-h-0">
-      {state.test.hidePath ? (
-        <div className="flex h-full items-center justify-center rounded-md border bg-card text-sm text-muted-foreground">
-          Графика очищена — клавиша F6 вернёт отрисовку
-        </div>
-      ) : (
-        <ToolpathView state={state} view={pathView} className="h-full" />
-      )}
+    <div className="flex h-full min-h-0 flex-col gap-1.5">
+      {state.search.open && <SearchBar state={state} dispatch={dispatch} />}
 
-      {state.search.open && (
-        <div className="absolute inset-x-0 top-0 z-20">
-          <SearchBar state={state} dispatch={dispatch} />
-        </div>
-      )}
+      <div className={cn('grid min-h-0 flex-1 gap-1.5', showCurtain && showViewer ? 'grid-cols-2' : 'grid-cols-1')}>
+        {showCurtain && <ProgramList state={state} dispatch={dispatch} />}
 
-      {!state.test.curtain && (
-        <div className="absolute inset-y-0 left-0 z-10 w-[42%] min-w-[300px] max-w-[520px] border-r-2 border-primary shadow-xl">
-          <ProgramList state={state} dispatch={dispatch} />
-        </div>
-      )}
+        {showViewer && (
+          <div className="relative min-h-0">
+            <ToolpathView state={state} view={pathView} className="h-full" />
+            {state.test.bbox && <BBoxOverlay state={state} />}
+          </div>
+        )}
 
-      {state.test.bbox && <BBoxOverlay state={state} />}
+        {!showCurtain && !showViewer && (
+          <div className="flex h-full items-center justify-center rounded-md border bg-card text-sm text-muted-foreground">
+            Графика очищена — клавиша F6 вернёт отрисовку
+          </div>
+        )}
+      </div>
     </div>
   )
 }

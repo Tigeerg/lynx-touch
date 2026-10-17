@@ -84,12 +84,13 @@ void pointTriangleDist2(const double p[3], const double* tri, std::size_t k, dou
 }
 
 // Зеркало _cone_keeps_silhouette: конус получает касательные образующие, если
-// он (1) не короче CONE_MIN_SLANT_MM по образующей и (2) вогнутый (нормали
+// он (1) не короче порога длины образующей пресета и (2) вогнутый (нормали
 // кожи у его поверхности смотрят к оси). Без кожи проверка вогнутости
 // пропускается, остаётся порог длины.
-bool coneKeepsSilhouette(const ConeSurface& cone, const SkinTriangles* skin) {
+bool coneKeepsSilhouette(const ConeSurface& cone, const SkinTriangles* skin,
+                         const QualityPreset& quality) {
     const double slant = std::fabs(cone.s1 - cone.s0);
-    if (slant < CONE_MIN_SLANT_MM) {
+    if (slant < quality.coneMinSlantMm) {
         return false;
     }
     if (skin == nullptr || !skin->valid) {
@@ -126,8 +127,8 @@ bool coneKeepsSilhouette(const ConeSurface& cone, const SkinTriangles* skin) {
     std::vector<std::size_t> order(skin->count);
     std::vector<double> tri16(16 * 9);
     std::vector<double> dv16(16);
-    for (int k = 0; k < CONE_PROBE_AZIMUTHS; ++k) {
-        const double ph = TWO_PI * k / CONE_PROBE_AZIMUTHS;
+    for (int k = 0; k < quality.coneProbeAzimuths; ++k) {
+        const double ph = TWO_PI * k / quality.coneProbeAzimuths;
         const double cph = std::cos(ph);
         const double sph = std::sin(ph);
         double rad[3];
@@ -312,7 +313,8 @@ SkinTriangles buildSkinTriangles(const std::vector<double>& soup,
 
 TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
                                      const PackedEdges* packedEdges,
-                                     const SkinTriangles* skin) {
+                                     const SkinTriangles* skin,
+                                     const QualityPreset& quality) {
     TangentFamilies out;
     std::vector<ConeSurface> cones;
 
@@ -443,8 +445,8 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
             rsum += s->r;
         }
         const double rrep = rsum / static_cast<double>(faces.size());
-        // Политика силуэта: порог дуги 85 гр и пролёт не короче 2.5 мм
-        // оставляют образующую только у настоящих тел вращения.
+        // Политика силуэта: порог дуги и минимальный пролёт пресета (у med -
+        // 85 гр и 2.5 мм) оставляют образующую только у настоящих тел вращения.
         double wmax = 0.0;
         for (const CylinderSurface* s : faces) {
             if (!s->has_arc) {
@@ -453,10 +455,10 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
             }
             wmax = std::max(wmax, npMod(s->arc1 - s->arc0, TWO_PI));
         }
-        bool tangented = full || wmax >= 85.0 * DEG_TO_RAD;
+        bool tangented = full || wmax >= quality.silhouetteArcDeg * DEG_TO_RAD;
         if (tangented) {
             for (const std::array<double, 2>& sp : spans) {
-                if ((sp[1] - sp[0]) < 2.5) {
+                if ((sp[1] - sp[0]) < quality.silhouetteMinSpanMm) {
                     tangented = false;
                     break;
                 }
@@ -572,7 +574,8 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
 
     const std::size_t n = fam.size();
     // DROP: азимуты генераторов, дублирующих статическую стыковую линию B-rep
-    // (та же ось, тот же радиус, перекрытие по оси больше 2 мм).
+    // (та же ось, тот же радиус, перекрытие по оси больше порога пресета, у med
+    // 2 мм). Ширина строки - (N,8), как в эталоне, поэтому азимутов не больше 8.
     std::vector<double> drop(n * 8, NAN_);
     if (packedEdges != nullptr && n > 0) {
         const std::size_t floats = packedEdges->raw.size() / sizeof(float);
@@ -656,7 +659,7 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
                     lo2[k] = std::min(ta, tb);
                     hi2[k] = std::max(ta, tb);
                     const double ov = std::min(hi2[k], fam[i].t1) - std::max(lo2[k], fam[i].t0);
-                    if (!(ov > 2.0) || !(rr[sel[k]] > 1e-6)) {
+                    if (!(ov > quality.dropOverlapMm) || !(rr[sel[k]] > 1e-6)) {
                         continue;
                     }
                     ang.push_back(npMod(std::atan2(dot3(&perp[sel[k] * 3], fam[i].e2),
@@ -836,7 +839,7 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
     std::vector<ConeSurface> kept;
     kept.reserve(cones.size());
     for (const ConeSurface& c : cones) {
-        if (coneKeepsSilhouette(c, skin)) {
+        if (coneKeepsSilhouette(c, skin, quality)) {
             kept.push_back(c);
         }
     }
@@ -844,19 +847,35 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
     return out;
 }
 
-std::vector<double> tangentFromFamilies(const TangentFamilies& fam, const double eyeMm[3]) {
-    std::vector<double> segments;
+const std::vector<double>& tangentFromFamilies(const TangentFamilies& fam, const double eyeMm[3],
+                                               TangentScratch& scratch) {
+    scratch.segments.clear();
+    // Псевдонимы на буферы переживающего кадр объекта: тело ниже не меняется,
+    // меняются только места заведения этих векторов.
+    std::vector<double>& along = scratch.along;
+    std::vector<double>& perp = scratch.perp;
+    std::vector<double>& rp = scratch.rp;
+    std::vector<double>& mh = scratch.mh;
+    std::vector<double>& rot = scratch.rot;
+    std::vector<double>& nrm = scratch.nrm;
+    std::vector<double>& cg = scratch.cg;
+    std::vector<double>& sg = scratch.sg;
+    std::vector<double>& phi = scratch.phi;
+    std::vector<double>& baseA = scratch.baseA;
+    std::vector<double>& baseB = scratch.baseB;
+    std::vector<std::uint8_t>& ok = scratch.ok;
+    std::vector<double>& segments = scratch.segments;
     const CylinderFamilies& cyls = fam.cylinders;
     const std::size_t n = cyls.count;
     if (n > 0) {
-        std::vector<double> along(n);
-        std::vector<double> perp(n * 3);
-        std::vector<double> rp(n);
-        std::vector<double> mh(n * 3);
-        std::vector<double> rot(n * 3);
-        std::vector<double> nrm(n * 3);
-        std::vector<double> cg(n);
-        std::vector<double> sg(n);
+        along.assign(n, 0.0);
+        perp.assign(n * 3, 0.0);
+        rp.assign(n, 0.0);
+        mh.assign(n * 3, 0.0);
+        rot.assign(n * 3, 0.0);
+        nrm.assign(n * 3, 0.0);
+        cg.assign(n, 0.0);
+        sg.assign(n, 0.0);
         bool anyValid = false;
         for (std::size_t i = 0; i < n; ++i) {
             const double w[3] = {eyeMm[0] - cyls.O[i * 3 + 0], eyeMm[1] - cyls.O[i * 3 + 1],
@@ -885,9 +904,9 @@ std::vector<double> tangentFromFamilies(const TangentFamilies& fam, const double
                 }
                 cross3(&cyls.D[i * 3], &mh[i * 3], &rot[i * 3]);
             }
-            std::vector<double> phi(n);
-            std::vector<double> baseA(n * 3);
-            std::vector<double> baseB(n * 3);
+            phi.assign(n, 0.0);
+            baseA.assign(n * 3, 0.0);
+            baseB.assign(n * 3, 0.0);
             for (std::size_t i = 0; i < n; ++i) {
                 for (int k = 0; k < 3; ++k) {
                     baseA[i * 3 + std::size_t(k)] = cyls.O[i * 3 + std::size_t(k)]
@@ -907,7 +926,7 @@ std::vector<double> tangentFromFamilies(const TangentFamilies& fam, const double
                     phi[i] = npMod(std::atan2(dot3(&nrm[i * 3], &cyls.E2[i * 3]),
                                               dot3(&nrm[i * 3], &cyls.E1[i * 3])), TWO_PI);
                 }
-                std::vector<std::uint8_t> ok(n);
+                ok.assign(n, 0);
                 for (std::size_t i = 0; i < n; ++i) {
                     ok[i] = cyls.FULL[i];
                     // обрезка по аналитической дуге (a0..a1): без неё линия
@@ -1028,7 +1047,13 @@ std::vector<double> tangentFromFamilies(const TangentFamilies& fam, const double
             }
         }
     }
-    return segments;
+    return scratch.segments;
+}
+
+std::vector<double> tangentFromFamilies(const TangentFamilies& fam, const double eyeMm[3]) {
+    TangentScratch scratch;
+    tangentFromFamilies(fam, eyeMm, scratch);
+    return std::move(scratch.segments);   // перенос, а не копия: как был возврат segments
 }
 
 } // namespace gv

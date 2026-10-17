@@ -52,6 +52,18 @@ project(cnc_edges_plugin LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Linux: объекты статических gvcore, gvqtgeom и gvstep попадают в SHARED-библиотеки
+# (gvbridge, gvqtshim, плагины): без PIC линковка кончается отказом GCC "recompile
+# with -fPIC" (у MSVC ключа нет, там свойство ничего не меняет).
+#
+# Про rpath ключей нет: CMake по умолчанию кладёт в rpath сборки каталоги связанных
+# библиотек, поэтому Qt и OCCT, лежащие вне каталогов сборки, находятся без
+# LD_LIBRARY_PATH - и точка входа (viewer/main.cpp, prependPath) на Linux PATH не
+# трогает. В дерево установки этот rpath не переносится, но установки у целей нет.
+if (UNIX AND NOT APPLE)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
+
 # Каталог C-ABI-моста gvbridge.dll: путь знает питоновский шим gv_cpp.py
 # (по умолчанию <repo>/build/cpp). Отдельной переменной он вынесен потому, что
 # не совпадает с каталогом сборки плагина.
@@ -283,12 +295,19 @@ target_include_directories(bench_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 add_library(gvbridge SHARED bridge/gv_bridge.cpp)
 target_include_directories(gvbridge PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(gvbridge PRIVATE gvstep)
+# Linux: gvbridge.so - LIBRARY-артефакт, поэтому каталог задан и ему: шим
+# gv_cpp.py грузит <repo>/build/cpp/libgvbridge.so по тому же предсказуемому пути.
 set_target_properties(gvbridge PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${GV_BRIDGE_DIR}
     RUNTIME_OUTPUT_DIRECTORY_DEBUG ${GV_BRIDGE_DIR}
     RUNTIME_OUTPUT_DIRECTORY_RELEASE ${GV_BRIDGE_DIR}
     RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_BRIDGE_DIR}
     RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${GV_BRIDGE_DIR}
+    LIBRARY_OUTPUT_DIRECTORY ${GV_BRIDGE_DIR}
+    LIBRARY_OUTPUT_DIRECTORY_DEBUG ${GV_BRIDGE_DIR}
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE ${GV_BRIDGE_DIR}
+    LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_BRIDGE_DIR}
+    LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL ${GV_BRIDGE_DIR}
 )
 if (MSVC)
     target_compile_options(gvbridge PRIVATE /utf-8 /fp:precise)
@@ -308,12 +327,19 @@ endif()
 add_library(gvqtshim SHARED exp/gvqtshim.cpp)
 target_include_directories(gvqtshim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(gvqtshim PRIVATE gvqtgeom Qt6::Core Qt6::Gui Qt6::Quick3D)
+# Linux: тот же LIBRARY-каталог, что у моста: шим gv_qtgeom.py грузит
+# <repo>/build/cpp/libgvqtshim.so.
 set_target_properties(gvqtshim PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${GV_BRIDGE_DIR}
     RUNTIME_OUTPUT_DIRECTORY_DEBUG ${GV_BRIDGE_DIR}
     RUNTIME_OUTPUT_DIRECTORY_RELEASE ${GV_BRIDGE_DIR}
     RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_BRIDGE_DIR}
     RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${GV_BRIDGE_DIR}
+    LIBRARY_OUTPUT_DIRECTORY ${GV_BRIDGE_DIR}
+    LIBRARY_OUTPUT_DIRECTORY_DEBUG ${GV_BRIDGE_DIR}
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE ${GV_BRIDGE_DIR}
+    LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_BRIDGE_DIR}
+    LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL ${GV_BRIDGE_DIR}
 )
 if (MSVC)
     target_compile_options(gvqtshim PRIVATE /utf-8 /fp:precise)
@@ -336,7 +362,15 @@ qt_add_library(cncedgesplugin SHARED)
 set_target_properties(cncedgesplugin PROPERTIES
     QT_QML_GENERATE_QMLLS_INI OFF
     # Резервная библиотека лежит рядом с плагином: иначе QML не найдёт её при загрузке.
+    # Linux: .so - это LIBRARY-артефакт, поэтому тот же каталог задан и ему;
+    # точку входа плагина (cncedgespluginplugin) кладёт в CNC/Edges сам
+    # qt_add_qml_module (OUTPUT_DIRECTORY).
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
+    LIBRARY_OUTPUT_DIRECTORY_DEBUG ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
+    LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
+    LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
     # Windows: класс StepEdgesGeometry нужен пробнику, а по умолчанию DLL ничего не экспортирует.
     WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
@@ -409,7 +443,13 @@ qt_add_library(gvqmlbackend SHARED)
 set_target_properties(gvqmlbackend PROPERTIES
     QT_QML_GENERATE_QMLLS_INI OFF
     # Резервная библиотека лежит рядом с точкой входа: иначе QML её не найдёт.
+    # Linux: тот же каталог задан и LIBRARY-артефакту (.so), см. cncedgesplugin.
     RUNTIME_OUTPUT_DIRECTORY ${GV_QMLBACKEND_DIR}/MockBackend
+    LIBRARY_OUTPUT_DIRECTORY ${GV_QMLBACKEND_DIR}/MockBackend
+    LIBRARY_OUTPUT_DIRECTORY_DEBUG ${GV_QMLBACKEND_DIR}/MockBackend
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE ${GV_QMLBACKEND_DIR}/MockBackend
+    LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_QMLBACKEND_DIR}/MockBackend
+    LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL ${GV_QMLBACKEND_DIR}/MockBackend
 )
 qt_add_qml_module(gvqmlbackend
     URI MockBackend

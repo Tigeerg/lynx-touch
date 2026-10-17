@@ -90,11 +90,55 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.39.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.41.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.41.0 — 2026-10-17
+
+- **Запуск на Linux.** Сборочный скрипт получил двойника без Windows: `scripts/build-viewer.sh` (POSIX sh) —
+  те же `CNC_QT_DIR`/`CNC_OCC_DIR`/`CNC_CMAKE`/`CNC_NINJA`, иначе `$CONDA_PREFIX`, иначе `find_package`;
+  проверяет каталоги по `Qt6Config.cmake` и `OpenCASCADEConfig.cmake`, собирает и сам проверяет, что все
+  артефакты на месте, печатая `build-viewer: OK`. В `cpp/CMakeLists.txt` нашлись две настоящие
+  непортируемости: статические `gvcore`, `gvqtgeom` и `gvstep` линкуются в разделяемые библиотеки, а PIC по
+  умолчанию выключен (на GCC линковка падала бы), и у четырёх разделяемых целей был задан только
+  `RUNTIME_OUTPUT_DIRECTORY`, тогда как `.so` — LIBRARY-артефакт (библиотеки легли бы в корень сборки).
+  Добавлены PIC для UNIX и `LIBRARY_OUTPUT_DIRECTORY`; rpath менять не пришлось — CMake сам кладёт в rpath
+  каталоги связанных библиотек. Точка входа на Linux ветку `prependPath` не выполняет (каталоги даёт rpath),
+  ветка Windows не изменена; `gv_cpp.py` выбирает `libgvbridge.so` вместо `gvbridge.dll`.
+- **README: «Сборка и запуск вьювера (C++)».** Зависимости (Qt 6 Core/Gui/Qml/Quick/Quick3D, OCCT с
+  CMake-пакетом, CMake не ниже 3.16, Ninja, C++17; документированы Qt 6.12.0 и OCCT 8.0.1, а нужно не ниже
+  6.7 из-за `explicitTextureWidth/Height`), сборка и запуск под Windows (в том числе что Qt обязана быть в
+  `PATH`, а каталоги плагина и OCCT точка входа кладёт сама), сборка и запуск под Linux, где лежат артефакты,
+  и короткий абзац про проверки.
+- **Честно о проверке.** Здесь проверены: сборка под Windows (`build-viewer: OK`), синтаксис `.sh` (`bash -n`,
+  код 0) и его логика на заглушках `cmake`/`ninja` (четыре ветки: оба каталога, неверный `CNC_QT_DIR`, пусто,
+  `CONDA_PREFIX`), `--smoke`, offscreen-прогон (`segments: 70914`), `keyprobe` (18 из 18), `oracle_dump.py`,
+  `test_step_core.py`, `smoke_test_qml.py`. **Не проверено:** сама сборка и запуск на Linux — на этой машине
+  Linux нет, и в README это написано прямо, вместе с командами, которыми это проверяется.
+- **Что тронуто:** `scripts/build-viewer.sh` (новый), `cpp/CMakeLists.txt`, `cpp/viewer/main.cpp`,
+  `gv_cpp.py`, `README.md`. Версия 0.40.0 -> 0.41.0.
+
+### 0.40.0 — 2026-10-17
+
+- **Смок-проверка в C++ (шаг к уходу от Python, часть 5).** У точки входа появился ключ `--smoke`:
+  `build\viewer\gcodeviewer.exe --smoke` грузит `GcodeViewer3D.qml` в `QQuickView` (offscreen, если
+  платформа не задана снаружи), печатает число корневых объектов, их тип и размер и `RESULT: OK
+  (parse-level)`, а при сбое — разбор ошибок и код 1. Проверка поверхностная, как и питоновская: она
+  отвечает на вопрос «оно вообще стартует», а не «оно правильно считает».
+- **Без интерпретатора.** Смок больше не требует Python: раньше это делал `smoke_test_qml.py`; он пока
+  остаётся сторожем и не тронут — переключение сторожа отдельным шагом (его правит и параллельная сессия).
+- **Отличие в выводе названо, а не спрятано:** питоновский тест по умолчанию грузит `preview_3d.qml`
+  (корень `Window`), C++ грузит `GcodeViewer3D.qml` (корень `Item`), поэтому `Root type` разный —
+  `GcodeViewer3D_QMLTYPE_1` против `QWindow`; число корней, размер и `RESULT` совпадают.
+- **Что тронуто:** `cpp/viewer/main.cpp` (ключ `--smoke`, функция `runSmoke`, справка `-h`). Обычный путь
+  и его вывод не изменились.
+- **Проверки.** `gcodeviewer.exe --smoke` — `RESULT: OK (parse-level)`; обычный offscreen-прогон —
+  `segments: 70914`, `loaded OK`; сломанный QML даёт `RESULT: FAILED` и код 1; `smoke_test_qml.py`,
+  `oracle_dump.py`, `test_step_core.py` — `RESULT: OK`; `keyprobe.exe` — `RESULT: OK (18 из 18)`.
+  Версия 0.39.0 -> 0.40.0.
 
 ### 0.39.0 — 2026-10-17
 

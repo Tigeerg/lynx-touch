@@ -9,7 +9,9 @@
  *   * находит каталог QML-плагина (CNC_CPP_QML_DIR, иначе <репо>/build/qmlbackend)
  *     и каталог DLL OCCT (CNC_OCC_DIR, иначе из CONDA_PREFIX) и кладёт оба в PATH
  *     до создания движка: точка входа Qt-плагина разрешает зависимости по PATH, а
- *     не через add_dll_directory (разбор - PORT-CPP.md, «Ограничения рантайма Qt»);
+ *     не через add_dll_directory (разбор - PORT-CPP.md, «Ограничения рантайма Qt»).
+ *     На Linux PATH и LD_LIBRARY_PATH не трогает: Qt и OCCT загрузчик находит по
+ *     rpath сборки, который CMake заполняет сам (BUILD_RPATH, cpp/CMakeLists.txt);
  *   * отдаёт движку путь импорта плагина и грузит GcodeViewer3D.qml в QQuickView:
  *     окно создаёт QQuickView, потому что корень вьювера - Item, а не Window, и
  *     сам файл вьювера не правится;
@@ -18,6 +20,11 @@
  *     сверяют число сегментов; в живом окне - load_gcode_async и печать по
  *     сигналам контракта (toolpathLoaded, loadFinished).
  *
+ * Ключ --smoke повторяет питоновский modules/gcode-viewer/smoke_test_qml.py без
+ * Python: грузит QML вьювера offscreen и печатает число корневых объектов, тип и
+ * размер корня, затем RESULT: OK (parse-level). Проверка неглубокая - "вьювер
+ * стартует", геометрия не меряется. Обычный запуск (без ключа) не меняется.
+ *
  * Плагина нет - внятная ошибка и ненулевой код возврата: отката на Python нет.
  *
  * Запуск (Qt обязан быть в PATH до старта процесса: exe линкуется с Qt6Core.dll;
@@ -25,6 +32,9 @@
  *   set PATH=C:\Qt\6.12.0\msvc2022_64\bin;%PATH%
  *   build\viewer\gcodeviewer.exe data\cad-testdata\Test_model.ngc
  * Offscreen: set QT_QPA_PLATFORM=offscreen
+ * Дым-прогон: build\viewer\gcodeviewer.exe --smoke
+ * Linux (Qt и OCCT находит rpath сборки, PATH и LD_LIBRARY_PATH не нужны):
+ *   build/viewer/gcodeviewer data/cad-testdata/Test_model.ngc
  */
 #include <QDir>
 #include <QFileInfo>
@@ -118,9 +128,14 @@ QString occtBinDir()
 }
 
 // Каталоги в PATH: поиск зависимостей плагина идёт по PATH, а уже бывшие там
-// каталоги не дублируются.
+// каталоги не дублируются. На Linux PATH не трогают: там и Qt, и OCCT находит
+// загрузчик по rpath сборки (BUILD_RPATH, cpp/CMakeLists.txt), и LD_LIBRARY_PATH
+// не нужен.
 void prependPath(const QStringList &dirs)
 {
+#ifdef Q_OS_LINUX
+    Q_UNUSED(dirs);
+#else
     const QChar separator = QDir::listSeparator();
     QStringList current = qEnvironmentVariable("PATH").split(separator, Qt::SkipEmptyParts);
     QStringList add;
@@ -140,6 +155,42 @@ void prependPath(const QStringList &dirs)
         return;
     add += current;
     qputenv("PATH", add.join(separator).toLocal8Bit());
+#endif
+}
+
+// Дым-прогон (--smoke): загрузить QML вьювера без экрана и доложить разбор - то же,
+// что делает modules/gcode-viewer/smoke_test_qml.py, но без Python. Проверка
+// неглубокая: "вьювер вообще стартует", геометрия не меряется. Размер корня берётся
+// в том же окне 1024x600, что у обычного запуска.
+int runSmoke(const QString &viewer_qml, const QString &backend_import)
+{
+    QList<QQmlError> collected;
+    QQuickView view;
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    view.resize(1024, 600);
+    view.engine()->addImportPath(backend_import);
+    QObject::connect(view.engine(), &QQmlEngine::warnings,
+                     [&collected](const QList<QQmlError> &errors) { collected += errors; });
+    view.setSource(QUrl::fromLocalFile(viewer_qml));
+
+    QQuickItem *root_item = view.rootObject();
+    say(QStringLiteral("Root object count: %1").arg(root_item != nullptr ? 1 : 0));
+    if (root_item != nullptr) {
+        say(QStringLiteral("Root type: %1")
+                .arg(QString::fromLatin1(root_item->metaObject()->className())));
+        say(QStringLiteral("Root size: %1x%2").arg(root_item->width()).arg(root_item->height()));
+    }
+    for (const QQmlError &error : collected)
+        say(QStringLiteral("[QML warning] ") + error.toString());
+
+    if (root_item == nullptr) {
+        for (const QQmlError &error : view.errors())
+            warn(QStringLiteral("gcodeviewer: ") + error.toString());
+        say(QStringLiteral("RESULT: FAILED"));
+        return 1;
+    }
+    say(QStringLiteral("RESULT: OK (parse-level)"));
+    return 0;
 }
 
 // Печать хода загрузки в живом окне. Сигналы контракта приходят из QML-плагина,
@@ -183,13 +234,25 @@ int main(int argc, char *argv[])
 #ifdef Q_OS_WIN
     SetConsoleOutputCP(CP_UTF8);          // русский текст виден в консоли распорядителя
 #endif
+    // --smoke ищут в argv до создания приложения: платформа выбирается раньше него.
+    bool smoke = false;
+    for (int i = 1; i < argc; ++i) {
+        if (qstrcmp(argv[i], "--smoke") == 0) {
+            smoke = true;
+            break;
+        }
+    }
+    // Дым-прогон ничего не показывает: без экрана ему достаточно offscreen, а заданную
+    // снаружи платформу не трогают (keyprobe.cpp делает так же).
+    if (smoke && qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
+        qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
 
     QString program;
     for (int i = 1; i < argc; ++i) {
         const QString arg = QString::fromLocal8Bit(argv[i]);
         if (arg == QLatin1String("-h") || arg == QLatin1String("--help")) {
-            say(QStringLiteral("запуск: gcodeviewer [путь к файлу УП]"));
+            say(QStringLiteral("запуск: gcodeviewer [--smoke] [путь к файлу УП]"));
             return 0;
         }
         if (arg.startsWith(QLatin1Char('-')))
@@ -220,6 +283,9 @@ int main(int argc, char *argv[])
     }
 
     prependPath({backend_module, occtBinDir()});
+
+    if (smoke)
+        return runSmoke(viewer_qml, backend_import);
 
     QQuickView view;
     view.setResizeMode(QQuickView::SizeRootObjectToView);

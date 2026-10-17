@@ -51,8 +51,9 @@ oracle_dump.py, bench_viewer.py и сверочные test_*.py.
 logger.warning, а вызывающий фолбэкает на Python. Молчаливого отказа нет. Рантайма
 вьювера это не касается: там плагин единственный, и фолбэка нет вовсе.
 
-Полный путь к библиотеке задаёт CNC_CPP_LIB, иначе берётся <repo>/build/cpp/
-gvbridge.dll (туда её кладёт цель gvbridge, см. cpp/CMakeLists.txt).
+Полный путь к библиотеке задаёт CNC_CPP_LIB, иначе берётся <repo>/build/cpp/:
+gvbridge.dll на Windows или libgvbridge.so на Linux (туда её кладёт цель
+gvbridge, см. cpp/CMakeLists.txt).
 
 Запуск проверки: python modules/gcode-viewer/test_cpp_bridge.py
 """
@@ -113,7 +114,9 @@ _MODE_VALUES = ("normals", "step", "surfaces", "silhouette", "parser", "qtgeom",
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
-DEFAULT_LIB = os.path.join(ROOT, "build", "cpp", "gvbridge.dll")
+# Имя моста - платформенное: у SHARED-библиотеки на Linux есть префикс lib.
+DEFAULT_LIB = os.path.join(ROOT, "build", "cpp",
+                           "gvbridge.dll" if os.name == "nt" else "libgvbridge.so")
 # QML-модуль C++-контроллера: import path для движка и каталог модуля внутри него
 # (туда цель gvqmlbackend кладёт qmldir, gvqmlbackend.dll и точку входа).
 QML_BACKEND_ENV = "CNC_CPP_QML_DIR"
@@ -210,7 +213,7 @@ _TOOL_INT_FIELDS = ("number", "flutes")
 
 
 def library_path() -> str:
-    """Путь к gvbridge.dll: CNC_CPP_LIB, иначе каталог сборки моста."""
+    """Путь к мосту (gvbridge.dll или libgvbridge.so): CNC_CPP_LIB, иначе сборка."""
     return os.environ.get(LIB_ENV) or DEFAULT_LIB
 
 

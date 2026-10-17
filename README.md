@@ -25,7 +25,7 @@
 - `main.qml`, `preview.qml`, генератор `gen_preview_qml.py`, ассеты/шрифты
 - Запуск: `python apps/qt-interface/preview_qml.py`
 
-### 3. 3D-вьювер УП — `gcode-viewer` (`0.39.0`)
+### 3. 3D-вьювер УП — `gcode-viewer` (`0.41.0`)
 3D-визуализация управляющей программы (`modules/gcode-viewer`).
 
 - `GcodeViewer3D.qml` — сцена/камера/материалы/анимация/панель режимов
@@ -37,6 +37,7 @@
   зафиксирована: 7.7.2 не читает STEP вовсе, а `test_normals_golden.py` сверяет
   тесселяцию бит-в-бит и к версии OCP чувствителен
 - Запуск: `python modules/gcode-viewer/preview_3d.py "data/cad-testdata/Test_model.ngc"`
+  (старый путь через PySide6; C++-точка входа — в разделе «Сборка и запуск вьювера»)
 - Диагностика идёт через `logging`: уровень задаёт `CNC_LOG_LEVEL` (по умолчанию `INFO`,
   `DEBUG` покажет источник контура — STEP или меш; сбои загрузки печатаются как `WARNING`)
   (рядом подхватывается `Test_model.step`, иначе — `Test_model.stl`)
@@ -48,6 +49,84 @@ fallback), инструмент по данным УП (`UI_TOOL`), оправк
 «весь код / ограничить длину», этапы-операции (`UI_OP`), воспроизведение 1:1
 с подачей, анализ столкновений «оправка vs заготовка», проверка соответствия
 инструмента УП и таблицы стойки.
+
+#### Сборка и запуск вьювера (C++)
+
+В рантайме вьювер работает на C++: точка входа — `build/viewer/gcodeviewer`
+(`modules/gcode-viewer/cpp/viewer/main.cpp`), QML-модуль контроллера — `MockBackend`
+из `build/qmlbackend`. Питоновского бэкенда в пути исполнения нет.
+
+Нужны: Qt 6 (Core, Gui, Qml, Quick, Quick3D), OCCT с CMake-пакетом
+(`lib/cmake/opencascade/OpenCASCADEConfig.cmake`), CMake не ниже 3.16, Ninja и
+компилятор C++17. Проект документирует Qt 6.12.0 и OCCT 8.0.1; коду нужен Qt не ниже
+6.7 (`explicitTextureWidth`/`explicitTextureHeight` в `GcodeViewer3D.qml`). Каталоги
+задают переменные `CNC_QT_DIR` (пример умолчания — `C:\Qt\6.12.0\msvc2022_64`) и
+`CNC_OCC_DIR`; не заданы — сборка ищет их сама.
+
+Windows:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
+```
+
+Скрипт снимает окружение MSVC через `vcvars64.bat` и зовёт CMake с генератором Ninja.
+Собранное: `build\edges` (QML-модуль `CNC.Edges` и пробники `stepledges_probe`,
+`gcode_probe`, `geometry_probe`, `step_probe`, `stl_probe`, `silhouette_probe`,
+`tangents_probe`), `build\cpp` (мост `gvbridge.dll`, шим `gvqtshim.dll`),
+`build\qmlbackend` (модуль `MockBackend`) и `build\viewer` (`gcodeviewer.exe`,
+`keyprobe.exe`). Сборка не прошла — скрипт печатает `build-viewer: FAIL` и называет
+недостающее: `vcvars64.bat` (`CNC_VCVARS`), `cmake.exe` (`CNC_CMAKE`) или `ninja.exe`
+(`CNC_NINJA`).
+
+Запуск: `build\viewer\gcodeviewer.exe [--smoke] [путь к УП]`. Qt обязан быть в `PATH`
+до старта процесса (exe линкуется с `Qt6Core.dll`), каталог плагина и DLL OCCT точка
+входа добавляет себе сама:
+
+```powershell
+$env:PATH = "C:\Qt\6.12.0\msvc2022_64\bin;$env:PATH"
+build\viewer\gcodeviewer.exe data\cad-testdata\Test_model.ngc
+```
+
+Живое окно печатает `loaded g-code from: … segments: N` и ни одной строки
+`[QML warning]`. Offscreen (`$env:QT_QPA_PLATFORM = "offscreen"`) печатает
+`offscreen mode - loaded OK.`; `--smoke` — короткая проверка старта: грузит QML вьювера
+и печатает `RESULT: OK (parse-level)`.
+
+Linux: сборка тем же CMake, без MSVC. Практичный путь — окружение conda-forge:
+
+```bash
+conda create -n gcode-cpp -c conda-forge qt6-main qt6-quick3d occt cmake ninja
+conda activate gcode-cpp
+CNC_QT_DIR="$CONDA_PREFIX" CNC_OCC_DIR="$CONDA_PREFIX" bash scripts/build-viewer.sh
+```
+
+Вручную то же самое:
+
+```bash
+cmake -S modules/gcode-viewer/cpp -B build/edges -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_PREFIX_PATH="$CONDA_PREFIX;$CONDA_PREFIX"
+cmake --build build/edges
+```
+
+Запуск: Qt и OCCT загрузчик находит по rpath сборки, `LD_LIBRARY_PATH` не нужен (если
+SDK собран нестандартно, каталоги Qt и OCCT можно добавить в `LD_LIBRARY_PATH`):
+
+```bash
+./build/viewer/gcodeviewer data/cad-testdata/Test_model.ngc
+QT_QPA_PLATFORM=offscreen ./build/viewer/gcodeviewer --smoke
+```
+
+Ожидается Qt не ниже 6.7: проект документирует 6.12, conda-forge сейчас даёт 6.10.1.
+Этот путь проектом НЕ проверен — сборка и запуск на Linux не гонялись, машина
+разработки под Windows. Признаки те же, что на Windows: `segments: N` без
+`[QML warning]`, offscreen — `loaded OK`.
+
+Проверки вьювера: сторож `pnpm guard` (`tools/check.ps1`) зовёт сборку, проверяет
+наличие пробников, гоняет `gcodeviewer.exe` offscreen и `keyprobe.exe`; пробники C++
+сверяют себя с эталоном `modules/gcode-viewer/oracle_manifest.json` (ключ `--manifest`)
+без Python. Питоновские точки входа `preview_3d.py` и `smoke_test_qml.py` запускают тот
+же C++-вьювер через PySide6 — это более старый способ, для точки входа
+`gcodeviewer.exe` он не нужен.
 
 ### 4. Тестовые УП/модели и постпроцессор — `cad-testdata` (`0.5.1`)
 - `data/cad-testdata/Test_model.ngc`, `data/cad-testdata/Test_model.STL` — тестовые УП и модель

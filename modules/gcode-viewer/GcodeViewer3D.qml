@@ -17,7 +17,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.42.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.44.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -642,18 +642,22 @@ Item {
             // the cutter stick-out (toolLen).
             readonly property real holderBase: (path && path.holderGauge > 0) ? path.holderGauge : toolLen
 
-            // Cutter shape built from UI_TOOL (flat / ball / bull / chamfer / drill...)
+            // Резец собран из UI_TOOL (плоский / сферический / радиусный / фаска / сверло...)
             Model {
-                // The solid skin writes depth; keep the cutter stack
-                // (tool, holder, rings, outlines) always-forward so it
-                // stays visible inside bores, as in the translucent era.
+                // depthBias -50000 (всегда вперёд) оставлен намеренно: резец стоит
+                // ВНУТРИ заготовки и детали, и тест глубины спрятал бы его за их
+                // кожей. Уровень материала (PrincipledMaterial) при этом тот же,
+                // что у детали, - резец читается её металлом под тем же светом.
                 depthBias: -50000
                 geometry: path ? path.toolGeometry : null
                 materials: [
-                    DefaultMaterial {
-                        lighting: DefaultMaterial.NoLighting
-                        diffuseColor: "#C7CDD4"
+                    PrincipledMaterial {
+                        baseColor: "#B9BEC4"
+                        roughness: 0.9
+                        metalness: 0.0
+                        specularAmount: 0.2
                         cullMode: Material.NoCulling
+                        alphaMode: PrincipledMaterial.Opaque
                     }
                 ]
             }
@@ -677,13 +681,26 @@ Item {
                     }
                 ]
             }
-            // Cutter horizontal edge rings (thin line outline)
+            // Рёбра резца: кольца профиля и продольные образующие - те же ленты
+            // stepledges, что у детали (постоянная ширина в px, AA, depth-тест).
+            // depthBias -50000: резец внутри заготовки и детали, depth-тест его
+            // скрыл бы (см. комментарий у тела).
             Model {
                 depthBias: -50000
-                geometry: path ? path.toolRings : null
-                materials: [
-                    DefaultMaterial { lighting: DefaultMaterial.NoLighting; diffuseColor: "#141B24" }
-                ]
+                geometry: path ? path.toolProfileEdges : null
+                materials: CustomMaterial {
+                    shadingMode: CustomMaterial.Unshaded
+                    property real lineWidthPx: root.edgeLineWidthPx
+                    property real polyOffset: root.edgePolyOffset
+                    property real viewportW: view3d.width
+                    property real viewportH: view3d.height
+                    property color edgeColor: "#000000"
+                    property vector3d eyeRaw: path ? path.eyeRaw : Qt.vector3d(0, 0, 0)
+                    property real camFloatMm: 0.0
+                    cullMode: Material.NoCulling
+                    vertexShader: "stepledges.vert"
+                    fragmentShader: "stepledges.frag"
+                }
             }
             // ---- Holder: primitive ER20 collet nut + spindle body ----
             // Solid of revolution from the backend (path.holderGeometry), bottom
@@ -706,24 +723,42 @@ Item {
                     }
                 ]
             }
-            // Holder horizontal edge rings (thin line outline)
+            // Рёбра оправки: кольца профиля и продольные образующие - лентами
+            // stepledges, как у детали и резца (см. комментарий у toolProfileEdges).
             Model {
                 depthBias: -50000
-                geometry: path ? path.holderRings : null
+                geometry: path ? path.holderProfileEdges : null
                 position: Qt.vector3d(0, toolNode.holderBase, 0)
-                materials: [
-                    DefaultMaterial { lighting: DefaultMaterial.NoLighting; diffuseColor: "#141B24" }
-                ]
+                materials: CustomMaterial {
+                    shadingMode: CustomMaterial.Unshaded
+                    property real lineWidthPx: root.edgeLineWidthPx
+                    property real polyOffset: root.edgePolyOffset
+                    property real viewportW: view3d.width
+                    property real viewportH: view3d.height
+                    property color edgeColor: "#000000"
+                    property vector3d eyeRaw: path ? path.eyeRaw : Qt.vector3d(0, 0, 0)
+                    property real camFloatMm: 0.0
+                    cullMode: Material.NoCulling
+                    vertexShader: "stepledges.vert"
+                    fragmentShader: "stepledges.frag"
+                }
             }
             Model {
+                // depthBias -50000 (всегда вперёд): оправка стоит внутри
+                // заготовки; тест глубины скрыл бы её за кожей. Материал - как у
+                // детали, тот же свет сцены (PrincipledMaterial сам берёт
+                // DirectionalLight'ы сцены).
                 depthBias: -50000
                 geometry: path ? path.holderGeometry : null
                 position: Qt.vector3d(0, toolNode.holderBase, 0)
                 materials: [
-                    DefaultMaterial {
-                        lighting: DefaultMaterial.NoLighting
-                        diffuseColor: "#9AA2AC"
+                    PrincipledMaterial {
+                        baseColor: "#B9BEC4"
+                        roughness: 0.9
+                        metalness: 0.0
+                        specularAmount: 0.2
                         cullMode: Material.NoCulling
+                        alphaMode: PrincipledMaterial.Opaque
                     }
                 ]
             }

@@ -376,10 +376,12 @@ GcodeToolpath::GcodeToolpath(QObject *parent)
     holder_outline_geo_ = new ToolGeometry();
     tool_rings_geo_ = new ToolpathGeometry();
     holder_rings_geo_ = new ToolpathGeometry();
+    tool_profile_edges_ = new HLRLineGeometry();
+    holder_profile_edges_ = new HLRLineGeometry();
     const QVector<QObject *> owned = {
         rapid_, feed_, mesh_, edges_, hlr_edges_, hlr_tangents_, tool_geo_,
         tool_outline_geo_, holder_geo_, holder_outline_geo_, tool_rings_geo_,
-        holder_rings_geo_,
+        holder_rings_geo_, tool_profile_edges_, holder_profile_edges_,
     };
     for (QObject *object : owned)
         QQmlEngine::setObjectOwnership(object, QQmlEngine::CppOwnership);
@@ -400,6 +402,7 @@ GcodeToolpath::GcodeToolpath(QObject *parent)
                    gv::toolOutlineProfile(gv::holderOutlineProfile(), 0.1));
     setRingSegments(holder_rings_geo_,
                     gv::ringsSegments(gv::profileRingPoints(holder_profile)));
+    setProfileEdges(holder_profile_edges_, holder_profile);
     holder_radius_ = 1.0;
     for (const gv::ProfilePoint &point : holder_profile) {
         holder_radius_ = std::max(holder_radius_, point.radius_mm);
@@ -484,6 +487,8 @@ QQuick3DGeometry *GcodeToolpath::holderGeometry() const { return holder_geo_; }
 QQuick3DGeometry *GcodeToolpath::holderOutline() const { return holder_outline_geo_; }
 QQuick3DGeometry *GcodeToolpath::toolRings() const { return tool_rings_geo_; }
 QQuick3DGeometry *GcodeToolpath::holderRings() const { return holder_rings_geo_; }
+QQuick3DGeometry *GcodeToolpath::toolProfileEdges() const { return tool_profile_edges_; }
+QQuick3DGeometry *GcodeToolpath::holderProfileEdges() const { return holder_profile_edges_; }
 
 // ---------------------------------------------------------------------------
 // Слоты QML
@@ -941,6 +946,7 @@ void GcodeToolpath::applyToolInfo(const gv::ToolInfo &spec)
     setRingSegments(tool_rings_geo_,
                     profile.empty() ? std::vector<gv::RingSegment>{}
                                     : gv::ringsSegments(gv::profileRingPoints(profile)));
+    setProfileEdges(tool_profile_edges_, profile);
     emit toolInfoChanged();
 }
 
@@ -980,6 +986,52 @@ void GcodeToolpath::setRingSegments(ToolpathGeometry *geo,
     const gv::PackedEdges packed = gv::packEdgesNp(p0, p1);
     geo->setPacked(toByteArray(packed.raw), packed.has_bounds ? &packed.bounds : nullptr,
                    packed.nv);
+}
+
+void GcodeToolpath::setProfileEdges(HLRLineGeometry *geo,
+                                    const std::vector<gv::ProfilePoint> &profile)
+{
+    // Рёбра тела вращения теми же лентами, что у детали (stepledges): набор
+    // отрезков в кадре профиля (острие в нуле, ось +Y). Горизонтальные кольца -
+    // та же выборка profileRingPoints, что у toolRings, поэтому кромки ложатся
+    // на настоящие рёбра профиля. Продольные образующие - профиль, провёрнутый
+    // на четырёх азимутах (0/90/180/270): 48 азимутов дали бы клетку, которой у
+    // детали нет, четыре читают форму и не забивают кожу. Смещения к глазу и
+    // перекрытие с телом даёт материал (polyOffset) и depthBias -50000, поэтому
+    // радиальный отжим FLOAT_SCALE (setReference) здесь не нужен.
+    const std::vector<gv::ProfilePoint> ring_pts = gv::profileRingPoints(profile);
+    if (ring_pts.empty()) {
+        geo->setSegments(nullptr, 0);
+        return;
+    }
+    const std::vector<gv::RingSegment> rings = gv::ringsSegments(ring_pts);
+    const double two_pi = 2.0 * 3.141592653589793;
+    const double azimuths[4] = {0.0, two_pi * 0.25, two_pi * 0.5, two_pi * 0.75};
+    std::vector<float> segs;
+    segs.reserve((rings.size() + 4 * (ring_pts.size() - 1)) * 6);
+    for (const gv::RingSegment &ring : rings) {
+        segs.push_back(float(ring.x0));
+        segs.push_back(float(ring.y0));
+        segs.push_back(float(ring.z0));
+        segs.push_back(float(ring.x1));
+        segs.push_back(float(ring.y1));
+        segs.push_back(float(ring.z1));
+    }
+    for (double a : azimuths) {
+        const double ca = std::cos(a);
+        const double sa = std::sin(a);
+        for (std::size_t i = 0; i + 1 < ring_pts.size(); ++i) {
+            const gv::ProfilePoint &p0 = ring_pts[i];
+            const gv::ProfilePoint &p1 = ring_pts[i + 1];
+            segs.push_back(float(p0.radius_mm * ca));
+            segs.push_back(float(p0.height_mm));
+            segs.push_back(float(p0.radius_mm * sa));
+            segs.push_back(float(p1.radius_mm * ca));
+            segs.push_back(float(p1.height_mm));
+            segs.push_back(float(p1.radius_mm * sa));
+        }
+    }
+    geo->setSegments(segs.data(), int(segs.size() / 6));
 }
 
 QVariantMap GcodeToolpath::toolCheckMap(const gv::ToolCheckRow &row)

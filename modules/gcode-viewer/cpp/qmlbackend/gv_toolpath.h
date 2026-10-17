@@ -156,6 +156,8 @@ class GcodeToolpath : public QObject
     Q_PROPERTY(QQuick3DGeometry *holderOutline READ holderOutline CONSTANT)
     Q_PROPERTY(QQuick3DGeometry *toolRings READ toolRings NOTIFY toolInfoChanged)
     Q_PROPERTY(QQuick3DGeometry *holderRings READ holderRings CONSTANT)
+    Q_PROPERTY(QQuick3DGeometry *toolProfileEdges READ toolProfileEdges NOTIFY toolInfoChanged)
+    Q_PROPERTY(QQuick3DGeometry *holderProfileEdges READ holderProfileEdges CONSTANT)
 
 public:
     explicit GcodeToolpath(QObject *parent = nullptr);
@@ -206,6 +208,8 @@ public:
     QQuick3DGeometry *holderOutline() const;
     QQuick3DGeometry *toolRings() const;
     QQuick3DGeometry *holderRings() const;
+    QQuick3DGeometry *toolProfileEdges() const;
+    QQuick3DGeometry *holderProfileEdges() const;
 
     // ---- слоты QML --------------------------------------------------------
     // Показ инструмента этапа index: метаданные UI_TOOL этапа публикуются
@@ -293,6 +297,10 @@ private:
     // Кольца профиля в Lines-буфер: тот же _pack_edge_segments, что у эталона.
     static void setRingSegments(ToolpathGeometry *geo,
                                 const std::vector<gv::RingSegment> &segments);
+    // Рёбра тела вращения лентами stepledges: кольца (та же выборка, что у
+    // toolRings) плюс продольные образующие профиля на четырёх азимутах.
+    static void setProfileEdges(HLRLineGeometry *geo,
+                                const std::vector<gv::ProfilePoint> &profile);
     // Отчёт сверки строкой контракта QML (None у эталона - недействительный QVariant).
     static QVariantMap toolCheckMap(const gv::ToolCheckRow &row);
     // Строка коллизии картой контракта QML: d, depth, scene, scene_hb.
@@ -312,6 +320,8 @@ private:
     ToolGeometry *holder_outline_geo_ = nullptr;
     ToolpathGeometry *tool_rings_geo_ = nullptr;
     ToolpathGeometry *holder_rings_geo_ = nullptr;
+    HLRLineGeometry *tool_profile_edges_ = nullptr;
+    HLRLineGeometry *holder_profile_edges_ = nullptr;
 
     QVariantList stages_;                 // [{start, end, label, tool}]
     std::vector<gv::ToolInfo> stage_specs_;  // метаданные UI_TOOL по этапам

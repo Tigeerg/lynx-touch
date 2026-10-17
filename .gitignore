@@ -33,3 +33,28 @@ ZIP/
 # диагностические кадры сравнения и скриншоты рабочего стола
 img/ab_*.png
 img/*Снимок экрана*
+
+# Сборка C++: объектники, библиотеки и исполняемые файлы. build/ игнорируется
+# отдельно выше, но собирают и мимо него - cmake в корне, CLion, VS.
+*.obj
+*.o
+*.a
+*.lib
+*.exp
+*.pdb
+*.ilk
+*.dll
+*.so
+*.so.*
+*.dylib
+*.exe
+CMakeCache.txt
+CMakeFiles/
+cmake-build-*/
+*.ninja
+.ninja_deps
+.ninja_log
+CMakeUserPresets.json
+build-*/
+dist/
+out/

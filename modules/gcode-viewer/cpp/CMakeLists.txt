@@ -96,6 +96,7 @@ add_library(gvcore STATIC
     core/packing.cpp
     core/path_prep.cpp
     core/silhouette.cpp
+    core/stock_sim.cpp
     core/stl_import.cpp
     core/tangents.cpp
     core/text_util.cpp
@@ -218,6 +219,21 @@ if (MSVC)
     target_compile_options(stl_probe PRIVATE /utf-8)
 endif()
 target_link_libraries(stl_probe PRIVATE gvcore)
+
+# Пробник поля высот остатка заготовки (core/stock_sim): отдельная цель, в
+# плагин не входит, ни Qt, ни OCCT не требует. Сверяет поле с аналитикой,
+# посчитанной в самом пробнике, и меряет цену прохода и всего Test_model.ngc при
+# узле 0.5 и 0.2 мм. Печатает "case <имя>", строки "phase <имя> <мс>" и
+# "RESULT: OK" / "RESULT: FAIL (n)"; замер кадров и оракул не трогает.
+#   stock_sim_probe.exe [файл.ngc]
+add_executable(stock_sim_probe stock_sim_probe.cpp)
+set_target_properties(stock_sim_probe PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+if (MSVC)
+    target_compile_options(stock_sim_probe PRIVATE /utf-8)
+endif()
+target_link_libraries(stock_sim_probe PRIVATE gvcore)
 
 # Пробник топологии силуэта и силуэта на фиксированных глазах (этап 4c плана
 # переноса): отдельная цель, в плагин не входит. Берёт суп вершин из STEP тем же

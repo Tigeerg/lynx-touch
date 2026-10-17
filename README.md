@@ -25,7 +25,7 @@
 - `main.qml`, `preview.qml`, генератор `gen_preview_qml.py`, ассеты/шрифты
 - Запуск: `python apps/qt-interface/preview_qml.py`
 
-### 3. 3D-вьювер УП — `gcode-viewer` (`0.42.0`)
+### 3. 3D-вьювер УП — `gcode-viewer` (`0.44.0`)
 3D-визуализация управляющей программы (`modules/gcode-viewer`).
 
 - `GcodeViewer3D.qml` — сцена/камера/материалы/анимация/панель режимов

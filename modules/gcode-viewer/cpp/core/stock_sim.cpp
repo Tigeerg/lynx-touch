@@ -208,6 +208,96 @@ void StockField::sweep(const StockCutter& cutter,
     }
 }
 
+StockSurfaceMesh stockSurfaceMesh(const StockBounds& bounds, double cellMm,
+                                  int countX, int countY)
+{
+    StockSurfaceMesh mesh;
+    if (countX < 2 || countY < 2 || !(cellMm > 0.0)) {
+        return mesh;
+    }
+    mesh.countX = countX;
+    mesh.countY = countY;
+
+    const float zTop = float(bounds.zMaxMm);
+
+    mesh.vertices.reserve(std::size_t(countX) * std::size_t(countY) * 5);
+    for (int iy = 0; iy < countY; ++iy) {
+        // Узел поля, а в последней строке - растянутый до габарита (см.
+        // заголовок): иначе верх не дошёл бы до стенки коробки.
+        const double nodeY = bounds.yMinMm + double(iy) * cellMm;
+        const double y = (iy == countY - 1) ? std::min(nodeY, bounds.yMaxMm) : nodeY;
+        const float v = float((double(iy) + 0.5) / double(countY));
+        for (int ix = 0; ix < countX; ++ix) {
+            const double nodeX = bounds.xMinMm + double(ix) * cellMm;
+            const double x = (ix == countX - 1) ? std::min(nodeX, bounds.xMaxMm) : nodeX;
+            const float u = float((double(ix) + 0.5) / double(countX));
+            mesh.vertices.push_back(float(x));
+            mesh.vertices.push_back(float(y));
+            mesh.vertices.push_back(zTop);
+            mesh.vertices.push_back(u);
+            mesh.vertices.push_back(v);
+        }
+    }
+
+    const std::size_t quads = std::size_t(countX - 1) * std::size_t(countY - 1);
+    mesh.indices.reserve(quads * 6);
+    for (int iy = 0; iy + 1 < countY; ++iy) {
+        for (int ix = 0; ix + 1 < countX; ++ix) {
+            const std::uint32_t a = std::uint32_t(iy * countX + ix);
+            const std::uint32_t b = a + 1;
+            const std::uint32_t d = a + std::uint32_t(countX);
+            const std::uint32_t c = d + 1;
+            mesh.indices.push_back(a);
+            mesh.indices.push_back(b);
+            mesh.indices.push_back(c);
+            mesh.indices.push_back(a);
+            mesh.indices.push_back(c);
+            mesh.indices.push_back(d);
+        }
+    }
+    return mesh;
+}
+
+std::vector<float> stockShellVertices(const StockBounds& bounds, double cellMm,
+                                      int countX, int countY,
+                                      double gapSideMm, double gapTopMm,
+                                      double gapBottomMm)
+{
+    std::vector<float> vertices;
+    if (countX < 2 || countY < 2 || !(cellMm > 0.0)) {
+        return vertices;
+    }
+    // Край коробки - габарит: последний узел поля растянут до него, поэтому
+    // верх и стенка сходятся. Верх материала стенка перекрывает на gapTopMm -
+    // так же, как перекрывала прежняя коробка.
+    const double x0 = bounds.xMinMm - gapSideMm;
+    const double x1 = bounds.xMaxMm + gapSideMm;
+    const double y0 = bounds.yMinMm - gapSideMm;
+    const double y1 = bounds.yMaxMm + gapSideMm;
+    const double z0 = bounds.zMinMm - gapBottomMm;
+    const double z1 = bounds.zMaxMm + gapTopMm;
+
+    // Четыре угла одной грани парами треугольников: 0-1-2, 0-2-3.
+    const auto face = [&vertices](const std::array<double, 3>& p0,
+                                  const std::array<double, 3>& p1,
+                                  const std::array<double, 3>& p2,
+                                  const std::array<double, 3>& p3) {
+        const std::array<std::array<double, 3>, 6> order{p0, p1, p2, p0, p2, p3};
+        for (const std::array<double, 3>& point : order) {
+            vertices.push_back(float(point[0]));
+            vertices.push_back(float(point[1]));
+            vertices.push_back(float(point[2]));
+        }
+    };
+
+    face({x0, y0, z0}, {x1, y0, z0}, {x1, y1, z0}, {x0, y1, z0});   // дно
+    face({x0, y0, z0}, {x0, y1, z0}, {x0, y1, z1}, {x0, y0, z1});   // стенка -X
+    face({x1, y0, z0}, {x1, y0, z1}, {x1, y1, z1}, {x1, y1, z0});   // стенка +X
+    face({x0, y0, z0}, {x0, y0, z1}, {x1, y0, z1}, {x1, y0, z0});   // стенка -Y
+    face({x0, y1, z0}, {x1, y1, z0}, {x1, y1, z1}, {x0, y1, z1});   // стенка +Y
+    return vertices;
+}
+
 StockRunResult simulateStock(const PathData& data, const StockBounds& bounds, double cellMm,
                              const ToolInfo& initialTool,
                              const std::function<bool(double)>& cancelled,

@@ -452,9 +452,12 @@ endforeach()
 target_include_directories(stepledges_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
 # C++-контроллер вьювера (этап 5.4а плана переноса): QML-модуль MockBackend 1.0 с
-# типом GcodeToolpath и шестью геометриями этапа 3. Заменяет питоновскую
-# регистрацию тех же типов (controller.py, geometry.py): контракт QML - URI, имена
-# типов, свойства, слоты и сигналы - тот же, поэтому GcodeViewer3D.qml не меняется.
+# типом GcodeToolpath и шестью геометриями этапа 3. Там же две геометрии
+# рисования остатка заготовки (qmlbackend/gv_stockgeom): верх поля высот и
+# оболочка коробки без верхней грани; в набор сверки шести они не входят.
+# Заменяет питоновскую регистрацию тех же типов (controller.py, geometry.py):
+# контракт QML - URI, имена типов, свойства, слоты и сигналы - тот же, поэтому
+# GcodeViewer3D.qml не меняется.
 # Это единственный бэкенд вьювера: точки входа грузят только его.
 #
 # Модуль, как и CNC.Edges, разделён по образцу Qt: резервная библиотека
@@ -487,6 +490,8 @@ qt_add_qml_module(gvqmlbackend
     SOURCES
         qmlbackend/gv_qmlgeom.h
         qmlbackend/gv_qmlgeom.cpp
+        qmlbackend/gv_stockgeom.h
+        qmlbackend/gv_stockgeom.cpp
         qmlbackend/gv_toolpath.h
         qmlbackend/gv_toolpath.cpp
 )
@@ -573,9 +578,11 @@ endif()
 
 # Проба привязки съёма материала к траектории (gv_toolpath): создаёт настоящий
 # GcodeToolpath из QML-модуля MockBackend и грузит реальную УП. Печатает время
-# фонового прохода при пресетах med и high и задержку отмены. Живёт без Python;
-# платформа offscreen ставится сама. CMake-цель нужна Qt (движок QML), сам
-# контроллер приходит из собранного плагина, как у точки входа вьювера.
+# фонового прохода при пресетах med и high, сверяет текстуру рисования с полем и
+# задержку отмены. Живёт без Python; платформа offscreen ставится сама. CMake-цель
+# нужна Qt (движок QML), сам контроллер приходит из собранного плагина, как у
+# точки входа вьювера; Qt6::Quick3D нужен на тип QQuick3DTextureData - им
+# проверяется опубликованное поле.
 add_executable(stock_bind_probe viewer/stock_bind_probe.cpp)
 set_target_properties(stock_bind_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${GV_VIEWER_DIR}
@@ -584,7 +591,7 @@ set_target_properties(stock_bind_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_VIEWER_DIR}
     RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${GV_VIEWER_DIR}
 )
-target_link_libraries(stock_bind_probe PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
+target_link_libraries(stock_bind_probe PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Quick3D)
 target_compile_definitions(stock_bind_probe PRIVATE GV_REPO_ROOT="${GV_REPO_ROOT}")
 if (MSVC)
     target_compile_options(stock_bind_probe PRIVATE /utf-8)

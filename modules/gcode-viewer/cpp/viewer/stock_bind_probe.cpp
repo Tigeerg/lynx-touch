@@ -3,10 +3,12 @@
 //
 // Проба грузит настоящий QML-модуль MockBackend и создаёт GcodeToolpath, затем
 // зовёт load_gcode_async на реальной УП. Для пресетов med и high печатает узел,
-// время фонового прохода, число узлов и размер поля. Затем запускает ещё один
-// проход, ждёт начала счёта и отменяет его: печатается задержка от запроса
-// отмены до остановки рабочего потока и проверяется, что отменённый проход
-// ничего не опубликовал (поле пусто, состояние cancelled).
+// время фонового прохода, число узлов и размер поля, а для med ещё сверяет
+// текстуру рисования (stockField) с опубликованным полем: размер, формат R32F и
+// байты обязаны совпасть. Затем запускает ещё один проход, ждёт начала счёта и
+// отменяет его: печатается задержка от запроса отмены до остановки рабочего
+// потока и проверяется, что отменённый проход ничего не опубликовал (поле
+// пусто, состояние cancelled).
 //
 // Запуск (Qt в PATH; платформа offscreen ставится сама):
 //   build\viewer\stock_bind_probe.exe [путь к файлу УП]
@@ -20,6 +22,8 @@
 #include <QMetaObject>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QQuick3DTextureData>
+#include <QSize>
 #include <QString>
 #include <QTextStream>
 #include <QThread>
@@ -161,6 +165,34 @@ void reportRun(QObject *controller, const char *quality)
             .arg(progress, 0, 'f', 2));
 }
 
+// Текстура рисования обязана нести то же поле: шаг 3 берёт высоту вершинного
+// шейдера из неё, и разошедшаяся копия нарисовала бы не то, что посчитано.
+// Сверяются размер (число узлов), формат (R32F) и байты - копия контроллера
+// против опубликованного stockDepth.
+bool textureMatchesField(QObject *controller, QString *detail)
+{
+    auto *data = qobject_cast<QQuick3DTextureData *>(
+            controller->property("stockField").value<QObject *>());
+    if (data == nullptr) {
+        *detail = QStringLiteral("stockField не TextureData");
+        return false;
+    }
+    const QByteArray depth = controller->property("stockDepth").toByteArray();
+    const QSize size = data->size();
+    const bool matches = data->format() == QQuick3DTextureData::R32F
+            && size.width() == controller->property("stockCountX").toInt()
+            && size.height() == controller->property("stockCountY").toInt()
+            && !depth.isEmpty()
+            && data->textureData() == depth;
+    *detail = QStringLiteral("%1x%2 format=%3 bytes=%4 depth_bytes=%5")
+            .arg(size.width())
+            .arg(size.height())
+            .arg(int(data->format()))
+            .arg(data->textureData().size())
+            .arg(depth.size());
+    return matches;
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -211,6 +243,13 @@ int main(int argc, char *argv[])
         ++failures;
     } else {
         reportRun(controller, "med");
+        QString detail;
+        const bool textureOk = textureMatchesField(controller, &detail);
+        say(QStringLiteral("stock_bind: field %1 matches=%2")
+                .arg(detail).arg(textureOk ? 1 : 0));
+        if (!textureOk) {
+            ++failures;
+        }
     }
 
     qputenv("CNC_QUALITY", "high");

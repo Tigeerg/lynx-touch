@@ -324,6 +324,11 @@ int main(int argc, char *argv[])
     // картинку, поэтому без переменной поведение не меняется.
     root_item->setProperty("quality", QString::fromLatin1(gv::presetFromEnv().level));
 
+    // CNC_STOCK_BOX: прежняя коробка вместо поверхности съёма - ею снимают кадр
+    // для сравнения (та же ручка, что клавиша B). По умолчанию коробки нет:
+    // заготовку рисует поле высот.
+    root_item->setProperty("stockPlainBox", qEnvironmentVariableIsSet("CNC_STOCK_BOX"));
+
     if (program.isEmpty()) {
         say(QStringLiteral("gcodeviewer: УП не задана: вьювер пуст "
                            "(аргумент - путь к файлу УП)"));

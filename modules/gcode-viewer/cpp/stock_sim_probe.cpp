@@ -14,6 +14,11 @@
 // шириной шаг/2 - цена дискретизации, а не ошибка. Поэтому сравниваются узлы
 // вне этой полосы, а узел внутри неё, но вне радиуса, обязан остаться на верху.
 //
+// Там же рисуемая часть: случай stocksurface строит меш верха поля
+// (stockSurfaceMesh) и повторяет вершинный шейдер (texcoord -> узел поля, высота
+// = верх заготовки минус глубина, кадр сцены - поворот узла), случай stockshell
+// проверяет форму оболочки коробки: стенки и дно без верхней грани.
+//
 // 2. Замер. Время одного прохода длиной 50 мм и время всего Test_model.ngc
 // (все ходы, включая быстрые, инструмент этапа, габарит из UI_STOCK) при узле
 // 0.5 и 0.2 мм - это предложения пресетов из DESIGN.md. Печатаются строки
@@ -531,6 +536,167 @@ int main(int argc, char** argv)
                     digest_a == digest_b ? 1 : 0);
         reportCase("stock_bind", checked, maxDev, 1e-5,
                    !deeper && digest_a == digest_b && first.moves > 0);
+    }
+
+    // 7. Рисование верха: меш поля плюс высота из поля. Случай повторяет
+    //    рисование целиком, кроме самой выборки на GPU: сетка строится по узлам
+    //    поля (stockSurfaceMesh), texcoord вершины переводится в узел (так же
+    //    читает поле nearest-выборка stocksurface.vert), высота берётся
+    //    вычитанием глубины из верха заготовки, а точка переводится в кадр сцены
+    //    тем же поворотом узла: машинные (x, y, z) -> (x, z, -y). Сверка - с
+    //    аналитикой плоского врезания, посчитанной здесь же: дно реза обязано
+    //    встать на высоту острия инструмента, а нетронутые узлы - на верх
+    //    заготовки. Верх заготовки взят не в нуле (z = 5): так проверка ловит и
+    //    подмену оси, и потерю слагаемого zMax.
+    {
+        const double cell = 0.5;
+        const double r = 3.0;
+        const double tipX = -1.5;
+        const double tipY = -2.5;
+        const double tipZ = -1.0;
+        gv::StockBounds bounds;
+        bounds.xMinMm = -5.0;
+        bounds.xMaxMm = 5.0;
+        bounds.yMinMm = -5.0;
+        bounds.yMaxMm = 5.0;
+        bounds.zMinMm = -5.0;
+        bounds.zMaxMm = 5.0;
+        gv::StockField field;
+        field.reset(bounds, cell);
+        const gv::StockCutter cutter = gv::stockCutter(makeTool(ToolSpec{"FLAT", 6.0}));
+        field.plunge(cutter, tipX, tipY, tipZ);
+
+        const int nx = field.countX();
+        const int ny = field.countY();
+        const gv::StockSurfaceMesh mesh = gv::stockSurfaceMesh(bounds, cell, nx, ny);
+        // Допуск: и глубина, и позиция вершины хранятся float32; на 100 мм шаг
+        // float32 около 7.6e-6 мм, отсюда 1e-5 мм. Узел ровно на границе радиуса
+        // (|d - r| < 1e-6 мм) в сверку не идёт: там разошлись бы последние биты
+        // разного порядка сложения, а не съём.
+        const double tol = 1e-5;
+        bool geometryOk = mesh.countX == nx && mesh.countY == ny
+                && int(mesh.vertices.size()) == 5 * nx * ny
+                && int(mesh.indices.size()) == 6 * (nx - 1) * (ny - 1);
+        int checked = 0;
+        double maxDev = 0.0;
+        for (int iy = 0; iy < ny; ++iy) {
+            for (int ix = 0; ix < nx; ++ix) {
+                const std::size_t v = std::size_t(iy) * std::size_t(nx) + std::size_t(ix);
+                const float* vertex = &mesh.vertices[v * 5];
+                // Texcoord - центр текселя этого узла: выборка nearest возвращает
+                // ровно его.
+                const int tx = int(double(vertex[3]) * double(nx));
+                const int ty = int(double(vertex[4]) * double(ny));
+                const double x = field.nodeXMm(ix);
+                const double y = field.nodeYMm(iy);
+                geometryOk = geometryOk && tx == ix && ty == iy
+                        && std::fabs(double(vertex[0]) - std::min(x, bounds.xMaxMm)) < 1e-4
+                        && std::fabs(double(vertex[1]) - std::min(y, bounds.yMaxMm)) < 1e-4
+                        && double(vertex[2]) == bounds.zMaxMm;
+                // Высота, как её считает вершинный шейдер: z = верх - глубина.
+                const double drawnZ = double(vertex[2] - field.depthMm()[v]);
+                const double d = std::hypot(x - tipX, y - tipY);
+                const double analytic = (d <= r) ? tipZ : bounds.zMaxMm;
+                if (std::fabs(d - r) > 1e-6) {
+                    maxDev = std::max(maxDev, std::fabs(drawnZ - analytic));
+                    ++checked;
+                }
+            }
+        }
+        // Узел под остриём: его дно в кадре сцены (x, z, -y) обязано совпасть с
+        // остриём (X и Z сцены - с точностью до половины узла, ось сцены Y -
+        // точно: острие режет на своей высоте).
+        const int ixTip = int(std::lround((tipX - bounds.xMinMm) / cell));
+        const int iyTip = int(std::lround((tipY - bounds.yMinMm) / cell));
+        const std::size_t vTip = std::size_t(iyTip) * std::size_t(nx) + std::size_t(ixTip);
+        const double nodeTipX = field.nodeXMm(ixTip);
+        const double nodeTipY = field.nodeYMm(iyTip);
+        const double drawnTipZ = double(mesh.vertices[vTip * 5 + 2] - field.depthMm()[vTip]);
+        const double planeDev = std::fabs(drawnTipZ - tipZ);
+        const double posDev = std::max(std::fabs(nodeTipX - tipX), std::fabs(nodeTipY - tipY));
+        std::printf("note stocksurface node=(%.2f,%.2f) uv=(%.4f,%.4f) tip=(%.2f,%.2f) "
+                    "scene=(%.2f,%.2f,%.2f) tip_scene=(%.2f,%.2f,%.2f) plane_dev_mm=%.2e "
+                    "pos_dev_mm=%.3f node_mm=%.2f\n",
+                    nodeTipX, nodeTipY, double(mesh.vertices[vTip * 5 + 3]),
+                    double(mesh.vertices[vTip * 5 + 4]), tipX, tipY,
+                    nodeTipX, drawnTipZ, -nodeTipY, tipX, tipZ, -tipY,
+                    planeDev, posDev, cell);
+        reportCase("stocksurface", checked, maxDev, tol,
+                   geometryOk && planeDev <= tol && posDev <= cell * 0.5 + 1e-6);
+    }
+
+    // 8. Оболочка коробки: пять прямоугольников без верхней грани. Проверяется
+    //    форма, а не буфер: вершин 30, каждая - угол габарита, увеличенного на
+    //    зазоры; у каждого треугольника одна координата постоянна (грани
+    //    плоские); дно есть, верхней грани нет - иначе она спорила бы с полем за
+    //    одну плоскость, а микро-сдвиг на верху соврал бы о глубине реза.
+    {
+        gv::StockBounds bounds;
+        bounds.xMinMm = -5.0;
+        bounds.xMaxMm = 5.0;
+        bounds.yMinMm = -5.0;
+        bounds.yMaxMm = 5.0;
+        bounds.zMinMm = -5.0;
+        bounds.zMaxMm = 5.0;
+        const double gapSide = 0.7;
+        const double gapTop = 0.5;
+        const double gapBottom = 0.5;
+        const std::vector<float> vertices = gv::stockShellVertices(
+                bounds, 0.5, 21, 21, gapSide, gapTop, gapBottom);
+        const double x0 = bounds.xMinMm - gapSide;
+        const double x1 = bounds.xMaxMm + gapSide;
+        const double y0 = bounds.yMinMm - gapSide;
+        const double y1 = bounds.yMaxMm + gapSide;
+        const double z0 = bounds.zMinMm - gapBottom;
+        const double z1 = bounds.zMaxMm + gapTop;
+
+        const auto atCorner = [x0, x1, y0, y1, z0, z1](double value, double a, double b) {
+            return std::fabs(value - a) < 1e-6 || std::fabs(value - b) < 1e-6;
+        };
+        bool shapeOk = int(vertices.size()) == 30 * 3;
+        double maxDev = 0.0;
+        int bottomFaces = 0;
+        int topFaces = 0;
+        int checked = 0;
+        for (std::size_t i = 0; i + 2 < vertices.size() / 3; i += 3) {
+            const float* a = &vertices[i * 3];
+            const float* b = &vertices[(i + 1) * 3];
+            const float* c = &vertices[(i + 2) * 3];
+            ++checked;
+            for (const float* p : {a, b, c}) {
+                const double px = double(p[0]);
+                const double py = double(p[1]);
+                const double pz = double(p[2]);
+                // Отклонение от ближайшего угла габарита: ноль, если вершина
+                // стоит точно на нём.
+                const double dx = std::min(std::fabs(px - x0), std::fabs(px - x1));
+                const double dy = std::min(std::fabs(py - y0), std::fabs(py - y1));
+                const double dz = std::min(std::fabs(pz - z0), std::fabs(pz - z1));
+                maxDev = std::max(maxDev, std::max(dx, std::max(dy, dz)));
+                shapeOk = shapeOk
+                        && atCorner(px, x0, x1) && atCorner(py, y0, y1) && atCorner(pz, z0, z1);
+            }
+            const bool flat = (a[0] == b[0] && b[0] == c[0])
+                    || (a[1] == b[1] && b[1] == c[1])
+                    || (a[2] == b[2] && b[2] == c[2]);
+            shapeOk = shapeOk && flat;
+            // Грань целиком на верху или на дне: верхней быть не должно, дно - два
+            // треугольника.
+            const bool onBottom = a[2] == float(z0) && b[2] == float(z0) && c[2] == float(z0);
+            const bool onTop = a[2] == float(z1) && b[2] == float(z1) && c[2] == float(z1);
+            if (onBottom) {
+                ++bottomFaces;
+            }
+            if (onTop) {
+                ++topFaces;
+            }
+        }
+        std::printf("note stockshell verts=%zu tris=%d box=%.1f..%.1f x %.1f..%.1f x %.1f..%.1f "
+                    "bottom=%d top=%d\n",
+                    vertices.size() / 3, checked, x0, x1, y0, y1, z0, z1,
+                    bottomFaces, topFaces);
+        reportCase("stockshell", checked, maxDev, 1e-6,
+                   shapeOk && bottomFaces == 2 && topFaces == 0);
     }
 
     // ---- замер: один проход ------------------------------------------------

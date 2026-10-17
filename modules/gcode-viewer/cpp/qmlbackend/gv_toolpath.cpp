@@ -16,6 +16,7 @@
 #include <QFileInfo>
 #include <QLoggingCategory>
 #include <QMetaObject>
+#include <QQuick3DTextureData>
 #include <QRunnable>
 #include <QSet>
 #include <QString>
@@ -388,10 +389,17 @@ GcodeToolpath::GcodeToolpath(QObject *parent)
     holder_rings_geo_ = new ToolpathGeometry();
     tool_profile_edges_ = new HLRLineGeometry();
     holder_profile_edges_ = new HLRLineGeometry();
+    // Поле съёма текстурой: 1x1 с нулём до первого готового поля. Объект создан
+    // заранее нарочно: Texture в QML, сославшись на пустое свойство, осталась бы
+    // без данных, а рисование берёт поле только в состоянии ready.
+    stock_field_ = new QQuick3DTextureData();
+    stock_field_->setFormat(QQuick3DTextureData::R32F);
+    stock_field_->setSize(QSize(1, 1));
+    stock_field_->setTextureData(QByteArray(4, '\0'));
     const QVector<QObject *> owned = {
         rapid_, feed_, mesh_, edges_, hlr_edges_, hlr_tangents_, tool_geo_,
         tool_outline_geo_, holder_geo_, holder_outline_geo_, tool_rings_geo_,
-        holder_rings_geo_, tool_profile_edges_, holder_profile_edges_,
+        holder_rings_geo_, tool_profile_edges_, holder_profile_edges_, stock_field_,
     };
     for (QObject *object : owned)
         QQmlEngine::setObjectOwnership(object, QQmlEngine::CppOwnership);
@@ -732,6 +740,16 @@ void GcodeToolpath::applyStockResult(const gv::StockRunResult &result)
     stock_cell_mm_ = result.field.cellMm();
     stock_count_x_ = result.field.countX();
     stock_count_y_ = result.field.countY();
+    // Та же копия поля идёт текстурой в вершинный шейдер: размер - число узлов,
+    // порядок строк тот же (строка буфера лежит на V = 0), поэтому texcoord узла
+    // - центр его текселя. Обновление - целым буфером: частичной загрузки у
+    // QQuick3DTextureData нет, а поле публикуется один раз на проход.
+    if (stock_field_ != nullptr && !stock_depth_.isEmpty()) {
+        stock_field_->setSize(QSize(stock_count_x_, stock_count_y_));
+        stock_field_->setFormat(QQuick3DTextureData::R32F);
+        stock_field_->setTextureData(stock_depth_);
+        stock_field_->update();
+    }
     stock_sim_progress_ = 1.0;
     // Время прохода целиком: сброс поля плюс съём. Замер идёт в ядре, на том же
     // рабочем потоке, где считается поле.

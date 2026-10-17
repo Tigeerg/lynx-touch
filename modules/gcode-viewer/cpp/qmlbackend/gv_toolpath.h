@@ -47,6 +47,7 @@
 
 #include <QByteArray>
 #include <QObject>
+#include <QQuick3DTextureData>
 #include <QQuaternion>
 #include <QString>
 #include <QVariant>
@@ -141,12 +142,16 @@ class GcodeToolpath : public QObject
     // Симуляция съёма (core/stock_sim): поле высот как есть, в машинных
     // координатах. stockDepth - R32F (float32, строка по Y), stockBounds -
     // [xmin, xmax, ymin, ymax, zmin, zmax] в мм, stockSimState - idle, computing,
-    // ready или cancelled, stockSimProgress - доля длины пути. Рисование - шаг 3.
+    // ready или cancelled, stockSimProgress - доля длины пути. stockField - то же
+    // поле текстурой R32F для рисования (шаг 3): строка буфера - строка
+    // текстуры, узел - тексель; она живёт от создания контроллера, поэтому
+    // Texture в QML не остаётся без данных и движок не жалуется.
     Q_PROPERTY(QByteArray stockDepth READ stockDepth NOTIFY stockSimChanged)
     Q_PROPERTY(QVariantList stockBounds READ stockBounds NOTIFY stockSimChanged)
     Q_PROPERTY(double stockCellMm READ stockCellMm NOTIFY stockSimChanged)
     Q_PROPERTY(int stockCountX READ stockCountX NOTIFY stockSimChanged)
     Q_PROPERTY(int stockCountY READ stockCountY NOTIFY stockSimChanged)
+    Q_PROPERTY(QQuick3DTextureData *stockField READ stockField NOTIFY stockSimChanged)
     Q_PROPERTY(QString stockSimState READ stockSimState NOTIFY stockSimStateChanged)
     Q_PROPERTY(double stockSimProgress READ stockSimProgress NOTIFY stockSimProgressChanged)
     Q_PROPERTY(double stockSimTimeMs READ stockSimTimeMs NOTIFY stockSimChanged)
@@ -206,6 +211,7 @@ public:
     double holderGauge() const { return holder_gauge_; }
     QByteArray stockDepth() const { return stock_depth_; }
     QVariantList stockBounds() const { return stock_bounds_list_; }
+    QQuick3DTextureData *stockField() const { return stock_field_; }
     double stockCellMm() const { return stock_cell_mm_; }
     int stockCountX() const { return stock_count_x_; }
     int stockCountY() const { return stock_count_y_; }
@@ -441,6 +447,10 @@ private:
     // Симуляция съёма: поле уже посчитано, но ещё не нарисовано (шаг 3).
     QByteArray stock_depth_;              // float32 R32F, countX * countY
     QVariantList stock_bounds_list_;      // [xmin, xmax, ymin, ymax, zmin, zmax]
+    // То же поле текстурой для вершинного шейдера: R32F, строка буфера - строка
+    // текстуры. Объект создаётся один раз (1x1): поле публикуется обновлением
+    // данных, а не созданием текстуры.
+    QQuick3DTextureData *stock_field_ = nullptr;
     double stock_cell_mm_ = 0.5;
     int stock_count_x_ = 0;
     int stock_count_y_ = 0;

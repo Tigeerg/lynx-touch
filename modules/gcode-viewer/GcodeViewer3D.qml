@@ -17,7 +17,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.46.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.47.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -293,6 +293,32 @@ Item {
         shaftWidth: 0.7
     }
 
+    // ---- Остаток материала: сетка верха поля и оболочка коробки ----
+    // Обе строятся в МАШИННЫХ миллиметрах, из тех же чисел, что публикует
+    // контроллер о поле (stockBounds/stockCellMm/stockCountX/Y): сетка верха -
+    // вершина на узел поля, поэтому второго уровня сэмплирования нет, а высоту
+    // вершины вычитает вершинный шейдер stocksurface.vert по текстуре поля.
+    // Оболочка - та же коробка без верхней грани (верх рисует поле), с прежним
+    // микро-сдвигом против z-fighting: он двигает только стенки, физический
+    // габарит заготовки не меняется.
+    StockSurfaceGeometry {
+        id: stockSurface
+        boundList: path ? path.stockBounds : []
+        cellMm: path ? path.stockCellMm : 0.5
+        countX: path ? path.stockCountX : 0
+        countY: path ? path.stockCountY : 0
+    }
+    StockShellGeometry {
+        id: stockShell
+        boundList: path ? path.stockBounds : []
+        cellMm: path ? path.stockCellMm : 0.5
+        countX: path ? path.stockCountX : 0
+        countY: path ? path.stockCountY : 0
+        gapSideMm: 1.5 * root.outlineMmPerPx
+        gapTopMm: 1.0 * root.outlineMmPerPx
+        gapBottomMm: 1.0 * root.outlineMmPerPx
+    }
+
     // Project a 3D point to View3D screen coordinates (manual perspective)
     function projectToScreen(p) {
         var camX = root.pivot.x - root.dist * root.fwd.x
@@ -424,16 +450,80 @@ Item {
             ]
         }
 
-        // ---- Stock (billet) box from UI_STOCK: semi-transparent, toolpath inside ----
-        // See the anti-coplanar clearance comment on the properties below -
-        // display-only micro-offsets, physical stockSize untouched.
+        // ---- Остаток материала: поле высот (верх) плюс стенки и дно ----
+        // Кадр. Меш поля и текстура - в МАШИННЫХ миллиметрах, а сцена - (X, Z,
+        // -Y): поворот узла на -90 по X переводит машинные (x, y, z) в (x, z,
+        // -y) - та же замена, что делает бэкенд, обходя путь
+        // (core/stock_sim.cpp, simulateStock). Ось выдавливания - машинный Z,
+        // в кадре он уходит вверх; узел поля (x, y) с глубиной d стоит в (x,
+        // zMax - d, -y), и это же число сверяет случай stocksurface пробника
+        // stock_sim_probe.
+        // Правило «всегда вперёд» (depthBias -50000) у поверхности нет: этот
+        // bias есть только у резца, который стоит ВНУТРИ материала; поверхность
+        // съёма и есть материал, и с ним она перестала бы прятать путь под
+        // собой, а резаная стенка врала бы о геометрии.
+        Node {
+            visible: root.showStockVisible && root.stockFieldDrawn
+            eulerRotation: Qt.vector3d(-90, 0, 0)
+
+            // Верх поля: непрозрачный и пишет глубину - он и есть материал.
+            // Затенённый материал (свет сцены тот же, что у кожи детали):
+            // плоский цвет слился бы в пятно, а по тени резаной стенки глубина
+            // читается. Текстура поля - nearest: узел сетки стоит в центре
+            // своего текселя, линейная выборка R32F на ветке OpenGL 3.3 не
+            // гарантирована и смазала бы стенку реза на полклетки.
+            Model {
+                geometry: stockSurface
+                materials: CustomMaterial {
+                    shadingMode: CustomMaterial.Shaded
+                    property real cellMm: path ? path.stockCellMm : 0.5
+                    property color stockColor: "#9AA3AE"
+                    property TextureInput stockField: TextureInput {
+                        texture: Texture {
+                            textureData: path ? path.stockField : null
+                            minFilter: Texture.Nearest
+                            magFilter: Texture.Nearest
+                            mipFilter: Texture.None
+                        }
+                    }
+                    sourceBlend: CustomMaterial.NoBlend
+                    destinationBlend: CustomMaterial.NoBlend
+                    depthDrawMode: Material.OpaqueOnlyDepthDraw
+                    cullMode: Material.NoCulling
+                    vertexShader: "stocksurface.vert"
+                    fragmentShader: "stocksurface.frag"
+                }
+            }
+
+            // Стенки и дно: полупрозрачные и глубину не пишут, как прежняя
+            // коробка; верхней грани у них нет - её рисует поле.
+            Model {
+                geometry: stockShell
+                opacity: 0.2
+                materials: [
+                    DefaultMaterial {
+                        lighting: DefaultMaterial.NoLighting
+                        diffuseColor: "#8A93A0"
+                        depthDrawMode: Material.NeverDepthDraw
+                    }
+                ]
+            }
+        }
+
+        // ---- Прежняя коробка: сравнение с полем и вид, пока поля нет ----
+        // Видна, когда поля нет (состояние не ready или уровень safe) либо её
+        // включили нарочно (клавиша B, CNC_STOCK_BOX). Прежний вид: приподнята
+        // против детали на доли пикселя (иначе совпадающие грани мерцают при
+        // облёте), полупрозрачная (opacity 0.2) и глубину не пишет, поэтому по
+        // ней видно траекторию внутри.
         Model {
             visible: root.showStockVisible && (path !== null) && path.hasStock
+                     && !root.stockFieldDrawn
             source: "#Cube"
-        // Minimal anti-coplanar clearance (depth-ordering only, ~1.5 px): the
-        // billet faces are flush with the part's un-machined faces and its top
-        // and bottom lie in the part top/bottom planes; coplanar surfaces
-        // z-fight while orbiting. stockSize (collisions, clearances) is exact.
+        // Микро-сдвиг против z-fighting (только порядок глубины, около 1.5 px):
+        // грани заготовки совпадают с необработанными гранями детали, а верх и
+        // низ лежат в её плоскостях - совпадающие поверхности мерцают при облёте.
+        // Габарит заготовки (коллизии, зазоры) от этого не меняется, он точный.
         readonly property real gapMm: 1.5 * root.outlineMmPerPx
         readonly property real topGapMm: 1.0 * root.outlineMmPerPx
         readonly property real botGapMm: 1.0 * root.outlineMmPerPx
@@ -449,10 +539,10 @@ Item {
                : Qt.vector3d(0.001, 0.001, 0.001)
             opacity: 0.2
             materials: [
-                // Reference envelope, not geometry: the stock box spans the
-                // part, so with the now-opaque skin its far edges lost the
-                // depth test and the outlines dimmed. Like the toolpath
-                // lines, it composites always-forward.
+                // Габаритная оболочка, а не геометрия: коробка охватывает
+                // деталь, поэтому с непрозрачной кожей её дальние грани теряли
+                // тест глубины и обводка тускнела. Как и линии УП, она
+                // собирается всегда вперёд (глубину не пишет).
                 DefaultMaterial {
                     lighting: DefaultMaterial.NoLighting
                     diffuseColor: "#8A93A0"
@@ -849,7 +939,15 @@ Item {
     }
 
     // ---- display modes ----
-    property bool showStockVisible: true     // show the stock (billet) box
+    property bool showStockVisible: true     // показывать заготовку
+    // Чем рисуется заготовка. Поле - когда фон посчитал его целиком
+    // (stockSimState ready) и уровень не safe: у safe поле рисуется грубейшим
+    // узлом и дороже всего кадра (DESIGN.md, разд. 13). Пока поля нет, на экране
+    // прежняя коробка: сцена не пустеет на время счёта. Коробку вместо поля
+    // можно включить нарочно для сравнения - клавишей B или CNC_STOCK_BOX=1.
+    property bool stockPlainBox: false       // коробка вместо поля (B, CNC_STOCK_BOX)
+    readonly property bool stockFieldDrawn: !root.stockPlainBox && !root.qualitySafe
+        && path !== null && path.hasStock && path.stockSimState === "ready"
     property bool showPartVisible: true      // show the part model (STL)
     property bool showAllCode: true          // true = whole code at once, false = limit draw distance
     property bool xray: false             // сплошная кожа по умолчанию:
@@ -915,7 +1013,8 @@ Item {
     // ---- Playback: Space = play/pause, Esc = reset to start ----
     // ---- Hotkeys: S stock, M part model, L limit length, T stages,
     // ----          PgUp/PgDn switch stage, P play, E edges, D tangents,
-    // ----          X xray, F fps, Q - цикл качества (med -> low -> high -> safe).
+    // ----          X xray, F fps, Q - цикл качества (med -> low -> high -> safe),
+    // ----          B - прежняя коробка заготовки вместо поверхности съёма.
     // Раскладка не должна гасить горячие клавиши: на русской раскладке Qt сообщает
     // для физической X код Key_Ch, а не Key_X, и буквенные ветки ниже не работают.
     // Буквы сверяются по nativeScanCode - скан-коду физической клавиши, он от
@@ -963,6 +1062,7 @@ Item {
             + " edges=" + root.showBrepEdges + " tangents=" + root.showTangentLines
             + " xray=" + root.xray + " fps=" + root.showFps
             + " quality=" + root.quality
+            + " box=" + root.stockPlainBox + " field=" + root.stockFieldDrawn
             + " playing=" + root.playing + " dist=" + Math.round(root.pathDist))
     }
 
@@ -1017,6 +1117,11 @@ Item {
             root.showFps = !root.showFps
             if (!root.showFps) root.fpsSmoothed = 0
             event.accepted = true
+        } else if (root.keyIs(event, 0x30, Qt.Key_B)) {
+            // Сравнение: прежняя коробка вместо поверхности съёма. Тот же
+            // переключатель, что CNC_STOCK_BOX во входе (viewer/main.cpp).
+            root.stockPlainBox = !root.stockPlainBox
+            event.accepted = true
         }
         if (root.keyDebug)
             root.keyLogState()
@@ -1054,6 +1159,7 @@ Item {
               + " · D касательные: " + (root.showTangentLines ? "вкл" : "выкл")
               + " · X рентген: " + (root.xrayOn ? "вкл" : "выкл")
               + " · F fps: " + (root.showFps ? "вкл" : "выкл")
+              + " · B коробка: " + (root.stockPlainBox ? "вкл" : "выкл")
         color: "#535C66"
         font.pixelSize: 12
         font.bold: true

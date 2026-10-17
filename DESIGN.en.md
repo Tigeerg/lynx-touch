@@ -476,3 +476,163 @@ python modules/gcode-viewer/test_normals_golden.py                 # normals
 
 Performance — `bench_viewer.py` (`hot` mode runs the interactive path only). Numbers enter a comment only when
 they are measured.
+
+## 15. Directions for panel development on the 3D base
+
+Five panel features built on the viewer scene and data (the panel is `apps/react-interface/lib/cnc`). For each: the
+pain today, what the operator does, and what the code rests on — and what is still missing.
+
+1. **Interactive 3D probing (click a face).**
+   - Pain: the probing macro is picked from a picture and the sizes are typed by hand; a typo in the approach breaks a
+     ruby stylus.
+   - Operator: clicks a face of the loaded STEP part; the base recognises the geometry (a hole's cylindrical wall ->
+     the diameter, two parallel faces -> a boss width), picks the matching probing macro, fills the approach and shows
+     the proposed probe path in 3D before Cycle Start.
+   - Rests on: the analytic faces are already extracted — `step_import.py` (`load_step_model`, tessellation,
+     `GeomAbs_Plane`), `step_surfaces.py` (`load_step_surfaces`, `GeomAbs_Cylinder`/`GeomAbs_Cone`), the
+     `CylinderSurface`/`ConeSurface` types in `gv_types.py`, the C++ mirror `cpp/occt/step_surfaces.cpp`; the probing
+     macros — `PROBE_CYCLES`/`computeProbeResult` (`lib/cnc/probe.ts`). Required: a ray face pick in
+     `GcodeViewer3D.qml` (today `MouseArea` is orbit and pan, there is no ray), mapping a face to a macro, and drawing
+     the proposed probe path.
+
+2. **"Time machine" and safe restart.**
+   - Pain: "run from line" after a broken cutter is a gamble.
+   - Operator: scrubs the 3D trajectory to the break point; the base reads the context (active tool, spindle rpm, work
+     offset), builds a safe approach tail (raise Z to machine zero -> spindle and coolant -> rapid X/Y above the start
+     point -> descend to clearance -> continue) and draws the tail in 3D before the start.
+   - Rests on: the path data and stages exist — `PathData`/`Stage` (`gv_types.py`), `sampleAt`/`stages`
+     (`controller.py`), `setToolStage`/`_stage_tools`, the stick-out `_tool_exposed_length` (`tooling.py`); the
+     background pass and token — `_scan_collisions`/`_collision_token` (`collision.py`, `controller.py`), the stock
+     field — `cpp/core/stock_sim.{h,cpp}`. Required: the viewer parses neither the `S` speed nor the work offset
+     `G54`..`G59` (`gcode_parser.py` knows motion and planes only), and the generation and drawing of the approach tail
+     are missing too.
+
+3. **Selective machining (a 3D window).**
+   - Pain: otherwise a 40-minute program is run in full, or a CAM programmer is asked to cut out a fragment.
+   - Operator: holds Shift and drags a 3D box around the problem area; the base filters the trajectory and keeps the
+     program lines that intersect the volume — only that corner is re-machined.
+   - Rests on: the path geometry and bounds exist — `PathData.pts`/`cum`, `Aabb` (`gv_types.py`), the travelled
+     distance `pathDist` (`GcodeViewer3D.qml`). Required: selecting a volume in the scene and a filter by volume, and
+     the link from a segment to a program line must be built from scratch — the viewer keeps no line numbers, and
+     "linking 3D and the NC line" is listed as not done in §13.
+
+4. **Trajectory heat map (load).**
+   - Pain: on chatter the operator turns the feed override blindly.
+   - Operator: after the first part sees the trajectory coloured by load (green — normal, yellow — rising, red — peak
+     and chatter) from the spindle load and the actual feed, and edits the program.
+   - Rests on: the trajectory and the programmed feed exist — `toolpath.vert`/`frag` already colours fragments by
+     `cutoff`/`pathDist`, `speedAt` (`controller.py`). Required: no layer reads the live machine state;
+     `spindle.0.load` and the actual cutting speed exist only as a list of pins in `HAL_GROUPS`
+     (`lib/cnc/service-data.ts`) — a static reference, not a data source; the panel (`MachineState`) is a mock with
+     `feedOverride`, and the HAL link is not built.
+
+5. **Ctrl+Z for the offsets.**
+   - Pain: a single wrong "zero X" in the wrong tab loses the part datum for good.
+   - Operator: keeps a history (for example the last 50 changes) and rolls the work offset and tool length tables back,
+     for example to the state of ten minutes ago.
+   - Rests on: the offsets and tools live in the panel state: `WorkOffset`/`Tool` (`lib/cnc/types.ts`),
+     `INITIAL_OFFSETS` (`lib/cnc/data.ts`), the `OFFSET_TEACH`/`OFFSET_CLEAR`/`ZERO_WORK` edits in the reducer
+     (`lib/cnc/machine.ts`); a history exists only for MDI (`mdi.history`, `MDI_HISTORY_SIZE`). Required: the offset
+     and tool edit history itself and its rollback.
+
+6. **Virtual fixture and vise lookup.**
+   - Pain: the cutter dives into hardened jaws or clamps because the CAM model of the fixture was missing or
+     stood in the wrong place.
+   - Operator: loads STEP models of the vise, chuck and clamps into the station, touches the corner of the real
+     vise with the probe — the 3D fixture model snaps to those coordinates, and the look-ahead pass recomputes
+     and marks red where the holder would reach the jaws.
+   - Rests on: the touch is already modelled — `Touch`/`probeLocalPosition`/`localToMachine`/`PROBE_CYCLES`
+     (`lib/cnc/probe.ts`), the cycle run — `PROBE_STEPS` and the measure step in `machine.ts`; STEP is read
+     (`load_step_model`, `step_import.py`), the collision scan — `_scan_collisions`/`_holder_profile`
+     (`collision.py`, `tooling.py`). Required: a slot for a second STEP model (the viewer has one today,
+     `_model_path` in `controller.py`), snapping the fixture model to the touch, and a "holder against fixture"
+     scan: today `_scan_collisions` compares the holder cylinders with the stock bounds, not with the fixture body.
+
+7. **The "ghost" of the future (look-ahead projection).**
+   - Pain: on a first part the operator holds the e-stop and stares through the coolant — the next move is not
+     visible.
+   - Operator: sees a semi-transparent ghost tool running along the trajectory 3-5 s ahead of the real one, so
+     the next manoeuvre is visible before the machine makes it in iron.
+   - Rests on: the whole program is parsed ahead (`parse_gcode` -> `_prepare_ordered`, `path_prep.py`), the path
+     is fully in the samples (`_sample_pts`/`cum`), the position comes from `sampleAt`/`speedAt` (`controller.py`),
+     and QML already drives `pathDist` and `path.playing` (`GcodeViewer3D.qml`). Required: a second tool mesh at
+     its own `sampleAt(pathDist + lead)`, where the lead is the path covered in 3-5 s by `speedAt`, and its
+     semi-transparent drawing.
+
+8. **Editing the G-code by dragging in 3D.**
+   - Pain: to raise a rapid the operator opens a text editor and looks for `G0 Z5.0` among tens of thousands of
+     blocks.
+   - Operator: takes a red rapid line in the 3D view and drags it up; the station finds that block in the program,
+     rewrites the coordinate and updates the trajectory at once.
+   - Rests on: the panel already keeps a block number per segment — `Segment.line` (`lib/cnc/toolpath.ts`,
+     `buildToolpath`), block parsing — `parseWords` (`gcode.ts`), line editing — `setLines` (`files.ts`),
+     replacement — `SEARCH_REPLACE_ALL` (`prog.ts`); but the panel trajectory is 2D (`project`, `PathView`) and
+     the viewer keeps no block numbers at all. Required: a ray pick in the scene, the "scene segment -> program
+     block" link (listed as not done in §13) and a drag handle that rewrites the coordinate.
+
+9. **Feed optimiser from the first pass.**
+   - Pain: a safe feed is used everywhere, including where the load is 10 per cent, and the machine loses time.
+   - Operator: on the first part the station records spindle load and vibration against coordinates, then a
+     button splits long G1 runs and raises `F` where the cutter was cutting air and lowers it before a hard
+     plunge — the second part runs much shorter.
+   - Rests on: the feed and its override live in the panel state — `motion.feed`, `motionSpeed` (`coords.ts`),
+     `feedOverride` (`machine.ts`); block editing — `setLines`/`SEARCH_REPLACE_ALL` (`files.ts`, `prog.ts`).
+     Required: a load source (today `LoadRow` in `side-status.tsx` draws a sine of time, and the
+     `motion.current-vel`/`spindle.0.speed-out` pins in `HAL_GROUPS` are a static reference), recording load
+     against coordinates, and splitting long G1 runs with a new `F`.
+
+10. **Tracking the actual removed material volume (MRR).**
+    - Pain: a timer cannot see that 30 minutes at 5 per cent stepover is not the same as 5 minutes at full depth.
+    - Operator: the station computes the volume removed by each tool and debits the life in cubic centimetres of
+      chips instead of spindle minutes.
+    - Rests on: the life and the run time — `Tool.life` (`types.ts`), `toolTime` on `TICK` and `TOOL_RESET_LIFE`
+      (`machine.ts`), the `TOOL_LIFE` report (`prog.ts`); the stock height field is already computed —
+      `StockField`/`simulateStock` (`cpp/core/stock_sim.{h,cpp}`), the tool of a stage — `_stage_tools`/`Stage`
+      (`controller.py`, `gv_types.py`). Required: volume from the height field per stage (or OCCT booleans) and
+      debiting `Tool.life` in cm³.
+
+11. **Emergency recovery wizard.**
+    - Pain: after a following error the axes are disabled and the cutter stands in metal, and the operator
+      guesses — guessing breaks the cutter.
+    - Operator: an interactive wizard with 3D animation walks him out step by step: a short spindle reverse to
+      clear chips, releasing the Z brake, raising with the handwheel; dangerous moves (X/Y while Z is still
+      inside the part) are blocked.
+    - Rests on: alarms and levels — `Alarm`/`pushAlarm` (`types.ts`, `messages.ts`), the states `ESTOP`/`ALARM`
+      and `RESET`/`ESTOP` (`types.ts`, `machine.ts`), the clamp and spindle — `toolClamped`/`spindleOn`, the
+      handwheel run — `mpgReducer`/`MPG_HANDWHEEL` (`mpg.ts`). Required: the wizard itself and the move-blocking
+      rules; the axis following error exists only as the `FERROR`/`MIN_FERROR` strings and the "Axes: following
+      error" pin group (`service-data.ts`), and the handwheel today turns the dry run only.
+
+12. **Tool data import by QR/RFID.**
+    - Pain: the correction is typed off a paper slip from an optical presetter — one zero too many (12.0 instead
+      of 120.0) drives the spindle into the table.
+    - Operator: scans the code on the holder; the station pulls the exact length and diameter from a database and
+      loads the 3D profile of a complex tool (taper, bull-nose, lollipop), and the manual entry goes away.
+    - Rests on: the tool table — `Tool` (`types.ts`), presetter measurement — `TOOL_PROBE` (`machine.ts`) and
+      `sensorLength`/`BROKEN_TOL_MM` (`tool-check.ts`); the tool profile is already built from the `UI_TOOL`
+      fields — `_tool_profile` (`tooling.py`: FLAT, BALL, BULL, CHAMFER, TAPER, DRILL, TAP, LOLLIPOP, DOVETAIL, PROBE),
+      the fields are parsed by `parse_ui_tool` (`ui_tags.py`). Required: code input (QR/RFID), a tool database
+      and turning its record into `UI_TOOL` fields; there is neither a scanner nor a database in the tree.
+
+13. **Kinematically accurate time prediction.**
+    - Pain: CAM cannot know the machine's accelerations and path blending (`MAX_ACCELERATION`, `G64`/arc
+      blending), so its estimate never matches the stopwatch.
+    - Operator: the station runs the program through the controller's planner in the background, gives a cycle
+      time that matches the stopwatch, and recomputes it when the operator turns the physical feed override.
+    - Rests on: the panel already shows a remaining estimate — `remainingLength` (`toolpath.ts`) and `restMs` in
+      `program-screen.tsx` divide the remaining path by `programFeed` (`machine.ts`), while the `feedOverride`
+      correction acts on the current move only (`motionSpeed`, `coords.ts`); the parser reads the modal `F`
+      (`feed`/`_to_mms`, `speedAt` — `gcode_parser.py`, `controller.py`).
+      Required: a planning pass over accelerations and blending; no layer reads them (`gcode_parser.py` parses
+      motion, planes, G90/91 and cycles only, and `MAX_ACCELERATION`/`STEPGEN_MAXACCEL` exist only as reference
+      parameters in `service-data.ts`), and the estimate is not recomputed from the feed override.
+
+**What is closest to being implementable.** Closest are items 3 and 5: selective machining already has the path
+geometry and bounds, and the rollback has the panel state ready. Farthest is item 4: no layer reads the live machine
+state, and the spindle load exists only as a reference string. Items 1 and 2 stand on ready STEP faces and path data
+but run into what is missing: a ray face pick, `S` and offset parsing, and the approach tail generator.
+
+**What is closest among items 6-13.** Closest is item 7: the path is parsed ahead and the position already comes
+from `sampleAt`, so only a second tool mesh with a lead is needed. Farthest is item 13: an accurate time needs a
+planner over accelerations and blending, and no layer reads them — `MAX_ACCELERATION` lives only as a reference
+parameter. Item 9 runs into the same missing live-state layer as item 4.

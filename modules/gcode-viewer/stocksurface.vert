@@ -1,0 +1,43 @@
+// stocksurface.vert - верх остатка заготовки: сетка поля высот, высота из
+// текстуры поля (CustomMaterial, shadingMode Shaded; тот же chunk API, что у
+// toolpath.vert). Затенённый материал взят нарочно: резаная стенка читается
+// светом сцены, как кожа детали, а плоский цвет слился бы в одно пятно.
+//
+// Кадр. Меш и текстура живут в МАШИННЫХ миллиметрах, а сцена - (X, Z, -Y):
+// узел Model в GcodeViewer3D.qml повёрнут на -90 по X, поэтому машинные
+// (x, y, z) приходят в кадр как (x, z, -y) - та же замена, что делает бэкенд,
+// обходя путь (core/stock_sim.cpp, simulateStock). Ось выдавливания - машинный
+// Z (вверх), в узле он уходит в +Y сцены: VERTEX.z -= depth.
+//
+// Поле хранит глубину от верха заготовки (core/stock_sim, depthMm), поэтому
+// высота = zMax - depth, а zMax уже стоит в позиции вершины (меш строится на
+// верху габарита). Ширина текселя и узел совпадают: texcoord узла - центр его
+// текселя, ((ix + 0.5) / nx, (iy + 0.5) / ny).
+//
+// Строки. Строка 0 буфера ложится на V = 0: движок грузит данные текстуры как
+// есть (QSSGRenderLoadedTexture::loadTextureData), а картинки перед загрузкой
+// переворачивает "to the conventional Y-up orientation" - значит данные
+// текстуры идут Y-up, первая строка буфера и есть V = 0. Поэтому строка поля
+// iy = 0 (машинный yMin) - это V около нуля, а не около единицы.
+//
+// Выборка nearest (Texture.minFilter/magFilter в QML): узел и тексель совпадают,
+// а линейная фильтрация R32F на ветке OpenGL 3.3 не гарантирована и смазала бы
+// стенку реза на полклетки.
+//
+// Нормаль - из соседних текселей: у поверхности z = zMax - h(x, y) нормаль
+// (dh/dx, dh/dy, 1), то есть (h(+1) - h(-1)) / (2 * узел) по каждой оси. CPU
+// нормалей не считает вовсе, поэтому правка поля стоит одного обновления
+// текстуры.
+void MAIN()
+{
+    float depth = texture(stockField, UV0).r;
+    vec2 texel = 1.0 / vec2(textureSize(stockField, 0));
+    float dx = texture(stockField, UV0 + vec2(texel.x, 0.0)).r
+             - texture(stockField, UV0 - vec2(texel.x, 0.0)).r;
+    float dy = texture(stockField, UV0 + vec2(0.0, texel.y)).r
+             - texture(stockField, UV0 - vec2(0.0, texel.y)).r;
+    float span = max(cellMm, 1e-6) * 2.0;
+    NORMAL = normalize(vec3(dx / span, dy / span, 1.0));
+    VERTEX.z -= depth;
+    POSITION = MODELVIEWPROJECTION_MATRIX * vec4(VERTEX, 1.0);
+}

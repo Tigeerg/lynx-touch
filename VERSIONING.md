@@ -1,7 +1,7 @@
 # Руководство по версионированию и внесению изменений
 
 Этот документ — «гид»: как вносить изменения и вести версии в проекте
-**CNC Панель оператора**. Текущая версия — **0.11.0**.
+**CNC Панель оператора**. Текущая версия — **0.13.0**.
 
 ## 1. Проекты
 
@@ -30,8 +30,8 @@
 Версия каждого проекта — в `projects.json` (`projects[].version`) и, где есть,
 в манифесте проекта (`package.json`, `modules/gcode-viewer/VERSION`).
 
-Текущее состояние: **продукт 0.11.0**; `react-interface` — **0.7.0**,
-`gcode-viewer` — **0.13.12**, `qt-interface` и `cad-testdata` — **0.5.1**.
+Текущее состояние: **продукт 0.13.0**; `react-interface` — **0.9.0**,
+`gcode-viewer` — **0.31.0**, `qt-interface` — **0.5.3**, `cad-testdata` — **0.5.1**.
 
 ## 3. Где живут версии
 
@@ -40,7 +40,7 @@
 | `VERSION` | версия продукта (одна строка) |
 | `projects.json` | список проектов и версия каждого |
 | `package.json` → `version` | версия `react-interface` |
-| `modules/gcode-viewer/VERSION` | версия `gcode-viewer` / `qt-interface` |
+| `modules/gcode-viewer/VERSION` | версия `gcode-viewer` |
 | `modules/gcode-viewer/CHANGELOG.md` | журнал изменений вьювера (по версиям) |
 | `CHANGELOG.md` (корень) | сводный журнал по продукту |
 

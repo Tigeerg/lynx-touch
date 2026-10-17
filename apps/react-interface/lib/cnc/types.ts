@@ -1,9 +1,31 @@
+import type { PathView } from './toolpath'
+
 export type Axis = 'X' | 'Y' | 'Z' | 'A'
 export const AXES: Axis[] = ['X', 'Y', 'Z', 'A']
 export type Axes = Record<Axis, number>
 
 export type Mode = 'AUTO' | 'MDI' | 'JOG' | 'MPG'
 export const MODES: Mode[] = ['AUTO', 'MDI', 'JOG', 'MPG']
+
+// Рабочее место оператора: верхний уровень панели. Определяет набор софт-кеев и
+// компоновку экрана, независимо от режима станка (Mode) и экрана (Screen).
+export type Workplace = 'SETUP' | 'TEST' | 'RUN'
+export const WORKPLACES: Workplace[] = ['SETUP', 'TEST', 'RUN']
+
+// Вкладки экрана: «Работа» объединяет прежние «Позиция» и «Программа»; её
+// содержимое выбирает рабочее место (Наладка/Прогон/Авто).
+export type Tab = 'work' | 'offset' | 'tool' | 'alarm' | 'service'
+export const TABS: Tab[] = ['work', 'offset', 'tool', 'alarm', 'service']
+export const TAB_LABEL: Record<Tab, string> = {
+  work: 'Работа',
+  offset: 'Смещения',
+  tool: 'Инструмент',
+  alarm: 'Сообщения',
+  service: 'Сервис',
+}
+export const tabOfScreen = (screen: Screen): Tab => (screen === 'pos' || screen === 'prog' ? 'work' : screen)
+export const screenOfTab = (tab: Tab, workplace: Workplace): Screen =>
+  tab === 'work' ? (workplace === 'SETUP' ? 'pos' : 'prog') : tab
 
 export type RunState = 'IDLE' | 'RUN' | 'HOLD' | 'ALARM' | 'ESTOP'
 
@@ -37,6 +59,17 @@ export interface SimState {
   active: boolean
   line: number
   timer: number
+}
+
+// Рабочее место ПРОГОН: показ графики и шторки кода, габариты УП, ракурс.
+export interface TestState {
+  /** Шторка с G-кодом скрыта (F8 «Скрыть код»). */
+  curtain: boolean
+  /** Показаны габариты УП (F5). */
+  bbox: boolean
+  /** Графика очищена: траектория не рисуется (F6). */
+  hidePath: boolean
+  view: PathView
 }
 
 export interface SearchState {
@@ -192,6 +225,7 @@ export interface MachineState {
   editMode: boolean
   editor: LineEditor | null
   mode: Mode
+  workplace: Workplace
   run: RunState
   screen: Screen
   machine: Axes
@@ -245,6 +279,7 @@ export interface MachineState {
   service: ServiceState
   probe: ProbeState
   sim: SimState
+  test: TestState
   search: SearchState
   params: Record<string, number>
 }

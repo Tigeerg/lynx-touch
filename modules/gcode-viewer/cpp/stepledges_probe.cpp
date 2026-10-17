@@ -18,6 +18,7 @@
 // сырыми float32 для этого сравнения (numpy.fromfile).
 //
 // Запуск: stepledges_probe.exe <файл.step> [дамп.bin]   (числа и хэши рёбер)
+//         stepledges_probe.exe --repeat <N> <файл.step> (замер смены свойства)
 //         stepledges_probe.exe --qml <import-path>      (видит ли модуль движок QML)
 //   (нужны DLL OCCT и Qt в PATH)
 
@@ -25,6 +26,7 @@
 
 #include <QCryptographicHash>
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QIODevice>
 #include <QQmlComponent>
@@ -89,14 +91,49 @@ int runQmlImport(const QString &importPath)
     return 0;
 }
 
+// Замер цены смены свойства на уже открытой модели: файл читается один раз
+// (setSource), затем N раз меняется deflection (0.05 -> 0.06 -> ...), так что
+// видно, перечитывает ли StepEdgesGeometry STEP на каждое изменение свойства.
+// Чётное N возвращает 0.05 в конце - числа рёбер остаются эталонными.
+int runRepeat(const QString &path, int repeats)
+{
+    StepEdgesGeometry geometry;
+
+    QElapsedTimer read;
+    read.start();
+    geometry.setSource(path);
+    const qint64 readMs = read.elapsed();
+    const int firstSegments = geometry.segmentCount();
+
+    QElapsedTimer changes;
+    changes.start();
+    for (int i = 0; i < repeats; ++i) {
+        geometry.setDeflection(i % 2 == 0 ? 0.06 : 0.05);
+    }
+    const qint64 totalMs = changes.elapsed();
+
+    std::printf("source_read_ms: %lld\n", static_cast<long long>(readMs));
+    std::printf("repeats: %d\n", repeats);
+    std::printf("changes_total_ms: %lld\n", static_cast<long long>(totalMs));
+    std::printf("per_change_ms: %.3f\n",
+                repeats > 0 ? double(totalMs) / repeats : 0.0);
+    std::printf("first_segments: %d\n", firstSegments);
+    std::printf("segments: %d\n", geometry.segmentCount());
+    std::printf("raw_segments: %d\n", geometry.rawSegmentCount());
+    return geometry.segmentCount() == firstSegments ? 0 : 1;
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     const QStringList args = QCoreApplication::arguments();
     if (args.size() >= 3 && args.at(1) == QStringLiteral("--qml"))
         return runQmlImport(args.at(2));
+    if (args.size() >= 4 && args.at(1) == QStringLiteral("--repeat"))
+        return runRepeat(args.at(3), args.at(2).toInt());
     if (args.size() < 2) {
         std::fprintf(stderr, "usage: stepledges_probe <file.step> [dump.bin]\n"
+                             "       stepledges_probe --repeat <N> <file.step>\n"
                              "       stepledges_probe --qml <import-path>\n");
         return 2;
     }

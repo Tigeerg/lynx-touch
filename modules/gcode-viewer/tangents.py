@@ -320,46 +320,75 @@ def _tangent_families(surfs, packed_edges=None, skin=None):
         if raw and nv >= 2:
             v = _np.frombuffer(raw, dtype=_np.float32).reshape(-1, 5)
             SA, SB = v[0::2, 0:3].astype(float), v[1::2, 0:3].astype(float)
-            SD = SB - SA
-            SL = _np.linalg.norm(SD, axis=1)
-            good = SL > 1e-6
-            SA, SB = SA[good], SB[good]
-            SD = SD[good] / SL[good][:, None]
+            # Скалярный счёт, а не батч: SD @ u, w @ u и np.linalg.norm в numpy
+            # 2.5.3 идут через FMA/SIMD и расходятся с зеркалом C++
+            # (dot3/norm3Sqrt, /fp:precise, FMA выключен) на 1 ULP: у
+            # Test_model_2 fam3[0] выходит 3cf3333333333336 против
+            # 3cf3333333333335, у Test_model fam85 азимут 6.283 вместо 0.0.
+            SU = []
+            sa_l = []
+            sb_l = []
+            for j in range(SB.shape[0]):
+                d0 = float(SB[j, 0] - SA[j, 0])
+                d1 = float(SB[j, 1] - SA[j, 1])
+                d2 = float(SB[j, 2] - SA[j, 2])
+                sl = math.sqrt(d0 * d0 + d1 * d1 + d2 * d2)
+                if not (sl > 1e-6):
+                    continue
+                sa_l.append(SA[j]); sb_l.append(SB[j])
+                SU.append((d0 / sl, d1 / sl, d2 / sl))
+            SA = _np.array(sa_l, dtype=float).reshape(-1, 3)
+            SB = _np.array(sb_l, dtype=float).reshape(-1, 3)
+            SU = _np.array(SU, dtype=float).reshape(-1, 3)
             Oa = _np.array(O); Da = _np.array(D); Ea = _np.array(E1)
             Eb2 = _np.array(E2); Ra = _np.array(R)
             T0a = _np.array(T0); T1a = _np.array(T1)
             two_pi = 2.0 * math.pi
             for i in range(Oa.shape[0]):
                 u = Da[i]
-                par = _np.nonzero(_np.abs(SD @ u) > 0.9993)[0]
-                if par.size == 0:
+                oi = Oa[i]
+                par = []
+                for j in range(SU.shape[0]):
+                    if abs(SU[j, 0] * u[0] + SU[j, 1] * u[1] + SU[j, 2] * u[2]) > 0.9993:
+                        par.append(j)
+                if not par:
                     continue
-                w = SA[par] - Oa[i]
-                perp = w - u * (w @ u)[:, None]
-                rr = _np.linalg.norm(perp, axis=1)
+                perp = []
+                rr = []
+                for j in par:
+                    w0 = SA[j, 0] - oi[0]; w1 = SA[j, 1] - oi[1]; w2 = SA[j, 2] - oi[2]
+                    al = w0 * u[0] + w1 * u[1] + w2 * u[2]
+                    p0 = w0 - u[0] * al; p1 = w1 - u[1] * al; p2 = w2 - u[2] * al
+                    perp.append((p0, p1, p2))
+                    rr.append(math.sqrt(p0 * p0 + p1 * p1 + p2 * p2))
                 # 0.35 мм: только рёбра, лежащие на этом цилиндре. Шире
                 # нельзя: в коаксиальной группе захватывался шов соседней
                 # ступени (зенковка 3.42 рядом с пилотом 2.75) и генератор
                 # пилота нырял у чужого шва (drift 51). Обрезанные дуги
                 # (скругления, арки) теперь без генераторов вовсе — см.
                 # гейт покрытия ARC.
-                near = _np.abs(rr - Ra[i]) < 0.35
-                if not near.any():
+                sel = [k for k in range(len(par)) if abs(rr[k] - Ra[i]) < 0.35]
+                if not sel:
                     continue
-                sel = _np.nonzero(near)[0]
-                jj = par[sel]
-                pp = perp[sel]
-                lo2 = _np.minimum((SA[jj] - Oa[i]) @ u, (SB[jj] - Oa[i]) @ u)
-                hi2 = _np.maximum((SA[jj] - Oa[i]) @ u, (SB[jj] - Oa[i]) @ u)
-                ov = _np.minimum(hi2, T1a[i]) - _np.maximum(lo2, T0a[i])
-                rr2 = rr[sel]
-                use = (ov > 2.0) & (rr2 > 1e-6)
-                if not use.any():
+                ang = []
+                for k in sel:
+                    j = par[k]
+                    wa0 = SA[j, 0] - oi[0]; wa1 = SA[j, 1] - oi[1]; wa2 = SA[j, 2] - oi[2]
+                    wb0 = SB[j, 0] - oi[0]; wb1 = SB[j, 1] - oi[1]; wb2 = SB[j, 2] - oi[2]
+                    ta = wa0 * u[0] + wa1 * u[1] + wa2 * u[2]
+                    tb = wb0 * u[0] + wb1 * u[1] + wb2 * u[2]
+                    ov = min(max(ta, tb), T1a[i]) - max(min(ta, tb), T0a[i])
+                    if not (ov > 2.0) or not (rr[k] > 1e-6):
+                        continue
+                    p0, p1, p2 = perp[k]
+                    a = math.atan2(p0 * Eb2[i, 0] + p1 * Eb2[i, 1] + p2 * Eb2[i, 2],
+                                   p0 * Ea[i, 0] + p1 * Ea[i, 1] + p2 * Ea[i, 2])
+                    ang.append(a % two_pi)
+                if not ang:
                     continue
-                ang = _np.arctan2(pp[use] @ Eb2[i], pp[use] @ Ea[i])
-                ang = _np.sort(ang % two_pi)
+                ang.sort()
                 uniq = []
-                for a in ang.tolist():
+                for a in ang:
                     if not uniq or a - uniq[-1] > 0.03:
                         uniq.append(a)
                 # wrap-around copy of the same junction (0.001 and 6.283):

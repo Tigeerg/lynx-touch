@@ -30,7 +30,10 @@ import { ProgramSide } from './program-side'
 import { OperatorPad, SideStatus } from './side-status'
 import { MessageBar, SoftkeyBar } from './softkey-bar'
 import { PositionScreen } from './screens/position-screen'
+import { SetupScreen, SetupSide } from './screens/setup-screen'
 import { ProgramScreen } from './screens/program-screen'
+import { TestScreen } from './screens/test-screen'
+import { AutoScreen } from './screens/auto-screen'
 import { ServiceScreen } from './screens/service-screen'
 import { AlarmScreen, OffsetScreen, ToolScreen } from './screens/table-screens'
 
@@ -49,24 +52,35 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
 
   const activeAlarms = state.alarms.filter((a) => a.active).length
   const showModes = state.screen === 'pos' || state.screen === 'prog'
+  const testMode = state.workplace === 'TEST'
 
   const displayInner = (
     <div
       className={cn(
         'relative flex flex-col gap-1.5 overflow-hidden bg-background p-1.5',
         hardware && 'rounded-md ring-2 ring-hw-edge',
+        testMode && 'rounded-md ring-4 ring-warning',
       )}
       style={{ width: SCREEN_W, height: SCREEN_H }}
     >
+      {testMode && (
+        <div className="pointer-events-none absolute left-1/2 top-1 z-30 -translate-x-1/2">
+          <span className="animate-pulse rounded-sm bg-warning px-3 py-0.5 text-xs font-bold uppercase tracking-wider text-warning-foreground">
+            Тестовый режим
+          </span>
+        </div>
+      )}
       <HeaderBar
         state={state}
         clock={clock}
         focused={focused}
         hardwareOpen={hardware}
         onToggleHardware={() => setHardware((v) => !v)}
+        onWorkplace={(w) => dispatch({ type: 'SET_WORKPLACE', workplace: w })}
       />
       <ScreenTabs
         screen={state.screen}
+        workplace={state.workplace}
         onSelect={(screen) => dispatch({ type: 'SET_SCREEN', screen })}
         alarmCount={activeAlarms}
         locked={MODE_LOCKED_SCREENS[state.mode]}
@@ -76,34 +90,47 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
       <div
         className={cn(
           'grid min-h-0 flex-1 gap-1.5',
-          showModes && !asideHidden
-            ? 'grid-cols-[minmax(0,1fr)_300px]'
-            : hardware || asideHidden
-              ? 'grid-cols-1 grid-rows-[minmax(0,1fr)]'
-              : 'grid-cols-1 grid-rows-[minmax(0,1fr)_auto]',
+          testMode
+            ? 'grid-cols-1 grid-rows-[minmax(0,1fr)]'
+            : showModes && !asideHidden
+              ? 'grid-cols-[minmax(0,1fr)_300px]'
+              : hardware || asideHidden
+                ? 'grid-cols-1 grid-rows-[minmax(0,1fr)]'
+                : 'grid-cols-1 grid-rows-[minmax(0,1fr)_auto]',
         )}
       >
         <main className="min-h-0">
-          {state.screen === 'pos' && (
-            <PositionScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
-          )}
-          {state.screen === 'prog' && (
-            <ProgramScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
-          )}
+          {state.screen === 'pos' &&
+            (state.workplace === 'SETUP' ? (
+              <SetupScreen state={state} dispatch={dispatch} />
+            ) : (
+              <PositionScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
+            ))}
+          {state.screen === 'prog' &&
+            (testMode ? (
+              <TestScreen state={state} dispatch={dispatch} pathView={pathView} />
+            ) : state.workplace === 'RUN' ? (
+              <AutoScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
+            ) : (
+              <ProgramScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
+            ))}
           {state.screen === 'offset' && <OffsetScreen state={state} dispatch={dispatch} />}
           {state.screen === 'tool' && <ToolScreen state={state} />}
           {state.screen === 'alarm' && <AlarmScreen state={state} />}
           {state.screen === 'service' && <ServiceScreen state={state} dispatch={dispatch} />}
         </main>
-        {showModes ? (
-          state.screen === 'prog' ? (
-            !asideHidden && <ProgramSide state={state} dispatch={dispatch} showPad={!hardware} />
+        {!testMode &&
+          (showModes ? (
+            state.screen === 'prog' ? (
+              !asideHidden && <ProgramSide state={state} dispatch={dispatch} showPad={!hardware} />
+            ) : state.workplace === 'SETUP' ? (
+              <SetupSide state={state} dispatch={dispatch} showPad={!hardware} />
+            ) : (
+              <SideStatus state={state} dispatch={dispatch} showPad={!hardware} />
+            )
           ) : (
-            <SideStatus state={state} dispatch={dispatch} showPad={!hardware} />
-          )
-        ) : (
-          !hardware && <OperatorPad state={state} dispatch={dispatch} layout="compact" />
-        )}
+            !hardware && <OperatorPad state={state} dispatch={dispatch} layout="compact" />
+          ))}
       </div>
 
       <MessageBar message={state.message} />

@@ -1,14 +1,13 @@
-import { Disc3, Hand, Repeat, SquareTerminal, TriangleAlert, type LucideIcon } from 'lucide-react'
-import { MACHINE_NAME, MODE_LABEL, RUN_LABEL } from '@/lib/cnc/data'
+import { FlaskConical, Play, TriangleAlert, Wrench, type LucideIcon } from 'lucide-react'
+import { MACHINE_NAME, RUN_LABEL, WORKPLACE_LABEL } from '@/lib/cnc/data'
 import { currentFile } from '@/lib/cnc/machine'
-import { MODES, type MachineState, type Mode } from '@/lib/cnc/types'
+import { WORKPLACES, type MachineState, type Workplace } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 
-export const MODE_ICON: Record<Mode, LucideIcon> = {
-  AUTO: Repeat,
-  MDI: SquareTerminal,
-  JOG: Hand,
-  MPG: Disc3,
+export const WORKPLACE_ICON: Record<Workplace, LucideIcon> = {
+  SETUP: Wrench,
+  TEST: FlaskConical,
+  RUN: Play,
 }
 
 export const RUN_STYLE: Record<MachineState['run'], string> = {
@@ -25,16 +24,18 @@ export function HeaderBar({
   focused,
   hardwareOpen,
   onToggleHardware,
+  onWorkplace,
 }: {
   state: MachineState
   clock: string | null
   focused: boolean
   hardwareOpen: boolean
   onToggleHardware: () => void
+  onWorkplace: (w: Workplace) => void
 }) {
   const activeAlarms = state.alarms.filter((a) => a.active)
   const hasError = activeAlarms.some((a) => a.level === 'error')
-  const ModeIcon = MODE_ICON[state.mode]
+  const WorkplaceIcon = WORKPLACE_ICON[state.workplace]
 
   return (
     <header className="flex h-11 shrink-0 items-stretch gap-1.5 whitespace-nowrap">
@@ -47,28 +48,32 @@ export function HeaderBar({
 
       <div className="flex shrink-0 items-center gap-2 rounded-md border bg-card px-2">
         <div className="flex items-center gap-1.5">
-          <ModeIcon className="size-5 text-primary" aria-hidden="true" />
+          <WorkplaceIcon className="size-5 text-primary" aria-hidden="true" />
           <div className="leading-none">
-            <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Режим</p>
-            <p className="w-20 whitespace-nowrap font-mono text-base font-bold">{MODE_LABEL[state.mode]}</p>
+            <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Место</p>
+            <p className="w-24 whitespace-nowrap font-mono text-base font-bold">{WORKPLACE_LABEL[state.workplace]}</p>
           </div>
         </div>
-        <ol className="flex items-center gap-0.5" aria-label="Переключатель режимов">
-          {MODES.map((m) => {
-            const Icon = MODE_ICON[m]
-            const active = m === state.mode
+        <ol className="flex items-center gap-0.5" aria-label="Рабочее место">
+          {WORKPLACES.map((w) => {
+            const Icon = WORKPLACE_ICON[w]
+            const active = w === state.workplace
             return (
-              <li
-                key={m}
-                title={MODE_LABEL[m]}
-                aria-current={active ? 'true' : undefined}
-                className={cn(
-                  'flex size-7 items-center justify-center rounded-sm border',
-                  active ? 'border-primary bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
-                )}
-              >
-                <Icon className="size-3.5" aria-hidden="true" />
-                <span className="sr-only">{MODE_LABEL[m]}</span>
+              <li key={w} title={WORKPLACE_LABEL[w]} aria-current={active ? 'true' : undefined}>
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  aria-pressed={active}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => onWorkplace(w)}
+                  className={cn(
+                    'flex size-7 items-center justify-center rounded-sm border transition-colors',
+                    active ? 'border-primary bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-accent',
+                  )}
+                >
+                  <Icon className="size-3.5" aria-hidden="true" />
+                  <span className="sr-only">{WORKPLACE_LABEL[w]}</span>
+                </button>
               </li>
             )
           })}

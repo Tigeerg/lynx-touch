@@ -29,4 +29,10 @@ std::string asciiUpper(const std::string& s);
 // поднял бы ValueError (вызывающий берёт значение по умолчанию).
 bool toDouble(const std::string& s, double& out);
 
+// То же, но байты берутся из среза [first, first + len) без создания std::string:
+// разбор идёт тем же strtod, поэтому результат совпадает бит в бит. Строка, из
+// которой взят срез, не должна изменять содержимое и перевыделять буфер, пока
+// значение читается.
+bool toDouble(const char *first, size_t len, double& out);
+
 } // namespace gv

@@ -1,9 +1,9 @@
 import { CircleHelp, TriangleAlert } from 'lucide-react'
-import { MACHINE_NAME, MODE_LABEL, RUN_LABEL } from '@/lib/cnc/data'
+import { MACHINE_NAME, RUN_LABEL, WORKPLACE_LABEL } from '@/lib/cnc/data'
 import { currentFile, type Action } from '@/lib/cnc/machine'
 import type { MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
-import { MODE_ICON, RUN_STYLE } from '../header-bar'
+import { RUN_STYLE, WORKPLACE_ICON } from '../header-bar'
 
 export function TouchHeader({
   state,
@@ -16,7 +16,7 @@ export function TouchHeader({
 }) {
   const activeAlarms = state.alarms.filter((a) => a.active)
   const hasError = activeAlarms.some((a) => a.level === 'error')
-  const ModeIcon = MODE_ICON[state.mode]
+  const ModeIcon = WORKPLACE_ICON[state.workplace]
   const file = currentFile(state)
 
   return (
@@ -29,7 +29,7 @@ export function TouchHeader({
           <p className="text-sm font-bold">{MACHINE_NAME}</p>
           <p className="flex items-center gap-1 font-mono text-xs font-bold text-primary">
             <ModeIcon className="size-3.5" aria-hidden="true" />
-            {MODE_LABEL[state.mode]}
+            {WORKPLACE_LABEL[state.workplace]}
           </p>
         </div>
       </div>

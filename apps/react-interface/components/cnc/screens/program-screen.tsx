@@ -159,7 +159,7 @@ function DroStrip({ state }: { state: MachineState }) {
   )
 }
 
-function SearchBar({ state, dispatch }: { state: MachineState; dispatch: Dispatch<Action> }) {
+export function SearchBar({ state, dispatch }: { state: MachineState; dispatch: Dispatch<Action> }) {
   const findRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     findRef.current?.focus()
@@ -265,7 +265,7 @@ function AutoProgress({ state }: { state: MachineState }) {
   )
 }
 
-function ProgramList({ state, dispatch }: { state: MachineState; dispatch: Dispatch<Action> }) {
+export function ProgramList({ state, dispatch }: { state: MachineState; dispatch: Dispatch<Action> }) {
   const listRef = useRef<HTMLOListElement>(null)
   const sim = state.sim.active
   const running = !sim && (state.run === 'RUN' || state.run === 'HOLD')

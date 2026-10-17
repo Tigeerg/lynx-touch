@@ -22,12 +22,12 @@ import {
   StepForward,
   type LucideIcon,
 } from 'lucide-react'
-import { JOG_STEPS, MODE_LABEL, RAPID_JOG_MULT, RAPID_STEPS } from '@/lib/cnc/data'
+import { JOG_STEPS, RAPID_JOG_MULT, RAPID_STEPS, WORKPLACE_LABEL } from '@/lib/cnc/data'
 import type { Action } from '@/lib/cnc/machine'
 import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM } from '@/lib/cnc/service-data'
-import { MODES, type Axis, type MachineState } from '@/lib/cnc/types'
+import { WORKPLACES, type Axis, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
-import { MODE_ICON } from '../header-bar'
+import { WORKPLACE_ICON } from '../header-bar'
 import { EmergencyStop, HwGroup, HwKey, KEY_ROW, Knob, SMALL_KEY } from './hw-parts'
 import { AuxBlock } from './hardware-aux'
 
@@ -97,15 +97,15 @@ export function HardwarePanel({ state, dispatch }: { state: MachineState; dispat
             />
           </div>
 
-          <div role="group" aria-label="Режим" className="flex justify-between pt-5">
-            {MODES.map((m) => (
+          <div role="group" aria-label="Рабочее место" className="flex justify-between pt-5">
+            {WORKPLACES.map((w) => (
               <HwKey
-                key={m}
-                label={MODE_LABEL[m]}
-                icon={MODE_ICON[m]}
-                lit={state.mode === m}
+                key={w}
+                label={WORKPLACE_LABEL[w]}
+                icon={WORKPLACE_ICON[w]}
+                lit={state.workplace === w}
                 tone="primary"
-                onClick={() => dispatch({ type: 'SET_MODE', mode: m })}
+                onClick={() => dispatch({ type: 'SET_WORKPLACE', workplace: w })}
                 className="gap-1 px-0 text-[12px] tracking-tight [&_svg]:size-6"
               />
             ))}

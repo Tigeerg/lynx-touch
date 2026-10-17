@@ -59,7 +59,10 @@ def _build_silhouette_topology(verts, weld=_SILHOUETTE_WELD_MM):
     er = _np.sort(e, axis=2).reshape(-1, 2)
     uid, uinv = _np.unique(er, axis=0, return_inverse=True)
     uinv = uinv.reshape(-1)
-    face_of = _np.repeat(_np.arange(F), 3)
+    # Ширина индекса задана явно: у numpy 1.x на Windows int по умолчанию был
+    # int32, у 2.x - int64, а манифест оракула сверяется по байтам. Индексы
+    # граней и рёбер далеко ниже 2**31.
+    face_of = _np.repeat(_np.arange(F, dtype=_np.int32), 3)
     order = _np.argsort(uinv, kind="stable")
     su = uinv[order]
     sf = face_of[order]

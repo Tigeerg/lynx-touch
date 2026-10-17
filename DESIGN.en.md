@@ -7,7 +7,7 @@ edit both languages in the same pass.
 ## 1. Purpose and place in the product
 
 `gcode-viewer` is the third of the product's four projects (manifest — [projects.json](projects.json)):
-interactive 3D preview of a machine control program. Directory — `apps/qt-interface`. Stack: QML + QtQuick3D +
+interactive 3D preview of a machine control program. Directory — `modules/gcode-viewer`. Stack: QML + QtQuick3D +
 PySide6; the heavy part is Python.
 
 Dependencies:
@@ -26,8 +26,7 @@ section 7).
   importing `mock_backend`, loads `preview_3d.qml`; with an argument it calls `load_gcode_async`. In offscreen
   mode it takes the synchronous path and prints `loaded OK`.
 - `preview_3d.qml` — a 1024x600 `Window` holding `GcodeViewer3D`.
-- `preview_qml.py`, `preview_pyqt5.py` — other launch points (the Qt interface and an older variant). This
-  duplication is listed in section 12.
+- `preview_qml.py` — another launch point (the Qt interface). This duplication is listed in section 12.
 
 Headless run: set `QT_QPA_PLATFORM=offscreen`.
 
@@ -165,12 +164,12 @@ tool position is `sampleAt(pathDist)`.
 ## 12. Known problems and technical debt
 
 Architecture:
-- `mock_backend.py` is one monolith (about 4300 lines): parser, STEP/STL, analytics, silhouette, collisions,
-  tool check, and all geometries. It should be split into modules (`gcode_parser`, `step_import`, `tangents`,
-  `collision`, `geometry`, `controller`).
+- `mock_backend.py` is a 107-line facade that re-exports the split modules (`gv_types`, `gcode_parser`,
+  `step_import`, `tangents`, `collision`, `geometry`, `controller` and others); the monolith split is done
+  (`PORT-CPP.md` §7) and the outside code and QML still see the old names.
 - `GcodeViewer3D.qml` (about 1000 lines) holds JS camera, projection and stage logic; it belongs in backend
   slots.
-- Several launch points (`preview_3d.py`, `preview_qml.py`, `preview_pyqt5.py`) create ambiguity.
+- Several launch points (`preview_3d.py`, `preview_qml.py`) create ambiguity.
 
 Code against the CLAUDE.md rules:
 - module-boundary structures are no longer tuples/dicts: they live in `gv_types.py` (0.13.13); a dict remains

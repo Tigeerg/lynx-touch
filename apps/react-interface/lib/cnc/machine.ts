@@ -1,28 +1,22 @@
 import {
-  DRY_RUN_RATE,
   INITIAL_ALARMS,
   INITIAL_OFFSETS,
   INITIAL_TOOLS,
   MODE_LABEL,
   PROGRAM_FILES,
   RAPID_JOG_MULT,
-  RAPID_RATE,
   RAPID_STEPS,
   SCREEN_LABEL,
   SOFT_LIMITS,
+  WORKPLACE_LABEL,
 } from './data'
-import {
-  computeProbeResult,
-  localToMachine,
-  PROBE_CYCLES,
-  PROBE_STEP_MEASURE,
-  PROBE_STEP_RESULT,
-  PROBE_TOOL,
-  probeLocalPosition,
-  TOUCH_MS,
-} from './probe'
-import { initialLadder, isLadderAction, ladderReducer, ladderRungs, type LadderAction } from './ladder'
+import { PROBE_CYCLES, PROBE_STEP_MEASURE, PROBE_STEP_RESULT, PROBE_TOOL } from './probe'
+import { abortProbe, probeTick } from './probe-exec'
+import { initialLadder, isLadderAction, ladderReducer, type LadderAction } from './ladder'
 import { idleSim, isProgAction, progReducer, tickSim, type ProgAction } from './prog'
+import { parseWords } from './gcode'
+import { isMpgAction, mpgReducer, type MpgAction } from './mpg'
+import { initialTest, isTestAction, testReducer, type TestAction } from './test'
 import {
   defaultParams,
   evaluateLadder,
@@ -34,7 +28,6 @@ import {
   hasServiceList,
   paramAt,
   SERVICE_PASSWORD,
-  serviceListLength,
   THEME_PARAM,
   TOOLPATH_PARAM,
   UI_MODE_PARAM,
@@ -57,7 +50,15 @@ import {
   type Mode,
   type Screen,
   type ServiceSection,
+  type Workplace,
 } from './types'
+
+import { distanceToGo, motionSpeed, toWork, workOffset, zeroAxes } from './coords'
+import { currentFile, programLines, setLines } from './files'
+import { listLength } from './list'
+
+export { distanceToGo, motionSpeed, toWork, workOffset } from './coords'
+export { currentFile, programLines } from './files'
 
 export type Action =
   | { type: 'TICK'; dt: number }
@@ -66,6 +67,8 @@ export type Action =
   | { type: 'RESET' }
   | { type: 'ESTOP' }
   | { type: 'SET_MODE'; mode: Mode }
+  | { type: 'SET_WORKPLACE'; workplace: Workplace }
+  | { type: 'SPINDLE_WARMUP' }
   | { type: 'CYCLE_MODE'; dir: 1 | -1 }
   | { type: 'SET_SCREEN'; screen: Screen }
   | { type: 'SELECT_AXIS'; axis: Axis }
@@ -147,23 +150,10 @@ export type Action =
   | { type: 'CALC'; open?: boolean }
   | ProgAction
   | LadderAction
-
-const zeroAxes = (): Axes => ({ X: 0, Y: 0, Z: 0, A: 0 })
+  | MpgAction
+  | TestAction
 
 const MACHINE_LOCK_MSG = 'Включена блокировка станка — оси не перемещаются'
-
-export const currentFile = (s: MachineState) => s.files[s.activeFile]
-export const programLines = (s: MachineState) => currentFile(s).lines
-
-const stamp = () =>
-  new Date()
-    .toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-    .replace(',', '')
-
-const setLines = (s: MachineState, lines: string[]): MachineState => ({
-  ...s,
-  files: s.files.map((f, i) => (i === s.activeFile ? { ...f, lines, modified: stamp() } : f)),
-})
 
 export const initialState: MachineState = {
   ladder: initialLadder,
@@ -177,6 +167,7 @@ export const initialState: MachineState = {
   editMode: false,
   editor: null,
   mode: 'AUTO',
+  workplace: 'RUN',
   run: 'IDLE',
   screen: MODE_START_SCREEN.AUTO,
   machine: zeroAxes(),
@@ -249,57 +240,9 @@ export const initialState: MachineState = {
     prev: null,
   },
   sim: idleSim(),
+  test: initialTest,
   search: { open: false, query: '', replace: '' },
   params: defaultParams(),
-}
-
-function probeTick(s: MachineState, dt: number): MachineState {
-  const cycle = PROBE_CYCLES[s.probe.cycle]
-  const origin = s.probe.origin ?? s.machine
-  const elapsed = s.probe.elapsed + (dt * s.feedOverride) / 100
-  if (elapsed >= cycle.touches.length * TOUCH_MS) {
-    const result = computeProbeResult(cycle, origin)
-    return notify(
-      {
-        ...s,
-        run: 'IDLE',
-        machine: { ...origin },
-        probe: { ...s.probe, running: false, elapsed, result, step: PROBE_STEP_RESULT },
-      },
-      `Измерение «${cycle.name}» завершено`,
-    )
-  }
-  const { pos } = probeLocalPosition(cycle, elapsed)
-  return { ...s, machine: localToMachine(cycle, origin, pos), probe: { ...s.probe, elapsed } }
-}
-
-const abortProbe = (s: MachineState): MachineState =>
-  s.probe.running
-    ? {
-        ...s,
-        machine: s.probe.origin ? { ...s.probe.origin } : s.machine,
-        probe: { ...s.probe, running: false, elapsed: 0, step: PROBE_STEP_MEASURE },
-      }
-    : s
-
-export const workOffset = (s: MachineState) => s.offsets[s.activeOffset].values
-
-export const toWork = (s: MachineState): Axes => {
-  const off = workOffset(s)
-  return { X: s.machine.X - off.X, Y: s.machine.Y - off.Y, Z: s.machine.Z - off.Z, A: s.machine.A - off.A }
-}
-
-export const distanceToGo = (s: MachineState): Axes => {
-  if (!s.motion) return zeroAxes()
-  const t = s.motion.target
-  return { X: t.X - s.machine.X, Y: t.Y - s.machine.Y, Z: t.Z - s.machine.Z, A: t.A - s.machine.A }
-}
-
-export const motionSpeed = (s: MachineState): number => {
-  if (!s.motion) return 0
-  if (s.motion.rapid) return (RAPID_RATE * s.rapidOverride) / 100
-  if (s.dryRun) return DRY_RUN_RATE
-  return (s.motion.feed * s.feedOverride) / 100
 }
 
 const timeNow = () => new Date().toLocaleTimeString('ru-RU', { hour12: false })
@@ -346,15 +289,6 @@ function setParam(s: MachineState, def: ParamDef, value: number): MachineState {
   if (def.id === MAX_FEED_PARAM) n.feedOverride = Math.min(n.feedOverride, value)
   if (def.id === MAX_SPINDLE_PARAM) n.spindleOverride = Math.min(n.spindleOverride, value)
   return n
-}
-
-function parseWords(line: string) {
-  const code = line.replace(/\(.*?\)/g, '').toUpperCase()
-  const words: { letter: string; value: number }[] = []
-  for (const m of code.matchAll(/([A-Z])\s*(-?\d+(?:\.\d+)?)/g)) {
-    words.push({ letter: m[1], value: Number.parseFloat(m[2]) })
-  }
-  return words
 }
 
 function executeLine(state: MachineState, index: number): MachineState {
@@ -472,16 +406,6 @@ function completeBlock(s: MachineState): MachineState {
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
 
-function listLength(s: MachineState, screen: Screen) {
-  if (screen === 'prog') return programLines(s).length
-  if (screen === 'offset') return s.offsets.length
-  if (screen === 'tool') return s.tools.length
-  if (screen === 'alarm') return s.alarms.length
-  if (screen === 'service')
-    return s.service.section === 'ladder' ? ladderRungs(s).length : serviceListLength(s.service.section)
-  return 1
-}
-
 export function reducer(state: MachineState, a: Action): MachineState {
   const s = state
   if (isLadderAction(a)) {
@@ -490,6 +414,14 @@ export function reducer(state: MachineState, a: Action): MachineState {
   }
   if (isProgAction(a)) {
     const r = progReducer(s, a)
+    return r.msg ? notify(r.s, r.msg, r.level) : r.s
+  }
+  if (isMpgAction(a)) {
+    const r = mpgReducer(s, a)
+    return r.msg ? notify(r.s, r.msg, r.level) : r.s
+  }
+  if (isTestAction(a)) {
+    const r = testReducer(s, a)
     return r.msg ? notify(r.s, r.msg, r.level) : r.s
   }
   switch (a.type) {
@@ -504,7 +436,10 @@ export function reducer(state: MachineState, a: Action): MachineState {
       if (!sameLadderMem(scan.mem, n.ladder.mem)) n = { ...n, ladder: { ...n.ladder, mem: scan.mem } }
       n = tickSim(n, a.dt)
       if (n.run !== 'RUN') return n
-      if (n.probe.running) return probeTick(n, a.dt)
+      if (n.probe.running) {
+        const r = probeTick(n, a.dt)
+        return r.msg ? notify(r.s, r.msg) : r.s
+      }
       if (n.mode === 'AUTO') n = { ...n, cycleTime: n.cycleTime + a.dt }
       if (n.dwell > 0) return { ...n, dwell: Math.max(0, n.dwell - a.dt) }
       if (n.motion) return stepMotion(n, a.dt)
@@ -543,7 +478,7 @@ export function reducer(state: MachineState, a: Action): MachineState {
         const start = s.nextLine >= programLines(s).length ? 0 : s.nextLine
         return executeLine({ ...s, sim: idleSim(), run: 'RUN' }, start)
       }
-      if (s.mode === 'MDI') {
+      if (s.workplace === 'SETUP') {
         const text = s.mdi.buffer.trim().toUpperCase()
         if (!text) return notify(s, 'Введите кадр MDI', 'warn')
         if (!s.toolClamped && /M0?[34]\b/.test(text))
@@ -617,6 +552,37 @@ export function reducer(state: MachineState, a: Action): MachineState {
       const jogStep = a.mode === 'MPG' && !MPG_STEPS.includes(s.jogStep) ? MPG_STEPS[MPG_STEPS.length - 1] : s.jogStep
       const n = s.editMode && screen !== 'prog' ? { ...s, editMode: false, editor: null } : s
       return notify({ ...n, mode: a.mode, screen, jogStep }, `Режим: ${MODE_LABEL[a.mode]}`)
+    }
+
+    case 'SET_WORKPLACE': {
+      if (isBusy(s)) return notify(s, 'Смена рабочего места во время выполнения запрещена', 'warn')
+      const mode: Mode = a.workplace === 'SETUP' ? 'JOG' : 'AUTO'
+      return notify(
+        { ...s, workplace: a.workplace, mode, dryRun: a.workplace === 'TEST', screen: MODE_START_SCREEN[mode] },
+        `Рабочее место: ${WORKPLACE_LABEL[a.workplace]}`,
+      )
+    }
+
+    case 'SPINDLE_WARMUP': {
+      if (s.run === 'ESTOP' || s.run === 'ALARM') return notify(s, 'Сначала сбросьте аварию', 'error')
+      if (isBusy(s)) return notify(s, 'Сначала остановите программу', 'warn')
+      if (!s.toolClamped) return notify(s, 'Инструмент разжат — прогрев запрещён', 'error')
+      if (s.tool === PROBE_TOOL) return notify(s, 'В шпинделе щуп T99 — прогрев запрещён', 'error')
+      const idx = s.files.findIndex((f) => /ПРОГРЕВ/i.test(f.title))
+      if (idx < 0) return notify(s, 'Программа прогрева шпинделя не найдена', 'error')
+      const base: MachineState = {
+        ...s,
+        activeFile: idx,
+        workplace: 'RUN',
+        mode: 'AUTO',
+        dryRun: false,
+        screen: 'prog',
+        cursor: { ...s.cursor, prog: 0 },
+      }
+      return notify(
+        executeLine({ ...base, sim: idleSim(), run: 'RUN', line: 0, nextLine: 0 }, 0),
+        'Прогрев шпинделя запущен',
+      )
     }
 
     case 'CYCLE_MODE': {

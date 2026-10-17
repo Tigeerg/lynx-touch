@@ -1,4 +1,4 @@
-import type { Alarm, Axis, Mode, ProgramFile, RunState, Screen, Tool, WorkOffset } from './types'
+import type { Alarm, Axis, Mode, ProgramFile, RunState, Screen, Tool, WorkOffset, Workplace } from './types'
 
 export const MACHINE_NAME = 'VMC-850'
 export const PROGRAM_NAME = 'O1024'
@@ -146,6 +146,12 @@ export const MODE_LABEL: Record<Mode, string> = {
   MDI: 'MDI',
   JOG: 'РУЧНОЙ',
   MPG: 'МАХОВИК',
+}
+
+export const WORKPLACE_LABEL: Record<Workplace, string> = {
+  SETUP: 'НАЛАДКА',
+  TEST: 'ПРОГОН',
+  RUN: 'АВТО',
 }
 
 export const RUN_LABEL: Record<RunState, string> = {

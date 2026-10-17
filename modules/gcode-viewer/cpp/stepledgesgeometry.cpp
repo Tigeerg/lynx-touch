@@ -2,19 +2,20 @@
 
 #include <algorithm>
 #include <array>
+#include <exception>
 #include <vector>
 
 #include <QFile>
 #include <QFileInfo>
 #include <QVector3D>
 
-// OCCT: чтение STEP
-#include <STEPControl_Reader.hxx>
-#include <IFSelect_ReturnStatus.hxx>
-
 // Отбор и склейка рёбер (обход TopAbs_EDGE, GCPnts_UniformDeflection, шовные
 // линии) вынесены в gvstep: тот же алгоритм нужен C-ABI-мосту gvbridge без Qt.
 #include "occt/step_edges.h"
+
+// Чтение STEP - общее ядро (occt/step_import): свой разбор здесь был бы второй
+// редакцией того же пути.
+#include "occt/step_import.h"
 
 StepEdgesGeometry::StepEdgesGeometry(QQuick3DObject *parent)
     : QQuick3DGeometry(parent)
@@ -26,6 +27,7 @@ void StepEdgesGeometry::setSource(const QString &path)
     if (m_source == path)
         return;
     m_source = path;
+    m_shape = TopoDS_Shape();             // другой файл - кэш формы не годится
     rebuild();
     emit sourceChanged();
 }
@@ -103,15 +105,18 @@ void StepEdgesGeometry::rebuild()
         return;
     }
 
-    STEPControl_Reader reader;
-    // OCCT принимает путь в UTF-8: кириллица в пути репозитория иначе теряется.
-    if (reader.ReadFile(m_source.toUtf8().constData())
-            != IFSelect_ReturnStatus::IFSelect_RetDone) {
-        qWarning("StepEdgesGeometry: STEP read failed: %s",
-                 qUtf8Printable(m_source));
-        update();
-        return;
+    // Форма читается один раз и живёт в объекте. Смена deflection или
+    // hideFormEdges пересчитывает рёбра, а STEP заново не читается: на
+    // Test_model.STEP повторное чтение - 466 мс из 550 мс на смену свойства.
+    if (m_shape.IsNull()) {
+        try {
+            // OCCT принимает путь в UTF-8: кириллица в пути иначе теряется.
+            m_shape = gv::readStepShape(m_source.toUtf8().constData());
+        } catch (const std::exception &e) {
+            qWarning("StepEdgesGeometry: %s", e.what());
+            update();
+            return;
+        }
     }
-    reader.TransferRoots();
-    setShape(reader.OneShape());
+    setShape(m_shape);
 }

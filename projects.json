@@ -1,13 +1,13 @@
 {
   "product": "CNC Панель оператора",
-  "version": "0.11.0",
+  "version": "0.13.0",
   "versioning": "semver",
   "description": "Панель оператора ЧПУ: React-интерфейс, Qt-порт, 3D-вьювер УП и тестовые данные/постпроцессор.",
   "projects": [
     {
       "id": "react-interface",
       "name": "React интерфейс (панель оператора)",
-      "version": "0.7.0",
+      "version": "0.9.0",
       "path": "apps/react-interface",
       "kind": "next.js",
       "entry": "app/page.tsx",
@@ -17,7 +17,7 @@
     {
       "id": "qt-interface",
       "name": "Qt-порт интерфейса",
-      "version": "0.5.2",
+      "version": "0.5.3",
       "path": "apps/qt-interface",
       "kind": "qml",
       "entry": "main.qml",
@@ -27,7 +27,7 @@
     {
       "id": "gcode-viewer",
       "name": "3D-вьювер УП",
-      "version": "0.29.0",
+      "version": "0.31.0",
       "path": "modules/gcode-viewer",
       "kind": "qml+python",
       "entry": "GcodeViewer3D.qml",
@@ -40,8 +40,6 @@
         "toolpath.frag",
         "preview_3d.qml",
         "preview_3d.py",
-        "preview_qml.py",
-        "preview_pyqt5.py",
         "smoke_test_qml.py"
       ]
     },

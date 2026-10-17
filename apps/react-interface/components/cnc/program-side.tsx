@@ -1,9 +1,9 @@
-import { Braces, FileCode, History, Package, SlidersHorizontal, Timer, Wrench } from 'lucide-react'
+import { Braces, Fan, FileCode, History, Package, SlidersHorizontal, Timer, Wrench } from 'lucide-react'
 import { programLines, type Action } from '@/lib/cnc/machine'
 import type { MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { formatTime, Panel } from './primitives'
-import { OperatorPad, OverrideRow, ProdStat, RapidRow, Section, WIDE_SECTIONS } from './side-status'
+import { LoadRow, OperatorPad, OverrideRow, ProdStat, RapidRow, Section, WIDE_SECTIONS } from './side-status'
 
 function words(line: string) {
   const code = line.replace(/\(.*?\)/g, '').toUpperCase()
@@ -57,25 +57,12 @@ function Chip({ label, value, hot }: { label: string; value: string; hot: boolea
   )
 }
 
-export function ProgramSide({
-  state,
-  dispatch,
-  showPad = true,
-  wide = false,
-}: {
-  state: MachineState
-  dispatch: (a: Action) => void
-  showPad?: boolean
-  wide?: boolean
-}) {
+// «Активные коды» — модальные G/M текущего кадра. Общий блок для экрана
+// программы и правой колонки «Наладки».
+export function ActiveCodes({ state }: { state: MachineState }) {
   const lines = programLines(state)
   const started = state.run !== 'IDLE' || state.line > 0
   const modal = modalCodes(lines, started ? state.line : -1)
-  const progress = Math.round((state.line / Math.max(1, lines.length - 1)) * 100)
-  const nextLine = lines[state.nextLine]
-  const tools = programTools(lines)
-  const toolList = tools.length > 0 ? tools : [state.tool]
-
   const codes = [
     { label: 'Движение', value: g(modal.motion), hot: modal.motion !== 0 },
     { label: 'Плоскость', value: g(modal.plane), hot: false },
@@ -88,6 +75,38 @@ export function ProgramSide({
     { label: 'Шпиндель', value: state.spindleOn ? 'M03' : 'M05', hot: state.spindleOn },
     { label: 'СОЖ', value: state.coolant ? 'M08' : 'M09', hot: state.coolant },
   ]
+  return (
+    <Section icon={Braces} title="Активные коды">
+      <ul className="grid grid-cols-5 gap-1" aria-label="Активные G и M коды">
+        {codes.map((c) => (
+          <Chip key={c.label} {...c} />
+        ))}
+      </ul>
+    </Section>
+  )
+}
+
+export function ProgramSide({
+  state,
+  dispatch,
+  showPad = true,
+  wide = false,
+}: {
+  state: MachineState
+  dispatch: (a: Action) => void
+  showPad?: boolean
+  wide?: boolean
+}) {
+  const lines = programLines(state)
+  const progress = Math.round((state.line / Math.max(1, lines.length - 1)) * 100)
+  const nextLine = lines[state.nextLine]
+  const tools = programTools(lines)
+  const toolList = tools.length > 0 ? tools : [state.tool]
+  const rpm =
+    state.spindleOn && state.run !== 'ESTOP' ? Math.round((state.spindleSet * state.spindleOverride) / 100) : 0
+  const cutting = state.run === 'RUN' && state.motion !== null && !state.motion.rapid
+  const t = state.cycleTime / 400
+  const load = rpm === 0 ? 0 : cutting ? Math.round(38 + Math.sin(t) * 9 + Math.sin(t * 2.7) * 5) : 6
 
   return (
     <aside className="flex min-h-0 flex-col gap-2" aria-label="Обработка программы">
@@ -120,13 +139,7 @@ export function ProgramSide({
             </dl>
           </Section>
 
-          <Section icon={Braces} title="Активные коды">
-            <ul className="grid grid-cols-5 gap-1" aria-label="Активные G и M коды">
-              {codes.map((c) => (
-                <Chip key={c.label} {...c} />
-              ))}
-            </ul>
-          </Section>
+          <ActiveCodes state={state} />
 
           <Section icon={Wrench} title="Инструмент программы">
             <ul className="flex flex-col gap-0.5">
@@ -165,6 +178,10 @@ export function ProgramSide({
                 )
               })}
             </ul>
+          </Section>
+
+          <Section icon={Fan} title="Нагрузка">
+            <LoadRow value={load} />
           </Section>
 
           <Section icon={SlidersHorizontal} title="Корректоры">

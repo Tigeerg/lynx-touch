@@ -103,7 +103,11 @@ def _coalesce_segments(segments, dist_tol=0.12, gap_tol=0.5):
         # neighborhood (clusters are at most dist_tol from their seed foot)
         cells = {}
         members = []                # per cluster: [fxm, fym, lo, hi, count]
-        order = _np.argsort(lo0)
+        # kind="stable": при равных lo0 (совпадающие торцы) quicksort numpy
+        # разводит отрезки по-разному от версии к версии, и результат перестаёт
+        # воспроизводиться. C++-зеркало (cpp/occt/step_edges.cpp) сортирует тем
+        # же ключом устойчиво.
+        order = _np.argsort(lo0, kind="stable")
         for i in order:
             cx = int(_np.floor(fx[i] / dist_tol))
             cy = int(_np.floor(fy[i] / dist_tol))

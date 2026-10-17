@@ -3,22 +3,12 @@
 // machine.ts сводит подсистемы, а не впитывает их — размер редуктора держит метка
 // tools/check.ps1. Возвращаем { s, msg, level }, сообщение показывает machine.ts.
 import { MODE_LABEL, SCREEN_LABEL } from './data'
+import { programLines, setLines } from './files'
 import { MODE_LOCKED_SCREENS, type MachineState, type Message } from './types'
 
 const SIM_STEP_MS = 120
 
 const isBusy = (s: MachineState) => s.run === 'RUN' || s.run === 'HOLD'
-const stamp = () =>
-  new Date()
-    .toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-    .replace(',', '')
-
-const programLines = (s: MachineState) => s.files[s.activeFile].lines
-
-const setLines = (s: MachineState, lines: string[]): MachineState => ({
-  ...s,
-  files: s.files.map((f, i) => (i === s.activeFile ? { ...f, lines, modified: stamp() } : f)),
-})
 
 const escapeRegExp = (t: string): string => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -32,6 +22,9 @@ export type ProgAction =
   | { type: 'SEARCH_FIND' }
   | { type: 'SEARCH_REPLACE_ALL' }
   | { type: 'PROG_RENUMBER' }
+  | { type: 'TOOL_LIFE' }
+  | { type: 'PART_COUNTER_RESET' }
+  | { type: 'BROKEN_TOOL_CHECK' }
 
 const PROG_TYPES = new Set<string>([
   'SIM',
@@ -41,6 +34,9 @@ const PROG_TYPES = new Set<string>([
   'SEARCH_FIND',
   'SEARCH_REPLACE_ALL',
   'PROG_RENUMBER',
+  'TOOL_LIFE',
+  'PART_COUNTER_RESET',
+  'BROKEN_TOOL_CHECK',
 ])
 
 export const isProgAction = (a: { type: string }): a is ProgAction => PROG_TYPES.has(a.type)
@@ -132,6 +128,29 @@ export function progReducer(s: MachineState, a: ProgAction): Result {
       })
       if (changed === 0) return { s, msg: 'Нумерация уже по порядку' }
       return { s: setLines(s, nextLines), msg: `Перенумеровано кадров: ${changed}` }
+    }
+
+    case 'TOOL_LIFE': {
+      const t = s.tools.find((x) => x.number === s.tool)
+      return {
+        s,
+        msg: t
+          ? `Ресурс инструмента T${String(t.number).padStart(2, '0')}: ${t.life}%`
+          : 'Инструмент не найден в таблице',
+      }
+    }
+
+    case 'PART_COUNTER_RESET': {
+      if (isBusy(s)) return { s, msg: 'Обнулите счётчики в останове', level: 'warn' }
+      return { s: { ...s, partCount: 0, cycleTime: 0, lastCycle: 0 }, msg: 'Счётчик деталей и таймер цикла обнулены' }
+    }
+
+    case 'BROKEN_TOOL_CHECK': {
+      const t = s.tools.find((x) => x.number === s.tool)
+      return {
+        s,
+        msg: `Проверка слома: T${String(s.tool).padStart(2, '0')}${t ? ` (${t.name})` : ''} — вызовите обмер щупом`,
+      }
     }
   }
 }

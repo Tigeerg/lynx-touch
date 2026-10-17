@@ -4,8 +4,7 @@ import { useEffect, useEffectEvent, useReducer, useState } from 'react'
 import { initialState, reducer, type Action } from '@/lib/cnc/machine'
 import { THEME_PARAM } from '@/lib/cnc/service-data'
 import { getSoftkeys } from '@/lib/cnc/softkeys'
-import { PATH_VIEWS, type PathView } from '@/lib/cnc/toolpath'
-import { SCREENS, type Axis, type MachineState } from '@/lib/cnc/types'
+import { TABS, WORKPLACES, screenOfTab, type Axis, type MachineState } from '@/lib/cnc/types'
 
 const TICK_MS = 50
 const AXIS_KEYS: Record<string, Axis> = { KeyX: 'X', KeyY: 'Y', KeyZ: 'Z', KeyA: 'A' }
@@ -65,8 +64,8 @@ function keyToAction(state: MachineState, e: KeyboardEvent): Action | null {
   if (e.code === 'KeyE') return { type: 'EDIT_MODE' }
   if (e.code === 'KeyP' && (state.screen === 'pos' || state.screen === 'prog')) return { type: 'TOOLPATH_TOGGLE' }
 
-  const digit = /^Digit([1-6])$/.exec(e.code)
-  if (digit) return { type: 'SET_SCREEN', screen: SCREENS[Number(digit[1]) - 1] }
+  const digit = /^Digit([1-5])$/.exec(e.code)
+  if (digit) return { type: 'SET_SCREEN', screen: screenOfTab(TABS[Number(digit[1]) - 1], state.workplace) }
 
   if (state.screen === 'service' && !state.help) {
     const sv = state.service
@@ -92,8 +91,11 @@ function keyToAction(state: MachineState, e: KeyboardEvent): Action | null {
       return e.shiftKey ? { type: 'ESTOP' } : { type: 'RESET' }
     case 'Pause':
       return { type: 'ESTOP' }
-    case 'KeyM':
-      return { type: 'CYCLE_MODE', dir: e.shiftKey ? -1 : 1 }
+    case 'KeyM': {
+      const dir = e.shiftKey ? -1 : 1
+      const idx = (WORKPLACES.indexOf(state.workplace) + dir + WORKPLACES.length) % WORKPLACES.length
+      return { type: 'SET_WORKPLACE', workplace: WORKPLACES[idx] }
+    }
     case 'KeyH':
       return { type: 'HELP' }
     case 'ArrowLeft':
@@ -131,9 +133,8 @@ export function useCncMachine() {
   const [state, dispatch] = useReducer(reducer, initialState)
   const [clock, setClock] = useState<string | null>(null)
   const [focused, setFocused] = useState(true)
-  const [pathView, setPathView] = useState<PathView>('ISO')
   const softkeys = getSoftkeys(state)
-  const cycleView = () => setPathView((v) => PATH_VIEWS[(PATH_VIEWS.indexOf(v) + 1) % PATH_VIEWS.length])
+  const cycleView = () => dispatch({ type: 'PATH_VIEW_CYCLE' })
 
   useEffect(() => {
     const id = window.setInterval(() => dispatch({ type: 'TICK', dt: TICK_MS }), TICK_MS)
@@ -189,5 +190,5 @@ export function useCncMachine() {
     root.classList.toggle('theme-mint', theme === 3)
   }, [theme])
 
-  return { state, dispatch, softkeys, clock, focused, pathView, cycleView }
+  return { state, dispatch, softkeys, clock, focused, pathView: state.test.view, cycleView }
 }

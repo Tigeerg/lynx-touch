@@ -2,8 +2,26 @@
 #include "text_util.h"
 
 #include <cstdlib>
+#include <cstring>
 
 namespace gv {
+
+namespace {
+
+// float(value) для строки с нулевым терминатором: разбор целиком или отказ.
+// Оба варианта toDouble зовут этот разбор, поэтому значение совпадает бит в бит.
+bool parseFull(const char *s, double& out) {
+    if (s == nullptr || *s == '\0') { return false; }
+    char *end = nullptr;
+    const double v = std::strtod(s, &end);
+    if (end == s) { return false; }
+    while (*end != '\0' && isSpaceCh(static_cast<unsigned char>(*end))) { ++end; }
+    if (*end != '\0') { return false; }
+    out = v;
+    return true;
+}
+
+} // namespace
 
 bool isSpaceCh(unsigned char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
@@ -34,6 +52,9 @@ void stripInPlace(std::string& s) {
     while (b < s.size() && isSpaceCh(static_cast<unsigned char>(s[b]))) { ++b; }
     size_t e = s.size();
     while (e > b && isSpaceCh(static_cast<unsigned char>(s[e - 1]))) { --e; }
+    // Срезать нечего: substr всё равно скопировал бы буфер. В Test_model.ngc
+    // обрезка не нужна ни в одной из 110585 строк.
+    if (b == 0 && e == s.size()) { return; }
     s = s.substr(b, e - b);
 }
 
@@ -44,14 +65,19 @@ std::string asciiUpper(const std::string& s) {
 }
 
 bool toDouble(const std::string& s, double& out) {
-    if (s.empty()) { return false; }
-    char *end = nullptr;
-    const double v = std::strtod(s.c_str(), &end);
-    if (end == s.c_str()) { return false; }
-    while (*end != '\0' && isSpaceCh(static_cast<unsigned char>(*end))) { ++end; }
-    if (*end != '\0') { return false; }
-    out = v;
-    return true;
+    return parseFull(s.c_str(), out);
+}
+
+// Тот же float(value), но байты берутся из среза строки (без создания
+// std::string на каждый токен). Срез короче стекового буфера копируется в буфер
+// и завершается нулём; срез длиннее разбирается через std::string.
+bool toDouble(const char *first, size_t len, double& out) {
+    if (first == nullptr || len == 0) { return false; }
+    char buf[64];
+    if (len >= sizeof(buf)) { return toDouble(std::string(first, len), out); }
+    std::memcpy(buf, first, len);
+    buf[len] = '\0';
+    return parseFull(buf, out);
 }
 
 } // namespace gv

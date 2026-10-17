@@ -1,12 +1,10 @@
-import { FileCode, Move, Crosshair, Wrench, TriangleAlert, Settings, type LucideIcon } from 'lucide-react'
-import { SCREEN_LABEL } from '@/lib/cnc/data'
-import { SCREENS, type Screen } from '@/lib/cnc/types'
+import { Crosshair, Move, Settings, TriangleAlert, Wrench, type LucideIcon } from 'lucide-react'
+import { TAB_LABEL, TABS, screenOfTab, tabOfScreen, type Screen, type Tab, type Workplace } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { Keycap } from './primitives'
 
-export const SCREEN_ICON: Record<Screen, LucideIcon> = {
-  pos: Move,
-  prog: FileCode,
+export const TAB_ICON: Record<Tab, LucideIcon> = {
+  work: Move,
   offset: Crosshair,
   tool: Wrench,
   alarm: TriangleAlert,
@@ -15,54 +13,57 @@ export const SCREEN_ICON: Record<Screen, LucideIcon> = {
 
 export function ScreenTabs({
   screen,
+  workplace,
   onSelect,
   alarmCount,
   locked = [],
-  lockedTitle = 'Недоступно в текущем режиме',
+  lockedTitle = 'Недоступно в текущем рабочем месте',
 }: {
   screen: Screen
+  workplace: Workplace
   onSelect: (s: Screen) => void
   alarmCount: number
   locked?: Screen[]
   lockedTitle?: string
 }) {
+  const active = tabOfScreen(screen)
   return (
-    <nav aria-label="Экраны" className="grid shrink-0 grid-cols-6 gap-1.5">
-      {SCREENS.map((s, i) => {
-        const Icon = SCREEN_ICON[s]
-        const active = s === screen
-        const isLocked = locked.includes(s)
+    <nav aria-label="Экраны" className="grid shrink-0 grid-cols-5 gap-1.5">
+      {TABS.map((tab, i) => {
+        const Icon = TAB_ICON[tab]
+        const target = screenOfTab(tab, workplace)
+        const isLocked = locked.includes(target)
         return (
           <button
-            key={s}
+            key={tab}
             type="button"
             tabIndex={-1}
             disabled={isLocked}
             title={isLocked ? lockedTitle : undefined}
             aria-disabled={isLocked || undefined}
-            onClick={() => onSelect(s)}
-            aria-current={active ? 'page' : undefined}
+            onClick={() => onSelect(target)}
+            aria-current={tab === active ? 'page' : undefined}
             className={cn(
               'flex h-9 items-center gap-1 rounded-md border px-1.5 text-left text-xs font-semibold transition-colors',
-              active ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:bg-accent',
+              tab === active ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:bg-accent',
               isLocked && 'cursor-not-allowed opacity-40 line-through hover:bg-card',
             )}
           >
             <Keycap
               className={cn(
                 'h-5 min-w-5 px-1 text-[10px]',
-                active && 'border-primary-foreground/40 bg-primary-foreground/15 text-primary-foreground',
+                tab === active && 'border-primary-foreground/40 bg-primary-foreground/15 text-primary-foreground',
               )}
             >
               {i + 1}
             </Keycap>
             <Icon className="size-4 shrink-0" aria-hidden="true" />
-            <span className="truncate">{SCREEN_LABEL[s]}</span>
-            {s === 'alarm' && alarmCount > 0 && (
+            <span className="truncate">{TAB_LABEL[tab]}</span>
+            {tab === 'alarm' && alarmCount > 0 && (
               <span
                 className={cn(
                   'ml-auto rounded-sm px-1.5 font-mono text-xs',
-                  active ? 'bg-primary-foreground text-primary' : 'bg-warning text-warning-foreground',
+                  tab === active ? 'bg-primary-foreground text-primary' : 'bg-warning text-warning-foreground',
                 )}
               >
                 {alarmCount}

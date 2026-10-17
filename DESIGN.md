@@ -7,7 +7,7 @@
 ## 1. Назначение и место в продукте
 
 `gcode-viewer` — третий из четырёх проектов продукта (манифест — [projects.json](projects.json)):
-интерактивный 3D-просмотр управляющей программы станка. Каталог — `apps/qt-interface`. Стек: QML + QtQuick3D +
+интерактивный 3D-просмотр управляющей программы станка. Каталог — `modules/gcode-viewer`. Стек: QML + QtQuick3D +
 PySide6; тяжёлая часть — Python.
 
 Зависимости:
@@ -25,8 +25,7 @@ PySide6; тяжёлая часть — Python.
   `MockBackend 1.0`, грузит `preview_3d.qml`; при аргументе вызывает `load_gcode_async`. В offscreen-режиме
   проходит синхронный путь и печатает `loaded OK`.
 - `preview_3d.qml` — окно `Window` 1024x600 с `GcodeViewer3D`.
-- `preview_qml.py`, `preview_pyqt5.py` — прочие точки запуска (Qt-интерфейс и старый вариант). Дублирование,
-  см. раздел 12.
+- `preview_qml.py` — прочая точка запуска (Qt-интерфейс). Дублирование, см. раздел 12.
 
 Headless-прогон: задать `QT_QPA_PLATFORM=offscreen`.
 
@@ -165,11 +164,11 @@ Test_model.STL — 0.07 мм), поэтому цепочки склеивают�
 ## 12. Известные проблемы и технический долг
 
 Архитектура:
-- `mock_backend.py` — один монолит (~4300 строк): парсер, STEP/STL, аналитика, силуэт, коллизии, tool-check и
-  все геометрии. Просится разделение на модули (`gcode_parser`, `step_import`, `tangents`, `collision`,
-  `geometry`, `controller`).
+- `mock_backend.py` — фасад на 107 строк, реэкспортирующий разложенные модули (`gv_types`, `gcode_parser`,
+  `step_import`, `tangents`, `collision`, `geometry`, `controller` и другие); разделение монолита выполнено
+  (`PORT-CPP.md`, §7), внешний код и QML видят прежние имена.
 - `GcodeViewer3D.qml` (~1000 строк) содержит JS-логику камеры, проекции и этапов; её место — в backend-слотах.
-- Несколько точек запуска (`preview_3d.py`, `preview_qml.py`, `preview_pyqt5.py`) создают неоднозначность.
+- Несколько точек запуска (`preview_3d.py`, `preview_qml.py`) создают неоднозначность.
 
 Код по правилам CLAUDE.md:
 - структуры границ модулей больше не кортежи/dict: они в `gv_types.py` (0.13.13); dict остался там, где

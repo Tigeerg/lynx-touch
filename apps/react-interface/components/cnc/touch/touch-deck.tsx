@@ -20,12 +20,12 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
-import { JOG_STEPS, MODE_LABEL, RAPID_STEPS } from '@/lib/cnc/data'
+import { JOG_STEPS, RAPID_STEPS, WORKPLACE_LABEL } from '@/lib/cnc/data'
 import type { Action } from '@/lib/cnc/machine'
 import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM } from '@/lib/cnc/service-data'
-import { MODES, MPG_STEPS, type Axis, type MachineState } from '@/lib/cnc/types'
+import { MPG_STEPS, WORKPLACES, type Axis, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
-import { MODE_ICON } from '../header-bar'
+import { WORKPLACE_ICON } from '../header-bar'
 import { OverrideBar, Panel } from '../primitives'
 
 const HOLD_DELAY_MS = 400
@@ -136,21 +136,21 @@ function CycleRow({ state, dispatch }: { state: MachineState; dispatch: (a: Acti
   )
 }
 
-function ModeColumn({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
+function WorkplaceColumn({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
   return (
-    <Panel title="Режим" className="w-[132px] shrink-0">
-      <div className="grid h-full grid-rows-4 gap-1.5 p-1.5" role="radiogroup" aria-label="Режим работы">
-        {MODES.map((m) => {
-          const Icon = MODE_ICON[m]
-          const active = m === state.mode
+    <Panel title="Место" className="w-[132px] shrink-0">
+      <div className="grid h-full grid-rows-3 gap-1.5 p-1.5" role="radiogroup" aria-label="Рабочее место">
+        {WORKPLACES.map((w) => {
+          const Icon = WORKPLACE_ICON[w]
+          const active = w === state.workplace
           return (
             <button
-              key={m}
+              key={w}
               type="button"
               role="radio"
               aria-checked={active}
               tabIndex={-1}
-              onClick={() => dispatch({ type: 'SET_MODE', mode: m })}
+              onClick={() => dispatch({ type: 'SET_WORKPLACE', workplace: w })}
               className={cn(
                 KEY_BASE,
                 'justify-start gap-2 px-2 text-sm',
@@ -158,7 +158,7 @@ function ModeColumn({ state, dispatch }: { state: MachineState; dispatch: (a: Ac
               )}
             >
               <Icon className="size-5 shrink-0" aria-hidden="true" />
-              <span className="truncate">{MODE_LABEL[m]}</span>
+              <span className="truncate">{WORKPLACE_LABEL[w]}</span>
             </button>
           )
         })}
@@ -336,7 +336,7 @@ export function TouchDeck({ state, dispatch }: { state: MachineState; dispatch: 
   return (
     <section aria-label="Сенсорный пульт" className="flex shrink-0 flex-col gap-1.5">
       <div className="flex h-[212px] gap-1.5">
-        <ModeColumn state={state} dispatch={dispatch} />
+        <WorkplaceColumn state={state} dispatch={dispatch} />
         <JogPanel state={state} dispatch={dispatch} />
         <OverridePanel state={state} dispatch={dispatch} />
       </div>

@@ -368,7 +368,7 @@ describe('экран «Программа»: поиск, симуляция, з�
   })
 
   it('раскладка «Программа»: без дублей физических тумблеров, с поиском/симуляцией/видом', () => {
-    const keys = getSoftkeys({ ...initialState, screen: 'prog' })
+    const keys = getSoftkeys({ ...initialState, workplace: 'SETUP', screen: 'prog' })
 
     expect(keys.map((k) => k?.action?.type)).toEqual([
       'FILE_DIALOG',

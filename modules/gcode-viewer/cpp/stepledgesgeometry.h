@@ -33,7 +33,8 @@ class StepEdgesGeometry : public QQuick3DGeometry
     QML_NAMED_ELEMENT(StepEdges)
     QML_ADDED_IN_VERSION(1, 0)
 
-    // Путь к файлу STEP (.step/.stp). Читается заново при изменении.
+    // Путь к файлу STEP (.step/.stp). Смена пути перечитывает файл; deflection и
+    // hideFormEdges пересчитывают рёбра по уже прочитанной форме.
     Q_PROPERTY(QString source READ source WRITE setSource NOTIFY sourceChanged)
     // Дискретизация криволинейных рёбер: линейный допуск, мм.
     Q_PROPERTY(qreal deflection READ deflection WRITE setDeflection NOTIFY deflectionChanged)
@@ -76,6 +77,7 @@ private:
     void rebuild();                       // source -> буферы геометрии
 
     QString m_source;
+    TopoDS_Shape m_shape;                 // разобранный STEP; пуста до первого чтения
     qreal m_deflection = 0.05;            // мм
     bool m_hideFormEdges = true;
     int m_segmentCount = 0;

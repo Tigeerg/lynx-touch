@@ -9,13 +9,17 @@ import { ToolCallDialog } from '../tool-call-dialog'
 import { HelpOverlay } from '../help-overlay'
 import { ProgramSide } from '../program-side'
 import { PositionScreen } from '../screens/position-screen'
+import { SetupScreen, SetupSide } from '../screens/setup-screen'
 import { ProgramScreen } from '../screens/program-screen'
+import { TestScreen } from '../screens/test-screen'
+import { AutoScreen } from '../screens/auto-screen'
 import { ServiceScreen } from '../screens/service-screen'
 import { AlarmScreen, OffsetScreen, ToolScreen } from '../screens/table-screens'
 import { SideStatus } from '../side-status'
 import { MessageBar, SoftkeyBar } from '../softkey-bar'
 import { SplashScreen } from '../splash-screen'
 import { useCncMachine } from '../use-cnc-machine'
+import { cn } from '@/lib/utils'
 import { TouchDeck } from './touch-deck'
 import { TouchHeader } from './touch-header'
 import { TouchTabs } from './touch-tabs'
@@ -29,17 +33,29 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
   const { state, dispatch, softkeys, clock, pathView } = machine
   const showPath = state.params[TOOLPATH_PARAM] === 1 || state.sim.active
   const activeAlarms = state.alarms.filter((a) => a.active).length
-  const showStatus = (state.screen === 'pos' || state.screen === 'prog') && !state.sim.active
+  const testMode = state.workplace === 'TEST'
+  const showStatus = (state.screen === 'pos' || state.screen === 'prog') && !state.sim.active && !testMode
 
   return (
     <FhdStage width={SCREEN_W} height={SCREEN_H}>
       <div
-        className="touch-ui relative flex touch-manipulation select-none flex-col gap-1.5 overflow-hidden bg-background p-1.5"
+        className={cn(
+          'touch-ui relative flex touch-manipulation select-none flex-col gap-1.5 overflow-hidden bg-background p-1.5',
+          testMode && 'ring-4 ring-warning',
+        )}
         style={{ width: SCREEN_W, height: SCREEN_H }}
       >
+        {testMode && (
+          <div className="pointer-events-none absolute left-1/2 top-1 z-30 -translate-x-1/2">
+            <span className="animate-pulse rounded-sm bg-warning px-3 py-0.5 text-xs font-bold uppercase tracking-wider text-warning-foreground">
+              Тестовый режим
+            </span>
+          </div>
+        )}
         <TouchHeader state={state} clock={clock} dispatch={dispatch} />
         <TouchTabs
           screen={state.screen}
+          workplace={state.workplace}
           onSelect={(screen) => dispatch({ type: 'SET_SCREEN', screen })}
           alarmCount={activeAlarms}
           locked={MODE_LOCKED_SCREENS[state.mode]}
@@ -47,12 +63,20 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
 
         <div className="relative flex min-h-0 flex-1 flex-col gap-1.5">
           <main className="min-h-0 flex-1">
-            {state.screen === 'pos' && (
-              <PositionScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
-            )}
-            {state.screen === 'prog' && (
-              <ProgramScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
-            )}
+            {state.screen === 'pos' &&
+              (state.workplace === 'SETUP' ? (
+                <SetupScreen state={state} dispatch={dispatch} />
+              ) : (
+                <PositionScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
+              ))}
+            {state.screen === 'prog' &&
+              (testMode ? (
+                <TestScreen state={state} dispatch={dispatch} pathView={pathView} />
+              ) : state.workplace === 'RUN' ? (
+                <AutoScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
+              ) : (
+                <ProgramScreen state={state} dispatch={dispatch} pathView={pathView} showPath={showPath} />
+              ))}
             {state.screen === 'offset' && <OffsetScreen state={state} dispatch={dispatch} />}
             {state.screen === 'tool' && <ToolScreen state={state} />}
             {state.screen === 'alarm' && <AlarmScreen state={state} />}
@@ -62,6 +86,8 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
             <div className="flex shrink-0 flex-col">
               {state.screen === 'prog' ? (
                 <ProgramSide state={state} dispatch={dispatch} showPad={false} wide />
+              ) : state.workplace === 'SETUP' ? (
+                <SetupSide state={state} dispatch={dispatch} showPad={false} />
               ) : (
                 <SideStatus state={state} dispatch={dispatch} showPad={false} wide />
               )}

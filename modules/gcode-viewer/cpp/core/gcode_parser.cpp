@@ -108,14 +108,18 @@ void planeOffsets(Plane plane, char& lu, char& lv) {
 }
 
 // Слова строки: буква и число (-? \d* .? \d+) - питоновский _WORD_RE.findall.
+// Число - не копия, а срез в буфере строки: строку никто не меняет и не
+// перевыделяет, пока значение читается (иначе срез повис бы).
 struct Word {
     char letter = 'A';
-    std::string value;
+    size_t valueStart = 0;
+    size_t valueLen = 0;
 };
 
 std::vector<Word> findWords(const std::string& line) {
     std::vector<Word> out;
     const size_t n = line.size();
+    out.reserve(n / 2 + 1);                        // слово занимает минимум 2 байта
     size_t i = 0;
     while (i < n) {
         if (!isLetterCh(line[i])) { ++i; continue; }
@@ -136,7 +140,8 @@ std::vector<Word> findWords(const std::string& line) {
         const size_t valueEnd = (hasDot && digitsAfter == 0) ? dotPos : p;
         Word w;
         w.letter = line[i];
-        w.value = line.substr(valueStart, valueEnd - valueStart);
+        w.valueStart = valueStart;
+        w.valueLen = valueEnd - valueStart;
         out.push_back(w);
         i = valueEnd;
     }
@@ -532,12 +537,21 @@ ParseResult parseGcode(const std::string& text) {
     Emitter emit(ordered, feedSet, feedVal, rapidSpeed, defaultFeed, decimateTol2);
     auto markIndex = [&ordered]() { return std::max(0, static_cast<int>(ordered.size()) - 1); };
 
-    for (const std::string& raw : splitLines(text)) {
+    // Строки готовятся один раз на строку УП: срез до ';', снятие комментариев,
+    // обрезка пробелов и верхний регистр. Раньше то же самое считалось дважды -
+    // отдельно для теста «строка-комментарий» и для разбора слов (110585 строк).
+    const std::vector<std::string> lines = splitLines(text);
+    ordered.reserve(lines.size());                 // оценка: около точки пути на строку
+    for (const std::string& raw : lines) {
         const std::string up = asciiUpper(raw);
         const size_t semi = raw.find(';');
-        std::string codeOnly = stripComments(semi == std::string::npos ? raw : raw.substr(0, semi));
-        stripInPlace(codeOnly);
-        const bool standaloneComment = codeOnly.empty() && raw.find('(') != std::string::npos;
+        std::string line = (semi == std::string::npos) ? raw : raw.substr(0, semi);
+        line = stripComments(line);
+        stripInPlace(line);
+        line = asciiUpper(line);
+        // Строка-комментарий: кода нет, но '(' в строке есть - весь текст был
+        // комментарием.
+        const bool standaloneComment = line.empty() && raw.find('(') != std::string::npos;
         if (up.find("UI_TOOL") != std::string::npos) {
             // Смена инструмента: задаёт геометрию резца для следующей секции.
             const ToolInfo info = parseUiTool(raw);
@@ -590,10 +604,6 @@ ParseResult parseGcode(const std::string& text) {
             }
         }
 
-        std::string line = (semi == std::string::npos) ? raw : raw.substr(0, semi);
-        line = stripComments(line);
-        stripInPlace(line);
-        line = asciiUpper(line);
         if (line.empty()) { continue; }
         prevCode = line;
         const std::vector<Word> words = findWords(line);
@@ -614,9 +624,17 @@ ParseResult parseGcode(const std::string& text) {
         bool zGiven = false, rGiven = false, qGiven = false, fGiven = false;
 
         for (const Word& w : words) {
-            double val = 0.0;
-            if (!toDouble(w.value, val)) { continue; }
             const char letter = w.letter;
+            // Значение читают только эти буквы. У прочих (M, S, T, ...) оно не
+            // используется, и strtod для них не зовётся - на Test_model.ngc это
+            // 110587 вызовов из 342038 слов.
+            if (letter != 'G' && letter != 'X' && letter != 'Y' && letter != 'Z'
+                    && letter != 'I' && letter != 'J' && letter != 'K'
+                    && letter != 'R' && letter != 'Q' && letter != 'F') {
+                continue;
+            }
+            double val = 0.0;
+            if (!toDouble(line.data() + w.valueStart, w.valueLen, val)) { continue; }
             if (letter == 'G') {
                 // Сравнения точные: G91.1 не должен читаться как G91.
                 if (val == 0.0) { motion = Motion::G0; cycle.on = false; }

@@ -6,17 +6,23 @@ import {
   Crosshair,
   Eraser,
   Eye,
+  EyeOff,
+  Flame,
   FolderOpen,
   ListOrdered,
   ListPlus,
   ListX,
   Pencil,
+  Package,
   RefreshCcw,
   Save,
+  ScanSearch,
+  Shovel,
   SquarePen,
   X,
   Ruler,
   SkipBack,
+  Table,
   Trash2,
   Wrench,
   Lock,
@@ -110,6 +116,86 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       { label: 'Найти далее', icon: Search, action: { type: 'SEARCH_FIND' } },
       { label: 'Заменить всё', icon: Replace, action: { type: 'SEARCH_REPLACE_ALL' }, disabled: busy },
       { label: 'Закрыть', icon: X, action: { type: 'SEARCH', open: false }, active: true },
+    ]
+    return [...keys, ...Array<null>(SOFTKEY_SLOTS - keys.length).fill(null)]
+  }
+
+  // Рабочее место «НАЛАДКА»: набор F1-F8 для ручной подготовки (обмер, привязка
+  // баз, парковка) на стартовом экране «Позиция». Экраны с собственным мастером
+  // (смещения, сервис, редактор) сохраняют свои софт-кеи.
+  if (s.workplace === 'SETUP' && s.screen === 'pos') {
+    keys = [
+      {
+        label: 'Обмер инструмента',
+        icon: Ruler,
+        action: { type: 'TOOL_PROBE' },
+        disabled: busy || s.spindleOn || s.tool === PROBE_TOOL,
+      },
+      { label: 'Центроискатель', icon: LocateFixed, action: { type: 'PROBE_OPEN', open: true }, disabled: busy },
+      { label: 'Запись базы', icon: Save, action: { type: 'OFFSET_TEACH', axis: s.jogAxis }, disabled: busy },
+      { label: 'Таблица баз', icon: Table, action: { type: 'SET_SCREEN', screen: 'offset' } },
+      {
+        label: 'Парковка',
+        icon: House,
+        action: { type: 'GO_SAFE' },
+        disabled: s.run === 'ESTOP' || s.run === 'ALARM' || busy || s.machineLock,
+      },
+      {
+        label: 'В ноль детали',
+        icon: Crosshair,
+        action: { type: 'GO_WORK_ZERO' },
+        disabled: s.run === 'ESTOP' || s.run === 'ALARM' || busy || s.machineLock,
+      },
+      { label: 'Прогрев', icon: Flame, action: { type: 'SPINDLE_WARMUP' }, disabled: busy || s.spindleOn },
+      { label: 'Калькулятор', icon: Calculator, action: { type: 'CALC', open: true }, active: s.calc },
+    ]
+    return [...keys, ...Array<null>(SOFTKEY_SLOTS - keys.length).fill(null)]
+  }
+
+  // Рабочее место «ПРОГОН»: проверка УП без движения осей. Набор F1-F8 ведёт по
+  // каталогу, правке, поиску, прогону, габаритам, очистке графики, виду и шторке.
+  if (s.workplace === 'TEST' && !s.editMode) {
+    keys = [
+      { label: 'Каталог УП', icon: FolderOpen, action: { type: 'FILE_DIALOG', open: true }, disabled: busy },
+      { label: 'Редактор', icon: SquarePen, action: { type: 'EDIT_MODE', on: true }, disabled: busy },
+      { label: 'Поиск / Замена', icon: Search, action: { type: 'SEARCH', open: true } },
+      {
+        label: s.sim.active ? 'Прогон: стоп' : 'Мат. прогон',
+        icon: Play,
+        action: { type: 'SIM' },
+        active: s.sim.active,
+        disabled: busy || s.run === 'ESTOP' || s.run === 'ALARM',
+      },
+      { label: 'Габариты УП', icon: Ruler, action: { type: 'TEST_BBOX' }, active: s.test.bbox },
+      { label: 'Очистка графики', icon: EyeOff, action: { type: 'TEST_CLEAR_PATH' }, active: s.test.hidePath },
+      { label: 'Вид', icon: Eye, action: { type: 'PATH_VIEW_CYCLE' } },
+      { label: 'Скрыть код', icon: Eye, action: { type: 'TEST_CURTAIN' }, active: s.test.curtain },
+    ]
+    return [...keys, ...Array<null>(SOFTKEY_SLOTS - keys.length).fill(null)]
+  }
+
+  // Рабочее место «АВТО»: набор F1-F8 для боевой обработки на экране программы.
+  // Резерв (F7) оставлен пустым под макрос пользователя.
+  if (s.workplace === 'RUN' && s.screen === 'prog' && !s.editMode) {
+    keys = [
+      { label: 'Каталог УП', icon: FolderOpen, action: { type: 'FILE_DIALOG', open: true }, disabled: busy },
+      { label: 'Старт с кадра', icon: ArrowRightToLine, action: { type: 'PROG_TO_CURSOR' }, disabled: busy },
+      { label: 'Ресурс инструмента', icon: Wrench, action: { type: 'TOOL_LIFE' } },
+      {
+        label: s.chipConveyor ? 'Шнек: стоп' : 'Шнек стружки',
+        icon: Shovel,
+        action: { type: 'TOGGLE', key: 'chipConveyor' },
+        active: s.chipConveyor,
+      },
+      { label: 'Счётчики деталей', icon: Package, action: { type: 'PART_COUNTER_RESET' } },
+      { label: 'Проверка слома', icon: ScanSearch, action: { type: 'BROKEN_TOOL_CHECK' } },
+      null,
+      {
+        label: s.params[TOOLPATH_PARAM] === 1 ? 'Вид: текст' : 'Вид: графика',
+        icon: Eye,
+        action: { type: 'TOOLPATH_TOGGLE' },
+        active: s.params[TOOLPATH_PARAM] === 1,
+      },
     ]
     return [...keys, ...Array<null>(SOFTKEY_SLOTS - keys.length).fill(null)]
   }

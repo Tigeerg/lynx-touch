@@ -90,11 +90,73 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.34.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.37.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.37.0 — 2026-10-17
+
+- **`pd.*` и `tag.*` в манифесте (шаг к уходу от Python, часть 2).** В `oracle_dump.py` добавлены
+  продюсеры для массивов, которые до сих пор сверялись только питоновской проверкой: `pd.*` (17 записей —
+  точки подготовленного пути, накопленная длина, флаги ускоренных, скорости, упакованные потоки, метрики и
+  границы этапов) и `tag.*` (7 — поворот, начало, заготовка, матрица CAD и её начало, оправка и её имя).
+  Необязательные значения кодируются ведущим флагом присутствия, схема описана в докстроке.
+- **Страховка перебазировки.** `oracle_dump.py --write` сверяет каждую существующую запись и отказывается
+  писать, если она изменится; изменение — только явно, с `--force`. Проверено: испорченный `path.points`
+  даёт отказ с кодом 1 и перечень причин.
+- **Манифест вырос 22 -> 46 записей, дополнением:** ни одна из прежних 22 не изменилась (диф — 169 строк
+  добавлено, 0 удалено). `gcode_probe --manifest` проверяет 29 записей (`path.*`, `pd.*`, `tag.*`); всего
+  C++ теперь сверяет 45 из 46. Не покрыта `step.segments`: там совпадение только по допуску 1e-4 (float32 в
+  порядке GPU против float64), и эта группа остаётся сравнением, а не дайджестом.
+- **Что тронуто:** `oracle_dump.py`, `cpp/gcode_probe.cpp`, `oracle_manifest.json`. Вывод `gcode_probe` в
+  режиме дампа не менялся; `test_gcode_core.py` не тронут и остаётся независимой сверкой.
+- **Проверки.** `oracle_dump.py`, `test_gcode_core.py`, `test_step_core.py`, `test_tangents_core.py`,
+  `test_stepledges_plugin.py` — `RESULT: OK`; режимы `--manifest` четырёх пробников — `RESULT: OK`
+  (29 + 3 + 2 + 11 записей). Версия 0.36.0 -> 0.37.0.
+
+### 0.36.0 — 2026-10-17
+
+- **Сбор минимального набора OCCT (`scripts/collect-occt.ps1`).** Скрипт обходит зависимости `dumpbin`
+  от собранных артефактов (`gcodeviewer.exe`, `gvbridge.dll`, `gvqtshim.dll`, `cncedgesplugin.dll`,
+  `gvqmlbackend.dll`), ищет каждую DLL по имени в каталогах OCCT, Qt, сборки и System32 и копирует в
+  заданный каталог только те, что пришли из OCCT; служебные (`api-ms-win-*`, рантайм MSVC) и Qt
+  перечисляются отдельными строками. Прогон на окружении `novtk`: **45 DLL, 48 449 536 Б (46,2 МиБ)** —
+  23 `TK*.dll` и 22 DLL цепочки образов; повтор даёт те же числа, каталог внутри репозитория отклоняется.
+- **Зачем.** Установка OCCT занимает 1040,8 МиБ (`Library\bin`, 552 DLL), а вьюверу нужно 46,2 МиБ —
+  около 99 % балласта; из них около 250 МиБ приходилось на `vtk*.dll` и `viskores*.dll`, которые не
+  загружаются ни разу. Окружение разработки переведено на вариант conda `novtk` (тот же `occt 8.0.1`,
+  отличается одним `TKIVtk.dll`): `Library\bin` — 147 DLL / 74,9 МиБ вместо 552 / 1040,8, всё дерево
+  `Library` — 160,7 МиБ вместо 1951,4. Runtime при этом не меняется (маппятся те же 45 DLL), и десять
+  проверок на новом окружении зелёные.
+- **Что тронуто:** `scripts/collect-occt.ps1` (новый). Окружение и `guard-env.ps1` — вне репозитория.
+- **Проверки.** Сборка против `novtk` — `build-viewer: OK`; `test_step_core.py`, `test_stl_core.py`,
+  `test_silhouette_core.py`, `test_tangents_core.py`, `test_geometry_core.py`, `test_gcode_core.py`,
+  `test_stepledges_plugin.py`, `oracle_dump.py` — `RESULT: OK`; `smoke_test_qml.py` — `RESULT: OK`;
+  сверка манифеста из C++ (`--manifest` у четырёх пробников) — `RESULT: OK`. Версия 0.35.0 -> 0.36.0.
+
+### 0.35.0 — 2026-10-17
+
+- **Сверка эталона переехала в C++ (шаг к уходу от Python, часть 1).** Пробники проверяют себя сами:
+  `step_probe`, `stl_probe`, `silhouette_probe` и `gcode_probe` получили режим
+  `--manifest <oracle_manifest.json>` (или `--check` с путём по умолчанию от корня репозитория), печатают
+  строку на запись манифеста и итог `RESULT: OK` / `RESULT: FAIL (n)` с кодом возврата. Разбор JSON свой,
+  в `cpp/manifest_check.h`: пробники не линкуют Qt, поэтому `QJsonDocument` там недоступен (как `sha256.h`
+  вместо `QCryptographicHash`).
+- **Покрыто 21 из 22 записей.** `step.verts`/`tri`/`normals` — `step_probe`; `stl.soup`/`feature_edges` —
+  `stl_probe`; `topo.*` и `silhouette.eye0..4` — `silhouette_probe`; `path.*` — `gcode_probe`. Не покрыта
+  `step.segments`: её считает не `step_probe`, а плагин рёбер, и там буфер float32 с другим порядком, —
+  запись пока требует Python, как и семейства касательных, `pd_*`/`tag_*` и буферы геометрий: их в
+  манифесте нет вовсе.
+- **Проверка не слепа.** Манифест с подменённым хэшем даёт `RESULT: FAIL` и код возврата 1 (проверено).
+- **Что тронуто:** `cpp/manifest_check.h` (новый), `cpp/step_probe.cpp`, `cpp/stl_probe.cpp`,
+  `cpp/silhouette_probe.cpp`, `cpp/gcode_probe.cpp`. Существующие режимы и их вывод не тронуты, алгоритмы
+  не менялись, питоновский код не тронут.
+- **Проверки.** Четыре режима `--manifest` — `RESULT: OK`; `oracle_dump.py`, `test_step_core.py`,
+  `test_stl_core.py`, `test_silhouette_core.py`, `test_tangents_core.py`, `test_geometry_core.py`,
+  `test_gcode_core.py`, `test_stepledges_plugin.py` — `RESULT: OK`; `smoke_test_qml.py` — `RESULT: OK`.
+  Версия 0.34.0 -> 0.35.0.
 
 ### 0.34.0 — 2026-10-17
 

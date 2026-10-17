@@ -265,7 +265,15 @@ function AutoProgress({ state }: { state: MachineState }) {
   )
 }
 
-export function ProgramList({ state, dispatch }: { state: MachineState; dispatch: Dispatch<Action> }) {
+export function ProgramList({
+  state,
+  dispatch,
+  className,
+}: {
+  state: MachineState
+  dispatch: Dispatch<Action>
+  className?: string
+}) {
   const listRef = useRef<HTMLOListElement>(null)
   const sim = state.sim.active
   const running = !sim && (state.run === 'RUN' || state.run === 'HOLD')
@@ -281,7 +289,7 @@ export function ProgramList({ state, dispatch }: { state: MachineState; dispatch
     <Panel
       title={`Программа ${file.name} · ${file.title}`}
       icon={FileCode}
-      className={cn('h-full', state.editMode && 'border-warning')}
+      className={cn('h-full', className, state.editMode && 'border-warning')}
       right={
         <div className="flex items-center gap-2">
           <span className="font-mono text-[11px] font-semibold text-muted-foreground" title="Оценка остатка времени">

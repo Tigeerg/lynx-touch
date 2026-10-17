@@ -362,15 +362,56 @@ are copied 3-4 times.
 call: about 2.6 MB of copies per frame at 45398 faces and 57842 edges. The cure is an opaque handle on the
 topology and the families (built once per model) — an ABI change, `GV_ABI_VERSION` 1 -> 2.
 
-**OCCT dependencies.** What is really used: `STEPControl_Reader`, `BRepMesh_IncrementalMesh`,
-`Poly_Triangulation`, `TopExp_Explorer`, `TopoDS`, `BRep_Tool`, `TopLoc`, `gp_Trsf`,
-`BRepAdaptor_Curve/Surface`, `GCPnts_UniformDeflection`, `gp_Cylinder`/`gp_Cone`; what is linked: `TKernel`
-`TKMath` `TKG3d` `TKG2d` `TKGeomBase` `TKTopAlgo` `TKBRep` `TKMesh` `TKDESTEP` `TKXSBase`. Visualisation,
-OCAF, DRAW, MeshVS/AIS and any exchange beyond STEP are not needed — OCCT can be built with
-`USE_VISUALIZATION=OFF`, `USE_DRAW=OFF`, `USE_OCAF=OFF`. Before that, check
-`dumpbin /dependents TKDESTEP.dll`: if it pulls `TKXCAF`/`TKDE`, OCAF cannot be trimmed and the minimum set
-is 13-14 DLLs. The gain is distribution size and startup time on weak hardware, not read speed. Linking
-stays dynamic: LGPL with the OCCT exception, and we have two OCCT consumers (the bridge and the plugin).
+**OCCT dependencies (investigated by measurement).** What is really used: `STEPControl_Reader`,
+`BRepMesh_IncrementalMesh`, `Poly_Triangulation`, `TopExp_Explorer`, `TopoDS`, `BRep_Tool`, `TopLoc`,
+`gp_Trsf`, `BRepAdaptor_Curve/Surface`, `GCPnts_UniformDeflection`, `gp_Cylinder`/`gp_Cone`. Measurements
+with `dumpbin /dependents` on the built artifacts and `Get-Process -Module` on the running viewer (OCCT is
+the conda-forge `occt 8.0.1` package, `all_h6eddace_201`, `D:\cnc-toolchain\occt-env\Library`) give the
+real runtime closure: 23 of the 53 `TK*.dll` (38 780 416 B = 37.0 MiB) plus 22 non-`TK` DLLs from the same
+install (9 669 120 B = 9.2 MiB) - 45 DLLs, 46.2 MiB in total, which is exactly what the process maps. They
+are `TKDESTEP`, `TKernel`, `TKMath`, `TKG2d`, `TKG3d`, `TKGeomBase`, `TKGeomAlgo`, `TKTopAlgo`, `TKBRep`,
+`TKShHealing`, `TKMesh`, `TKXSBase`, `TKPrim`, `TKBO`, `TKHLR`, `TKDE`, `TKCAF`, `TKLCAF`, `TKCDF`,
+`TKVCAF`, `TKV3d`, `TKService`, `TKXCAF`; the 22 non-`TK` ones come through `TKService` -> FreeImage/freetype
+and their image chain (`zlib`, `jpeg8`, `tiff`, `openjp2`, `libwebp*`, `libsharpyuv`, `raw`, `OpenEXR*`,
+`Iex`, `Imath`, `IlmThread`, `deflate`, `liblzma`, `Lerc`, `zstd`, `lcms2`, `openjph`, `libpng16`).
+
+- **Correction 1: the set is 23 DLLs, not 13-14.** The earlier assumption that visualisation and OCAF can
+  be switched off did not hold. `dumpbin /dependents TKDESTEP.dll` shows it pulls `TKDE` and `TKXCAF` (and
+  through them `TKLCAF`/`TKCDF`/`TKCAF`/`TKVCAF`/`TKV3d`/`TKService`/`TKBO`/`TKPrim`/`TKHLR`), so a build
+  without OCAF/XCAF while keeping STEP is impossible: `TKDESTEP` would not link. The conda recipe has no
+  OCAF/visualisation switch at all - they are always built.
+- **Correction 2: `novtk` shrinks the disk, not the runtime.** The conda `novtk` build differs from the
+  `all` build by exactly one file, `TKIVtk.dll` (201 728 B): 51 files / 56 926 208 B against 52 files /
+  57 127 936 B, and all 23 needed `TK` DLLs are in both. So `novtk` does not shrink the runtime (the same
+  45 DLLs are mapped), but `all_` depends on the `vtk` package while `novtk` does not, and dropping `vtk`
+  removes from the environment 177 `vtk*.dll` (207 799 808 B = 198.2 MiB) and 24 `viskores*.dll`
+  (51 138 560 B = 48.8 MiB) - about 250 MiB of DLLs on disk.
+
+**Size.** The whole `Library\bin` is 552 DLLs / 1 091 342 102 B (1040.8 MiB); with the Qt DLLs that were
+moved aside, 637 DLLs / about 1147 MiB. Only 45 of them (46.2 MiB) are needed: about 99 % of the install is
+dead weight for us.
+
+**Speed.** Nothing is left that speeds OCCT up without changing the produced triangles. The mesh deflection
+and the angular deflection (`BRepMesh_IncrementalMesh(shape, deflection, false, deflection*2.0, true)`) both
+change the triangulation, that is, they break the golden sha256, and they are already exposed through the
+`CNC_QUALITY` presets (`med` 45398 triangles / 129 ms, `low` 7856 / 63 ms, `high` 175808 / 422 ms, `safe`
+4132 / 56 ms). No `TK*.dll` imports `tbb12.dll`, the conda recipe builds with `USE_TBB=OFF`, and
+`isInParallel=true` already uses OCCT's internal pool, so a TBB build would gain nothing. The conda build is
+already Release with LTO; `/fp:fast` would break the golden. `STEPControl_Reader` already reads geometry
+only (colours and names come from `STEPCAFControl_Reader`). The remaining lever is the STEP shape cache
+(item 2).
+
+**Startup.** The process maps 120 modules, 45 of them from the OCCT install. Measured `gcodeviewer.exe`
+offscreen (median of 5-6 runs): Qt only 24-28 ms; QML and plugin without OCCT 42-43 ms; plugin with OCCT
+loaded but no program parsed 61-63 ms - so mapping the whole OCCT closure costs about 19 ms; a full
+offscreen run of `Test_model.ngc` is 748-751 ms. Trimming the install on disk does NOT speed up the start
+(the loader resolves DLLs by name, not by scanning directories); only mapping fewer DLLs would, and a
+visualisation/OCAF-free build would save about 35 modules and about 19 ms - which is unreachable without
+patching `TKDESTEP`.
+
+**Conclusion.** The remaining practical gain is the distribution size: ship 45 DLLs / 46.2 MiB instead of
+about 1147 MiB and drop the `vtk` package; the speed gain is only about 19 ms of loader time. Linking stays
+dynamic: LGPL with the OCCT exception, and we have two OCCT consumers (the bridge and the plugin).
 
 **Version-dependent places.** Tessellation is tied to OCCT's deflection behaviour (changed in 7.4), so an
 SDK version bump re-approves the golden. In the code: `OCCT_HANDLE_NOCAST`, the 5-argument

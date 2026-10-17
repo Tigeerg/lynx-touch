@@ -448,7 +448,7 @@ export function reducer(state: MachineState, a: Action): MachineState {
         )
         return notify({ ...n, programEnd: false, stopAfterBlock: false }, `MDI: ${text}`)
       }
-      return notify(s, `ПУСК недоступен в рабочем месте «${WORKPLACE_LABEL[s.workplace]}»`, 'warn')
+      return notify(s, `ПУСК недоступен в режиме «${WORKPLACE_LABEL[s.workplace]}»`, 'warn')
     }
 
     case 'FEED_HOLD':
@@ -512,13 +512,13 @@ export function reducer(state: MachineState, a: Action): MachineState {
     }
 
     case 'SET_WORKPLACE': {
-      if (isBusy(s)) return notify(s, 'Смена рабочего места во время выполнения запрещена', 'warn')
+      if (isBusy(s)) return notify(s, 'Смена режима во время выполнения запрещена', 'warn')
       const mode: Mode = a.workplace === 'SETUP' ? 'JOG' : 'AUTO'
       const kept = screenOfTab(tabOfScreen(s.screen), a.workplace)
       const screen = MODE_LOCKED_SCREENS[mode].includes(kept) ? screenOfTab('work', a.workplace) : kept
       return notify(
         { ...s, workplace: a.workplace, mode, dryRun: a.workplace === 'TEST', screen },
-        `Рабочее место: ${WORKPLACE_LABEL[a.workplace]}`,
+        `Режим: ${WORKPLACE_LABEL[a.workplace]}`,
       )
     }
 
@@ -553,7 +553,7 @@ export function reducer(state: MachineState, a: Action): MachineState {
       if (MODE_LOCKED_SCREENS[s.mode].includes(a.screen)) {
         return notify(
           s,
-          `В рабочем месте «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL[a.screen]}» заблокирован`,
+          `В режиме «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL[a.screen]}» заблокирован`,
           'warn',
         )
       }
@@ -824,7 +824,7 @@ export function reducer(state: MachineState, a: Action): MachineState {
       if (!open && s.probe.running) return notify(s, 'Дождитесь окончания измерения или нажмите СБРОС', 'warn')
       if (open && isBusy(s)) return notify(s, 'Остановите программу', 'warn')
       if (open && MODE_LOCKED_SCREENS[s.mode].includes('offset'))
-        return notify(s, `Щуп недоступен в рабочем месте «${WORKPLACE_LABEL[s.workplace]}»`, 'warn')
+        return notify(s, `Щуп недоступен в режиме «${WORKPLACE_LABEL[s.workplace]}»`, 'warn')
       return {
         ...s,
         screen: open ? 'offset' : s.screen,
@@ -1116,11 +1116,7 @@ export function reducer(state: MachineState, a: Action): MachineState {
       const on = a.on ?? !s.editMode
       if (on && isBusy(s)) return notify(s, 'Редактирование доступно только в останове', 'warn')
       if (on && MODE_LOCKED_SCREENS[s.mode].includes('prog'))
-        return notify(
-          s,
-          `В рабочем месте «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL.prog}» заблокирован`,
-          'warn',
-        )
+        return notify(s, `В режиме «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL.prog}» заблокирован`, 'warn')
       if (on)
         return notify(
           { ...s, editMode: true, screen: 'prog' },

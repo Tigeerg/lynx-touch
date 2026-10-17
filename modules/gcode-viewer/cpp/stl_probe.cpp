@@ -20,12 +20,21 @@
 // поэлементно, а не только по хэшу. Сверку ведёт modules/gcode-viewer/test_stl_core.py.
 //
 // Запуск: stl_probe <файл.stl> <каталог-дампа>   (DLL не нужны: Qt и OCCT в цели нет)
-// Код возврата: 0 - посчитано и записано; 1 - файл не прочитан или дамп не записан.
+//         stl_probe --manifest <oracle_manifest.json> [<файл.stl>]
+//         stl_probe --check [<файл.stl>]
+// Код возврата: 0 - посчитано и записано (или дайджесты сошлись с оракулом);
+//               1 - файл не прочитан или дамп не записан; 2 - аргументы не разобраны.
+//
+// Режим --manifest/--check сверяет дайджесты своих массивов (stl.soup,
+// stl.feature_edges) с oracle_manifest.json без Python и без каталога-дампа:
+// печатает строку на запись и "RESULT: OK" / "RESULT: FAIL (n)". Путь к тестовым
+// данным по умолчанию берётся от корня репозитория (путь пробника).
 
 #include "core/outline.h"
 #include "core/packing.h"
 #include "core/path_prep.h"
 #include "core/stl_import.h"
+#include "manifest_check.h"
 #include "sha256.h"
 
 #include <cstdio>
@@ -105,12 +114,25 @@ std::vector<unsigned char> asBytes(const void* data, std::size_t count, std::siz
 
 int main(int argc, char** argv) {
     const std::vector<std::string> args = probeArgs(argc, argv);
-    if (args.size() < 3) {
-        std::fprintf(stderr, "usage: stl_probe <file.stl> <dump-dir>\n");
-        return 1;
+    const bool checkMode = args.size() >= 2
+            && (args[1] == "--manifest" || args[1] == "--check");
+    std::string manifestPath;
+    std::string stlPath;
+    std::string dumpDir;
+    if (checkMode) {
+        if (!gv::manifest::resolveCheckArgs(args, "Test_model.STL", manifestPath, stlPath)) {
+            return 2;
+        }
+    } else {
+        if (args.size() < 3) {
+            std::fprintf(stderr, "usage: stl_probe <file.stl> <dump-dir>\n"
+                                 "       stl_probe --manifest <oracle_manifest.json> [<file.stl>]\n"
+                                 "       stl_probe --check [<file.stl>]\n");
+            return 1;
+        }
+        stlPath = args[1];
+        dumpDir = args[2];
     }
-    const std::string stlPath = args[1];
-    const std::string dumpDir = args[2];
 
     const std::vector<double> soup = gv::loadStlVertices(stlPath);
     std::ifstream opened(std::filesystem::u8path(stlPath), std::ios::binary);
@@ -125,7 +147,6 @@ int main(int argc, char** argv) {
 
     const gv::PackedEdges packed = gv::featureEdgesNp(soup, 20.0);
     const std::vector<float> segs = gv::packedPositions(packed);
-    const gv::Aabb box = gv::vertsBounds(soup);
 
     // Сериализации те же, что у оракула (numpy .tobytes()): float64 LE (N,3) и
     // float32 LE (M,2,3). x86 хранит их little-endian, порядок байтов не меняется.
@@ -133,6 +154,27 @@ int main(int argc, char** argv) {
         asBytes(soup.data(), soup.size(), sizeof(double));
     const std::vector<unsigned char> edgeBytes =
         asBytes(segs.data(), segs.size(), sizeof(float));
+
+    // Сверка с оракулом: те же дайджесты, что печатает режим дампа, но против
+    // oracle_manifest.json и без записи файлов.
+    if (checkMode) {
+        gv::manifest::Manifest manifest;
+        std::string error;
+        if (!manifest.load(manifestPath, error)) {
+            std::fprintf(stderr, "stl_probe: манифест не прочитан (%s): %s\n",
+                         manifestPath.c_str(), error.c_str());
+            return 1;
+        }
+        gv::manifest::Checker checker(manifest);
+        checker.check("stl.soup", "float64", gv::sha256Hex(soupBytes),
+                      {static_cast<long long>(soup.size() / 3), 3});
+        checker.check("stl.feature_edges", "float32", gv::sha256Hex(edgeBytes),
+                      {static_cast<long long>(segs.size() / 6), 2, 3});
+        checker.printResult();
+        return checker.failures() == 0 ? 0 : 1;
+    }
+
+    const gv::Aabb box = gv::vertsBounds(soup);
 
     std::printf("file: %s\n", stlPath.c_str());
     std::printf("verts: %zu\n", soup.size() / 3);

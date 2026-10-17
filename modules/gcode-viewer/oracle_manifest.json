@@ -36,6 +36,126 @@
       13
     ]
   },
+  "pd.bounds_hi": {
+    "dtype": "float64",
+    "sha256": "6f2388c0fdc4b085e3f893709845007f0d9474ac2587e26a355e9a6e914c1d0c",
+    "shape": [
+      3
+    ]
+  },
+  "pd.bounds_lo": {
+    "dtype": "float64",
+    "sha256": "164983b00ac2fe344abc70f2d7a4de49b351f0145d63bebbf25f86f5a3e411b7",
+    "shape": [
+      3
+    ]
+  },
+  "pd.center": {
+    "dtype": "float64",
+    "sha256": "0f503c8e161bd80e08c2f435d27433ff156f08b56b6e7904f4b06ba82ce35850",
+    "shape": [
+      3
+    ]
+  },
+  "pd.cum": {
+    "dtype": "float64",
+    "sha256": "8dc55426541dd2df327c9f346edece7a198d6aceb33d03c674783093b0a34d76",
+    "shape": [
+      70915
+    ]
+  },
+  "pd.feed_nv": {
+    "dtype": "int64",
+    "sha256": "7dbe8137a7ff27931e66ab09b35ff19d81a76d3950f13da158fe356c9e1c0b29",
+    "shape": [
+      1
+    ]
+  },
+  "pd.feed_stream": {
+    "dtype": "uint8",
+    "sha256": "dfcb8b92b72d05eb48c95f4124f011981d2cb7a6a15512ec65f94f293912c168",
+    "shape": [
+      2773520
+    ]
+  },
+  "pd.min_y": {
+    "dtype": "float64",
+    "sha256": "3b5803a2037f5b37ebbbf9388733144b5e0d77deefdc26e59eb6d49d31d3dd88",
+    "shape": [
+      1
+    ]
+  },
+  "pd.pts": {
+    "dtype": "float64",
+    "sha256": "858555128db4ef2f70071e0f3e6345d4337d343c29f14be80365d7e522692f11",
+    "shape": [
+      70915,
+      3
+    ]
+  },
+  "pd.radius": {
+    "dtype": "float64",
+    "sha256": "4a2401dad8d9bcb2c03b7e8b7b499a5294c6b94a2f015ab40e5cee1c66236eb0",
+    "shape": [
+      1
+    ]
+  },
+  "pd.rapid": {
+    "dtype": "bool",
+    "sha256": "b75d01e877609714ab969fa1497d17c13f75a00ef2d05de2c410b937f6886f2d",
+    "shape": [
+      70915
+    ]
+  },
+  "pd.rapid_nv": {
+    "dtype": "int64",
+    "sha256": "eb302c7027fe682a9f572920f067264ba1c4f8a464c07f45270a74ba72d493fc",
+    "shape": [
+      1
+    ]
+  },
+  "pd.rapid_stream": {
+    "dtype": "uint8",
+    "sha256": "50fbc8a31b7b8c634f688337a15143d9836c85b5e1605f58d3312831c39126c7",
+    "shape": [
+      63040
+    ]
+  },
+  "pd.speeds": {
+    "dtype": "float64",
+    "sha256": "552ba40ae98683df1049b0f389364bddd40e6f98a0d1986b72eae6525b2c776a",
+    "shape": [
+      70915
+    ]
+  },
+  "pd.stage_end": {
+    "dtype": "float64",
+    "sha256": "24820060c17dbdfaa419fc06d294c6fc87ed9b9ede288c3d661c3217a1fc4ded",
+    "shape": [
+      13
+    ]
+  },
+  "pd.stage_label": {
+    "dtype": "<U64",
+    "sha256": "fcea95d79723f61b72aa3621728b4b5546f773ec14d64b27e8c2a148aa80d691",
+    "shape": [
+      13
+    ]
+  },
+  "pd.stage_start": {
+    "dtype": "float64",
+    "sha256": "ad5c08f4fabee37b2788aa5fc73972ed8f04b5b307cf2c87b2d51298faebf764",
+    "shape": [
+      13
+    ]
+  },
+  "pd.total": {
+    "dtype": "float64",
+    "sha256": "5dca95e37405aba05a768f909e6b9206efe843a1f72773be05920279c9cda56d",
+    "shape": [
+      1
+    ]
+  },
   "silhouette.eye0": {
     "dtype": "float32",
     "sha256": "e9f6a7a9d129f08d5f43f371db53236941647f0d8e7840b1f55ff61ee839ea74",
@@ -131,6 +251,55 @@
     "shape": [
       562776,
       3
+    ]
+  },
+  "tag.cad_matrix": {
+    "dtype": "float64",
+    "sha256": "f4925d428786d48a6994d953cf23c6126254e66503b2854479a5f5d4048f3245",
+    "shape": [
+      10
+    ]
+  },
+  "tag.cad_matrix_origin": {
+    "dtype": "float64",
+    "sha256": "41e57a811ac9776a5931d1ac2f1f354df344c042329b13e20b4b516db8b78410",
+    "shape": [
+      4
+    ]
+  },
+  "tag.holder": {
+    "dtype": "float64",
+    "sha256": "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb",
+    "shape": [
+      2
+    ]
+  },
+  "tag.holder_name": {
+    "dtype": "<U64",
+    "sha256": "5341e6b2646979a70e57653007a1f310169421ec9bdd9f1a5648f75ade005af1",
+    "shape": [
+      1
+    ]
+  },
+  "tag.origin": {
+    "dtype": "float64",
+    "sha256": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+    "shape": [
+      3
+    ]
+  },
+  "tag.rotation": {
+    "dtype": "float64",
+    "sha256": "9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0",
+    "shape": [
+      3
+    ]
+  },
+  "tag.stock": {
+    "dtype": "float64",
+    "sha256": "5cd00e26ffa596cc391d87af42bdf04973570b33bd8a6f4dc480e0a7e10be5ea",
+    "shape": [
+      7
     ]
   },
   "topo.d": {

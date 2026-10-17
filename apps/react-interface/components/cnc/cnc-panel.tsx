@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { TOOLPATH_PARAM, SCREEN_SIZE_PARAM } from '@/lib/cnc/service-data'
-import { MODE_LABEL } from '@/lib/cnc/data'
+import { WORKPLACE_LABEL } from '@/lib/cnc/data'
 import { MODE_LOCKED_SCREENS } from '@/lib/cnc/types'
 import { FhdStage } from './fhd-stage'
 import { useCncMachine } from './use-cnc-machine'
@@ -41,7 +41,6 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
   const [hardware, setHardware] = useState(true)
 
   const showPath = state.params[TOOLPATH_PARAM] === 1 || state.sim.active
-  const asideHidden = state.screen === 'prog' && state.sim.active
   const screenSize = state.params[SCREEN_SIZE_PARAM] ?? 0
   const screenScale = screenSize === 1 ? 10 / 7 : 1
   const DISPLAY_W = Math.round(SCREEN_W * screenScale)
@@ -83,7 +82,7 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
         onSelect={(screen) => dispatch({ type: 'SET_SCREEN', screen })}
         alarmCount={activeAlarms}
         locked={MODE_LOCKED_SCREENS[state.mode]}
-        lockedTitle={`Недоступно в режиме «${MODE_LABEL[state.mode]}»`}
+        lockedTitle={`Недоступно в режиме «${WORKPLACE_LABEL[state.workplace]}»`}
       />
 
       <div
@@ -91,9 +90,9 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
           'grid min-h-0 flex-1 gap-1.5',
           testMode
             ? 'grid-cols-1 grid-rows-[minmax(0,1fr)]'
-            : showModes && !asideHidden
+            : showModes
               ? 'grid-cols-[minmax(0,1fr)_300px]'
-              : hardware || asideHidden
+              : hardware
                 ? 'grid-cols-1 grid-rows-[minmax(0,1fr)]'
                 : 'grid-cols-1 grid-rows-[minmax(0,1fr)_auto]',
         )}
@@ -116,7 +115,7 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
         {!testMode &&
           (showModes ? (
             state.screen === 'prog' ? (
-              !asideHidden && <ProgramSide state={state} dispatch={dispatch} showPad={!hardware} />
+              <ProgramSide state={state} dispatch={dispatch} showPad={!hardware} />
             ) : state.workplace === 'SETUP' ? (
               <SetupSide state={state} dispatch={dispatch} showPad={!hardware} />
             ) : (

@@ -356,15 +356,53 @@ PySide6, обычные SHARED-библиотеки с Qt-объектами г�
 каждый вызов: около 2.6 МБ копий на кадр при 45398 гранях и 57842 рёбрах. Лечится непрозрачной ручкой на
 топологию и семейства (создать один раз на модель) — это правка ABI, `GV_ABI_VERSION` 1 -> 2.
 
-**Зависимости OCCT.** Реально используются `STEPControl_Reader`, `BRepMesh_IncrementalMesh`,
-`Poly_Triangulation`, `TopExp_Explorer`, `TopoDS`, `BRep_Tool`, `TopLoc`, `gp_Trsf`,
-`BRepAdaptor_Curve/Surface`, `GCPnts_UniformDeflection`, `gp_Cylinder`/`gp_Cone`; линкуются `TKernel`
-`TKMath` `TKG3d` `TKG2d` `TKGeomBase` `TKTopAlgo` `TKBRep` `TKMesh` `TKDESTEP` `TKXSBase`. Визуализация,
-OCAF, DRAW, MeshVS/AIS и обмен сверх STEP не нужны — сборку OCCT можно вести с `USE_VISUALIZATION=OFF`,
-`USE_DRAW=OFF`, `USE_OCAF=OFF`. Перед этим проверить `dumpbin /dependents TKDESTEP.dll`: если он тянет
-`TKXCAF`/`TKDE`, урезать OCAF не выйдет и минимальный комплект — 13-14 DLL. Выигрыш — размер дистрибутива
-и время старта на слабом железе, а не скорость чтения. Линковка остаётся динамической: LGPL с исключением
-OCCT, и потребителей OCCT у нас два (мост и плагин).
+**Зависимости OCCT (исследовано замером).** Реально используются `STEPControl_Reader`,
+`BRepMesh_IncrementalMesh`, `Poly_Triangulation`, `TopExp_Explorer`, `TopoDS`, `BRep_Tool`, `TopLoc`,
+`gp_Trsf`, `BRepAdaptor_Curve/Surface`, `GCPnts_UniformDeflection`, `gp_Cylinder`/`gp_Cone`. Замеры
+`dumpbin /dependents` по собранным артефактам и `Get-Process -Module` по живому вьюверу (OCCT — пакет
+conda-forge `occt 8.0.1`, `all_h6eddace_201`, `D:\cnc-toolchain\occt-env\Library`) дают настоящее
+замыкание рантайма: 23 из 53 `TK*.dll` (38 780 416 Б = 37,0 МиБ) плюс 22 не-`TK` DLL из той же поставки
+(9 669 120 Б = 9,2 МиБ) — 45 DLL, 46,2 МиБ, ровно их процесс и отображает. Это `TKDESTEP`, `TKernel`,
+`TKMath`, `TKG2d`, `TKG3d`, `TKGeomBase`, `TKGeomAlgo`, `TKTopAlgo`, `TKBRep`, `TKShHealing`, `TKMesh`,
+`TKXSBase`, `TKPrim`, `TKBO`, `TKHLR`, `TKDE`, `TKCAF`, `TKLCAF`, `TKCDF`, `TKVCAF`, `TKV3d`, `TKService`,
+`TKXCAF`; 22 не-`TK` приходят через `TKService` -> FreeImage/freetype и их графическую цепочку (`zlib`,
+`jpeg8`, `tiff`, `openjp2`, `libwebp*`, `libsharpyuv`, `raw`, `OpenEXR*`, `Iex`, `Imath`, `IlmThread`,
+`deflate`, `liblzma`, `Lerc`, `zstd`, `lcms2`, `openjph`, `libpng16`).
+
+- **Поправка 1: комплект — 23 DLL, а не 13-14.** Прежнее предположение «визуализацию и OCAF можно
+  выключить» не подтвердилось. `dumpbin /dependents TKDESTEP.dll` показывает, что он тянет `TKDE` и
+  `TKXCAF` (а через них `TKLCAF`/`TKCDF`/`TKCAF`/`TKVCAF`/`TKV3d`/`TKService`/`TKBO`/`TKPrim`/`TKHLR`),
+  поэтому сборка без OCAF/XCAF с сохранением STEP невозможна: `TKDESTEP` не слинкуется. В рецепте conda
+  переключателя OCAF/визуализации нет вовсе — они собираются всегда.
+- **Поправка 2: `novtk` сокращает диск, но не рантайм.** Сборка conda `novtk` отличается от `all` ровно
+  одним файлом, `TKIVtk.dll` (201 728 Б): 51 файл / 56 926 208 Б против 52 файлов / 57 127 936 Б, и все
+  23 нужные `TK` DLL есть в обеих. Значит, `novtk` рантайм не уменьшает (отображаются те же 45 DLL), но
+  `all_` зависит от пакета `vtk`, а `novtk` — нет, и отказ от `vtk` убирает из окружения 177 `vtk*.dll`
+  (207 799 808 Б = 198,2 МиБ) и 24 `viskores*.dll` (51 138 560 Б = 48,8 МиБ) — около 250 МиБ DLL на диске.
+
+**Размер.** Весь `Library\bin` — 552 DLL / 1 091 342 102 Б (1040,8 МиБ); вместе с отложенными в сторону
+Qt DLL — 637 DLL / около 1147 МиБ. Нужны из них 45 (46,2 МиБ): около 99 % поставки для нас — мёртвый груз.
+
+**Скорость.** Ускорить OCCT, не изменив выдаваемые треугольники, нечем. Дефлексия меша и угловая
+дефлексия (`BRepMesh_IncrementalMesh(shape, deflection, false, deflection*2.0, true)`) меняют
+триангуляцию, то есть ломают golden-sha256, и уже выведены в пресеты `CNC_QUALITY` (`med` 45398
+треугольников / 129 мс, `low` 7856 / 63 мс, `high` 175808 / 422 мс, `safe` 4132 / 56 мс). Ни одна
+`TK*.dll` не импортирует `tbb12.dll`, рецепт conda собран с `USE_TBB=OFF`, а `isInParallel=true` уже
+использует внутренний пул OCCT — сборка с TBB не дала бы ничего. Сборка conda уже Release с LTO;
+`/fp:fast` сломал бы golden. `STEPControl_Reader` и так читает только геометрию (цвета и имена берёт
+`STEPCAFControl_Reader`). Оставшийся рычаг — кэш формы STEP (пункт 2).
+
+**Старт.** Процесс отображает 120 модулей, 45 из них — из поставки OCCT. Замер `gcodeviewer.exe`
+offscreen (медиана 5-6 прогонов): только Qt 24-28 мс; QML и плагин без OCCT 42-43 мс; плагин с
+загруженным OCCT, но без разобранной УП 61-63 мс — отображение всего замыкания OCCT стоит около 19 мс;
+полный offscreen-прогон `Test_model.ngc` — 748-751 мс. Урезание поставки на диске старт НЕ ускоряет
+(загрузчик разрешает DLL по имени, а не сканируя каталоги); ускорило бы только отображение меньшего
+числа DLL, и сборка без визуализации/OCAF сэкономила бы около 35 модулей и около 19 мс — недостижимо без
+правки `TKDESTEP`.
+
+**Вывод.** Практический остаток выгоды — размер дистрибутива: поставлять 45 DLL / 46,2 МиБ вместо около
+1147 МиБ и отказаться от пакета `vtk`; выигрыш по скорости — только около 19 мс времени загрузчика.
+Линковка остаётся динамической: LGPL с исключением OCCT, и потребителей OCCT у нас два (мост и плагин).
 
 **Версия-зависимые места.** Тесселяция привязана к поведению deflection в OCCT (изменено в 7.4), поэтому
 смена версии SDK переутверждает golden. В коде: `OCCT_HANDLE_NOCAST`, 5-арг

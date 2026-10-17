@@ -101,7 +101,7 @@ export function progReducer(s: MachineState, a: ProgAction): Result {
       if (MODE_LOCKED_SCREENS[s.mode].includes('prog')) {
         return {
           s,
-          msg: `В рабочем месте «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL.prog}» заблокирован`,
+          msg: `В режиме «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL.prog}» заблокирован`,
           level: 'warn',
         }
       }
@@ -123,7 +123,7 @@ export function progReducer(s: MachineState, a: ProgAction): Result {
       if (MODE_LOCKED_SCREENS[s.mode].includes('prog')) {
         return {
           s,
-          msg: `В рабочем месте «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL.prog}» заблокирован`,
+          msg: `В режиме «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL.prog}» заблокирован`,
           level: 'warn',
         }
       }

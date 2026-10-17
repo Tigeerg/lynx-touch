@@ -97,7 +97,7 @@ export function HardwarePanel({ state, dispatch }: { state: MachineState; dispat
             />
           </div>
 
-          <div role="group" aria-label="Рабочее место" className="flex justify-between pt-5">
+          <div role="group" aria-label="Режим" className="flex justify-between pt-5">
             {WORKPLACES.map((w) => (
               <HwKey
                 key={w}

@@ -27,7 +27,7 @@ describe('авто: F1-F8 и действия', () => {
       'FILE_DIALOG',
       'PROG_TO_CURSOR',
       'TOOL_LIFE',
-      'TOGGLE',
+      undefined,
       'PART_COUNTER_RESET',
       'BROKEN_TOOL_CHECK',
       undefined,

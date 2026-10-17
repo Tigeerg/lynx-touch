@@ -17,7 +17,7 @@ describe('рабочее место', () => {
     expect(s.mode).toBe('JOG')
     expect(s.screen).toBe('pos')
     expect(s.dryRun).toBe(false)
-    expect(s.message?.text).toBe(`Рабочее место: ${WORKPLACE_LABEL.SETUP}`)
+    expect(s.message?.text).toBe(`Режим: ${WORKPLACE_LABEL.SETUP}`)
   })
 
   it('ПРОГОН включает АВТО и холостой ход', () => {
@@ -34,10 +34,10 @@ describe('рабочее место', () => {
     expect(s.dryRun).toBe(false)
   })
 
-  it('смена рабочего места во время выполнения запрещена', () => {
+  it('смена режима во время выполнения запрещена', () => {
     const s = run({ ...initialState, run: 'RUN' }, { type: 'SET_WORKPLACE', workplace: 'SETUP' })
 
-    expect(s.message?.text).toBe('Смена рабочего места во время выполнения запрещена')
+    expect(s.message?.text).toBe('Смена режима во время выполнения запрещена')
   })
 
   it('в НАЛАДКЕ на экране позиции F1-F8 — набор подготовки', () => {

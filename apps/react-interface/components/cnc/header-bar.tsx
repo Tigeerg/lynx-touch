@@ -46,15 +46,17 @@ export function HeaderBar({
         <p className="text-sm font-bold">{MACHINE_NAME}</p>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2 rounded-md border bg-card px-2">
+      <div className="flex shrink-0 items-center gap-1.5 rounded-md border bg-card px-1.5">
         <div className="flex items-center gap-1.5">
           <WorkplaceIcon className="size-5 text-primary" aria-hidden="true" />
           <div className="leading-none">
-            <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Место</p>
-            <p className="w-24 whitespace-nowrap font-mono text-base font-bold">{WORKPLACE_LABEL[state.workplace]}</p>
+            <p className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Режим</p>
+            <p className="w-[72px] truncate whitespace-nowrap font-mono text-sm font-bold">
+              {WORKPLACE_LABEL[state.workplace]}
+            </p>
           </div>
         </div>
-        <ol className="flex items-center gap-0.5" aria-label="Рабочее место">
+        <ol className="flex items-center gap-0.5" aria-label="Режим">
           {WORKPLACES.map((w) => {
             const Icon = WORKPLACE_ICON[w]
             const active = w === state.workplace

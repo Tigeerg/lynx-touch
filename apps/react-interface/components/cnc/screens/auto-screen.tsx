@@ -10,9 +10,9 @@ import { formatCoord, formatDuration, Panel } from '../primitives'
 import { ToolpathView } from '../toolpath-view'
 import { ProgramList } from './program-screen'
 
-// Рабочее место «АВТО»: сверху гигантский остаток пути (Distance to Go) и оценка
-// времени на остаток программы, ниже — шторка кода; по F8 «Вид» шторка сменяется
-// графикой. Оценка времени без ускоренных ходов — ориентир, отсюда знак «≈».
+// Рабочее место «АВТО»: компактная полоса остатка пути (Distance to Go) и оценка
+// времени; под ней всегда вьювер траектории, а код программы ложится поверх него
+// тёмной полупрозрачной подложкой. Клавиша «Вид» (F8) показывает и убирает код.
 
 export function AutoScreen({
   state,
@@ -33,43 +33,48 @@ export function AutoScreen({
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5">
       <Panel title="Остаток пути" icon={Route} className="shrink-0">
-        <div className="flex items-baseline gap-4">
-          <span className="font-mono text-6xl font-bold leading-none tabular-nums">
+        <div className="flex items-center gap-3 px-2 py-1">
+          <span className="font-mono text-3xl font-bold leading-none tabular-nums">
             {state.motion ? dist.toFixed(3) : '—'}
           </span>
-          <span className="text-sm font-medium text-muted-foreground">мм до конца кадра</span>
+          <span className="text-xs font-medium text-muted-foreground">мм до кадра</span>
 
-          <div className="ml-auto flex items-baseline gap-4">
-            <div className="text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Осталось программы
-              </p>
-              <p className="font-mono text-lg font-bold tabular-nums">
-                ≈ {formatDuration((rest / (state.programFeed || 1000)) * 60000)}
-                <span className="ml-1 font-sans text-xs font-medium text-muted-foreground">· {rest.toFixed(1)} мм</span>
-              </p>
-            </div>
-            <dl className="flex items-baseline gap-3">
-              {AXES.map((ax) => (
-                <div key={ax} className="text-right">
-                  <dt className="font-mono text-[10px] font-bold uppercase text-muted-foreground">{ax}</dt>
-                  <dd
-                    className={cn('font-mono text-lg font-bold tabular-nums', !state.motion && 'text-muted-foreground')}
-                  >
-                    {state.motion ? formatCoord(dtg[ax]) : '—'}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+          <div className="ml-2 flex items-baseline gap-3">
+            {AXES.map((ax) => (
+              <span key={ax} className="flex items-baseline gap-1">
+                <span className="font-mono text-[10px] font-bold uppercase text-muted-foreground">{ax}</span>
+                <span
+                  className={cn('font-mono text-sm font-bold tabular-nums', !state.motion && 'text-muted-foreground')}
+                >
+                  {state.motion ? formatCoord(dtg[ax]) : '—'}
+                </span>
+              </span>
+            ))}
+          </div>
+
+          <div className="ml-auto text-right leading-tight">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Осталось программы
+            </p>
+            <p className="font-mono text-sm font-bold tabular-nums">
+              ≈ {formatDuration((rest / (state.programFeed || 1000)) * 60000)}
+              <span className="ml-1 font-sans text-xs font-medium text-muted-foreground">· {rest.toFixed(1)} мм</span>
+            </p>
           </div>
         </div>
       </Panel>
 
-      <div className="min-h-0 flex-1">
-        {state.test.autoCode ? (
-          <ProgramList state={state} dispatch={dispatch} />
-        ) : (
-          <ToolpathView state={state} view={pathView} className="h-full" />
+      <div className="relative min-h-0 flex-1">
+        <ToolpathView state={state} view={pathView} className="h-full" />
+
+        {state.test.autoCode && (
+          <div className="absolute inset-y-0 left-0 z-10 w-1/2 min-w-[320px]">
+            <ProgramList
+              state={state}
+              dispatch={dispatch}
+              className="border-transparent bg-transparent [&>header]:bg-transparent"
+            />
+          </div>
         )}
       </div>
     </div>

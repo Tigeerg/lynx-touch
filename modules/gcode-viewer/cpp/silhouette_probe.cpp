@@ -20,7 +20,16 @@
 // поэлементно, и по хэшу. Сверку ведёт modules/gcode-viewer/test_silhouette_core.py.
 //
 // Запуск: silhouette_probe <файл.step> <каталог-дампа>  (нужны DLL OCCT в PATH)
-// Код возврата: 0 - посчитано и записано; 1 - файл не прочитан или дамп не записан.
+//         silhouette_probe --manifest <oracle_manifest.json> [<файл.step>]
+//         silhouette_probe --check [<файл.step>]
+// Код возврата: 0 - посчитано и записано (или дайджесты сошлись с оракулом);
+//               1 - файл не прочитан или дамп не записан; 2 - аргументы не разобраны.
+//
+// Режим --manifest/--check сверяет дайджесты своих массивов (topo.n, topo.d,
+// topo.f0, topo.f1, topo.ea, topo.eb, silhouette.eye0..eye4) с oracle_manifest.json
+// без Python и без каталога-дампа: печатает строку на запись и "RESULT: OK" /
+// "RESULT: FAIL (n)". Путь к тестовым данным по умолчанию берётся от корня
+// репозитория (путь пробника).
 
 // windows.h идёт до заголовков OCCT: цепочка OCCT объявляет _WINDOWS_ своим
 // стражем, и включённый после неё windows.h не даёт ни одной своей функции.
@@ -33,6 +42,7 @@
 #endif
 
 #include "core/silhouette.h"
+#include "manifest_check.h"
 #include "occt/step_import.h"
 #include "sha256.h"
 
@@ -116,12 +126,25 @@ std::vector<unsigned char> asBytes(const void* data, std::size_t count, std::siz
 
 int main(int argc, char** argv) {
     const std::vector<std::string> args = probeArgs(argc, argv);
-    if (args.size() < 3) {
-        std::fprintf(stderr, "usage: silhouette_probe <file.step> <dump-dir>\n");
-        return 1;
+    const bool checkMode = args.size() >= 2
+            && (args[1] == "--manifest" || args[1] == "--check");
+    std::string manifestPath;
+    std::string stepPath;
+    std::string dumpDir;
+    if (checkMode) {
+        if (!gv::manifest::resolveCheckArgs(args, "Test_model.STEP", manifestPath, stepPath)) {
+            return 2;
+        }
+    } else {
+        if (args.size() < 3) {
+            std::fprintf(stderr, "usage: silhouette_probe <file.step> <dump-dir>\n"
+                                 "       silhouette_probe --manifest <oracle_manifest.json> [<file.step>]\n"
+                                 "       silhouette_probe --check [<file.step>]\n");
+            return 1;
+        }
+        stepPath = args[1];
+        dumpDir = args[2];
     }
-    const std::string stepPath = args[1];
-    const std::string dumpDir = args[2];
 
     gv::StepModel model;
     try {
@@ -140,6 +163,65 @@ int main(int argc, char** argv) {
     const gv::MeshTopology topo = gv::buildSilhouetteTopology(model.verts);
     const std::size_t k = topo.edgeCount();
 
+    // Сериализации те же, что у оракула (numpy .tobytes()): float32 LE у n, d, ea,
+    // eb и силуэтов, int32 LE у f0/f1. x86 хранит их little-endian.
+    struct Dump {
+        const char* key;        // имя ключа в выводе, в манифесте и имени файла
+        const void* data;
+        std::size_t count;
+        std::size_t elem;
+        const char* suffix;
+        const char* dtype;      // dtype сериализации, как в oracle_manifest.json
+        long long rows;         // строк в форме массива
+        int cols;               // столбцов: 0 - одномерный массив
+    };
+    const Dump dumps[6] = {
+        {"n", topo.n.data(), topo.n.size(), sizeof(float), "f32", "float32",
+         static_cast<long long>(topo.faces), 3},
+        {"d", topo.d.data(), topo.d.size(), sizeof(float), "f32", "float32",
+         static_cast<long long>(topo.faces), 0},
+        {"f0", topo.f0.data(), topo.f0.size(), sizeof(std::int32_t), "i32", "int32",
+         static_cast<long long>(k), 0},
+        {"f1", topo.f1.data(), topo.f1.size(), sizeof(std::int32_t), "i32", "int32",
+         static_cast<long long>(k), 0},
+        {"ea", topo.ea.data(), topo.ea.size(), sizeof(float), "f32", "float32",
+         static_cast<long long>(k), 3},
+        {"eb", topo.eb.data(), topo.eb.size(), sizeof(float), "f32", "float32",
+         static_cast<long long>(k), 3},
+    };
+
+    // Сверка с оракулом: те же дайджесты, что печатает режим дампа, но против
+    // oracle_manifest.json и без записи файлов.
+    if (checkMode) {
+        gv::manifest::Manifest manifest;
+        std::string error;
+        if (!manifest.load(manifestPath, error)) {
+            std::fprintf(stderr, "silhouette_probe: манифест не прочитан (%s): %s\n",
+                         manifestPath.c_str(), error.c_str());
+            return 1;
+        }
+        gv::manifest::Checker checker(manifest);
+        for (const Dump& d : dumps) {
+            const std::vector<unsigned char> bytes = asBytes(d.data, d.count, d.elem);
+            const std::vector<long long> shape =
+                d.cols > 0 ? std::vector<long long>{d.rows, d.cols}
+                           : std::vector<long long>{d.rows};
+            checker.check(std::string("topo.") + d.key, d.dtype, gv::sha256Hex(bytes), shape);
+        }
+        int eyeIndex = 0;
+        for (const auto& eye : EYES) {
+            const std::vector<float> segs = gv::meshSilhouetteSegments(topo, eye);
+            const std::vector<unsigned char> bytes =
+                asBytes(segs.data(), segs.size(), sizeof(float));
+            checker.check("silhouette.eye" + std::to_string(eyeIndex), "float32",
+                          gv::sha256Hex(bytes),
+                          {static_cast<long long>(segs.size() / 6), 2, 3});
+            ++eyeIndex;
+        }
+        checker.printResult();
+        return checker.failures() == 0 ? 0 : 1;
+    }
+
     std::printf("file: %s\n", stepPath.c_str());
     std::printf("verts: %zu\n", model.verts.size() / 3);
     std::printf("triangles: %zu\n", topo.faces);
@@ -147,24 +229,6 @@ int main(int argc, char** argv) {
 
     const std::string sep = "/";
     bool ok = true;
-
-    // Сериализации те же, что у оракула (numpy .tobytes()): float32 LE у n, d, ea,
-    // eb и силуэтов, int32 LE у f0/f1. x86 хранит их little-endian.
-    struct Dump {
-        const char* key;        // имя ключа в выводе и имени файла
-        const void* data;
-        std::size_t count;
-        std::size_t elem;
-        const char* suffix;
-    };
-    const Dump dumps[6] = {
-        {"n", topo.n.data(), topo.n.size(), sizeof(float), "f32"},
-        {"d", topo.d.data(), topo.d.size(), sizeof(float), "f32"},
-        {"f0", topo.f0.data(), topo.f0.size(), sizeof(std::int32_t), "i32"},
-        {"f1", topo.f1.data(), topo.f1.size(), sizeof(std::int32_t), "i32"},
-        {"ea", topo.ea.data(), topo.ea.size(), sizeof(float), "f32"},
-        {"eb", topo.eb.data(), topo.eb.size(), sizeof(float), "f32"},
-    };
     for (const Dump& d : dumps) {
         const std::vector<unsigned char> bytes = asBytes(d.data, d.count, d.elem);
         std::printf("sha256_%s: %s\n", d.key, gv::sha256Hex(bytes).c_str());

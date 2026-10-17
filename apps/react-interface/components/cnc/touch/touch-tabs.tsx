@@ -39,7 +39,7 @@ export function TouchTabs({
           >
             {isLocked ? <Lock className="size-5" aria-hidden="true" /> : <Icon className="size-5" aria-hidden="true" />}
             <span className="max-w-full truncate px-1">{TAB_LABEL[tab]}</span>
-            {isLocked && <span className="sr-only">(недоступно в текущем рабочем месте)</span>}
+            {isLocked && <span className="sr-only">(недоступно в текущем режиме)</span>}
             {tab === 'alarm' && alarmCount > 0 && (
               <span
                 className={cn(

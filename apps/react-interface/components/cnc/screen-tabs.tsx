@@ -17,7 +17,7 @@ export function ScreenTabs({
   onSelect,
   alarmCount,
   locked = [],
-  lockedTitle = 'Недоступно в текущем рабочем месте',
+  lockedTitle = 'Недоступно в текущем режиме',
 }: {
   screen: Screen
   workplace: Workplace

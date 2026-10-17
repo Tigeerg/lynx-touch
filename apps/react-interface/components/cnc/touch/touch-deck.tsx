@@ -138,8 +138,8 @@ function CycleRow({ state, dispatch }: { state: MachineState; dispatch: (a: Acti
 
 function WorkplaceColumn({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
   return (
-    <Panel title="Место" className="w-[132px] shrink-0">
-      <div className="grid h-full grid-rows-3 gap-1.5 p-1.5" role="radiogroup" aria-label="Рабочее место">
+    <Panel title="Режим" className="w-[132px] shrink-0">
+      <div className="grid h-full grid-rows-3 gap-1.5 p-1.5" role="radiogroup" aria-label="Режим">
         {WORKPLACES.map((w) => {
           const Icon = WORKPLACE_ICON[w]
           const active = w === state.workplace

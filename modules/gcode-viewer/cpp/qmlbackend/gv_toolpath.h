@@ -1,7 +1,7 @@
 // cpp/qmlbackend/gv_toolpath.h - контроллер вьювера GcodeToolpath как QML-тип.
 //
 // Этапы 5.4а и 5.4б плана переноса: C++-контроллер в URI MockBackend 1.0 вместо
-// питоновского controller.py. Контракт QML (свойства, слоты, сигналы,
+// питоновского qmlbackend/gv_toolpath.cpp. Контракт QML (свойства, слоты, сигналы,
 // objectName "gcodeToolpath") сохранён 1:1 - GcodeViewer3D.qml не правится.
 //
 // Что уже считается здесь: чтение УП, разбор и подготовка траектории (ядро
@@ -26,13 +26,13 @@
 // в фоне (collisions/collisionCount, слот analyzeCollisions) и сверка
 // инструмента с таблицей стойки (toolCheck/toolIssueCount, слоты
 // setMachineTools/setMachineLimits/runToolCheck). Ядро - gvcore: core/tooling и
-// core/collision, те же числа и порядок операций, что у tooling.py и collision.py.
+// core/collision, те же числа и порядок операций, что у core/tooling.cpp и core/collision.cpp.
 //
 // Заглушек этого шага не осталось: отказ любой стадии виден в журнале
 // (qCWarning плюс строка в stderr), молчаливого отказа нет.
 //
 // Сосуществование с питоновской регистрацией: QML-типы модуля MockBackend
-// объявляет либо питоновский controller.py (@QmlElement), либо этот плагин.
+// объявляет либо питоновский qmlbackend/gv_toolpath.cpp (@QmlElement), либо этот плагин.
 // Оба одновременно в один движок не попадают: точки входа при включённом флаге
 // CNC_CPP=controller не импортируют mock_backend и добавляют путь импорта
 // плагина (см. gv_cpp.controller_enabled). Пустое значение флага - питоновский
@@ -192,7 +192,7 @@ public:
     explicit GcodeToolpath(QObject *parent = nullptr);
     // Дожидается задачи пула: они зовут контроллер по this (invokeMethod,
     // reportRefusal), и живущая дольше объекта задача бьёт по мёртвому QObject -
-    // SIGSEGV в QObject::thread() на выходе (Test_model.ngc, код 139).
+    // SIGSEGV в QObject::thread на выходе (Test_model.ngc, код 139).
     ~GcodeToolpath() override;
 
     // ---- свойства: данные траектории --------------------------------------

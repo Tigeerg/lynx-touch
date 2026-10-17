@@ -20,71 +20,60 @@
 # кодировке консоли и портит не-ASCII пути).
 #
 # Собранный модуль лежит в <build>/CNC/Edges/ (qmldir, cncedgesplugin.dll,
-# cncedgespluginplugin.dll); каталог <build> — это import path для QML и для
-# engine.addImportPath(...). Пробник — в <build>/stepledges_probe.exe.
+# cncedgespluginplugin.dll); каталог <build> — это import path для QML. Пробник —
+# в <build>/stepledges_probe.exe.
 # Той же сборкой собирается чистое ядро gvcore (без Qt и OCCT) и его пробник
-# <build>/gcode_probe.exe; сверку ядра с эталоном ведёт
-# modules/gcode-viewer/test_gcode_core.py.
+# <build>/gcode_probe.exe: он сверяет свои дайджесты с эталоном
+# modules/gcode-viewer/oracle_manifest.json ключом --manifest.
 #
 # Той же сборкой собираются геометрии Qt Quick 3D (цель gvqtgeom) и их пробник
-# <build>/geometry_probe.exe; входные данные для него пишет проверка
-# modules/gcode-viewer/test_geometry_core.py, поэтому отдельного ключа запуска у
-# скрипта нет - он только следит, что пробник собран.
+# <build>/geometry_probe.exe; его вход он строит сам из УП и сверяет дайджесты
+# буферов с манифестом, поэтому отдельного ключа запуска у скрипта нет - он только
+# следит, что пробник собран.
 #
 # Той же сборкой собирается слой STEP и crease-aware нормалей (цель gvstep, пробник
-# <build>/step_probe.exe, этап 4a плана переноса); сверку с эталоном ведёт
-# modules/gcode-viewer/test_step_core.py. Qt этой цели не нужен: только OCCT.
+# <build>/step_probe.exe, этап 4a плана переноса); сверку с манифестом ведёт тот же
+# ключ --manifest. Qt этой цели не нужен: только OCCT.
 #
 # Импорт STL и обводка меша (этап 4b плана переноса) лежат в ядре gvcore, их
-# пробник - <build>/stl_probe.exe; сверку с эталоном ведёт
-# modules/gcode-viewer/test_stl_core.py. Ни Qt, ни OCCT этой цели не нужны.
+# пробник - <build>/stl_probe.exe; сверку с манифестом ведёт тот же ключ --manifest.
+# Ни Qt, ни OCCT этой цели не нужны.
 #
 # Топология силуэта (этап 4c плана переноса) лежит в ядре gvcore, её пробник -
 # <build>/silhouette_probe.exe: он берёт суп вершин из STEP через цель gvstep,
-# поэтому ему нужны DLL OCCT (Qt - нет). Сверку с эталоном ведёт
-# modules/gcode-viewer/test_silhouette_core.py.
+# поэтому ему нужны DLL OCCT (Qt - нет). Сверку с манифестом ведёт ключ --manifest.
 #
 # Аналитические поверхности вращения STEP (этап 4d плана переноса) лежат в
 # gvstep (occt/step_surfaces), семейства касательных - в gvcore
 # (core/tangents), их общий пробник - <build>/tangents_probe.exe: он тоже берёт
 # суп и поверхности из STEP через gvstep, упакованные рёбра STEP строит сам из
 # той же формы тем же путём, что рантайм (occt/step_edges + core/packing), и
-# печатает рядом дайджест питоновского файла проверки, поэтому ему нужны DLL
-# OCCT (Qt - нет). Сверку с эталоном ведёт
-# modules/gcode-viewer/test_tangents_core.py. Его режим --manifest сверяет 22
-# записи tangents.* со своего буфера рёбер; буфер не совпадает с питоновским
-# байт в байт (набор отрезков один, порядок и младшие биты - нет), поэтому
-# оговорка и числа - в cpp/tangents_probe.cpp и cpp/CMakeLists.txt.
+# печатает рядом дайджест своего буфера рёбер, поэтому ему нужны DLL
+# OCCT (Qt - нет). Его режим --manifest сверяет 22 записи tangents.* со своего
+# буфера рёбер; буфер не совпадает с дайджестом манифеста байт в байт (набор
+# отрезков один, порядок и младшие биты - нет), поэтому оговорка и числа - в
+# cpp/tangents_probe.cpp и cpp/CMakeLists.txt.
 #
-# C-ABI-мост над C++-ядром (этап 5 плана переноса) собирается той же сборкой в
-# <repo>/build/cpp/gvbridge.dll: SHARED-цель gvbridge без Qt над gvcore и gvstep,
-# наружу только C-типы. Оттуда её берёт питоновский шим
-# modules/gcode-viewer/gv_cpp.py; C++ включается одним слоем по флагу CNC_CPP.
-# Проверка - modules/gcode-viewer/test_cpp_bridge.py.
-#
-# Эксперимент этапа 5.3 плана переноса: цель gvqtshim кладёт рядом с мостом
-# <repo>/build/cpp/gvqtshim.dll - обычную SHARED-библиотеку с настоящими
-# геометриями Qt Quick 3D, собранную против Qt из CNC_QT_DIR. Её грузит в свой
-# процесс интерпретатор PySide6 (ctypes + shiboken6.wrapInstance); проверка -
-# modules/gcode-viewer/test_qt_bridge.py, разбор - cpp/exp/.
-#
-# Та же библиотека (этап 5.3а) собирает буферы геометрий для живого вьювера:
-# экспорты gvq_build_* отдают настоящие gvgeom-геометрии, а питоновская оболочка
-# modules/gcode-viewer/gv_qtgeom.py ставит их буферы в геометрии контроллера при
-# CNC_CPP=qtgeom|all. Регистрация QML-типов остаётся за Python.
+# C-ABI-мост над C++-ядром (этап 5 плана переноса) и шим Qt-геометрий
+# (этап 5.3) собираются той же сборкой в <repo>/build/cpp: gvbridge.dll и
+# gvqtshim.dll. Их единственным потребителем был питоновский шим (ctypes),
+# удалённый вместе с питоновским слоем; цели остались от этапа переноса и ждут
+# решения (в сборку входят, никем не используются).
 #
 # Той же сборкой собирается C++-контроллер вьювера (этап 5.4а плана переноса):
 # QML-модуль MockBackend 1.0 (цель gvqmlbackend) в <repo>/build/qmlbackend/
-# MockBackend - тип GcodeToolpath и шесть геометрий этапа 3. При CNC_CPP=controller
-# он заменяет питоновскую регистрацию тех же типов; проверка сверяет его свойства и
-# буферы с питоновским эталоном - modules/gcode-viewer/test_controller_cpp.py.
+# MockBackend - тип GcodeToolpath и шесть геометрий этапа 3. Это единственный
+# бэкенд вьювера.
 #
-# Той же сборкой собирается C++-точка входа вьювера (отказ от Python в рантайме):
+# Той же сборкой собирается C++-точка входа вьювера:
 # <repo>/build/viewer/gcodeviewer.exe, исходник - cpp/viewer/main.cpp. Она грузит
-# GcodeViewer3D.qml в QQuickView и работает только с плагином MockBackend: питонов-
-# ского бэкенда в рантайме нет. Запуск - с Qt в PATH (exe линкуется с Qt6Core.dll);
-# каталог плагина и DLL OCCT точка входа добавляет себе сама:
+# GcodeViewer3D.qml в QQuickView и работает только с плагином MockBackend:
+# питоновского бэкенда нет ни в рантайме, ни в репозитории. Запуск - с Qt в PATH
+# (exe линкуется с Qt6Core.dll); каталог плагина и DLL OCCT точка входа добавляет
+# себе сама:
 #   build\viewer\gcodeviewer.exe data\cad-testdata\Test_model.ngc
+#   build\viewer\gcodeviewer.exe --smoke
+#   build\viewer\gcodeviewer.exe --frame frame.png data\cad-testdata\Test_model.ngc
 #
 # Код возврата: 0 — собрано, плагин на месте; 1 — инструмент не найден или ошибка сборки.
 
@@ -259,6 +248,15 @@ if (Test-Path -LiteralPath $geomProbe) {
     Fail "геометрии не собраны: нет $geomProbe"
 }
 
+# Пробник версии: сверяет VERSION, projects.json и свойство viewerVersion в QML.
+# Ни Qt, ни OCCT ему не нужны.
+$versionProbe = Join-Path $BuildDir 'version_probe.exe'
+if (Test-Path -LiteralPath $versionProbe) {
+    Write-Host ("build-viewer: пробник версии " + $versionProbe)
+} else {
+    Fail "пробник версии не собран: нет $versionProbe"
+}
+
 $stepProbe = Join-Path $BuildDir 'step_probe.exe'
 if (Test-Path -LiteralPath $stepProbe) {
     Write-Host ("build-viewer: пробник STEP и нормалей " + $stepProbe)
@@ -389,8 +387,8 @@ if ($RunTangentsProbe) {
     if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
     # Пробнику нужны только DLL OCCT: суп и поверхности он берёт из STEP через
     # цель gvstep. Упакованных рёбер в этом каталоге нет - пробник пойдёт без
-    # пометок DROP, как эталон с packed_edges=None; полную сверку с дампами ведёт
-    # modules/gcode-viewer/test_tangents_core.py.
+    # пометок DROP, как эталон с packed_edges=None; полную сверку с манифестом
+    # ведёт тот же пробник ключом --manifest.
     $env:PATH = "$OccDir\bin;$env:PATH"
     $dumpDir = Join-Path $env:TEMP 'gvtangents_build_probe'
     New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null

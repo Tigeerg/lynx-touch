@@ -1,5 +1,5 @@
-// cpp/stl_probe.cpp - пробник совпадения C++-слоя STL (этап 4b плана переноса) с
-// питоновским эталоном modules/gcode-viewer/stl_import.py и outline.py.
+// cpp/stl_probe.cpp - пробник C++-слоя STL (этап 4b плана переноса):
+// дайджесты сверяются с оракулом (stl.soup, stl.feature_edges).
 //
 // Пробник не входит ни в плагин, ни в ядро: отдельная цель CMake. Он проходит
 // тот же путь, что load_stl_vertices -> _feature_edges_np: чтение STL (бинарного
@@ -7,23 +7,23 @@
 // двугранному углу, склейка цепочек и упрощение по Дугласу-Пекеру (0.15 мм).
 // Печатает:
 //
-//   verts: N              строк супа (эталон Test_model.STL - 562776)
-//   triangles: F          треугольников (эталон - 187592)
-//   sha256_soup: H        sha256 тех же байтов, что считает Python: float64 LE, (N,3)
-//   segments: M           отрезков обводки после упрощения (эталон - 1435)
-//   sha256_feature_edges: H  sha256 float32 LE (M,2,3)
-//   bounds_lo / bounds_hi    габарит супа (_verts_bounds), мм: в оракул не входит,
-//                            но сверяется с питоновским габаритом
+// verts: N строк супа (эталон Test_model.STL - 562776)
+// triangles: F треугольников (эталон - 187592)
+// sha256_soup: H sha256 тех же байтов, что считает Python: float64 LE, (N,3)
+// segments: M отрезков обводки после упрощения (эталон - 1435)
+// sha256_feature_edges: H sha256 float32 LE (M,2,3)
+// bounds_lo / bounds_hi габарит супа (_verts_bounds), мм: в оракул не входит,
+// но сверяется с питоновским габаритом
 //
 // Те же массивы пишутся в каталог-дамп файлами stl_soup.f64 и
 // stl_feature_edges.f32: питоновская проверка читает их numpy и сверяет
-// поэлементно, а не только по хэшу. Сверку ведёт modules/gcode-viewer/test_stl_core.py.
+// поэлементно, а не только по хэшу. Сверку ведёт.
 //
-// Запуск: stl_probe <файл.stl> <каталог-дампа>   (DLL не нужны: Qt и OCCT в цели нет)
-//         stl_probe --manifest <oracle_manifest.json> [<файл.stl>]
-//         stl_probe --check [<файл.stl>]
+// Запуск: stl_probe <файл.stl> <каталог-дампа> (DLL не нужны: Qt и OCCT в цели нет)
+// stl_probe --manifest <oracle_manifest.json> [<файл.stl>]
+// stl_probe --check [<файл.stl>]
 // Код возврата: 0 - посчитано и записано (или дайджесты сошлись с оракулом);
-//               1 - файл не прочитан или дамп не записан; 2 - аргументы не разобраны.
+// 1 - файл не прочитан или дамп не записан; 2 - аргументы не разобраны.
 //
 // Режим --manifest/--check сверяет дайджесты своих массивов (stl.soup,
 // stl.feature_edges) с oracle_manifest.json без Python и без каталога-дампа:
@@ -148,7 +148,7 @@ int main(int argc, char** argv) {
     const gv::PackedEdges packed = gv::featureEdgesNp(soup, 20.0);
     const std::vector<float> segs = gv::packedPositions(packed);
 
-    // Сериализации те же, что у оракула (numpy .tobytes()): float64 LE (N,3) и
+    // Сериализации те же, что у оракула (numpy.tobytes): float64 LE (N,3) и
     // float32 LE (M,2,3). x86 хранит их little-endian, порядок байтов не меняется.
     const std::vector<unsigned char> soupBytes =
         asBytes(soup.data(), soup.size(), sizeof(double));

@@ -1,6 +1,6 @@
 // manifest_check.h - сверка дайджестов пробников с оракулом oracle_manifest.json.
 //
-// Оракул (modules/gcode-viewer/oracle_dump.py) считает промежуточные массивы
+// Оракул (modules/gcode-viewer/) считает промежуточные массивы
 // питоновского пути и записывает их sha256 в oracle_manifest.json. Этот заголовок
 // даёт пробникам режим сверки с ним напрямую, без Python: пробник считает свой
 // массив и отдаёт сюда (имя записи, dtype, sha256, форма), а получает обратно
@@ -12,7 +12,7 @@
 //
 // Сверка идёт по трём полям записи: sha256 байтов, форма массива и dtype
 // сериализации. Расхождение dtype - такая же находка, как расхождение хэша:
-// манифест записан oracle_dump.py и меняется только осознанно.
+// манифест записан меняется только осознанно.
 #pragma once
 
 #include <cstdio>
@@ -34,7 +34,7 @@
 namespace gv {
 namespace manifest {
 
-// Запись манифеста: поля те же, что пишет oracle_dump.py::_digest.
+// Запись манифеста: поля те же, что пишет::_digest.
 struct Entry {
     std::string dtype;
     std::string sha256;
@@ -360,7 +360,7 @@ private:
     std::map<std::string, Entry> entries_;
 };
 
-// Форма массива в том же виде, что печатает oracle_dump.py: [245, 2, 3].
+// Форма массива в том же виде, что печатает: [245, 2, 3].
 inline std::string shapeText(const std::vector<long long>& shape) {
     std::string out = "[";
     for (std::size_t i = 0; i < shape.size(); ++i) {

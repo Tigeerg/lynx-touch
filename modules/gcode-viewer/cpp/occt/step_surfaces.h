@@ -1,5 +1,5 @@
 // occt/step_surfaces.h - аналитические поверхности вращения STEP: цилиндры и
-// конусы (зеркало modules/gcode-viewer/step_surfaces.py).
+// конусы.
 //
 // Слой читает OCCT напрямую: эталон ходит в те же BRepAdaptor_Surface,
 // BRep_Tool и TopExp_Explorer через питоновские биндинги OCP и платит за это

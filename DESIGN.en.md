@@ -7,13 +7,13 @@ edit both languages in the same pass.
 ## 1. Purpose and place in the product
 
 `gcode-viewer` is the third of the product's four projects (manifest — [projects.json](projects.json)):
-interactive 3D preview of a machine control program. Directory — `modules/gcode-viewer`. Stack: QML + QtQuick3D +
-PySide6; the heavy part is Python.
+interactive 3D preview of a machine control program. Directory — `modules/gcode-viewer`. Stack: QML +
+QtQuick3D + C++ (Qt 6, OCCT). No Python layer is left in the repository.
 
 Dependencies:
-- `numpy` — required on the controller (without it geometry and outlines are computed much slower; the code
-  prints a warning on import);
-- `cadquery-ocp` (OpenCascade, OCP) — needed only to read STEP; without it the part is built from STL.
+- Qt 6 (Core, Gui, Qml, Quick, Quick3D) — the window, the controller QML module and the geometries;
+- OCCT (the OpenCASCADE SDK directly) — STEP reading, tessellation, analytic surfaces;
+- neither numpy nor the Python bindings (`cadquery-ocp`, PySide6) are in the tree: everything is computed in C++.
 
 The viewer's contract with the post processor is the `UI_*` tags in NC comments (`UI_STOCK`, `UI_TOOL`,
 `UI_OP`, `UI_HOLDER`, `UI_ROTATION`, `UI_ORIGIN`, `UI_CAD_MATRIX`). The tags come from `cad-testdata`
@@ -22,40 +22,39 @@ section 7).
 
 ## 2. Entry points
 
-- `build/viewer/gcodeviewer` (`cpp/viewer/main.cpp`) — the canonical viewer launch, no Python: a `QQuickView`
-  over `GcodeViewer3D.qml`, controller QML module `MockBackend` from `build/qmlbackend`. Build — README,
+- `build/viewer/gcodeviewer` (`cpp/viewer/main.cpp`) — the canonical viewer launch: a `QQuickView` over
+  `GcodeViewer3D.qml`, controller QML module `MockBackend` from `build/qmlbackend`. Build — README,
   "Building and running the viewer (C++)".
-- `preview_3d.py` — a checks tool: the same QML loaded through PySide6 (both Python and the built
-  `MockBackend` plugin are required); in offscreen mode it takes the synchronous path and prints `loaded OK`.
-  `smoke_test_qml.py` and the `pnpm guard` watcher run through it.
-- `preview_3d.qml` — a 1024x600 `Window` holding `GcodeViewer3D`.
-- `preview_qml.py` — a launch point of another project (the Qt interface, `apps/qt-interface`); it has nothing
-  to do with the viewer.
+- Entry-point keys: `--smoke` (start-up check, `RESULT: OK (parse-level)`), `--frame <file.png>` (a frame in
+  PNG: image size and the count of non-background pixels). A plain launch loads a program and prints segments.
+- `preview_3d.qml` — a 1024x600 `Window` holding `GcodeViewer3D` (data, edited by hand).
+- The Qt-interface preview (`apps/qt-interface`) is another project; it has no launch point in the repository.
 
-Headless run: set `QT_QPA_PLATFORM=offscreen`.
+Headless run: set `QT_QPA_PLATFORM=offscreen` (set by `--smoke` itself; `--frame` takes the platform from
+outside, because only a live platform draws the Quick3D scene, while offscreen returns a frame without 3D).
 
 ## 3. Architecture: layers
 
 ```
-Python: parser and preparation (pure, no Qt)
-        G-code parsing, decimation, buffer packing
-   |  signals
-Python: controller GcodeToolpath (QObject) and QQuick3DGeometry shapes
+C++ (gvcore): parser and preparation (pure, no Qt)
+        G-code parsing, decimation, buffer packing, stock removal
+   |  QThreadPool + signals
+C++ (MockBackend): controller GcodeToolpath (QObject) and QQuick3DGeometry shapes
    |  QML properties/slots
 QML:    GcodeViewer3D.qml — scene, camera, materials, buttons, animation
    |
 GPU:    QtQuick3D draws triangles and lines
 ```
 
-- **Pure core.** `parse_gcode` and `_prepare_ordered` do not touch Qt and are thread-safe: they can run in any
-  thread. This is what lets the load leave the GUI thread.
-- **Geometries.** Each is a `QQuick3DGeometry` subclass; Python supplies the binary vertex buffer, primitive
-  type, attributes and bounds, and QtQuick3D draws it (one shared pattern: `clear -> setVertexData ->
-  setStride -> addAttribute -> setBounds -> update`).
+- **Pure core.** `gv::parseGcode` and `gv::prepareOrdered` (`cpp/core`) do not touch Qt and are thread-safe:
+  they can run in any thread. This is what lets the load leave the GUI thread.
+- **Geometries.** Each is a `QQuick3DGeometry` subclass (`cpp/qt/gv_geometry.cpp`); C++ supplies the binary
+  vertex buffer, primitive type, attributes and bounds, and QtQuick3D draws it (one shared pattern:
+  `clear -> setVertexData -> setStride -> addAttribute -> setBounds -> update`).
 - **Controller.** `GcodeToolpath` owns the geometries and the properties QML sees (`center`, `radius`,
   `moveLength`, `stages`, `collisions`) and the slots (`sampleAt`, `speedAt`, `isRapidAt`, `refreshTangents`,
   `setToolStage`, `load_gcode_async`).
-- **QML.** Describes the scene and the interaction; machine state lives in Python.
+- **QML.** Describes the scene and the interaction; machine state lives in the C++ controller.
 
 ## 4. Data model and the QML contract
 
@@ -67,54 +66,53 @@ The controller exposes finished data; QML never receives the per-point path list
 - `collisions` — collision ranges with a representative scene point.
 
 A group of values that travels together is a named type (CLAUDE.md): the module-boundary structures live in
-`gv_types.py` (`PathPoint`, `Stage`, `Aabb`, `PackedEdges`, `PathData`, `CylinderSurface`/`ConeSurface`,
+`cpp/core/gv_types.h` (`PathPoint`, `Stage`, `Aabb`, `PackedEdges`, `PathData`, `CylinderSurface`/`ConeSurface`,
 `TangentFamilies`, `MeshTopology`, `ProfilePoint`/`HolderSection`). A dict remains only where QML reads it
 (`toolInfo`, `stages`, `collisions`, `toolCheck`): that is the QML contract, not debt.
 
 ## 5. Coordinate system
 
 The machine works in (X, Y, Z) with Z up; the scene uses Y up. One permutation covers the whole code
-(`_to_3d`): machine `(X, Y, Z) -> scene (X, Z, -Y)`. Units are millimeters, the scene is 1:1 with the part, so
-"scene units == machine mm". Every machine <-> scene conversion goes through this function.
+(`gv::toScene`): machine `(X, Y, Z) -> scene (X, Z, -Y)`. Units are millimeters, the scene is 1:1 with the part,
+so "scene units == machine mm". Every machine <-> scene conversion goes through this function.
 
 ## 6. Threads and asynchrony
 
-Loading (`load_gcode_async`) starts a background thread `_worker_load`:
-1. check the disk cache, otherwise parse the program and prepare the buffers, then write the cache;
+Loading (`load_gcode_async`) starts a task in `QThreadPool::globalInstance()`:
+1. parse the program and prepare the buffers;
 2. signal `toolpathReady` -> the GUI applies the toolpath;
 3. read the model (STEP/STL) in the background;
 4. signal `meshReady` -> the GUI applies the part.
 
-Each result carries a token (`_load_token`, `_edge_token`, `_collision_token`): a stale result (the user opened
-another program) is dropped. The STL outline and the collision scan run in their own threads.
+Each result carries a token (`_load_token`, `_edge_token`, `collisionToken`, atomics): a stale result (the user
+opened another program) is dropped. The STL outline, the collision scan and the stock removal run as their own
+pool tasks.
 
-Two correctness mechanisms:
-- **`_occt`** — a global `RLock` around all OpenCascade calls. OCCT releases the GIL inside heavy calls, and
-  two threads on one `TopoDS_Shape` corrupt memory; the sections are serialized.
-- **CppOwnership** — `QQmlEngine.setObjectOwnership(...)` tells Qt that Python owns the object; without it the
-  QML engine could delete a geometry object.
+There is one correctness mechanism: **the `TopoDS_Shape` is read once** per load (`cpp/occt/step_bundle`), and
+the skin, the edges and the analytic surfaces all work on it - no OCCT calls run in parallel on one shape, so no
+global lock around OCCT is needed.
 
 ## 7. Disk cache
 
-`_cache_key` is a sha1 over the file path, size, modification time, the format version `CACHE_VER` and the
-decimation tolerances. The key selects an `.npz` file (no pickle) in `~/.cache/gcode_viewer`. Kinds: path,
-STL outline, STEP model. Writes are atomic (`os.replace`); the directory is trimmed to `CACHE_MAX_BYTES`. On
-read the arrays are copied (`.copy()`): otherwise numpy keeps a buffer of a closed archive — a use-after-free.
-`CNC_NO_CACHE=1` disables the cache.
+There is no cache: the `.npz` cache (format version, `CNC_NO_CACHE`, trimming by a size cap) was a Python tool
+and was removed with the Python layer. It was never ported to the C++ path: `bench_probe` measures the recompute
+cost, and the gain was never proven.
 
 ## 8. Part model: STEP and STL
 
 Next to the program, a `.step`/`.stp` is looked up, otherwise a `.stl`.
 
-**STEP (primary path).** The B-rep is read once (`_step_shape`) and used for both the skin and the analytic
-data. `load_step_model` tessellates the surfaces (deflection 0.05 mm) and extracts the true B-rep edges
-(cylinder seams are filtered out as form lines). `_smooth_face_normals` builds crease-aware normals.
-`load_step_surfaces` separately collects analytic cylinders and cones (axis, radius, arc) — the silhouette
+**STEP (primary path).** The B-rep is read once (`gv::stepBundle`) and used for both the skin and the analytic
+data. `gv::loadStepModel` (`cpp/occt/step_import.cpp`) tessellates the surfaces (deflection 0.05 mm) and
+extracts the true B-rep edges (cylinder seams are filtered out as form lines). `gv::smoothFaceNormals`
+(`cpp/core/normals.cpp`) builds crease-aware normals.
+`gv::loadStepSurfaces` (`cpp/occt/step_surfaces.cpp`) separately collects analytic cylinders and cones (axis,
+radius, arc) — the silhouette
 needs them.
 
 **STL (fallback).** A triangle soup without topology; the outline is a dihedral-angle heuristic
-(`_feature_edges`, threshold 20 degrees). Its edges arrive as chains of sub-millimetre links (the median
-edge of Test_model.STL is 0.07 mm), so the chains are welded and simplified (`_simplify_edge_chains`,
+(`gv::featureEdges`, threshold 20 degrees). Its edges arrive as chains of sub-millimetre links (the median
+edge of Test_model.STL is 0.07 mm), so the chains are welded and simplified (`gv::simplifyEdgeChains`,
 tolerance 0.15 mm): a ribbon is built from the two ends of a segment, and on a sub-pixel link its direction
 is noise. **Limitation:** the heuristic only sees sharp transitions. B-rep face boundaries where the surfaces
 meet tangentially (blend boundaries, seams) cannot be told from triangulation edges by angle, so the STL
@@ -123,9 +121,9 @@ threshold was swept: 20 -> 2 degrees adds about 290 segments and does not reach 
 while below 1.5 degrees the outline explodes tenfold on curved-surface facets.
 
 **Shell orientation.** The sign of a normal sets the shading of a face, so the shell is turned outward once
-per model - `_orient_shell_outward` (for a closed solid the area-weighted normals point away from the
+per model - `gv::orientShellOutward` (for a closed solid the area-weighted normals point away from the
 centroid). A per-face flip about the centroid is not applied: on concave regions it turns the normals of
-pockets and holes inward. Guarded by `test_normals_orientation.py`.
+pockets and holes inward. Guarded by `step_probe --manifest` (the `step.normals` digest).
 
 ## 9. Outline and silhouette
 
@@ -140,19 +138,19 @@ with a small shift toward the camera. That gives hidden line removal for free, w
 **Ribbons instead of GL_LINES.** Real GL_LINES are always 1 px and antialias poorly; each edge is drawn as two
 triangles (`HLRLineGeometry`) whose width the vertex shader keeps at a constant number of pixels.
 
-**Tangent families.** `_tangent_families` is precomputed once per load: cylindrical faces are grouped by axis
-and radius; arc coverage is measured on the skin mesh (`ARC`) and generator lines that coincide with a static
-edge are collected (`DROP`). `_tangent_from_families` computes the tangents on every camera move (fast, under a
-millisecond), dropping duplicates of the static edges. This complexity is justified: the naive silhouette
-produced "double lines that drift off the contour".
+**Tangent families.** `gv::tangentFamilies` (`cpp/core/tangents.cpp`) is precomputed once per load: cylindrical
+faces are grouped by axis and radius; arc coverage is measured on the skin mesh (`ARC`) and generator lines that
+coincide with a static edge are collected (`DROP`). `gv::tangentFromFamilies` computes the tangents on every
+camera move (fast, under a millisecond), dropping duplicates of the static edges. This complexity is justified:
+the naive silhouette produced "double lines that drift off the contour".
 
 ## 10. Tool and holder
 
-The tool is built procedurally from `UI_TOOL`: `_tool_profile` builds a 2D profile `(radius, height)` for the
-cutter type (flat, ball, bull, chamfer/taper, drill, ...), and `ToolGeometry` revolves it into a solid of
-revolution. The outline is an inverted hull (an enlarged copy that renders only its far faces). The holder is a
-coarse ER20 model (nut plus body) from `_holder_solid_profile`; the stick-out may come from `UI_HOLDER`. The
-tool position is `sampleAt(pathDist)`.
+The tool is built procedurally from `UI_TOOL`: `gv::toolProfile` (`cpp/core/tooling.cpp`) builds a 2D profile
+`(radius, height)` for the cutter type (flat, ball, bull, chamfer/taper, drill, ...), and `ToolGeometry` revolves
+it into a solid of revolution. The outline is an inverted hull (an enlarged copy that renders only its far
+faces). The holder is a coarse ER20 model (nut plus body) from `gv::holderProfile`; the stick-out may come from
+`UI_HOLDER` (`gv::toolExposedLength`). The tool position is `sampleAt(pathDist)`.
 
 ## 11. Animation, collisions, tool check
 
@@ -160,49 +158,48 @@ tool position is `sampleAt(pathDist)`.
   not depend on FPS. Speed is 1:1 with the machine: feed `F` (mm/min -> mm/s), rapids at a fixed rate.
 - **Hiding the traveled path.** A custom material `toolpath.vert/frag` discards fragments whose path parameter
   is below the progress (`cutoff`); there is a fade of the far section and a stages mode.
-- **Collisions.** `_scan_collisions`: a background check of the holder cylinders against the stock bounding
-  box at a 1 mm step; the result becomes red markers in the scene.
-- **Tool check.** `_tool_check_report` compares the program tool with the controller tool table (numbers,
-  stick-out). It is a skeleton: the table is fed from outside (`setMachineTools`).
+- **Collisions.** `gv::scanCollisions` (`cpp/core/collision.cpp`) is driven in the background by the controller:
+  a check of the holder cylinders against the stock bounding box at a 1 mm step; the result becomes red markers
+  in the scene.
+- **Tool check.** `toolCheck` (`cpp/core/collision.cpp`) compares the program tool with the controller tool table
+  (numbers, stick-out). It is a skeleton: the table is fed from outside (`setMachineTools`).
 
 ## 12. Known problems and technical debt
 
 Architecture:
-- `mock_backend.py` is a 107-line facade that re-exports the split modules (`gv_types`, `gcode_parser`,
-  `step_import`, `tangents`, `collision`, `geometry`, `controller` and others); the monolith split is done
-  (`PORT-CPP.md` §7) and the outside code and QML still see the old names.
+- the Python layer is gone entirely: the former `mock_backend` facade and the modules it split the monolith into
+  are no longer in the repository; the C++ layer is built from the same split (`PORT-CPP.md` §7).
 - `GcodeViewer3D.qml` (about 1000 lines) holds JS camera, projection and stage logic; it belongs in backend
   slots.
 
 Code against the CLAUDE.md rules:
-- module-boundary structures are no longer tuples/dicts: they live in `gv_types.py` (0.13.13); a dict remains
-  only where QML reads it (`toolInfo`, `stages`, `collisions`, `toolCheck`) — a contract, not debt;
+- module-boundary structures are no longer tuples/dicts: they live in `cpp/core/gv_types.h`; a dict
+  (QVariantMap) remains only where QML reads it (`toolInfo`, `stages`, `collisions`, `toolCheck`) — a contract,
+  not debt;
 - the display toggles (`showPartVisible`, `xray`, `showBrepEdges`, ...) are a run of booleans, not a mode;
 - many magic numbers without a name or unit;
 - development-history comments (the rules forbid them);
-- mixed comment languages (Russian and English);
-- no type annotations.
+- mixed comment languages (Russian and English).
 
 Checks:
-- tests depend on private functions (fragile under refactoring);
+- probes compare array digests against the reference (`--manifest`) rather than private functions: the
+  fragility of the former Python tests is gone, but the probe prints no "why" on a mismatch;
 - `refreshTangents` is wrapped in an outer `try/except Exception: pass` — an unrelated per-frame error
   stays invisible; the C++ path failures report themselves;
-- the live frame checks (`test_solid_skin.py`, `test_ribbon_width.py`) need the reference stand: the
-  measurements were taken on another machine and on the development machine they are red on a clean `HEAD`
-  (11792 px against a threshold of 10500; 0.00 px against 2.0). The guard does run them as stand checks: they
-  execute under `CNC_LIVE_FRAMES=1` (a live window, hardware GL), otherwise they are a `skip` with the reason.
-  The thresholds are still tied to the stand — calibrating them for other GPUs remains debt.
+- the live frame checks that counted pixels (solid skin and ribbon width) are removed with the Python layer:
+  the pixel count was a Python-era check, while the geometry is proven by the analytic cases (`stocksurface`,
+  `stockshell`, `stock_bind`). The acceptance picture is taken by `gcodeviewer --frame`.
 
 Remaining after the C++ port (open, with measurements):
-- the panel `apps/qt-interface/main.qml` (and the generated `preview.qml`) compares hotkeys by
+- the panel `apps/qt-interface/main.qml` (and `preview.qml`) compares hotkeys by
   `nativeVirtualKey`, which the QML `KeyEvent` type does not expose at all (verified in the viewer: the
-  property is `undefined`), so the panel hotkeys depend on the layout; fixing it needs regenerating
-  `preview.qml` (`apps/qt-interface/gen_preview_qml.py`) and its own `qt-interface` version;
+  property is `undefined`), so the panel hotkeys depend on the layout; fixing it needs a hand edit of
+  `preview.qml` (the generator is gone) and its own `qt-interface` version;
 - the C++ entry point `gcodeviewer.exe` does not accept an absolute NC path with Cyrillic characters:
   the arguments are read as `QString::fromLocal8Bit(argv[i])`, so `GetCommandLineW`/`CommandLineToArgvW`
   is needed;
-- the `.npz` disk cache was not ported to the C++ path and stays a development tool for the Python
-  reference;
+- the C ABI bridge `gvbridge.dll` and the shim `gvqtshim.dll` still build, but their only consumer (the Python
+  ctypes shim) is gone: the targets await a decision - drop them or keep them as an experiment stub;
 - the optimisations from `PORT-CPP.md` §11: the NC parse (176 ms), the STEP shape cache in the plugin,
   quality presets and level auto-detection, trimming the OCCT build, parallelism of the cold stages.
 
@@ -229,8 +226,9 @@ Performance on weak hardware (Intel Atom + Nvidia Ion):
   hard-coded and do not depend on the hardware;
 - the STEP soup and normals are materialised 6-7 times on the way to the buffers: about 20-25 MB of
   transient copies per Test_model load;
-- `gvqtgeom` (the C++ Qt geometries) builds but is wired only to a probe — QML still runs the Python
-  geometries; `Eigen` is not used in the C++ at all (bit-for-bit requires a hand-written summation order).
+- `gvqtgeom` (the C++ Qt geometries) is wired into the `MockBackend` QML module: there are no Python geometries,
+  and the classes match the old contract (`stride` is frozen by the digests); `Eigen` is not used in the C++ at
+  all (bit-for-bit requires a hand-written summation order).
 
 ## 13. Directions for improvement
 
@@ -295,8 +293,8 @@ Performance and hardware adaptivity:
   45398 -> 7856 / 175808 / 4132 triangles, silhouette topology 20.4 -> 3.8 / 83.3 / 2.0 ms, tangent families
   17.1 -> 3.1 / 113.2 / 1.9 ms;
 - the level is chosen by the `CNC_QUALITY` environment variable (case-insensitive, like `CNC_CPP` and
-  `CNC_SILHOUETTE`) and by the `root.quality` property; it is set by the entry point (`cpp/viewer/main.cpp`,
-  `preview_3d.py`, `smoke_test_qml.py`, `render_probe.py`), while the `Q` key cycles the levels; the NC parse and
+  `CNC_SILHOUETTE`) and by the `root.quality` property; it is set by the entry point (`cpp/viewer/main.cpp`),
+  while the `Q` key cycles the levels; the NC parse and
   the collision scan are not changed by the level, their numbers stay in the environment (`CNC_DECIMATE_TOL`,
   `CNC_ARC_DECIMATE_TOL`, `CNC_COLLISION_STEP`);
 - auto-detection: the OpenGL version and renderer string via `QOpenGLContext`, a software rasterizer hint
@@ -309,12 +307,10 @@ Performance and hardware adaptivity:
   [`PORT-CPP.en.md`](PORT-CPP.en.md).
 
 Engineering:
-- split the monolith and introduce a single `dataclass` contract QML <-> Python;
-- `dataclass` instead of tuples/dicts, with type hints: module-boundary structures are in place
-  (`gv_types.py`, 0.13.13); core type annotations remain;
-- a performance gate in `pnpm guard` via `bench_viewer.py`;
+- a single QML <-> C++ contract: module-boundary structures live in `cpp/core/gv_types.h`, QML slots are typed;
+- a performance gate in `pnpm guard` via `bench_probe`;
 - centralized logging;
-- port the compute core to C++ (the OCCT SDK directly instead of bindings) — estimate, risks and stages in
+- the compute core is ported to C++ (the OCCT SDK directly instead of bindings) — estimate, risks and stages in
   [`PORT-CPP.md`](PORT-CPP.md) / [`PORT-CPP.en.md`](PORT-CPP.en.md).
 
 ### Material removal simulation (height map, in the background)
@@ -386,14 +382,14 @@ field bytes.
   skipping `G0` would show material that is already cut away. That a rapid into the stock is a crash is the
   collision scan's business, not the simulation's.
 - It runs in the background like the scan: `QThreadPool::globalInstance()` and its own token next to
-  `_collision_token`, the result returns to the GUI thread through `QMetaObject::invokeMethod`, a stale one is
+  `collisionToken`, the result returns to the GUI thread through `QMetaObject::invokeMethod`, a stale one is
   dropped. The GUI never waits: the field may lag the tool — that is the price of the background, and it has to
   be measured.
 - The field is monotone along the path and accumulates from 0 to the travelled distance. A rewind does not undo
   it: the field is rebuilt from zero by the same background path, and while it is being computed the last
   complete field is shown, never a mixture.
-- Nothing goes to the disk cache: the key would have to grow the stock, the node size and the profiles
-  (`_cache_key`, `CACHE_VER`), and the gain is unproven — the recompute cost is measured by the same probe.
+- Nothing goes to the disk cache: the key would have to grow the stock, the node size and the profiles, and the
+  gain is unproven — the recompute cost is measured by the same probe.
 
 **How it is drawn.** The grid is extruded by a vertex shader from a dynamic texture — exactly as the line above
 says.
@@ -424,38 +420,35 @@ says.
 - It must not slow the orbit: no per-frame work, no per-frame texture upload, no JS loop over hundreds of
   thousands of vertices. But the grid is triangles in the frame, and its cap above is part of the orbit budget
   (`PORT-CPP.md` §11: the orbit is cheap, the time goes into the cold load and heavy features).
-- It must not touch the bit-exact contract: the field is in neither `PathData`, nor `PackedStream`, nor the
-  geometry buffers, nor `oracle_manifest.json`; `prepareOrdered`, the parse and the packing stay as they are.
-  The field accumulates float minima, so sha256 is no use for it at all; if a Python mirror ever appears, it
-  must be compared with a millimetre tolerance, and that exception to the general rule is named, not implied.
-- It must not require Python: the computation is in the C++ core and QML draws it. The Python entry points
-  (`preview_3d.py`, `smoke_test_qml.py`) stay without the field: QML must survive a missing property (no field
-  shown, the load unchanged). The cache and the reference checks never see the field.
+- It must not touch the bit-exact contract: the field is in neither `PathData`, nor `PackedStream`
+  (`cpp/core/gv_types.h`), nor the geometry buffers, nor `oracle_manifest.json`; `gv::prepareOrdered`, the parse
+  and the packing stay as they are. The field accumulates float minima, so sha256 is no use for it at all; the
+  comparison uses a millimetre tolerance (`stock_sim_probe`), and that exception to the general rule is named,
+  not implied.
+- It must not require an interpreter: the computation is in the C++ core (`cpp/core/stock_sim`) and QML draws
+  it. The cache and the reference checks never see the field.
 
 **Checks and what to measure.**
 
-- These stay green: `test_gcode_core.py` (the path sha256), `test_normals_golden.py`, `test_geometry_core.py`
-  (the six geometry buffers, their `stride` is frozen), `test_controller_cpp.py`, `test_cpp_bridge.py`,
-  `oracle_dump.py`, the offscreen `loaded OK` and `RESULT: OK`. The seventh geometry is not part of the six-way
-  comparison set.
-- The new check of the same layer is a `cpp/stock_probe.cpp` probe with a thin wrapper, like the others: it cuts
-  a synthetic stock with a known path and compares the field against analysis, not against a sha256. Proposed
-  cases: (1) a plunge with no motion — the field equals the profile `h(r)`, tolerance about 1e-12 (the value at
-  a node is exact); (2) two plunges — a per-node `min`; (3) a pass to the side — nodes outside the swept band
-  are untouched; (4) the field is never above the stock top and never rises along the path; (5) a recompute
-  after a reset gives the same bytes — the rewind rests on that determinism. A millimetre tolerance is needed
-  only where a node does not coincide with the truth (a curved wall between nodes), and it is derived from the
-  node size, not tuned until green.
-- Measurements: `bench_probe` — a new phase (`stock_sim`) next to `collision_scan`; the frame with and without
-  the field, per level — the probe's `frame` lines and `bench_viewer.py` (`hot` mode), on weak hardware
-  mandatory. The live numbers to watch: the collision scan 2.1 ms at a 1 mm step (i5-10400F), the NC parse 174
-  ms and `ngc_parse` 69.7 ms (i5-13420H), the cold load about 690 ms, the mesh silhouette 0.0791-0.0868 ms,
-  the skin 45398 triangles (`med`), `stock_px 67235` (`render_probe.py`).
+- These stay green: `gcode_probe --manifest` (the path and the prepared arrays), `step_probe --manifest` (the
+  normals), `geometry_probe --manifest` (the six geometry buffers, their `stride` is frozen), the offscreen
+  `loaded OK` and `RESULT: OK`. The seventh geometry is not part of the six-way comparison set.
+- The check of the same layer is `stock_sim_probe` (analysis of the field, not a sha256). Cases: (1) a flat
+  cutter over a flat top — a constant depth wherever the tool passed; (2) a ball cutter — a round valley (a true
+  sphere); (3) a cone — a conical valley; (4) a cut above the stock — the field does not change; (5) a column
+  caught only by a half-node step; (6) `stock_bind` — the field bound to the toolpath and reproducible bytes;
+  (7) `stocksurface` — the top mesh of the field against the analysis of a flat plunge; (8) `stockshell` — the
+  box shell without the top face. The tolerance is derived from the node size, not tuned until green.
+- Measurements: `bench_probe` — the phases next to `collision_scan`; the cost of the field — the `phase
+  stock_sim_*` lines of `stock_sim_probe` itself (0.5 and 0.2 mm nodes); the frame with and without the field —
+  the `frame` lines of `bench_probe`, on weak hardware mandatory. The live numbers to watch: the collision scan
+  2.1 ms at a 1 mm step (i5-10400F), the NC parse 174 ms and `ngc_parse` 69.7 ms (i5-13420H), the cold load
+  about 690 ms, the mesh silhouette 0.0791-0.0868 ms, the skin 45398 triangles (`med`).
 - Proposals, not measurements: the 0.5/0.5/0.2 mm nodes, the caps 256/512/1024, the step = node/2, the R32F
   format, the cadence about 10 Hz, `safe` not drawing at all, refusing the lollipop and the dovetail, the 628
-  KiB and 3.82 MiB of memory, the cap triangles 130 000/522 000/2 093 000. `render_probe.py` prints
-  `stock_px` — once the surface is drawn that number will move, and the move is recorded deliberately rather
-  than silently re-approved.
+  KiB and 3.82 MiB of memory, the cap triangles 130 000/522 000/2 093 000. The number of surface pixels is
+  printed by `--frame` (`non-background pixels`) — once the surface is drawn that number will move, and the move
+  is recorded deliberately rather than silently re-approved.
 - Not taken before a prototype: whether the ION samples an R32F texture in the vertex stage on the OpenGL 3.3
   branch; what a whole-texture `update()` costs on a narrow bus; what an opaque surface does to path visibility
   (a screenshot); whether to draw the whole grid or only the touched rectangle (the latter is cheaper in
@@ -464,18 +457,12 @@ says.
 
 ## 14. Checks and tests
 
-Before committing (VERSIONING.md, section 5):
-```
-python -m py_compile modules/gcode-viewer/mock_backend.py
-set QT_QPA_PLATFORM=offscreen
-python modules/gcode-viewer/preview_3d.py "data/cad-testdata/Test_model.ngc"     # offscreen -> loaded OK
-python modules/gcode-viewer/smoke_test_qml.py                      # offscreen -> RESULT: OK
-python modules/gcode-viewer/test_tangent_policy.py                 # silhouette policy
-python modules/gcode-viewer/test_normals_golden.py                 # normals
-```
+Before committing — the full list is in VERSIONING.md, section 5 (the build `scripts/build-viewer.ps1`, the six
+probes with `--manifest`, `version_probe`, `stock_sim_probe`, `stock_bind_probe`, `--smoke`, the offscreen run,
+`keyprobe`, `--frame`).
 
-Performance — `bench_viewer.py` (`hot` mode runs the interactive path only). Numbers enter a comment only when
-they are measured.
+Performance — `bench_probe` (cold-load phases and frames) and `stock_sim_probe` (the cost of the stock field).
+Numbers enter a comment only when they are measured.
 
 ## 15. Directions for panel development on the 3D base
 
@@ -488,9 +475,9 @@ pain today, what the operator does, and what the code rests on — and what is s
    - Operator: clicks a face of the loaded STEP part; the base recognises the geometry (a hole's cylindrical wall ->
      the diameter, two parallel faces -> a boss width), picks the matching probing macro, fills the approach and shows
      the proposed probe path in 3D before Cycle Start.
-   - Rests on: the analytic faces are already extracted — `step_import.py` (`load_step_model`, tessellation,
-     `GeomAbs_Plane`), `step_surfaces.py` (`load_step_surfaces`, `GeomAbs_Cylinder`/`GeomAbs_Cone`), the
-     `CylinderSurface`/`ConeSurface` types in `gv_types.py`, the C++ mirror `cpp/occt/step_surfaces.cpp`; the probing
+   - Rests on: the analytic faces are already extracted — `cpp/occt/step_import.cpp` (`gv::loadStepModel`, tessellation,
+     `GeomAbs_Plane`), `cpp/occt/step_surfaces.cpp` (`gv::loadStepSurfaces`, `GeomAbs_Cylinder`/`GeomAbs_Cone`), the
+     `CylinderSurface`/`ConeSurface` types in `cpp/core/gv_types.h`, the C++ mirror `cpp/occt/step_surfaces.cpp`; the probing
      macros — `PROBE_CYCLES`/`computeProbeResult` (`lib/cnc/probe.ts`). Required: a ray face pick in
      `GcodeViewer3D.qml` (today `MouseArea` is orbit and pan, there is no ray), mapping a face to a macro, and drawing
      the proposed probe path.
@@ -500,18 +487,18 @@ pain today, what the operator does, and what the code rests on — and what is s
    - Operator: scrubs the 3D trajectory to the break point; the base reads the context (active tool, spindle rpm, work
      offset), builds a safe approach tail (raise Z to machine zero -> spindle and coolant -> rapid X/Y above the start
      point -> descend to clearance -> continue) and draws the tail in 3D before the start.
-   - Rests on: the path data and stages exist — `PathData`/`Stage` (`gv_types.py`), `sampleAt`/`stages`
-     (`controller.py`), `setToolStage`/`_stage_tools`, the stick-out `_tool_exposed_length` (`tooling.py`); the
-     background pass and token — `_scan_collisions`/`_collision_token` (`collision.py`, `controller.py`), the stock
+   - Rests on: the path data and stages exist — `PathData`/`Stage` (`cpp/core/gv_types.h`), `sampleAt`/`stages`
+     (`cpp/qmlbackend/gv_toolpath.cpp`), `setToolStage`/`stageTools`, the stick-out `gv::toolExposedLength` (`cpp/core/tooling.cpp`); the
+     background pass and token — `gv::scanCollisions`/`collisionToken` (`cpp/core/collision.cpp`, `cpp/qmlbackend/gv_toolpath.cpp`), the stock
      field — `cpp/core/stock_sim.{h,cpp}`. Required: the viewer parses neither the `S` speed nor the work offset
-     `G54`..`G59` (`gcode_parser.py` knows motion and planes only), and the generation and drawing of the approach tail
+     `G54`..`G59` (`cpp/core/gcode_parser.cpp` knows motion and planes only), and the generation and drawing of the approach tail
      are missing too.
 
 3. **Selective machining (a 3D window).**
    - Pain: otherwise a 40-minute program is run in full, or a CAM programmer is asked to cut out a fragment.
    - Operator: holds Shift and drags a 3D box around the problem area; the base filters the trajectory and keeps the
      program lines that intersect the volume — only that corner is re-machined.
-   - Rests on: the path geometry and bounds exist — `PathData.pts`/`cum`, `Aabb` (`gv_types.py`), the travelled
+   - Rests on: the path geometry and bounds exist — `PathData.pts`/`cum`, `Aabb` (`cpp/core/gv_types.h`), the travelled
      distance `pathDist` (`GcodeViewer3D.qml`). Required: selecting a volume in the scene and a filter by volume, and
      the link from a segment to a program line must be built from scratch — the viewer keeps no line numbers, and
      "linking 3D and the NC line" is listed as not done in §13.
@@ -521,7 +508,7 @@ pain today, what the operator does, and what the code rests on — and what is s
    - Operator: after the first part sees the trajectory coloured by load (green — normal, yellow — rising, red — peak
      and chatter) from the spindle load and the actual feed, and edits the program.
    - Rests on: the trajectory and the programmed feed exist — `toolpath.vert`/`frag` already colours fragments by
-     `cutoff`/`pathDist`, `speedAt` (`controller.py`). Required: no layer reads the live machine state;
+     `cutoff`/`pathDist`, `speedAt` (`cpp/qmlbackend/gv_toolpath.cpp`). Required: no layer reads the live machine state;
      `spindle.0.load` and the actual cutting speed exist only as a list of pins in `HAL_GROUPS`
      (`lib/cnc/service-data.ts`) — a static reference, not a data source; the panel (`MachineState`) is a mock with
      `feedOverride`, and the HAL link is not built.
@@ -543,18 +530,18 @@ pain today, what the operator does, and what the code rests on — and what is s
      and marks red where the holder would reach the jaws.
    - Rests on: the touch is already modelled — `Touch`/`probeLocalPosition`/`localToMachine`/`PROBE_CYCLES`
      (`lib/cnc/probe.ts`), the cycle run — `PROBE_STEPS` and the measure step in `machine.ts`; STEP is read
-     (`load_step_model`, `step_import.py`), the collision scan — `_scan_collisions`/`_holder_profile`
-     (`collision.py`, `tooling.py`). Required: a slot for a second STEP model (the viewer has one today,
-     `_model_path` in `controller.py`), snapping the fixture model to the touch, and a "holder against fixture"
-     scan: today `_scan_collisions` compares the holder cylinders with the stock bounds, not with the fixture body.
+     (`gv::loadStepModel`, `cpp/occt/step_import.cpp`), the collision scan — `gv::scanCollisions`/`gv::holderProfile`
+     (`cpp/core/collision.cpp`, `cpp/core/tooling.cpp`). Required: a slot for a second STEP model (the viewer has one today,
+     `modelPath` in `cpp/qmlbackend/gv_toolpath.cpp`), snapping the fixture model to the touch, and a "holder against fixture"
+     scan: today `gv::scanCollisions` compares the holder cylinders with the stock bounds, not with the fixture body.
 
 7. **The "ghost" of the future (look-ahead projection).**
    - Pain: on a first part the operator holds the e-stop and stares through the coolant — the next move is not
      visible.
    - Operator: sees a semi-transparent ghost tool running along the trajectory 3-5 s ahead of the real one, so
      the next manoeuvre is visible before the machine makes it in iron.
-   - Rests on: the whole program is parsed ahead (`parse_gcode` -> `_prepare_ordered`, `path_prep.py`), the path
-     is fully in the samples (`_sample_pts`/`cum`), the position comes from `sampleAt`/`speedAt` (`controller.py`),
+   - Rests on: the whole program is parsed ahead (`gv::parseGcode` -> `gv::prepareOrdered`, `cpp/core/path_prep.cpp`), the path
+     is fully in the samples (`pathSamples`/`cum`), the position comes from `sampleAt`/`speedAt` (`cpp/qmlbackend/gv_toolpath.cpp`),
      and QML already drives `pathDist` and `path.playing` (`GcodeViewer3D.qml`). Required: a second tool mesh at
      its own `sampleAt(pathDist + lead)`, where the lead is the path covered in 3-5 s by `speedAt`, and its
      semi-transparent drawing.
@@ -587,8 +574,8 @@ pain today, what the operator does, and what the code rests on — and what is s
       chips instead of spindle minutes.
     - Rests on: the life and the run time — `Tool.life` (`types.ts`), `toolTime` on `TICK` and `TOOL_RESET_LIFE`
       (`machine.ts`), the `TOOL_LIFE` report (`prog.ts`); the stock height field is already computed —
-      `StockField`/`simulateStock` (`cpp/core/stock_sim.{h,cpp}`), the tool of a stage — `_stage_tools`/`Stage`
-      (`controller.py`, `gv_types.py`). Required: volume from the height field per stage (or OCCT booleans) and
+      `StockField`/`gv::simulateStock` (`cpp/core/stock_sim.{h,cpp}`), the tool of a stage — `stageTools`/`Stage`
+      (`cpp/qmlbackend/gv_toolpath.cpp`, `cpp/core/gv_types.h`). Required: volume from the height field per stage (or OCCT booleans) and
       debiting `Tool.life` in cm³.
 
 11. **Emergency recovery wizard.**
@@ -610,8 +597,8 @@ pain today, what the operator does, and what the code rests on — and what is s
       loads the 3D profile of a complex tool (taper, bull-nose, lollipop), and the manual entry goes away.
     - Rests on: the tool table — `Tool` (`types.ts`), presetter measurement — `TOOL_PROBE` (`machine.ts`) and
       `sensorLength`/`BROKEN_TOL_MM` (`tool-check.ts`); the tool profile is already built from the `UI_TOOL`
-      fields — `_tool_profile` (`tooling.py`: FLAT, BALL, BULL, CHAMFER, TAPER, DRILL, TAP, LOLLIPOP, DOVETAIL, PROBE),
-      the fields are parsed by `parse_ui_tool` (`ui_tags.py`). Required: code input (QR/RFID), a tool database
+      fields — `gv::toolProfile` (`cpp/core/tooling.cpp`: FLAT, BALL, BULL, CHAMFER, TAPER, DRILL, TAP, LOLLIPOP, DOVETAIL, PROBE),
+      the fields are parsed by `parse_ui_tool` (`cpp/core/ui_tags.cpp`). Required: code input (QR/RFID), a tool database
       and turning its record into `UI_TOOL` fields; there is neither a scanner nor a database in the tree.
 
 13. **Kinematically accurate time prediction.**
@@ -622,8 +609,8 @@ pain today, what the operator does, and what the code rests on — and what is s
     - Rests on: the panel already shows a remaining estimate — `remainingLength` (`toolpath.ts`) and `restMs` in
       `program-screen.tsx` divide the remaining path by `programFeed` (`machine.ts`), while the `feedOverride`
       correction acts on the current move only (`motionSpeed`, `coords.ts`); the parser reads the modal `F`
-      (`feed`/`_to_mms`, `speedAt` — `gcode_parser.py`, `controller.py`).
-      Required: a planning pass over accelerations and blending; no layer reads them (`gcode_parser.py` parses
+      (`feed`/`_to_mms`, `speedAt` — `cpp/core/gcode_parser.cpp`, `cpp/qmlbackend/gv_toolpath.cpp`).
+      Required: a planning pass over accelerations and blending; no layer reads them (`cpp/core/gcode_parser.cpp` parses
       motion, planes, G90/91 and cycles only, and `MAX_ACCELERATION`/`STEPGEN_MAXACCEL` exist only as reference
       parameters in `service-data.ts`), and the estimate is not recomputed from the feed override.
 

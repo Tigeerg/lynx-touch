@@ -1,4 +1,4 @@
-// core/gcode_parser.cpp - разбор управляющей программы (зеркало gcode_parser.py).
+// core/gcode_parser.cpp - разбор управляющей программы.
 //
 // Точность важнее краткости: питоновское ядро сверяется побайтово
 // (oracle_manifest.json, ключи path.*), поэтому здесь сохранены порядок операций,
@@ -107,7 +107,7 @@ void planeOffsets(Plane plane, char& lu, char& lv) {
     else { lu = 'J'; lv = 'K'; }
 }
 
-// Слова строки: буква и число (-? \d* .? \d+) - питоновский _WORD_RE.findall.
+// Слова строки: буква и число (-? \d*.? \d+) - питоновский _WORD_RE.findall.
 // Число - не копия, а срез в буфере строки: строку никто не меняет и не
 // перевыделяет, пока значение читается (иначе срез повис бы).
 struct Word {
@@ -148,7 +148,7 @@ std::vector<Word> findWords(const std::string& line) {
     return out;
 }
 
-// Питоновский text.splitlines(): границы строк \n, \r, \r\n, \v, \f, 0x1c-0x1e.
+// Питоновский text.splitlines: границы строк \n, \r, \r\n, \v, \f, 0x1c-0x1e.
 // 0x85 не считается границей: файл читается как байты, и одиночный 0x85 внутри
 // UTF-8 был бы половиной чужого символа.
 std::vector<std::string> splitLines(const std::string& text) {
@@ -625,7 +625,7 @@ ParseResult parseGcode(const std::string& text) {
 
         for (const Word& w : words) {
             const char letter = w.letter;
-            // Значение читают только эти буквы. У прочих (M, S, T, ...) оно не
+            // Значение читают только эти буквы. У прочих (M, S, T,...) оно не
             // используется, и число для них не разбирается - на Test_model.ngc
             // это 110587 пропусков из 342038 слов.
             if (letter != 'G' && letter != 'X' && letter != 'Y' && letter != 'Z'

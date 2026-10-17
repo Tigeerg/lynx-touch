@@ -19,7 +19,7 @@
  * (focus=true), то есть путь доставки тот же.
  *
  * Запуск (Qt в PATH; картинка не нужна, платформа offscreen ставится сама):
- *   build\viewer\keyprobe.exe data\cad-testdata\Test_model.ngc [ru,en]
+ * build\viewer\keyprobe.exe data\cad-testdata\Test_model.ngc [ru,en]
  * Код возврата: 0 - все клавиши сработали, 1 - нет, 2 - нечего проверять.
  */
 #include <QChar>

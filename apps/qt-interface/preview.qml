@@ -3,9 +3,9 @@ import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 
 /**
- * DESKTOP PREVIEW of the CNC Operator Panel (auto-generated from main.qml).
- * Wraps the Item skeleton into a Window so PySide6/PyQt5 can display it.
- * Keep main.qml as the canonical source; regenerate via gen_preview_qml.py.
+ * DESKTOP PREVIEW of the CNC Operator Panel. Ручной файл: генератор удалён вместе
+ * с питоновским слоем, правится как обычный QML. main.qml остаётся источником.
+ * visible: true нужен запуску через `qml` (Qt): невидимое окно рантайм не держит.
  */
 import QtQuick3D
 import MockBackend 1.0
@@ -24,6 +24,7 @@ Window {
     id: root
     width: 1024
     height: 600
+    visible: true
 
     title: "CNC Operator Panel — VMC-850 (QtQuick preview)"
     // Активный экран (для QtVCP связать с логикой). Значения: pos, prog, ...

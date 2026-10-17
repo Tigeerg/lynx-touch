@@ -19,12 +19,6 @@ tsconfig.tsbuildinfo
 # каталог сборки C++ (плагин CNC.Edges и пробник)
 build/
 
-# Python
-__pycache__/
-*.py[cod]
-# диагностический кадр render_probe
-modules/gcode-viewer/probe_render.png
-
 # Архивы старых релизов и локальные/служебные артефакты
 ZIP/
 .kilo/worktrees/

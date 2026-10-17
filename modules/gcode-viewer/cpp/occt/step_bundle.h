@@ -2,7 +2,7 @@
 // STEP, одним вызовом и без Qt: суп вершин, crease-aware нормали и рёбра до
 // склейки.
 //
-// Нужен C-ABI-мосту gvbridge (cpp/bridge/gv_bridge.cpp): шим gv_cpp.py берёт
+// Нужен C-ABI-мосту gvbridge (cpp/bridge/gv_bridge.cpp): шим берёт
 // этот набор и повторяет остальной путь Python (склейку рёбер и упаковку
 // буфера), поэтому буфер обводки остаётся бит-в-бит таким же, как у эталона.
 #pragma once
@@ -30,7 +30,7 @@ StepBundle loadStepBundle(const std::string &utf8Path, double deflection = 0.05,
 // Модель и аналитические поверхности вращения одного файла за одно чтение:
 // проход STEPControl_Reader стоит около 0.8 с на модель, и второй проход ради
 // поверхностей удваивал бы его (эталон платит именно так - см. _step_model в
-// controller.py). Порядок работ тот же, что у питоновской пары
+// qmlbackend/gv_toolpath.cpp). Порядок работ тот же, что у питоновской пары
 // load_step_model + load_step_surfaces на общей форме: тесселяция кожи, затем
 // обход граней.
 struct StepBundleAll {

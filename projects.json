@@ -1,6 +1,6 @@
 {
   "product": "CNC Панель оператора",
-  "version": "0.16.0",
+  "version": "0.16.1",
   "versioning": "semver",
   "description": "Панель оператора ЧПУ: React-интерфейс, Qt-порт, 3D-вьювер УП и тестовые данные/постпроцессор.",
   "projects": [
@@ -17,30 +17,27 @@
     {
       "id": "qt-interface",
       "name": "Qt-порт интерфейса",
-      "version": "0.5.4",
+      "version": "0.5.5",
       "path": "apps/qt-interface",
       "kind": "qml",
       "entry": "main.qml",
-      "run": "python apps/qt-interface/preview_qml.py",
-      "description": "Перенос React-интерфейса на Qt/QML. main.qml, preview.qml, генератор preview и ассеты/шрифты."
+      "description": "Перенос React-интерфейса на Qt/QML. main.qml, preview.qml (данные, не генерируется), ассеты/шрифты. Точки запуска в репозитории нет: питоновский предпросмотр удалён, рантайм `qml` модуль MockBackend не грузит."
     },
     {
       "id": "gcode-viewer",
       "name": "3D-вьювер УП",
-      "version": "0.47.0",
+      "version": "0.48.0",
       "path": "modules/gcode-viewer",
-      "kind": "qml+python",
+      "kind": "qml+cpp",
       "entry": "GcodeViewer3D.qml",
-      "run": "python modules/gcode-viewer/preview_3d.py \"data/cad-testdata/Test_model.ngc\"",
+      "run": "build/viewer/gcodeviewer data/cad-testdata/Test_model.ngc",
       "description": "3D-визуализация управляющей программы: траектория, заготовка, модель детали, инструмент/оправка, этапы, скорость 1:1, анализ столкновений и проверка инструмента.",
       "files": [
         "GcodeViewer3D.qml",
-        "mock_backend.py",
         "toolpath.vert",
         "toolpath.frag",
         "preview_3d.qml",
-        "preview_3d.py",
-        "smoke_test_qml.py"
+        "oracle_manifest.json"
       ]
     },
     {

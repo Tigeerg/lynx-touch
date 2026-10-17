@@ -1,17 +1,17 @@
 // qt/gv_geometry.h - геометрии Qt Quick 3D на C++ (этап 3 плана переноса).
 //
-// Зеркало modules/gcode-viewer/geometry.py: те же шесть классов, те же поля данных,
+//: те же шесть классов, те же поля данных,
 // те же атрибуты и смещения, тот же порядок вершин и те же setBounds. Форматы буферов
 // заморожены, потому что это контракт QML и шейдеров, а не деталь реализации:
-//   ToolpathGeometry  stride 20 = position 3f + texcoord0 2f   (toolpath.vert/.frag);
-//   HLRLineGeometry   stride 48 = position vec4, normal vec4, texcoord0 vec4 (stepledges.vert);
-//   GridGeometry      stride 28 = position 3f + RGBA 4f;
-//   AxisArrowGeometry stride 12 = position 3f;
-//   MeshGeometry      stride 24 = position 3f + normal 3f (смещение нормали 12);
-//   ToolGeometry      stride 24 = position 3f + normal 3f (смещение нормали 12).
+// ToolpathGeometry stride 20 = position 3f + texcoord0 2f (toolpath.vert/.frag);
+// HLRLineGeometry stride 48 = position vec4, normal vec4, texcoord0 vec4 (stepledges.vert);
+// GridGeometry stride 28 = position 3f + RGBA 4f;
+// AxisArrowGeometry stride 12 = position 3f;
+// MeshGeometry stride 24 = position 3f + normal 3f (смещение нормали 12);
+// ToolGeometry stride 24 = position 3f + normal 3f (смещение нормали 12).
 // Совпадение с питоновским эталоном проверяется байт в байт: пробник
 // cpp/geometry_probe.cpp пишет буферы и состояние геометрий, проверка
-// modules/gcode-viewer/test_geometry_core.py сравнивает их с живыми питоновскими.
+// сравнивает их с живыми питоновскими.
 //
 // Чего здесь нет: регистрации типов в QML и сигналов (sizeChanged, changed) - это
 // этап 5 (контроллер). Здесь только сборка буфера и его установка.

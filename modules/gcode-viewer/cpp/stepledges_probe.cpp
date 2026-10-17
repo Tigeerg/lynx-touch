@@ -1,26 +1,26 @@
 // cpp/stepledges_probe.cpp — пробник совпадения рёбер STEP-модели с питоновским
-// эталоном modules/gcode-viewer/step_import.py::load_step_model.
+// эталоном occt/step_import.cpp::load_step_model.
 //
 // Пробник не входит в плагин: отдельная цель CMake. Он читает STEP штатным путём
 // плагина (свойство source -> STEPControl_Reader -> setShape) и печатает:
 //
-//   segments: N          число отрезков в буфере (эталон Test_model.STEP — 2426)
-//   raw_segments: M      число отрезков до склейки (эталон — 4884)
-//   sha256_order: H      sha256 байтов буфера: float32 little-endian, порядок сборки
-//   sha256_set: H        sha256 тех же 24-байтовых кусков, отсортированных по байтам
+// segments: N число отрезков в буфере (эталон Test_model.STEP — 2426)
+// raw_segments: M число отрезков до склейки (эталон — 4884)
+// sha256_order: H sha256 байтов буфера: float32 little-endian, порядок сборки
+// sha256_set: H sha256 тех же 24-байтовых кусков, отсортированных по байтам
 //
 // Хэши печатаются как улика и считаются по сырым байтам: побайтовое совпадение с
 // эталоном недостижимо (кластеры склейки в эталоне упорядочены неустойчивым
 // numpy.argsort, а у 16 отрезков из 2426 numpy оставляет в младших битах double
 // остаток 1e-15 там, где плагин даёт нуль). Сверку ведёт
-// modules/gcode-viewer/test_stepledges_plugin.py: он сравнивает число отрезков и
+//: он сравнивает число отрезков и
 // набор точек с точностью 1e-4 мм. Третий аргумент — необязательный дамп буфера
 // сырыми float32 для этого сравнения (numpy.fromfile).
 //
-// Запуск: stepledges_probe.exe <файл.step> [дамп.bin]   (числа и хэши рёбер)
-//         stepledges_probe.exe --repeat <N> <файл.step> (замер смены свойства)
-//         stepledges_probe.exe --qml <import-path>      (видит ли модуль движок QML)
-//   (нужны DLL OCCT и Qt в PATH)
+// Запуск: stepledges_probe.exe <файл.step> [дамп.bin] (числа и хэши рёбер)
+// stepledges_probe.exe --repeat <N> <файл.step> (замер смены свойства)
+// stepledges_probe.exe --qml <import-path> (видит ли модуль движок QML)
+// (нужны DLL OCCT и Qt в PATH)
 
 #include "stepledgesgeometry.h"
 
@@ -92,7 +92,7 @@ int runQmlImport(const QString &importPath)
 }
 
 // Замер цены смены свойства на уже открытой модели: файл читается один раз
-// (setSource), затем N раз меняется deflection (0.05 -> 0.06 -> ...), так что
+// (setSource), затем N раз меняется deflection (0.05 -> 0.06 ->...), так что
 // видно, перечитывает ли StepEdgesGeometry STEP на каждое изменение свойства.
 // Чётное N возвращает 0.05 в конце - числа рёбер остаются эталонными.
 int runRepeat(const QString &path, int repeats)

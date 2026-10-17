@@ -1,6 +1,6 @@
 // cpp/step_probe.cpp - пробник совпадения C++-слоя STEP и нормалей (этап 4a
-// плана переноса) с питоновским эталоном modules/gcode-viewer/step_import.py и
-// normals.py.
+// плана переноса): дайджесты сверяются с оракулом (step.*), а
+// нормали — с дайджестом step.normals.
 //
 // Пробник не входит ни в плагин, ни в ядро: отдельная цель CMake. Он проходит
 // тот же путь, что питоновский load_step_model по сетке и нормалям:
@@ -8,24 +8,24 @@
 // -> суп вершин с учётом локации грани -> разворот оболочки наружу ->
 // crease-aware нормали. Печатает:
 //
-//   verts: N           строк супа вершин (эталон Test_model.STEP - 136194)
-//   triangles: F       треугольников (эталон - 45398)
-//   sha256_verts: H    sha256 тех же байтов, что считает Python: float64 LE, (N,3)
-//   sha256_tri: H      то же для (F,3,3): байты те же, другое чтение
-//   sha256_normals: H  sha256 float32 LE (F,3,3)
+// verts: N строк супа вершин (эталон Test_model.STEP - 136194)
+// triangles: F треугольников (эталон - 45398)
+// sha256_verts: H sha256 тех же байтов, что считает Python: float64 LE, (N,3)
+// sha256_tri: H то же для (F,3,3): байты те же, другое чтение
+// sha256_normals: H sha256 float32 LE (F,3,3)
 //
 // Те же массивы пишутся в каталог-дамп файлами step_verts.f64, step_tri.f64,
 // step_normals.f32: питоновская проверка читает их numpy и сверяет поэлементно,
-// а не только по хэшу. Сверку ведёт modules/gcode-viewer/test_step_core.py.
+// а не только по хэшу. Сверку ведёт.
 //
 // Рёбра STEP пробник не считает: они в плагине CNC.Edges (cpp/stepledgesgeometry.cpp)
-// и сверяются отдельно (test_stepledges_plugin.py).
+// и сверяются отдельно.
 //
-// Запуск: step_probe <файл.step> <каталог-дампа>   (нужны DLL OCCT в PATH)
-//         step_probe --manifest <oracle_manifest.json> [<файл.step>]
-//         step_probe --check [<файл.step>]
+// Запуск: step_probe <файл.step> <каталог-дампа> (нужны DLL OCCT в PATH)
+// step_probe --manifest <oracle_manifest.json> [<файл.step>]
+// step_probe --check [<файл.step>]
 // Код возврата: 0 - посчитано и записано (или дайджесты сошлись с оракулом);
-//               1 - файл не прочитан или дамп не записан; 2 - аргументы не разобраны.
+// 1 - файл не прочитан или дамп не записан; 2 - аргументы не разобраны.
 //
 // Режим --manifest/--check сверяет дайджесты своих массивов (step.verts,
 // step.tri, step.normals) с oracle_manifest.json без Python и без каталога-дампа:
@@ -169,7 +169,7 @@ int main(int argc, char** argv) {
     }
     const std::size_t faces = std::size_t(model.tri_count);
 
-    // Сериализации те же, что у оракула (numpy .tobytes()): float64 LE (N,3) и
+    // Сериализации те же, что у оракула (numpy.tobytes): float64 LE (N,3) и
     // float32 LE (F,3,3). x86 хранит их little-endian, порядок байтов не меняется.
     const std::vector<unsigned char> vertsBytes =
         asBytes(model.verts.data(), model.verts.size(), sizeof(double));
@@ -187,7 +187,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         gv::manifest::Checker checker(manifest);
-        // Формы записей - как в oracle_dump.py: суп (N,3), треугольники (F,3,3),
+        // Формы записей - как в: суп (N,3), треугольники (F,3,3),
         // нормали (F,3,3); байты step.tri и step.verts одни и те же.
         checker.check("step.verts", "float64", gv::sha256Hex(vertsBytes),
                       {static_cast<long long>(model.verts.size() / 3), 3});

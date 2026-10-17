@@ -1,5 +1,5 @@
 // core/tangents.h - аналитические касательные контура: семейства цилиндров и
-// конусов (зеркало modules/gcode-viewer/tangents.py).
+// конусов.
 //
 // Слой чистый: ни Qt, ни OCCT - только арифметика над дескрипторами
 // поверхностей, упакованными рёбрами STEP и супом кожи. Поэтому он живёт в
@@ -17,7 +17,7 @@
 
 namespace gv {
 
-// Аналитическая цилиндрическая грань STEP (CylinderSurface в gv_types.py):
+// Аналитическая цилиндрическая грань STEP (CylinderSurface в core/gv_types.h):
 // o - точка на оси, d - единичное направление оси, e1/e2 - базис поперечного
 // сечения, arc - дуга грани в радианах (has_arc = false у полного круга),
 // r - радиус, t0/t1 - пределы вдоль оси по вершинам грани, мм.
@@ -34,7 +34,7 @@ struct CylinderSurface {
     double t1 = 0.0;
 };
 
-// Аналитическая коническая грань STEP (ConeSurface в gv_types.py): a - вершина,
+// Аналитическая коническая грань STEP (ConeSurface в core/gv_types.h): a - вершина,
 // d - единичное направление оси, psi - полуугол (рад), s0/s1 - пределы
 // параметра образующей (длина вдоль оси / cos psi), мм.
 struct ConeSurface {
@@ -74,7 +74,7 @@ struct SkinTriangles {
     std::vector<double> skirm;   // (F,3)
 };
 
-// Предвычисленные цилиндрические семейства (CylinderFamilies в gv_types.py).
+// Предвычисленные цилиндрические семейства (CylinderFamilies в core/gv_types.h).
 // Плоские массивы: O/D/E1/E2 - (N,3), R/T0/T1/RREF/A0/A1 - (N,), FULL - (N,),
 // DROP - (N,8) с NaN в незанятых ячейках, ARC - (N,64).
 struct CylinderFamilies {
@@ -94,7 +94,7 @@ struct CylinderFamilies {
     std::size_t count = 0;
 };
 
-// Семейства касательных STEP (TangentFamilies в gv_types.py).
+// Семейства касательных STEP (TangentFamilies в core/gv_types.h).
 struct TangentFamilies {
     CylinderFamilies cylinders;
     std::vector<ConeSurface> cones;

@@ -1,7 +1,7 @@
 // cpp/qmlbackend/gv_qmlgeom.h - QML-типы геометрий модуля MockBackend.
 //
 // Шесть геометрий этапа 3 (qt/gv_geometry, цель gvqtgeom) уже собирают буферы,
-// равные питоновскому geometry.py байт в байт, но это обычные классы C++:
+// равные питоновскому qt/gv_geometry.cpp байт в байт, но это обычные классы C++:
 // QML их не видит. Классы ниже - тонкие наследники: буфер, атрибуты, stride и
 // порядок вершин остаются кодом этапа 3, а здесь добавлено ровно то, чего требует
 // контракт QML - регистрация в URI MockBackend 1.0, свойства с сигналами
@@ -9,12 +9,12 @@
 // (vertexCount, triangleCount), которые читают проверки.
 //
 // Форматы буферов - контракт QML и шейдеров, а не деталь реализации:
-//   ToolpathGeometry  stride 20 = position 3f + texcoord0 2f   (toolpath.vert/.frag);
-//   HLRLineGeometry   stride 48 = position vec4, normal vec4, texcoord0 vec4 (stepledges.vert);
-//   GridGeometry      stride 28 = position 3f + RGBA 4f;
-//   AxisArrowGeometry stride 12 = position 3f;
-//   MeshGeometry      stride 24 = position 3f + normal 3f;
-//   ToolGeometry      stride 24 = position 3f + normal 3f.
+// ToolpathGeometry stride 20 = position 3f + texcoord0 2f (toolpath.vert/.frag);
+// HLRLineGeometry stride 48 = position vec4, normal vec4, texcoord0 vec4 (stepledges.vert);
+// GridGeometry stride 28 = position 3f + RGBA 4f;
+// AxisArrowGeometry stride 12 = position 3f;
+// MeshGeometry stride 24 = position 3f + normal 3f;
+// ToolGeometry stride 24 = position 3f + normal 3f.
 // Разбор и разбор форматов - в qt/gv_geometry.h; здесь они не дублируются.
 //
 // Сетку и указатель оси QML создаёт сам по именам из MockBackend (см.

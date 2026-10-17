@@ -1,25 +1,25 @@
 // cpp/gcode_probe.cpp - пробник совпадения C++-ядра с питоновским эталоном
-// (modules/gcode-viewer/gcode_parser.py, gv_types.py).
+// (core/gcode_parser.cpp, core/gv_types.h).
 //
 // Пробник не входит ни в плагин, ни в ядро: отдельная цель CMake. Он читает
 // управляющую программу, считает ядро (gvcore) и печатает:
 //
-//   points / flags / stages / seg_count - размеры массивов path.* из оракула
-//   last: x y z                        - последняя машинная точка
-//   sha256_points/flags/last/segments/stages - sha256 тех же сериализаций, что
-//                                      считает Python (float64 LE, int64 LE,
-//                                      numpy U64 = UTF-32LE по 64 знака)
-//   tag_*                              - разобранные теги UI_* (улика по ui_tags)
+// points / flags / stages / seg_count - размеры массивов path.* из оракула
+// last: x y z - последняя машинная точка
+// sha256_points/flags/last/segments/stages - sha256 тех же сериализаций, что
+// считает Python (float64 LE, int64 LE,
+// numpy U64 = UTF-32LE по 64 знака)
+// tag_* - разобранные теги UI_* (улика по ui_tags)
 //
 // Те же массивы пишутся во второй аргумент-каталог файлами core_points.f64,
 // core_flags.f64, core_last.f64, core_segments.i64, core_stages.u64: питоновская
 // проверка читает их numpy и сравнивает поэлементно, а не только по хэшу.
 //
 // Запуск: gcode_probe <файл.ngc> <каталог-дампа>
-//         gcode_probe --manifest <oracle_manifest.json> [<файл.ngc>]
-//         gcode_probe --check [<файл.ngc>]
+// gcode_probe --manifest <oracle_manifest.json> [<файл.ngc>]
+// gcode_probe --check [<файл.ngc>]
 // Код возврата: 0 - посчитано и записано (или дайджесты сошлись с оракулом);
-//               1 - файл или каталог недоступны; 2 - аргументы не разобраны.
+// 1 - файл или каталог недоступны; 2 - аргументы не разобраны.
 //
 // Режим --manifest/--check сверяет дайджесты своих массивов (path.*, pd.* и
 // tag.*) с oracle_manifest.json без Python и без каталога-дампа: печатает строку
@@ -93,7 +93,7 @@ std::vector<std::string> probeArgs(int argc, char** argv) {
 #endif
 }
 
-// double -> 8 байт little-endian (как numpy float64.tobytes()).
+// double -> 8 байт little-endian (как numpy float64.tobytes).
 void appendDouble(std::vector<unsigned char>& out, double v) {
     unsigned char buf[8];
     std::memcpy(buf, &v, 8);
@@ -218,7 +218,7 @@ int main(int argc, char **argv) {
         appendU64(stageBytes, "(" + std::to_string(st.index) + ", '" + st.label + "')");
     }
 
-    // Подготовка траектории (path_prep.py): буферы потоков lines и метрики.
+    // Подготовка траектории (core/path_prep.cpp): буферы потоков lines и метрики.
     // Буферы - те же байты, что принимает геометрия на GPU, поэтому они и есть
     // предмет сверки этапа 2. Считается один раз: тот же результат идёт и в
     // режим дампа, и в сверку с оракулом.
@@ -261,7 +261,7 @@ int main(int argc, char **argv) {
                       {static_cast<long long>(res.stages.size())});
 
         // pd.*: подготовка траектории (path_prep._prepare_ordered) - те же
-        // массивы, что сверяет test_gcode_core.py. Числовые метрики записаны
+        // массивы, что сверяет. Числовые метрики записаны
         // массивами формы (1,).
         const long long pdPoints = static_cast<long long>(pd.pts.size() / 3);
         checker.check("pd.pts", "float64", sha256Hex(pdScene), {pdPoints, 3});
@@ -320,7 +320,7 @@ int main(int argc, char **argv) {
         checker.check("pd.stage_end", "float64", sha256Hex(pdStageEnd), {pdStageCount});
         checker.check("pd.stage_label", "<U64", sha256Hex(pdStageLabel), {pdStageCount});
 
-        // tag.*: разбор тегов UI_* (ui_tags.py). Необязательный тег - ведущий
+        // tag.*: разбор тегов UI_* (core/ui_tags.cpp). Необязательный тег - ведущий
         // флаг присутствия 1.0/0.0, далее значения (нули, когда тега нет).
         std::vector<unsigned char> tagRotation;
         std::vector<unsigned char> tagOrigin;

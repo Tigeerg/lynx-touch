@@ -1,29 +1,29 @@
 // cpp/silhouette_probe.cpp - пробник совпадения C++-топологии силуэта и силуэта
 // на фиксированных глазах (этап 4c плана переноса) с питоновским эталоном
-// modules/gcode-viewer/silhouette.py.
+// core/silhouette.cpp.
 //
 // Пробник не входит ни в плагин, ни в ядро: отдельная цель CMake. Он берёт суп
 // вершин из STEP тем же путём gvstep (loadStepModel), что питоновский
 // load_step_model, строит топологию (сварка вершин по сетке 1e-4 мм, рёбра ровно
 // с двумя гранями, отсев острых кромок и вырожденных граней) и считает силуэт на
-// пяти фиксированных глазах из oracle_dump.py. Печатает:
+// пяти фиксированных глазах из. Печатает:
 //
-//   verts: N              вершин супа (эталон Test_model.STEP - 136194)
-//   triangles: F          треугольников (эталон - 45398)
-//   candidates: K         кандидатных силуэтных рёбер (эталон - 57842)
-//   sha256_<ключ>: H      sha256 массивов топологии: n, d, f0, f1, ea, eb
-//   eye<i>: M             рёбер силуэта на глазу i (эталон - 245, 224, 251, 509, 185)
-//   sha256_eye<i>: H      sha256 float32 (M,2,3) - тот же байтовый вид, что у numpy
+// verts: N вершин супа (эталон Test_model.STEP - 136194)
+// triangles: F треугольников (эталон - 45398)
+// candidates: K кандидатных силуэтных рёбер (эталон - 57842)
+// sha256_<ключ>: H sha256 массивов топологии: n, d, f0, f1, ea, eb
+// eye<i>: M рёбер силуэта на глазу i (эталон - 245, 224, 251, 509, 185)
+// sha256_eye<i>: H sha256 float32 (M,2,3) - тот же байтовый вид, что у numpy
 //
 // Те же массивы пишутся в каталог-дамп файлами topo_*.f32/i32 и
 // silhouette_eye<i>.f32: питоновская проверка читает их numpy и сверяет и
-// поэлементно, и по хэшу. Сверку ведёт modules/gcode-viewer/test_silhouette_core.py.
+// поэлементно, и по хэшу. Сверку ведёт.
 //
-// Запуск: silhouette_probe <файл.step> <каталог-дампа>  (нужны DLL OCCT в PATH)
-//         silhouette_probe --manifest <oracle_manifest.json> [<файл.step>]
-//         silhouette_probe --check [<файл.step>]
+// Запуск: silhouette_probe <файл.step> <каталог-дампа> (нужны DLL OCCT в PATH)
+// silhouette_probe --manifest <oracle_manifest.json> [<файл.step>]
+// silhouette_probe --check [<файл.step>]
 // Код возврата: 0 - посчитано и записано (или дайджесты сошлись с оракулом);
-//               1 - файл не прочитан или дамп не записан; 2 - аргументы не разобраны.
+// 1 - файл не прочитан или дамп не записан; 2 - аргументы не разобраны.
 //
 // Режим --manifest/--check сверяет дайджесты своих массивов (topo.n, topo.d,
 // topo.f0, topo.f1, topo.ea, topo.eb, silhouette.eye0..eye4) с oracle_manifest.json
@@ -55,7 +55,7 @@
 
 namespace {
 
-// Фиксированные глаза - те же пять, что в oracle_dump.py: расхождение здесь
+// Фиксированные глаза - те же пять, что в: расхождение здесь
 // сдвинуло бы эталон.
 const double EYES[5][3] = {{100.0, 150.0, 300.0},
                            {-200.0, 40.0, 260.0},
@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
     const gv::MeshTopology topo = gv::buildSilhouetteTopology(model.verts);
     const std::size_t k = topo.edgeCount();
 
-    // Сериализации те же, что у оракула (numpy .tobytes()): float32 LE у n, d, ea,
+    // Сериализации те же, что у оракула (numpy.tobytes): float32 LE у n, d, ea,
     // eb и силуэтов, int32 LE у f0/f1. x86 хранит их little-endian.
     struct Dump {
         const char* key;        // имя ключа в выводе, в манифесте и имени файла

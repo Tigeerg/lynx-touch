@@ -1,4 +1,4 @@
-// core/ui_tags.cpp - разбор тегов UI_* постпроцессора (зеркало ui_tags.py).
+// core/ui_tags.cpp - разбор тегов UI_* постпроцессора.
 //
 // Шаблоны повторяются вручную, а не std::regex: питоновские re работают в
 // юникодном режиме и по-другому трактуют \b и \s, а сравнить нужно дословно.
@@ -91,7 +91,7 @@ size_t findTagAfterColon(const std::string& text, const char *tag, size_t from, 
     }
 }
 
-// Тело тега 'ИМЯ: <до ) или конца строки>' (питоновский [^)\n]*).
+// Тело тега 'ИМЯ: <до) или конца строки>' (питоновский [^)\n]*).
 bool tagBody(const std::string& text, const char *tag, std::string& body) {
     size_t p = 0;
     if (findTagAfterColon(text, tag, 0, p) == std::string::npos) { return false; }

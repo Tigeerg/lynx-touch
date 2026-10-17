@@ -23,7 +23,7 @@
 #include "core/normals.h"
 
 // Порядок обхода и порядок операций - часть контракта с эталоном
-// (step_import.py): результат сверяется с ним побитово, поэтому файл
+// (occt/step_import.cpp): результат сверяется с ним побитово, поэтому файл
 // компилируется с /fp:precise (MSVC) и -ffp-contract=off (GCC/Clang).
 
 namespace gv {

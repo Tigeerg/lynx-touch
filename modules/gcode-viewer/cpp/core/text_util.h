@@ -19,10 +19,10 @@ bool isWordCh(char c);
 char upperCh(char c);
 bool sameNoCase(char a, char b);
 
-// str.strip() для ASCII: пробелы и управляющие пробельные по краям.
+// str.strip для ASCII: пробелы и управляющие пробельные по краям.
 void stripInPlace(std::string& s);
 
-// str.upper() для ASCII-строки.
+// str.upper для ASCII-строки.
 std::string asciiUpper(const std::string& s);
 
 // strtod по правилам C-локали: значение не зависит от LC_NUMERIC процесса

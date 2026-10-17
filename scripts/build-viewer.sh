@@ -146,8 +146,8 @@ echo "build-viewer: плагин  $plugin"
 echo "build-viewer: import path для QML: $build_dir"
 
 # Пробники: те же цели, что под Windows, только без суффикса .exe. Их гоняют
-# питоновские проверки (modules/gcode-viewer/test_*.py) и сторож.
-for probe_name in stepledges_probe gcode_probe geometry_probe step_probe stl_probe \
+# сторожа (tools/checks.txt) и человек.
+for probe_name in stepledges_probe gcode_probe version_probe geometry_probe step_probe stl_probe \
                   silhouette_probe tangents_probe; do
     probe="$build_dir/$probe_name"
     [ -x "$probe" ] || fail "пробник не собран: нет $probe"

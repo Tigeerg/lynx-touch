@@ -3,15 +3,15 @@
 // gvbridge (cpp/bridge), поэтому он живёт в gvstep одной редакцией.
 //
 // Повтор питоновского эталона load_step_model(...) по рёбрам
-// (modules/gcode-viewer/step_import.py): обход TopAbs_EDGE в порядке
+// (occt/step_import.cpp): обход TopAbs_EDGE в порядке
 // TopExp_Explorer, полилиния каждого ребра - GCPnts_UniformDeflection с линейным
 // допуском 0.05 мм (угловой критерий не используется: эталон его не задаёт),
-// затем склейка почти совпадающих отрезков (_coalesce_segments, packing.py).
+// затем склейка почти совпадающих отрезков (_coalesce_segments, core/packing.cpp).
 // Шовные линии криволинейных граней (прямое ребро, у которого все смежные грани
 // криволинейны) отбрасываются: SolidWorks их тоже не рисует.
 //
 // Совпадение с эталоном проверяет cpp/stepledges_probe.cpp и
-// modules/gcode-viewer/test_stepledges_plugin.py (сегменты до склейки на
+// (сегменты до склейки на
 // Test_model: 4884, после склейки 2426).
 #pragma once
 

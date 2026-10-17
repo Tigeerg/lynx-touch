@@ -1,4 +1,4 @@
-// occt/step_surfaces.cpp - зеркало load_step_surfaces из step_surfaces.py.
+// occt/step_surfaces.cpp - зеркало load_step_surfaces из occt/step_surfaces.cpp.
 //
 // Порядок обхода граней и порядок операций - часть результата: дескрипторы
 // сверяются с эталоном побитово, поэтому файл компилируется с /fp:precise
@@ -95,8 +95,8 @@ StepSurfaceList loadStepSurfaces(const TopoDS_Shape& shape, double deflection,
             // Точки грани - её вершины (BRep_Tool::Pnt уже отдаёт их в
             // координатах сборки, с учётом локации грани). Ветка триангуляции в
             // эталоне недостижима: у OCP-обёртки Poly_Triangulation нет метода
-            // IsNull, поэтому getattr(ftri, "IsNull", lambda: True)() даёт True,
-            // и условие `ftri is not None and not IsNull и NbNodes() > 0` ложно.
+            // IsNull, поэтому getattr(ftri, "IsNull", lambda: True) даёт True,
+            // и условие `ftri is not None and not IsNull и NbNodes > 0` ложно.
             // Сверка это подтверждает: дугу полуцилиндра эталон строит по двум
             // вершинам (азимуты 0 и pi), а не по узлам сетки - узлы дали бы
             // другой ответ при дуге длиннее 180 гр.

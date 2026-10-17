@@ -1,44 +1,40 @@
-# tools/checks.txt - общий список прогонов сторожа. Его исполняют tools/check.sh
-# (Linux, bash) и tools/check.ps1 (Windows, pnpm guard). Строка - одна проверка:
+# tools/checks.txt - общий список прогонов сторожа. Его исполняет tools/check.sh
+# (Linux, bash) и по нему же правится список в tools/check.ps1 (Windows,
+# pnpm guard). Строка - одна проверка:
 #
 #   метка|требование|команда
 #
-# Требования: python - нужен интерпретатор; ocp - нужен пакет cadquery-ocp
-# (импорт OCP, см. requirements-dev.txt); plugin - нужен собранный QML-плагин
-# MockBackend (build/qmlbackend/MockBackend/qmldir); live - живая проверка
-# кадра: нужен эталонный стенд (аппаратный GL и живое окно, offscreen отдаёт
-# чёрный кадр), пороги откалиброваны под него. live исполняется только при
-# CNC_LIVE_FRAMES=1 в окружении, иначе печатается как skip с этой причиной.
+# Требования: probe - нужны собранные пробники (build/edges); plugin - нужен
+# собранный QML-модуль MockBackend (build/qmlbackend/MockBackend/qmldir) и точка
+# входа build/viewer/gcodeviewer - без них не стартует ни один прогон вьювера;
+# frame - съёмка кадра (та же сборка, что у plugin).
 #
 # Исполнитель зовёт команды из корня репозитория с QT_QPA_PLATFORM=offscreen и
 # считает проверку красной, если код возврата не нулевой или в выводе есть
 # Traceback либо строка, начинающаяся с WARNING/ или ERROR/: одного кода
-# возврата мало, падение внутри прогона его не меняет (тот же приём, что в
-# tools/check.ps1). Требование не закрыто - проверка печатается как skip.
+# возврата мало, падение внутри прогона его не меняет. Требование не закрыто -
+# проверка печатается как skip.
 #
-# Текстовые правила CLAUDE.md, метки размеров файлов, сверка preview.qml с
-# генератором, pnpm-прогоны React и сборка C++ под MSVC остаются в
-# tools/check.ps1: им нужен Windows или node.
+# Питоновского слоя в репозитории нет: пробники сверяются с эталоном сами (ключ
+# --manifest, дайджесты массивов против modules/gcode-viewer/oracle_manifest.json),
+# аналитика поля съёма - случаями stock_sim_probe, живые пути - пробниками
+# viewer/*. Замеры (bench_probe, фазы stock_sim_probe) в список не входят: они
+# печатают числа, а не вердикт.
 #
-# У bench_viewer.py вторым аргументом идёт потолок, мс: сторож даёт 20 - в пять
-# раз выше потолка машины-эталона (4.0 мс), чтобы ловить катастрофический
-# регресс интерактивных фаз, а не разброс машин.
+# Текстовые правила CLAUDE.md, метки размеров файлов, pnpm-прогоны React и сборка
+# C++ под MSVC остаются в tools/check.ps1: им нужен Windows или node.
 
-py_compile mock_backend.py|python|python -m py_compile modules/gcode-viewer/mock_backend.py
-test_tangent_policy.py|ocp|python modules/gcode-viewer/test_tangent_policy.py
-test_normals_golden.py|ocp|python modules/gcode-viewer/test_normals_golden.py
-test_normals_orientation.py|ocp|python modules/gcode-viewer/test_normals_orientation.py
-test_outline_segments.py|python|python modules/gcode-viewer/test_outline_segments.py
-test_module_names.py|python|python modules/gcode-viewer/test_module_names.py
-test_gcode_parser.py|python|python modules/gcode-viewer/test_gcode_parser.py
-test_drill_cycles.py|python|python modules/gcode-viewer/test_drill_cycles.py
-test_tool_profile.py|python|python modules/gcode-viewer/test_tool_profile.py
-test_collision.py|python|python modules/gcode-viewer/test_collision.py
-oracle_dump.py|ocp|python modules/gcode-viewer/oracle_dump.py
-smoke_test_qml.py|plugin|python modules/gcode-viewer/smoke_test_qml.py
-preview_3d.py offscreen|plugin|python modules/gcode-viewer/preview_3d.py data/cad-testdata/Test_model.ngc
-main.qml offscreen|plugin|python apps/qt-interface/preview_qml.py apps/qt-interface/main.qml
-preview.qml offscreen|plugin|python apps/qt-interface/preview_qml.py
-test_solid_skin.py|live|python modules/gcode-viewer/test_solid_skin.py
-test_ribbon_width.py|live|python modules/gcode-viewer/test_ribbon_width.py
-bench_viewer.py hot|ocp|python modules/gcode-viewer/bench_viewer.py hot 20
+gcode_probe --manifest|probe|build/edges/gcode_probe --manifest modules/gcode-viewer/oracle_manifest.json
+version_probe (VERSION, projects.json, QML)|probe|build/edges/version_probe
+geometry_probe --manifest|probe|build/edges/geometry_probe --manifest modules/gcode-viewer/oracle_manifest.json
+step_probe --manifest|probe|build/edges/step_probe --manifest modules/gcode-viewer/oracle_manifest.json
+stl_probe --manifest|probe|build/edges/stl_probe --manifest modules/gcode-viewer/oracle_manifest.json
+silhouette_probe --manifest|probe|build/edges/silhouette_probe --manifest modules/gcode-viewer/oracle_manifest.json
+tangents_probe --manifest|probe|build/edges/tangents_probe --manifest modules/gcode-viewer/oracle_manifest.json
+stock_sim_probe (аналитика поля съёма)|probe|build/edges/stock_sim_probe
+stepledges_probe (рёбра STEP)|probe|build/edges/stepledges_probe data/cad-testdata/Test_model.STEP
+gcodeviewer --smoke|plugin|build/viewer/gcodeviewer --smoke
+gcodeviewer offscreen|plugin|build/viewer/gcodeviewer data/cad-testdata/Test_model.ngc
+stock_bind_probe|plugin|build/viewer/stock_bind_probe
+keyprobe (раскладки ru и en)|plugin|build/viewer/keyprobe data/cad-testdata/Test_model.ngc
+gcodeviewer --frame|frame|build/viewer/gcodeviewer --frame build/frame_check.png data/cad-testdata/Test_model.ngc

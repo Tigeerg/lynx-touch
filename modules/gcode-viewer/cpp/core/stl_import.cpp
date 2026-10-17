@@ -1,13 +1,13 @@
-// core/stl_import.cpp - чтение STL: бинарный и ASCII (зеркало stl_import.py).
+// core/stl_import.cpp - чтение STL: бинарный и ASCII.
 //
 // Разметка бинарного STL: 80 байт заголовка, uint32 little-endian - число
 // треугольников, далее записи по 50 байт (нормаль 3f, три вершины по 3f,
 // 2 байта атрибута). Нормаль записи не читается: эталон берёт только вершины.
 //
 // ASCII-ветка повторяет питоновский путь строка за строкой: декодирование UTF-8
-// с игнорированием битых байтов, разбиение на строки набором str.splitlines(),
-// снятие пробелов str.strip(), поиск слов vertex. Числа разбирает strtodC (тот
-// же правильно округляющий разбор, что у float() для обычной десятичной записи,
+// с игнорированием битых байтов, разбиение на строки набором str.splitlines,
+// снятие пробелов str.strip, поиск слов vertex. Числа разбирает strtodC (тот
+// же правильно округляющий разбор, что у float для обычной десятичной записи,
 // но в C-локали и независимо от LC_NUMERIC процесса).
 #include "core/stl_import.h"
 
@@ -55,7 +55,7 @@ bool contains(const std::string& hay, const char* needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-// Пробельный ли кодпоинт: набор str.isspace() (нужен для strip и split без аргумента).
+// Пробельный ли кодпоинт: набор str.isspace (нужен для strip и split без аргумента).
 bool isPySpace(std::uint32_t cp) {
     if (cp == 0x20 || (cp >= 0x09 && cp <= 0x0d) || (cp >= 0x1c && cp <= 0x1f)) {
         return true;
@@ -69,7 +69,7 @@ bool isPySpace(std::uint32_t cp) {
     return cp == 0x2028 || cp == 0x2029 || cp == 0x202f || cp == 0x205f || cp == 0x3000;
 }
 
-// Граница строки в str.splitlines() - набор уже, чем у isspace (0x1f в него не входит).
+// Граница строки в str.splitlines - набор уже, чем у isspace (0x1f в него не входит).
 bool isLineBreak(std::uint32_t cp) {
     return cp == 0x0a || cp == 0x0b || cp == 0x0c || cp == 0x0d
         || (cp >= 0x1c && cp <= 0x1e) || cp == 0x85 || cp == 0x2028 || cp == 0x2029;
@@ -119,7 +119,7 @@ std::vector<std::uint32_t> decodeUtf8(const std::string& data) {
 }
 
 // Токен (кодпоинты) -> double: strtodC по ASCII-байтам токена. Возвращает false,
-// если число разобрано не полностью - у эталона это было бы исключение float().
+// если число разобрано не полностью - у эталона это было бы исключение float.
 bool parseDouble(const std::vector<std::uint32_t>& text, std::size_t from, std::size_t to,
                  double& out) {
     std::string token;
@@ -162,7 +162,7 @@ std::vector<double> loadAscii(const std::vector<std::uint32_t>& text) {
         const bool is_vertex = (b - a >= 6) && text[a] == 'v' && text[a + 1] == 'e'
             && text[a + 2] == 'r' && text[a + 3] == 't' && text[a + 4] == 'e' && text[a + 5] == 'x';
         if (is_vertex) {
-            // Поля строки целиком, как s.split() в эталоне: первое - слово vertex
+            // Поля строки целиком, как s.split в эталоне: первое - слово vertex
             // (проверено префиксом), далее нужны второе, третье и четвёртое.
             double vals[3] = {0.0, 0.0, 0.0};
             int seen = 0;

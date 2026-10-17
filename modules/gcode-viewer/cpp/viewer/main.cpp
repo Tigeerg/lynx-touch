@@ -6,46 +6,65 @@
  * исполнения не участвует: здесь его нет вовсе, и подменять его нечем.
  *
  * Что делает точка входа:
- *   * находит каталог QML-плагина (CNC_CPP_QML_DIR, иначе <репо>/build/qmlbackend)
- *     и каталог DLL OCCT (CNC_OCC_DIR, иначе из CONDA_PREFIX) и кладёт оба в PATH
- *     до создания движка: точка входа Qt-плагина разрешает зависимости по PATH, а
- *     не через add_dll_directory (разбор - PORT-CPP.md, «Ограничения рантайма Qt»).
- *     На Linux PATH и LD_LIBRARY_PATH не трогает: Qt и OCCT загрузчик находит по
- *     rpath сборки, который CMake заполняет сам (BUILD_RPATH, cpp/CMakeLists.txt);
- *   * отдаёт движку путь импорта плагина и грузит GcodeViewer3D.qml в QQuickView:
- *     окно создаёт QQuickView, потому что корень вьювера - Item, а не Window, и
- *     сам файл вьювера не правится;
- *   * берёт у корня объект gcodeToolpath и грузит УП из аргумента. В offscreen
- *     (QT_QPA_PLATFORM=offscreen) загрузка синхронная и без цикла событий - по ней
- *     сверяют число сегментов; в живом окне - load_gcode_async и печать по
- *     сигналам контракта (toolpathLoaded, loadFinished).
+ * * находит каталог QML-плагина (CNC_CPP_QML_DIR, иначе <репо>/build/qmlbackend)
+ * и каталог DLL OCCT (CNC_OCC_DIR, иначе из CONDA_PREFIX) и кладёт оба в PATH
+ * до создания движка: точка входа Qt-плагина разрешает зависимости по PATH, а
+ * не через add_dll_directory (разбор - PORT-CPP.md, «Ограничения рантайма Qt»).
+ * На Linux PATH и LD_LIBRARY_PATH не трогает: Qt и OCCT загрузчик находит по
+ * rpath сборки, который CMake заполняет сам (BUILD_RPATH, cpp/CMakeLists.txt);
+ * * отдаёт движку путь импорта плагина и грузит GcodeViewer3D.qml в QQuickView:
+ * окно создаёт QQuickView, потому что корень вьювера - Item, а не Window, и
+ * сам файл вьювера не правится;
+ * * берёт у корня объект gcodeToolpath и грузит УП из аргумента. В offscreen
+ * (QT_QPA_PLATFORM=offscreen) загрузка синхронная и без цикла событий - по ней
+ * сверяют число сегментов; в живом окне - load_gcode_async и печать по
+ * сигналам контракта (toolpathLoaded, loadFinished).
  *
- * Ключ --smoke повторяет питоновский modules/gcode-viewer/smoke_test_qml.py без
- * Python: грузит QML вьювера offscreen и печатает число корневых объектов, тип и
- * размер корня, затем RESULT: OK (parse-level). Проверка неглубокая - "вьювер
- * стартует", геометрия не меряется. Обычный запуск (без ключа) не меняется.
+ * Ключ --smoke - короткая проверка старта: грузит QML вьювера offscreen и
+ * печатает число корневых объектов, тип и размер корня, затем RESULT: OK
+ * (parse-level). Проверка неглубокая - "вьювер стартует", геометрия не меряется.
+ * Обычный запуск (без ключа) не меняется.
+ *
+ * Ключ --frame <файл.png> снимает кадр: строит сцену, ждёт нарисованный кадр,
+ * берёт его у окна (QQuickWindow::grabWindow) и пишет PNG. Печатает размер
+ * картинки и число пикселей не-фона (фон - пиксель левого верхнего угла): по ним
+ * видно, попала ли в кадр геометрия. Картинка - доказательство приёмки; числа
+ * геометрии доказывают аналитические случаи пробников (stocksurface, stockshell,
+ * stock_bind), а не счёт пикселей.
+ *
+ * Платформа кадра - та, что задана снаружи; пустая даёт живую. Offscreen на
+ * Windows сцену Quick3D не рисует (замер: в кадре только элементы интерфейса,
+ * 3D пуст), поэтому картинку для приёмки снимают на живой платформе, а
+ * QT_QPA_PLATFORM=offscreen оставлен прогону без экрана: он снимает кадр и
+ * выходит с кодом 0, сцены в кадре нет.
  *
  * Плагина нет - внятная ошибка и ненулевой код возврата: отката на Python нет.
  *
  * Запуск (Qt обязан быть в PATH до старта процесса: exe линкуется с Qt6Core.dll;
  * каталог плагина и DLL OCCT точка входа добавляет себе сама):
- *   set PATH=C:\Qt\6.12.0\msvc2022_64\bin;%PATH%
- *   build\viewer\gcodeviewer.exe data\cad-testdata\Test_model.ngc
+ * set PATH=C:\Qt\6.12.0\msvc2022_64\bin;%PATH%
+ * build\viewer\gcodeviewer.exe data\cad-testdata\Test_model.ngc
  * Offscreen: set QT_QPA_PLATFORM=offscreen
  * Дым-прогон: build\viewer\gcodeviewer.exe --smoke
+ * Кадр: build\viewer\gcodeviewer.exe --frame frame.png data\cad-testdata\Test_model.ngc
+ * (QT_QPA_PLATFORM=offscreen - прогон без экрана: кадр снимается, сцены в нём нет)
  * Linux (Qt и OCCT находит rpath сборки, PATH и LD_LIBRARY_PATH не нужны):
- *   build/viewer/gcodeviewer data/cad-testdata/Test_model.ngc
+ * build/viewer/gcodeviewer data/cad-testdata/Test_model.ngc
  */
 #include <QDir>
+#include <QEventLoop>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QImage>
 #include <QList>
 #include <QMetaObject>
 #include <QQmlEngine>
 #include <QQmlError>
 #include <QQuickItem>
 #include <QQuickView>
+#include <QQuickWindow>
 #include <QTextStream>
+#include <QTimer>
 #include <QUrl>
 
 #include "core/quality.h"   // gv::presetFromEnv: уровень CNC_QUALITY тем же чтением, что ядро
@@ -113,7 +132,7 @@ QString viewerQmlPath()
 }
 
 // Каталог DLL OCCT: CNC_OCC_DIR (или окружение conda), подкаталог bin. Умолчание
-// то же, что у сборки (scripts/build-viewer.ps1) и у питоновского шима gv_cpp.py.
+// то же, что у сборки (scripts/build-viewer.ps1) и у питоновского шима.
 QString occtBinDir()
 {
     QString occ = qEnvironmentVariable("CNC_OCC_DIR");
@@ -158,10 +177,9 @@ void prependPath(const QStringList &dirs)
 #endif
 }
 
-// Дым-прогон (--smoke): загрузить QML вьювера без экрана и доложить разбор - то же,
-// что делает modules/gcode-viewer/smoke_test_qml.py, но без Python. Проверка
-// неглубокая: "вьювер вообще стартует", геометрия не меряется. Размер корня берётся
-// в том же окне 1024x600, что у обычного запуска.
+// Дым-прогон (--smoke): загрузить QML вьювера без экрана и доложить разбор.
+// Проверка неглубокая: "вьювер вообще стартует", геометрия не меряется. Размер
+// корня берётся в том же окне 1024x600, что у обычного запуска.
 int runSmoke(const QString &viewer_qml, const QString &backend_import)
 {
     QList<QQmlError> collected;
@@ -190,6 +208,107 @@ int runSmoke(const QString &viewer_qml, const QString &backend_import)
         return 1;
     }
     say(QStringLiteral("RESULT: OK (parse-level)"));
+    return 0;
+}
+
+// Съёмка кадра (--frame <файл.png>): построить сцену, дождаться нарисованного
+// кадра, забрать его у окна и записать PNG. Числа на выходе (размер картинки и
+// число пикселей не-фона) говорят, что в кадре есть геометрия, но доказательство
+// геометрии - не они, а аналитические случаи пробников (stocksurface, stockshell,
+// stock_bind). Картинка нужна как доказательство приёмки (CLAUDE.md: визуальный
+// результат смотрят картинкой).
+//
+// Платформа берётся снаружи: пустая - живая (на ней Quick3D и рисует сцену),
+// offscreen - прогон без экрана (кадр снимается, сцены в нём нет).
+int runFrame(const QString &viewer_qml, const QString &backend_import,
+             const QString &program, const QString &frame_path)
+{
+    QQuickView view;
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    view.resize(1024, 600);
+    view.engine()->addImportPath(backend_import);
+    QObject::connect(view.engine(), &QQmlEngine::warnings, &reportQmlWarnings);
+    view.setSource(QUrl::fromLocalFile(viewer_qml));
+    if (view.status() != QQuickView::Ready) {
+        warn(QStringLiteral("gcodeviewer: FAIL QML не загрузился: %1").arg(viewer_qml));
+        for (const QQmlError &error : view.errors())
+            warn(QStringLiteral("gcodeviewer: ") + error.toString());
+        return 1;
+    }
+    QQuickItem *root_item = view.rootObject();
+    if (root_item == nullptr) {
+        warn(QStringLiteral("gcodeviewer: FAIL корневой объект QML пуст"));
+        return 1;
+    }
+    QObject *backend = root_item->findChild<QObject *>(QStringLiteral("gcodeToolpath"));
+    if (backend == nullptr) {
+        warn(QStringLiteral("gcodeviewer: FAIL контроллер gcodeToolpath не найден в QML"));
+        return 1;
+    }
+
+    // Те же свойства сцены, что у обычного запуска: уровень качества и коробка
+    // вместо поля съёма (CNC_STOCK_BOX). Иначе кадр показывал бы не то, что
+    // видит оператор.
+    root_item->setProperty("quality", QString::fromLatin1(gv::presetFromEnv().level));
+    root_item->setProperty("stockPlainBox", qEnvironmentVariableIsSet("CNC_STOCK_BOX"));
+
+    view.show();
+    if (!program.isEmpty()) {
+        if (!QFileInfo::exists(program)) {
+            warn(QStringLiteral("gcodeviewer: FAIL файл УП не найден: %1").arg(program));
+            return 3;
+        }
+        // Загрузка синхронная (тот же путь, что у offscreen-прогона): кадр снимают
+        // после неё, а не по сигналам фонового потока.
+        int segments = 0;
+        QMetaObject::invokeMethod(backend, "load_gcode", Q_RETURN_ARG(int, segments),
+                                  Q_ARG(QString, program));
+        say(QStringLiteral("gcodeviewer: loaded g-code from: %1 segments: %2")
+                .arg(program).arg(segments));
+    }
+
+    // Ждём нарисованные кадры: grabWindow до первого кадра отдаёт пустую картинку.
+    // Сигнал frameSwapped отмечает готовый кадр; потолок ожидания - на случай, что
+    // сцена не нарисовалась вовсе (тогда кадр всё равно сохраняется и это видно по
+    // числу пикселей не-фона).
+    int frames = 0;
+    QEventLoop loop;
+    QObject::connect(&view, &QQuickWindow::frameSwapped, [&frames, &loop] {
+        if (++frames >= 3)
+            loop.quit();
+    });
+    QTimer::singleShot(5000, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    const QImage image = view.grabWindow();
+    if (image.isNull()) {
+        warn(QStringLiteral("gcodeviewer: FAIL кадр не снят (пустое изображение)"));
+        return 1;
+    }
+    if (!image.save(frame_path, "PNG")) {
+        warn(QStringLiteral("gcodeviewer: FAIL кадр не записан: %1").arg(frame_path));
+        return 1;
+    }
+
+    // Фон - пиксель левого верхнего угла: сцену вьювера он не занимает (там сетка
+    // и небо), поэтому разница с ним и есть нарисованная геометрия.
+    const QRgb background = image.pixel(0, 0);
+    qint64 painted = 0;
+    for (int y = 0; y < image.height(); ++y) {
+        const QRgb *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
+        for (int x = 0; x < image.width(); ++x) {
+            if (line[x] != background)
+                ++painted;
+        }
+    }
+    say(QStringLiteral("gcodeviewer: frame %1x%2 frames_swapped=%3 -> %4")
+            .arg(image.width()).arg(image.height()).arg(frames).arg(frame_path));
+    say(QStringLiteral("gcodeviewer: non-background pixels: %1 of %2")
+            .arg(painted).arg(qint64(image.width()) * image.height()));
+    if (painted == 0) {
+        warn(QStringLiteral("gcodeviewer: кадр пуст (фон целиком): сцену никто не "
+                            "нарисовал - проверьте растеризатор платформы"));
+    }
     return 0;
 }
 
@@ -234,26 +353,44 @@ int main(int argc, char *argv[])
 #ifdef Q_OS_WIN
     SetConsoleOutputCP(CP_UTF8);          // русский текст виден в консоли распорядителя
 #endif
-    // --smoke ищут в argv до создания приложения: платформа выбирается раньше него.
+    // --smoke и --frame ищут в argv до создания приложения: платформа выбирается
+    // раньше него.
     bool smoke = false;
+    bool frame = false;
     for (int i = 1; i < argc; ++i) {
-        if (qstrcmp(argv[i], "--smoke") == 0) {
+        if (qstrcmp(argv[i], "--smoke") == 0)
             smoke = true;
-            break;
-        }
+        if (qstrcmp(argv[i], "--frame") == 0)
+            frame = true;
     }
-    // Дым-прогон ничего не показывает: без экрана ему достаточно offscreen, а заданную
-    // снаружи платформу не трогают (keyprobe.cpp делает так же).
+    // Дым-прогон ничего не показывает: без экрана ему достаточно offscreen, а
+    // заданную снаружи платформу не трогают (keyprobe.cpp делает так же).
+    // Съёмке кадра платформу НЕ навязывают: offscreen-растеризатор Quick3D на
+    // Windows сцены не рисует (замер: кадр 1024x600 содержит только элементы
+    // интерфейса, 3D пуст), поэтому живая платформа даёт настоящую картинку, а
+    // QT_QPA_PLATFORM=offscreen снаружи по-прежнему снимает кадр и выходит с
+    // кодом 0 - годен для прогона без экрана.
     if (smoke && qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
         qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
 
     QString program;
+    QString frame_path;
     for (int i = 1; i < argc; ++i) {
         const QString arg = QString::fromLocal8Bit(argv[i]);
         if (arg == QLatin1String("-h") || arg == QLatin1String("--help")) {
-            say(QStringLiteral("запуск: gcodeviewer [--smoke] [путь к файлу УП]"));
+            say(QStringLiteral("запуск: gcodeviewer [--smoke] [--frame <файл.png>] "
+                               "[путь к файлу УП]"));
             return 0;
+        }
+        if (arg == QLatin1String("--frame")) {
+            // Значение идёт следующим аргументом: без него снимать некуда.
+            if (i + 1 >= argc) {
+                warn(QStringLiteral("gcodeviewer: FAIL у --frame нет пути к файлу кадра"));
+                return 2;
+            }
+            frame_path = QString::fromLocal8Bit(argv[++i]);
+            continue;
         }
         if (arg.startsWith(QLatin1Char('-')))
             continue;
@@ -286,10 +423,12 @@ int main(int argc, char *argv[])
 
     if (smoke)
         return runSmoke(viewer_qml, backend_import);
+    if (frame)
+        return runFrame(viewer_qml, backend_import, program, frame_path);
 
     QQuickView view;
     view.setResizeMode(QQuickView::SizeRootObjectToView);
-    view.resize(1024, 600);              // размер окна питоновской точки входа
+    view.resize(1024, 600);              // тот же размер окна, что у съёмки кадра
     view.engine()->addImportPath(backend_import);
     QObject::connect(view.engine(), &QQmlEngine::warnings, &reportQmlWarnings);
     view.setSource(QUrl::fromLocalFile(viewer_qml));

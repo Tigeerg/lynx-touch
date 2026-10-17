@@ -11,7 +11,7 @@
 // пусто, состояние cancelled).
 //
 // Запуск (Qt в PATH; платформа offscreen ставится сама):
-//   build\viewer\stock_bind_probe.exe [путь к файлу УП]
+// build\viewer\stock_bind_probe.exe [путь к файлу УП]
 // Код возврата: 0 - все проверки прошли, 1 - нет.
 #include <QCoreApplication>
 #include <QDir>
@@ -101,7 +101,7 @@ void prependPath(const QStringList &dirs)
 }
 
 // Ожидание свойства контроллера с прокруткой очереди событий: сигналы Qt
-// доставляются только в цикле, а проба живёт без app.exec().
+// доставляются только в цикле, а проба живёт без app.exec.
 bool waitUntil(QObject *object, const std::function<bool()> &done, int timeoutMs,
                const QString &what)
 {

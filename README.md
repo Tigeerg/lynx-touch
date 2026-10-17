@@ -3,7 +3,7 @@
 Панель оператора ЧПУ. Состоит из четырёх проектов: React-интерфейс, Qt-порт
 интерфейса, 3D-вьювер управляющих программ и тестовые данные/постпроцессор.
 
-**Версия продукта:** `0.16.0` (см. [`VERSION`](VERSION)).
+**Версия продукта:** `0.16.1` (см. [`VERSION`](VERSION)).
 Версии проектов и правила ведения — в [`projects.json`](projects.json) и
 [`VERSIONING.md`](VERSIONING.md).
 
@@ -19,29 +19,31 @@
 - Точка входа: `app/page.tsx`
 - Запуск: `pnpm install && pnpm dev`
 
-### 2. Qt-порт интерфейса — `qt-interface` (`0.5.4`)
+### 2. Qt-порт интерфейса — `qt-interface` (`0.5.5`)
 Перенос React-интерфейса на Qt/QML (`apps/qt-interface`).
 
-- `main.qml`, `preview.qml`, генератор `gen_preview_qml.py`, ассеты/шрифты
-- Запуск: `python apps/qt-interface/preview_qml.py`
+- `main.qml` — источник; `preview.qml` — данные (правится руками: генератор удалён
+  вместе с питоновским слоем), ассеты/шрифты
+- Точки запуска в репозитории нет: питоновский предпросмотр удалён, а рантайм `qml`
+  модуль `MockBackend` не грузит (смотреть `main.qml` в Qt Design Studio или QtVCP)
 
-### 3. 3D-вьювер УП — `gcode-viewer` (`0.47.0`)
-3D-визуализация управляющей программы (`modules/gcode-viewer`).
+### 3. 3D-вьювер УП — `gcode-viewer` (`0.48.0`)
+3D-визуализация управляющей программы (`modules/gcode-viewer`). Всё на C++ и QML:
+питоновского слоя в репозитории нет.
 
 - `GcodeViewer3D.qml` — сцена/камера/материалы/анимация/панель режимов
-- `mock_backend.py` — парсер G-кода, геометрии, инструмент/оправка, этапы,
-  скорости 1:1, анализ столкновений, проверка инструмента
+- `cpp/` — точка входа вьювера, QML-модуль контроллера `MockBackend`, ядро (парсер
+  G-кода, геометрии, STEP/STL, инструмент/оправка, этапы, скорости 1:1, анализ
+  столкновений, проверка инструмента, поле съёма) и пробники
 - `toolpath.vert` / `toolpath.frag` — шейдеры линий
-- Зависимости Python-проверок и PySide6-инструментов — [`requirements-dev.txt`](requirements-dev.txt)
-  (`pip install -r requirements-dev.txt`): `cadquery-ocp==8.0.1.1.0` — импорт STEP (модель и обводка
-  граней из B-rep); без него STEP не читается, вьювер использует STL. Версия
-  зафиксирована: 7.7.2 не читает STEP вовсе, а `test_normals_golden.py` сверяет
-  тесселяцию бит-в-бит и к версии OCP чувствителен
-- Запуск: `python modules/gcode-viewer/preview_3d.py "data/cad-testdata/Test_model.ngc"`
-  (старый путь через PySide6; C++-точка входа — в разделе «Сборка и запуск вьювера»)
-- Диагностика идёт через `logging`: уровень задаёт `CNC_LOG_LEVEL` (по умолчанию `INFO`,
-  `DEBUG` покажет источник контура — STEP или меш; сбои загрузки печатаются как `WARNING`)
-  (рядом подхватывается `Test_model.step`, иначе — `Test_model.stl`)
+- `oracle_manifest.json` — эталон дайджестов массивов: пробники сверяются с ним
+  ключом `--manifest` (`VERSIONING.md`, раздел 5)
+- Запуск: `build\viewer\gcodeviewer.exe "data\cad-testdata\Test_model.ngc"`
+  (сборка — в разделе «Сборка и запуск вьювера (C++)»)
+- Отказ стадии (УП не прочитана, модель не открылась, поле съёма не посчиталось)
+  печатает контроллер строкой в stderr (`reportRefusal`,
+  `cpp/qmlbackend/gv_toolpath.cpp`); уровня логирования у C++-ядра нет. Модель
+  ищется рядом с УП: `.step`/`.stp`, иначе `.stl`
 - Журнал изменений: [`modules/gcode-viewer/CHANGELOG.md`](modules/gcode-viewer/CHANGELOG.md)
 
 Возможности вьювера: траектория (G0/G1/G2/G3, циклы сверления), заготовка
@@ -134,9 +136,9 @@ QT_QPA_PLATFORM=offscreen ./build/viewer/gcodeviewer --smoke
 Проверки вьювера: сторож `pnpm guard` (`tools/check.ps1`) зовёт сборку, проверяет
 наличие пробников, гоняет `gcodeviewer.exe` offscreen и `keyprobe.exe`; пробники C++
 сверяют себя с эталоном `modules/gcode-viewer/oracle_manifest.json` (ключ `--manifest`)
-без Python. Питоновские точки входа `preview_3d.py` и `smoke_test_qml.py` запускают тот
-же C++-вьювер через PySide6 — это более старый способ, для точки входа
-`gcodeviewer.exe` он не нужен.
+без интерпретатора. Список прогонов — `tools/checks.txt`, полный порядок проверок —
+`VERSIONING.md`, раздел 5. Кадр для приёмки снимает `gcodeviewer.exe --frame
+frame.png <УП>`: сцену Quick3D рисует живая платформа, offscreen отдаёт кадр без 3D.
 
 ### 4. Тестовые УП/модели и постпроцессор — `cad-testdata` (`0.5.1`)
 - `data/cad-testdata/Test_model.ngc`, `data/cad-testdata/Test_model.STL` — тестовые УП и модель

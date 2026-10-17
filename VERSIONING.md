@@ -1,7 +1,7 @@
 # Руководство по версионированию и внесению изменений
 
 Этот документ — «гид»: как вносить изменения и вести версии в проекте
-**CNC Панель оператора**. Текущая версия — **0.16.0**.
+**CNC Панель оператора**. Текущая версия — **0.16.1**.
 
 ## 1. Проекты
 
@@ -12,7 +12,7 @@
 |----|--------|------|-----|
 | `react-interface` | React интерфейс (панель оператора) | `apps/react-interface` (`app/`, `components/`, `lib/`) | Next.js |
 | `qt-interface` | Qt-порт интерфейса | `apps/qt-interface` (`main.qml`, `preview.qml`, …) | QML |
-| `gcode-viewer` | 3D-вьювер УП | `modules/gcode-viewer` (`GcodeViewer3D.qml`, `mock_backend.py`, `toolpath.*`, …) | QML + Python |
+| `gcode-viewer` | 3D-вьювер УП | `modules/gcode-viewer` (`GcodeViewer3D.qml`, `cpp/`, `toolpath.*`, …) | QML + C++ |
 | `cad-testdata` | Тестовые УП/модели и постпроцессор | `data/cad-testdata` (`Test_model.ngc`, `Test_model.STL`, `linuxcnc_ui.cps`) | данные |
 
 `qt-interface` и `gcode-viewer` — разные проекты с независимыми версиями; лежат они
@@ -30,8 +30,8 @@
 Версия каждого проекта — в `projects.json` (`projects[].version`) и, где есть,
 в манифесте проекта (`package.json`, `modules/gcode-viewer/VERSION`).
 
-Текущее состояние: **продукт 0.16.0**; `react-interface` — **0.12.0**,
-`gcode-viewer` — **0.47.0**, `qt-interface` — **0.5.4**, `cad-testdata` — **0.5.1**.
+Текущее состояние: **продукт 0.16.1**; `react-interface` — **0.12.0**,
+`gcode-viewer` — **0.48.0**, `qt-interface` — **0.5.5**, `cad-testdata` — **0.5.1**.
 
 ## 3. Где живут версии
 
@@ -62,15 +62,28 @@
 
 ## 5. Проверки перед фиксацией
 
-**3D-вьювер** (Python 3 + PySide6):
+**3D-вьювер** (Qt 6, OCCT, CMake + Ninja; питоновского слоя в репозитории нет):
 ```
-python -m py_compile modules/gcode-viewer/mock_backend.py
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-viewer.ps1
+set PATH=<Qt6>\bin;<OCCT>\bin;<repo>\build\edges;<repo>\build\edges\CNC\Edges;<repo>\build\cpp;<repo>\build\qmlbackend;%PATH%
 set QT_QPA_PLATFORM=offscreen
-python modules/gcode-viewer/preview_3d.py "data/cad-testdata/Test_model.ngc"      # offscreen -> "loaded OK"
-python modules/gcode-viewer/smoke_test_qml.py                       # offscreen -> "RESULT: OK"
-set QT_QPA_PLATFORM=
-python modules/gcode-viewer/preview_3d.py "data/cad-testdata/Test_model.ngc"      # живое окно -> "segments: N", без "[QML warning]"
+build\edges\gcode_probe.exe --manifest modules\gcode-viewer\oracle_manifest.json
+build\edges\geometry_probe.exe --manifest modules\gcode-viewer\oracle_manifest.json
+build\edges\step_probe.exe --manifest modules\gcode-viewer\oracle_manifest.json
+build\edges\stl_probe.exe --manifest modules\gcode-viewer\oracle_manifest.json
+build\edges\silhouette_probe.exe --manifest modules\gcode-viewer\oracle_manifest.json
+build\edges\tangents_probe.exe --manifest modules\gcode-viewer\oracle_manifest.json
+build\edges\stock_sim_probe.exe            # аналитика поля съёма, RESULT: OK
+build\viewer\stock_bind_probe.exe          # привязка поля к траектории, RESULT: OK
+build\viewer\gcodeviewer.exe --smoke       # RESULT: OK (parse-level)
+build\viewer\gcodeviewer.exe "data\cad-testdata\Test_model.ngc"   # offscreen -> "loaded OK", код 0
+build\viewer\keyprobe.exe                  # горячие клавиши ru/en, RESULT: OK
+build\viewer\gcodeviewer.exe --frame frame.png "data\cad-testdata\Test_model.ngc"
 ```
+`--manifest` сверяет дайджесты массивов пробника с эталоном
+`oracle_manifest.json` без интерпретатора; `--frame` снимает кадр в PNG (сцену
+Quick3D рисует живая платформа, offscreen отдаёт кадр без 3D). Живое окно печатает
+`loaded g-code from: … segments: N` и ни одной строки `[QML warning]`.
 
 **React интерфейс**:
 ```
@@ -101,6 +114,7 @@ pnpm build       # сборка без ошибок
 Теги постпроцессора (`UI_STOCK`, `UI_TOOL`, `UI_OP`, `UI_HOLDER`, …) — это
 **контракт** между `cad-testdata` (пост) и `gcode-viewer`. Меняя формат тега:
 
-- обновляйте и пост (`data/cad-testdata/linuxcnc_ui.cps`), и парсер (`mock_backend.py`);
+- обновляйте и пост (`data/cad-testdata/linuxcnc_ui.cps`), и парсер
+  (`modules/gcode-viewer/cpp/core/gcode_parser.cpp` + `core/ui_tags.cpp`);
 - поднимайте **MINOR**, а при несовместимости — **MAJOR**;
 - опишите изменение в журнале вьювера.

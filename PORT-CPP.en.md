@@ -3,10 +3,15 @@
 An estimate and an order of work. This document describes a **plan**, not a decision: it exists so
 that each stage can be chosen deliberately and its price is visible.
 
+**The port is done, and the Python layer has been removed from the repository entirely.** The Python
+file names below are the record of the work: the files themselves are not in the tree, the reference is
+`modules/gcode-viewer/oracle_manifest.json`, and the C++ probes do the comparison with the `--manifest`
+key (VERSIONING.md, section 5). What is still open is listed in §12.
+
 The reason for the port: C++ is stricter about types and allows much more serious optimisation.
 Below: where that optimisation pays off, where it does not, and what it costs.
 
-State at the time of the estimate: viewer **0.13.4**, `mock_backend.py` is 4092 lines,
+State at the time of the estimate: viewer **0.13.4**, the backend was 4092 lines of Python,
 `GcodeViewer3D.qml` is about 1050 lines, plus `cpp/stepledgesgeometry.{h,cpp}` (the `CNC.Edges`
 plugin, not buildable: the system has no Qt6 dev packages).
 
@@ -259,26 +264,26 @@ background on a `QThreadPool`. Exactness required repeating the CPython function
 reference; `render_probe` converged (without the flag `edge_px 7905`, `stock_px 67235`; with the flag the same
 numbers). What remains: the disk cache — a separate decision.
 
-**Python is out of the viewer runtime.** The viewer no longer computes in Python: the entry points
-(`preview_3d.py`, `smoke_test_qml.py`, `render_probe.py`, `test_solid_skin.py`) and the new C++ entry
-point `cpp/viewer/main.cpp` (target `gcodeviewer`, `<repo>/build/viewer/gcodeviewer.exe`) always load
-the `MockBackend` QML plugin and never import the Python backend. The `CNC_CPP` flag is gone from the
-runtime: it remains only for the comparison checks (`test_cpp_bridge.py`, `test_controller_cpp.py`),
-which need both paths in separate processes. Without the plugin the viewer fails with a clear message
-naming `scripts/build-viewer.ps1` and a non-zero exit code; there is no silent fallback to Python. The
+**Python is out of the viewer runtime, and then out of the repository.** The viewer no longer computes in
+Python: the entry point `cpp/viewer/main.cpp` (target `gcodeviewer`,
+`<repo>/build/viewer/gcodeviewer.exe`, keys `--smoke` and `--frame`) and the `viewer/*` probes always load
+the `MockBackend` QML plugin and never import the Python backend. The `CNC_CPP` flag is needed nowhere: the
+comparison checks that had two paths are gone. Without the plugin the viewer fails with a clear message
+naming `scripts/build-viewer.ps1` and a non-zero exit code. The
 C++ entry point runs without an interpreter: it puts the plugin directory and the OCCT DLLs into `PATH`
 itself before the engine is created, Qt must be in the process `PATH` (the exe links against
 `Qt6Core.dll`), and the window comes from `QQuickView` over `GcodeViewer3D.qml`. The runs agree:
 offscreen on `Test_model.ngc` - 70914 segments and `loaded OK`; a live window - the same 70914 and not a
 single `[QML warning]`.
 
-The Python core modules (`controller.py`, `geometry.py` and the rest) stay in the repository as a
-development tool and the reference for comparisons - `oracle_dump.py`, `bench_viewer.py` and the
-comparison `test_*.py` use them. The `.npz` disk cache is a development tool as well: the C++ controller
-always re-reads the model, needs no cache, and the cache is not in the viewer runtime path.
+The Python core modules (`controller`, `geometry` and the rest) are not in the repository: they were
+removed with the rest of the Python layer, and the C++ layers `cpp/core`, `cpp/occt`, `cpp/qt` and
+`cpp/qmlbackend` took their place. The comparison reference is `oracle_manifest.json` (array digests) plus
+the analytic probe cases; the `.npz` disk cache is removed and was never ported: the C++ controller always
+re-reads the model, and `bench_probe` measures the recompute cost.
 
-**Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
-go of Python altogether but barely speeds anything up on its own.
+**Stage 4 gave the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 let go of Python
+altogether but barely speeds anything up on its own.
 
 ## 8. Estimates
 
@@ -347,9 +352,10 @@ Found by reviewing the C++ after stages 1-5; ordered by payoff.
   (about 0.6-0.9 s per property change; the `step.shape_read` baseline is 858 ms).
 - Tessellation runs twice over the same shape: `occt/step_surfaces.cpp` calls
   `BRepMesh_IncrementalMesh` after it has already run inside `loadStepBundleAll`.
-- The edge coalescing (`occt/step_edges.cpp`) is not used by the bridge: `gv_load_step_model` returns the
-  edges before coalescing, and Python does the coalescing.
-- `gvqtgeom` builds but is wired only to a probe; `emptyCylinderFamilies`, `packedPositions`, `vertsBounds`,
+- The edge coalescing (`occt/step_edges.cpp`) lives in C++: both the edge plugin and the controller take it
+  from there; the `gvbridge` C ABI bridge is used by nobody since the Python shim was removed.
+- `gvqtgeom` is wired into the `MockBackend` QML module (the viewer geometries are C++);
+  `emptyCylinderFamilies`, `packedPositions`, `vertsBounds`,
   `loadStepModel(string)` and `parseUi*` are outside the ABI — they live only in probes.
 
 **Data copies.** The STEP soup (136194 vertices, about 3.3 MB) is materialised 6-7 times on the way to the
@@ -463,7 +469,8 @@ read from the environment (`CNC_DECIMATE_TOL`, `CNC_ARC_DECIMATE_TOL`, `CNC_COLL
    56.0 ms and 45398 -> 7856 / 175808 / 4132 triangles, silhouette topology 20.4 -> 3.8 / 83.3 / 2.0 ms,
    tangent families 17.1 -> 3.1 / 113.2 / 1.9 ms (the level order is `low` / `high` / `safe`); at `med` the
    numbers are unchanged. The `low`/`high`/`safe` values are proposals, only the deflection is measured; what
-   remains is reconciling the non-`med` levels through the Python mirrors and the bridge.
+   remains is reconciling the non-`med` levels against the reference digests (the Python mirrors the text
+   referred to are gone).
 6. Auto-detect the level from the renderer/GL version and a reference frame run (medium risk: there is no
    VRAM-size API, and the RHI behaviour on ION can only be checked on hardware).
 7. Buffer reuse in `meshSilhouetteSegments`, `tangentFromFamilies` and `HLRLineGeometry` —

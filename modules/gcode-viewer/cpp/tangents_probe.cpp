@@ -7,10 +7,15 @@
 // _tangent_families:
 //   * STEPControl_Reader -> суп вершин через gvstep (кожа для политики конусов);
 //   * аналитические поверхности вращения из той же формы (gvstep);
-//   * упакованные рёбра STEP берутся из файла packed_edges.f32 каталога-дампа:
-//     их пишет питоновская проверка из load_step_model, ровно как в
-//     bench_viewer.py (_pack_edge_segments). Числа рёбер уже сверены с эталоном
-//     test_stepledges_plugin.py, здесь они вход;
+//   * упакованные рёбра STEP (float32 по 5 на вершину) пробник строит сам из той
+//     же формы тем же путём, что рантайм (cpp/qmlbackend/gv_toolpath.cpp,
+//     packStepEdges): gvstep::stepRawSegments -> coalesceStepSegments ->
+//     gvcore::packEdgesNp. Числа самих рёбер уже сверены с эталоном
+//     test_stepledges_plugin.py. Рядом в дампе лежит packed_edges.f32
+//     питоновской проверки, и пока файл есть, семейства берут его - так сверка
+//     test_tangents_core.py остаётся независимой; свой буфер пробник печатает и
+//     сбрасывает рядом (packed_self.f32), чтобы оба sha256 были видны в одном
+//     прогоне;
 //   * семейства касательных (gvcore) и отрезки на пяти фиксированных глазах.
 //
 // Печатает числа и sha256 тех же сериализаций, что считает Python
@@ -19,7 +24,28 @@
 // modules/gcode-viewer/test_tangents_core.py.
 //
 // Запуск: tangents_probe <файл.step> <каталог-дампа>   (нужны DLL OCCT в PATH)
-// Код возврата: 0 - посчитано и записано; 1 - файл не прочитан или дамп не записан.
+//         tangents_probe --manifest <oracle_manifest.json> [<файл.step>]
+//         tangents_probe --check [<файл.step>]
+// Код возврата: 0 - посчитано и записано (или дайджесты сошлись с оракулом);
+//               1 - файл не прочитан или дамп не записан; 2 - аргументы не разобраны.
+//
+// Режим --manifest/--check сверяет дайджесты своих массивов (записи tangents.*)
+// с oracle_manifest.json без Python и без каталога-дампа: печатает строку на
+// запись и "RESULT: OK" / "RESULT: FAIL (n)". Путь к тестовым данным по
+// умолчанию берётся от корня репозитория (путь пробника).
+//
+// Оговорка о входе этой сверки: семейства считаются от собственного буфера
+// рёбер, а он не совпадает с питоновским packed_edges.f32 байт в байт. На
+// Test_model.STEP: из 24260 значений float32 расходятся 276, различающихся
+// позиций-отрезков 80 - 64 отрезка стоят на чужой позиции (набор отрезков один
+// и тот же), 16 расходятся в младших битах (значения порядка 5.7e-14, максимум
+// |dx| = 1.8e-15 мм). Поэтому значения записей берутся от питоновского входа
+// (oracle_dump.py), а пробник сверяет с ними свой: все 22 массива дают один и
+// тот же sha256 при любом из двух буферов. Равенство входов проверяет отдельно
+// test_tangents_core.py - он кладёт рядом свой packed_edges.f32.
+// sha256 буферов (полные значения): питоновский
+//   4eff01c23ff4a1fbe8058db6bc2f425efe294408d7ebc55e3e7e7eb651a988fb,
+// свой 926b383602ee6c08bc546ed8ad99b334fe33a25ca5cf75b5b389d1b9d64f857f.
 
 // windows.h идёт до заголовков OCCT: цепочка OCCT объявляет _WINDOWS_ своим
 // стражем, и включённый после неё windows.h не даёт ни одной своей функции.
@@ -31,7 +57,11 @@
 #  include <windows.h>
 #endif
 
+#include "core/packing.h"
+#include "core/quality.h"
 #include "core/tangents.h"
+#include "manifest_check.h"
+#include "occt/step_edges.h"
 #include "occt/step_import.h"
 #include "occt/step_surfaces.h"
 #include "sha256.h"
@@ -138,29 +168,71 @@ bool readPackedEdges(const std::string& utf8Path, gv::PackedEdges& out) {
     return true;
 }
 
-// Дамп: ключ в выводе, байты и имя файла.
+// Упакованные рёбра STEP из самой формы: повтор packStepEdges рантайма
+// (cpp/qmlbackend/gv_toolpath.cpp) - сырые рёбра B-rep, склейка и упаковка.
+// Допуски - умолчания пресета med (0.05 мм по образующей, склейка 0.12 и
+// 0.5 мм): те же числа, что у умолчаний питоновской _coalesce_segments. Пресет
+// берётся умолчанием, а не из CNC_QUALITY: иначе манифест зависел бы от
+// окружения прогона.
+gv::PackedEdges packedFromStep(const TopoDS_Shape& shape) {
+    const gv::QualityPreset quality{};
+    const std::vector<gv::EdgeSegment> raw =
+        gv::stepRawSegments(shape, quality.edgeDeflectionMm, true);
+    const std::vector<gv::EdgeSegment> merged =
+        gv::coalesceStepSegments(raw, quality.coalesceDistTolMm, quality.coalesceGapTolMm);
+    std::vector<double> p0(merged.size() * 3);
+    std::vector<double> p1(merged.size() * 3);
+    for (std::size_t i = 0; i < merged.size(); ++i) {
+        for (std::size_t k = 0; k < 3; ++k) {
+            p0[i * 3 + k] = merged[i].a[k];
+            p1[i * 3 + k] = merged[i].b[k];
+        }
+    }
+    return gv::packEdgesNp(p0, p1);
+}
+
+// Дамп: ключ в выводе, байты, имя файла и сериализация. dtype и shape нужны
+// режиму сверки: запись манифеста - это "tangents." + key, dtype и форма
+// массива. Буфер рёбер в манифест не входит: он вход, а не результат.
 struct Dump {
     std::string key;
+    std::string dtype;
+    std::vector<long long> shape;
     std::vector<unsigned char> bytes;
     std::string file;
+    bool manifestEntry = true;
 };
 
 } // namespace
 
 int main(int argc, char** argv) {
     const std::vector<std::string> args = probeArgs(argc, argv);
-    if (args.size() < 3) {
-        std::fprintf(stderr, "usage: tangents_probe <file.step> <dump-dir>\n");
-        return 1;
+    const bool checkMode = args.size() >= 2
+            && (args[1] == "--manifest" || args[1] == "--check");
+    std::string manifestPath;
+    std::string stepPath;
+    std::string dumpDir;
+    if (checkMode) {
+        if (!gv::manifest::resolveCheckArgs(args, "Test_model.STEP", manifestPath, stepPath)) {
+            return 2;
+        }
+    } else {
+        if (args.size() < 3) {
+            std::fprintf(stderr, "usage: tangents_probe <file.step> <dump-dir>\n"
+                                 "       tangents_probe --manifest <oracle_manifest.json> [<file.step>]\n"
+                                 "       tangents_probe --check [<file.step>]\n");
+            return 1;
+        }
+        stepPath = args[1];
+        dumpDir = args[2];
     }
-    const std::string stepPath = args[1];
-    const std::string dumpDir = args[2];
     const std::string sep = "/";
 
     gv::StepModel model;
     gv::StepSurfaceList surfs;
+    TopoDS_Shape shape;
     try {
-        const TopoDS_Shape shape = gv::readStepShape(stepPath);
+        shape = gv::readStepShape(stepPath);
         model = gv::loadStepModel(shape);
         surfs = gv::loadStepSurfaces(shape);
     } catch (const std::exception& exc) {
@@ -171,8 +243,6 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "tangents_probe: кожа не собрана (%s)\n", stepPath.c_str());
         return 1;
     }
-
-    std::printf("file: %s\n", stepPath.c_str());
 
     // -- поверхности вращения --------------------------------------------------
     std::vector<std::int32_t> kind;
@@ -201,28 +271,30 @@ int main(int argc, char** argv) {
             coneRows.push_back(c.s1);
         }
     }
-    std::printf("surfaces: %zu\n", surfs.size());
     const std::size_t nConeSurf =
         static_cast<std::size_t>(std::count(kind.begin(), kind.end(), std::int32_t(1)));
-    std::printf("cylinders: %zu\n", kind.size() - nConeSurf);
-    std::printf("cones: %zu\n", nConeSurf);
+    const std::size_t nCylSurf = kind.size() - nConeSurf;
 
-    // -- семейства касательных -------------------------------------------------
-    gv::PackedEdges packed;
-    const bool havePacked = readPackedEdges(dumpDir + sep + "packed_edges.f32", packed);
-    std::printf("packed_edges: %d\n", havePacked ? packed.nv : 0);
+    // -- упакованные рёбра STEP и семейства касательных ------------------------
+    // Буфер рёбер пробник строит сам из той же формы: им он сравнивается с
+    // packed_edges.f32 питоновской проверки. Входом семейств в режиме дампа
+    // остаётся файл проверки, если он есть (иначе пометок DROP нет вовсе); в
+    // режиме сверки с манифестом вход - собственный буфер (почему он годится,
+    // хотя байт в байт не совпадает, - оговорка в шапке файла).
+    const gv::PackedEdges selfPacked = packedFromStep(shape);
+    gv::PackedEdges filePacked;
+    const bool haveFile = !dumpDir.empty()
+            && readPackedEdges(dumpDir + sep + "packed_edges.f32", filePacked);
+    const gv::PackedEdges* inputPacked = haveFile ? &filePacked
+                                                  : (checkMode ? &selfPacked : nullptr);
 
     const gv::SkinTriangles skin = gv::buildSkinTriangles(model.verts, model.normals);
-    const gv::TangentFamilies fam =
-        gv::buildTangentFamilies(surfs, havePacked ? &packed : nullptr, &skin);
+    const gv::TangentFamilies fam = gv::buildTangentFamilies(surfs, inputPacked, &skin);
     const gv::CylinderFamilies& cy = fam.cylinders;
-    std::printf("families: %zu\n", cy.count);
     std::size_t nfull = 0;
     for (std::uint8_t f : cy.FULL) {
         nfull += f ? 1 : 0;
     }
-    std::printf("full: %zu\n", nfull);
-    std::printf("tangent_cones: %zu\n", fam.cones.size());
 
     // столбцы конуса: a(3), d(3), psi, s0, s1 - девять чисел на конус
     std::vector<double> famCone(fam.cones.size() * 9);
@@ -237,46 +309,120 @@ int main(int argc, char** argv) {
         famCone[i * 9 + 8] = c.s1;
     }
 
+    std::vector<std::vector<double>> tangentSegs;
+    tangentSegs.reserve(5);
+    for (const auto& eye : EYES) {
+        tangentSegs.push_back(gv::tangentFromFamilies(fam, eye));
+    }
+
+    if (!checkMode) {
+        std::printf("file: %s\n", stepPath.c_str());
+        std::printf("surfaces: %zu\n", surfs.size());
+        std::printf("cylinders: %zu\n", nCylSurf);
+        std::printf("cones: %zu\n", nConeSurf);
+        std::printf("packed_edges: %d\n", haveFile ? filePacked.nv : 0);
+        std::printf("packed_self: %d\n", selfPacked.nv);
+        if (haveFile) {
+            std::printf("sha256_packed_edges: %s\n", gv::sha256Hex(filePacked.raw).c_str());
+        }
+        std::printf("families: %zu\n", cy.count);
+        std::printf("full: %zu\n", nfull);
+        std::printf("tangent_cones: %zu\n", fam.cones.size());
+    }
+
+    // Дампы: те же сериализации, что у оракула (numpy .tobytes()) - float64 LE у
+    // чисел, uint8 LE у булевых масок, int32 LE у вида поверхности. Форма записи
+    // та же, что в oracle_dump.py: список поверхностей (N,), столбцы (NC,17) и
+    // (CK,9), семейства (count,3)/(count,)/(count,8)/(count,64), отрезки (M,2,3).
     std::vector<Dump> dumps;
-    auto addDump = [&dumps](const std::string& key, const std::string& file, const void* data,
-                            std::size_t count, std::size_t elem) {
+    auto addDump = [&dumps](const std::string& key, const std::string& file, const char* dtype,
+                            std::vector<long long> shape, const void* data, std::size_t count,
+                            std::size_t elem) {
         Dump d;
         d.key = key;
         d.file = file;
+        d.dtype = dtype;
+        d.shape = std::move(shape);
         d.bytes = asBytes(data, count, elem);
         dumps.push_back(std::move(d));
     };
-    addDump("surfs_kind", "surfs_kind.i32", kind.data(), kind.size(), sizeof(std::int32_t));
-    addDump("surfs_cyl", "surfs_cyl.f64", cylRows.data(), cylRows.size(), sizeof(double));
-    addDump("surfs_cone", "surfs_cone.f64", coneRows.data(), coneRows.size(), sizeof(double));
-    addDump("fam_O", "fam_O.f64", cy.O.data(), cy.O.size(), sizeof(double));
-    addDump("fam_D", "fam_D.f64", cy.D.data(), cy.D.size(), sizeof(double));
-    addDump("fam_E1", "fam_E1.f64", cy.E1.data(), cy.E1.size(), sizeof(double));
-    addDump("fam_E2", "fam_E2.f64", cy.E2.data(), cy.E2.size(), sizeof(double));
-    addDump("fam_R", "fam_R.f64", cy.R.data(), cy.R.size(), sizeof(double));
-    addDump("fam_T0", "fam_T0.f64", cy.T0.data(), cy.T0.size(), sizeof(double));
-    addDump("fam_T1", "fam_T1.f64", cy.T1.data(), cy.T1.size(), sizeof(double));
-    addDump("fam_RREF", "fam_RREF.f64", cy.RREF.data(), cy.RREF.size(), sizeof(double));
-    addDump("fam_A0", "fam_A0.f64", cy.A0.data(), cy.A0.size(), sizeof(double));
-    addDump("fam_A1", "fam_A1.f64", cy.A1.data(), cy.A1.size(), sizeof(double));
-    addDump("fam_FULL", "fam_FULL.u8", cy.FULL.data(), cy.FULL.size(), sizeof(std::uint8_t));
-    addDump("fam_DROP", "fam_DROP.f64", cy.DROP.data(), cy.DROP.size(), sizeof(double));
-    addDump("fam_ARC", "fam_ARC.u8", cy.ARC.data(), cy.ARC.size(), sizeof(std::uint8_t));
+    const long long famCount = static_cast<long long>(cy.count);
+    const long long coneFamCount = static_cast<long long>(fam.cones.size());
+    addDump("surfs_kind", "surfs_kind.i32", "int32",
+            {static_cast<long long>(kind.size())},
+            kind.data(), kind.size(), sizeof(std::int32_t));
+    addDump("surfs_cyl", "surfs_cyl.f64", "float64",
+            {static_cast<long long>(nCylSurf), 17},
+            cylRows.data(), cylRows.size(), sizeof(double));
+    addDump("surfs_cone", "surfs_cone.f64", "float64",
+            {static_cast<long long>(nConeSurf), 9},
+            coneRows.data(), coneRows.size(), sizeof(double));
+    addDump("fam_O", "fam_O.f64", "float64", {famCount, 3},
+            cy.O.data(), cy.O.size(), sizeof(double));
+    addDump("fam_D", "fam_D.f64", "float64", {famCount, 3},
+            cy.D.data(), cy.D.size(), sizeof(double));
+    addDump("fam_E1", "fam_E1.f64", "float64", {famCount, 3},
+            cy.E1.data(), cy.E1.size(), sizeof(double));
+    addDump("fam_E2", "fam_E2.f64", "float64", {famCount, 3},
+            cy.E2.data(), cy.E2.size(), sizeof(double));
+    addDump("fam_R", "fam_R.f64", "float64", {famCount},
+            cy.R.data(), cy.R.size(), sizeof(double));
+    addDump("fam_T0", "fam_T0.f64", "float64", {famCount},
+            cy.T0.data(), cy.T0.size(), sizeof(double));
+    addDump("fam_T1", "fam_T1.f64", "float64", {famCount},
+            cy.T1.data(), cy.T1.size(), sizeof(double));
+    addDump("fam_RREF", "fam_RREF.f64", "float64", {famCount},
+            cy.RREF.data(), cy.RREF.size(), sizeof(double));
+    addDump("fam_A0", "fam_A0.f64", "float64", {famCount},
+            cy.A0.data(), cy.A0.size(), sizeof(double));
+    addDump("fam_A1", "fam_A1.f64", "float64", {famCount},
+            cy.A1.data(), cy.A1.size(), sizeof(double));
+    addDump("fam_FULL", "fam_FULL.u8", "uint8", {famCount},
+            cy.FULL.data(), cy.FULL.size(), sizeof(std::uint8_t));
+    addDump("fam_DROP", "fam_DROP.f64", "float64", {famCount, 8},
+            cy.DROP.data(), cy.DROP.size(), sizeof(double));
+    addDump("fam_ARC", "fam_ARC.u8", "uint8", {famCount, 64},
+            cy.ARC.data(), cy.ARC.size(), sizeof(std::uint8_t));
+    addDump("cone", "cone.f64", "float64", {coneFamCount, 9},
+            famCone.data(), famCone.size(), sizeof(double));
 
-    const std::string nameCone = "cone.f64";
-    Dump coneDump;
-    coneDump.key = "cone";
-    coneDump.file = nameCone;
-    coneDump.bytes = asBytes(famCone.data(), famCone.size(), sizeof(double));
-    dumps.push_back(std::move(coneDump));
+    // Буфер рёбер, собранный самим пробником: по нему питоновская сторона
+    // сверяет его с packed_edges.f32 побайтово (sha256). В манифест не входит:
+    // это вход сверки, а не её результат.
+    addDump("packed_self", "packed_self.f32", "uint8",
+            {static_cast<long long>(selfPacked.raw.size())},
+            selfPacked.raw.data(), selfPacked.raw.size(), 1);
+    dumps.back().manifestEntry = false;
 
-    int eyeIndex = 0;
-    for (const auto& eye : EYES) {
-        const std::vector<double> segs = gv::tangentFromFamilies(fam, eye);
-        const std::string key = "tangent" + std::to_string(eyeIndex);
-        std::printf("%s: %zu\n", key.c_str(), segs.size() / 6);
-        addDump(key, key + ".f64", segs.data(), segs.size(), sizeof(double));
-        ++eyeIndex;
+    for (std::size_t i = 0; i < tangentSegs.size(); ++i) {
+        const std::string key = "tangent" + std::to_string(i);
+        if (!checkMode) {
+            std::printf("%s: %zu\n", key.c_str(), tangentSegs[i].size() / 6);
+        }
+        addDump(key, key + ".f64", "float64",
+                {static_cast<long long>(tangentSegs[i].size() / 6), 2, 3},
+                tangentSegs[i].data(), tangentSegs[i].size(), sizeof(double));
+    }
+
+    // Режим сверки: те же сериализации против oracle_manifest.json, без записи
+    // файлов. Записи - "tangents." + key; буфер рёбер пропускается.
+    if (checkMode) {
+        gv::manifest::Manifest manifest;
+        std::string error;
+        if (!manifest.load(manifestPath, error)) {
+            std::fprintf(stderr, "tangents_probe: манифест не прочитан (%s): %s\n",
+                         manifestPath.c_str(), error.c_str());
+            return 1;
+        }
+        gv::manifest::Checker checker(manifest);
+        for (const Dump& d : dumps) {
+            if (!d.manifestEntry) {
+                continue;
+            }
+            checker.check("tangents." + d.key, d.dtype, gv::sha256Hex(d.bytes), d.shape);
+        }
+        checker.printResult();
+        return checker.failures() == 0 ? 0 : 1;
     }
 
     bool ok = true;

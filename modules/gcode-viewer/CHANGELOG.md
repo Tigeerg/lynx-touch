@@ -90,11 +90,52 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.37.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.39.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.39.0 — 2026-10-17
+
+- **Буферы геометрий в манифесте (шаг к уходу от Python, часть 4).** Добавлены 14 записей `geom.*`
+  (тип `uint8`, форма `[N]`): траектория (`toolpath`, `toolpath_nobounds`, `toolpath_empty`), обводка
+  (`hlr`, `hlr_noref`, `hlr_empty`), сетка (`grid`, `grid_flat`), оси (`axis`, `axis_short`), меш (`mesh`,
+  `mesh_empty`), инструмент (`tool`, `tool_low`). `geometry_probe` получил режимы `--self`, `--manifest` и
+  `--check` и **сам собирает входы**: УП через `parseGcode` + `prepareOrdered`, профиль через
+  `gv::toolProfile`, остальное — те же числа, что в `test_geometry_core.py`. Все 14 случаев совпали с
+  питоновским входом **побайтово** (полные sha256), поэтому ни один не оставлен Python.
+- **Манифест 68 -> 82 записи, дополнением** (0 удалённых строк). Итого C++ сторожит **81 из 82** записей:
+  3 + 2 + 11 + 29 + 22 + 14. Единственная непокрытая — `step.segments`: там совпадение только по допуску
+  1e-4 (float32 в порядке GPU против float64), и это записано, а не спрятано.
+- **Что тронуто:** `cpp/geometry_probe.cpp` (сборка входа и три режима), `cpp/CMakeLists.txt` (линковка
+  `gvcore`), `oracle_dump.py`, `oracle_manifest.json`. `test_geometry_core.py` не тронут и остаётся
+  независимой сверкой.
+- **Проверки.** `oracle_dump.py`, `test_geometry_core.py`, `test_step_core.py`, `test_tangents_core.py`,
+  `test_stepledges_plugin.py` — `RESULT: OK`; `smoke_test_qml.py` — `RESULT: OK`; режимы `--manifest` шести
+  пробников — `RESULT: OK`. Версия 0.38.0 -> 0.39.0.
+
+### 0.38.0 — 2026-10-17
+
+- **Касательные в манифесте (шаг к уходу от Python, часть 3).** Добавлены 22 записи `tangents.*` —
+  поверхности STEP, 13 семейств касательных (`fam_O/D/E1/E2/R/T0/T1/RREF/A0/A1/FULL/DROP/ARC`), конусы и
+  пять наборов отрезков силуэта на глазах. Значения взяты из питоновского эталона; `--write` дал
+  «68 записей, добавлено 22», прежние 46 не тронуты. `tangents_probe` получил режим `--manifest` и
+  сверяется по ним сам. Итого C++ сторожит **67 из 68** записей; не покрыта только `step.segments` —
+  там совпадение по допуску 1e-4, а не дайджест.
+- **Пробник сам собирает вход.** `packed_edges` для семейств он строит тем же путём, что рантайм
+  (`stepRawSegments` -> `coalesceStepSegments` -> `packEdgesNp`, допуски `med`), а не берёт питоновский
+  дамп. Оговорка записана в шапке файла и измерена заново: из 24260 значений float32 расходятся 276 на 80
+  позициях (64 отрезка стоят на чужой позиции при том же наборе, 16 — в младших битах, максимум
+  `|dx| = 1,8e-15` мм; набор из 2426 отрезков сопоставляется 2426 из 2426), и **все 22 массива дают один и
+  тот же `sha256` при любом из двух буферов**. Равенство входов по-прежнему проверяет
+  `test_tangents_core.py` — он не тронут и остаётся независимой сверкой.
+- **Что тронуто:** `cpp/tangents_probe.cpp`, `oracle_dump.py`, `oracle_manifest.json`; короткая оговорка со
+  ссылкой на пробник — в `cpp/CMakeLists.txt` и `scripts/build-viewer.ps1`.
+- **Проверки.** `oracle_dump.py`, `test_tangents_core.py`, `test_step_core.py`, `test_stl_core.py`,
+  `test_silhouette_core.py`, `test_geometry_core.py`, `test_gcode_core.py`, `test_stepledges_plugin.py`,
+  `smoke_test_qml.py` — `RESULT: OK`; режимы `--manifest` пяти пробников — `RESULT: OK`
+  (3 + 2 + 11 + 29 + 22 = 67 записей); манифест — 173 строки добавлено, 0 удалено. Версия 0.37.0 -> 0.38.0.
 
 ### 0.37.0 — 2026-10-17
 

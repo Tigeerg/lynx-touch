@@ -1,11 +1,9 @@
 // cpp/geometry_probe.cpp - пробник совпадения геометрий Qt Quick 3D (этап 3 плана
 // переноса) с питоновским эталоном modules/gcode-viewer/geometry.py.
 //
-// Пробник не входит в плагин: отдельная цель CMake. Входные данные он не
-// придумывает - их пишет питоновская проверка (modules/gcode-viewer/test_geometry_core.py)
-// в каталог-аргумент, поэтому обе стороны строят геометрию на одних и тех же
-// числах, а не на «похожих». На каждый случай пробник печатает состояние геометрии
-// и sha256 буфера вершин, а сам буфер пишет файлом <случай>.bin:
+// Пробник не входит в плагин: отдельная цель CMake. На каждый случай он печатает
+// состояние геометрии и sha256 буфера вершин, а сам буфер пишет файлом
+// <случай>.bin:
 //
 //   <случай>.vertexCount: N          число вершин
 //   <случай>.triangleCount: N        число треугольников
@@ -24,12 +22,42 @@
 // меш, меш после reset и тело вращения по профилю (48 делений и 3 деления).
 //
 // Запуск: geometry_probe <каталог-входа> <каталог-дампа>
-// Код возврата: 0 - построено и записано; 1 - входной файл или каталог недоступны.
+//         geometry_probe --self [<файл.ngc>]
+//         geometry_probe --manifest <oracle_manifest.json> [<файл.ngc>]
+//         geometry_probe --check [<файл.ngc>]
+// Код возврата: 0 - построено и записано (или дайджесты сошлись с оракулом);
+//               1 - вход, файл данных или манифест недоступны; 2 - аргументы не
+//               разобраны.
+//
+// Два набора входных данных:
+//   * <каталог-входа> <каталог-дампа> - вход пишет питоновская проверка
+//     (modules/gcode-viewer/test_geometry_core.py), поэтому обе стороны считают на
+//     одних числах, а не на «похожих»;
+//   * --self и --manifest/--check - вход пробник строит сам, без Python: траектория
+//     читается из УП тем же путём, что рантайм (gvcore: parseGcode +
+//     prepareOrdered), остальное - те же числа, что и в питоновской проверке.
+//
+// Режим --manifest/--check сверяет sha256 буферов (записи geom.*) с
+// oracle_manifest.json без Python и без каталога-дампа: печатает строку на запись
+// и "RESULT: OK" / "RESULT: FAIL (n)". Путь к УП по умолчанию берётся от корня
+// репозитория (путь пробника). Режим --self печатает то же состояние с дайджестами,
+// но не пишет дамп: им сверяют свой вход с питоновским вручную.
+//
+// Оговорка о входе сверки: профиль инструмента (случай tool) пробник строит
+// gvcore::toolProfile по тем же метаданным UI_TOOL, что и питоновский
+// mb._tool_profile, а траекторию - по самой УП. Совпадение входов доказывает
+// равенство дайджестов geom.*: сверка ловит и расхождение геометрии, и расхождение
+// входа (см. test_geometry_core.py - он строит вход питоновской стороной).
 
+#include "manifest_check.h"
+#include "sha256.h"
+
+#include "core/gcode_parser.h"
+#include "core/path_prep.h"
+#include "core/tooling.h"
 #include "qt/gv_geometry.h"
 
 #include <QByteArray>
-#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
@@ -39,9 +67,37 @@
 
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace {
+
+// Входные данные всех случаев. Файловый режим наполняет его из каталога-входа,
+// режим --self - из УП и тех же чисел, что у питоновской проверки.
+struct Inputs {
+    QByteArray tpRaw;                      // упакованный буфер подачи (stride 20)
+    int tpNv = 0;                          // число вершин буфера подачи
+    bool tpHasBounds = false;              // габарит сцены задан
+    gv::Aabb tpBounds;                     // габарит сцены
+    std::vector<float> hlrSegs32;          // звенья контура, 6 float32 на звено
+    double hlrRef[3] = {0.0, 0.0, 0.0};    // опорная точка кадра модели
+    std::vector<double> grid;              // size, step, level, cx, cz, feather
+    std::vector<double> gridFlat;          // то же с нулевым растворением
+    std::vector<double> axis;              // length, headLength, headWidth, shaftWidth
+    std::vector<double> axisShort;         // голова длиннее указателя
+    std::vector<double> meshVerts;         // float64, кратно 9 (треугольники)
+    std::vector<double> toolProfile;       // пары (radius, height)
+    int toolSegments = 48;                 // деления тела вращения
+    std::vector<double> toolLowProfile;    // короткий профиль (3 деления)
+    int toolLowSegments = 3;
+};
+
+// Разобранный случай: имя и байты буфера вершин (запись манифеста geom.<имя>).
+using CaseBuffers = std::vector<std::pair<std::string, QByteArray>>;
 
 // Входные файлы пишет питоновская сторона: float64 little-endian (порядок байтов
 // тот же, что у буферов на GPU: x86 - little-endian).
@@ -93,65 +149,167 @@ QString hex32(float value)
     return QString::fromLatin1(text);
 }
 
-// Состояние одной геометрии: печать в stdout и дамп буфера файлом.
+// Состояние одной геометрии: печать в stdout, дамп буфера файлом и сбор байтов
+// для сверки с манифестом.
 void report(const QString &name, QQuick3DGeometry *geo, int vertexCount, int triangleCount,
-            const QString &dumpDir)
+            const QString &dumpDir, bool printReport, CaseBuffers *collect)
 {
     const QByteArray data = geo->vertexData();
     const QByteArray nameUtf8 = name.toUtf8();
     const char *prefix = nameUtf8.constData();
-    std::printf("%s.vertexCount: %d\n", prefix, vertexCount);
-    std::printf("%s.triangleCount: %d\n", prefix, triangleCount);
-    std::printf("%s.stride: %d\n", prefix, geo->stride());
-    std::printf("%s.primitiveType: %d\n", prefix, int(geo->primitiveType()));
-    std::printf("%s.attributeCount: %d\n", prefix, geo->attributeCount());
-    for (int i = 0; i < geo->attributeCount(); ++i) {
-        const QQuick3DGeometry::Attribute attr = geo->attribute(i);
-        std::printf("%s.attribute%d: %d %d %d\n", prefix, i, int(attr.semantic), attr.offset,
-                    int(attr.componentType));
+    if (printReport) {
+        std::printf("%s.vertexCount: %d\n", prefix, vertexCount);
+        std::printf("%s.triangleCount: %d\n", prefix, triangleCount);
+        std::printf("%s.stride: %d\n", prefix, geo->stride());
+        std::printf("%s.primitiveType: %d\n", prefix, int(geo->primitiveType()));
+        std::printf("%s.attributeCount: %d\n", prefix, geo->attributeCount());
+        for (int i = 0; i < geo->attributeCount(); ++i) {
+            const QQuick3DGeometry::Attribute attr = geo->attribute(i);
+            std::printf("%s.attribute%d: %d %d %d\n", prefix, i, int(attr.semantic), attr.offset,
+                        int(attr.componentType));
+        }
+        const QVector3D lo = geo->boundsMin();
+        const QVector3D hi = geo->boundsMax();
+        std::printf("%s.boundsMin: %s %s %s\n", prefix, hex32(lo.x()).toUtf8().constData(),
+                    hex32(lo.y()).toUtf8().constData(), hex32(lo.z()).toUtf8().constData());
+        std::printf("%s.boundsMax: %s %s %s\n", prefix, hex32(hi.x()).toUtf8().constData(),
+                    hex32(hi.y()).toUtf8().constData(), hex32(hi.z()).toUtf8().constData());
+        std::printf("%s.bytes: %d\n", prefix, int(data.size()));
+        std::printf("%s.sha256: %s\n", prefix,
+                    gv::sha256Hex(std::vector<unsigned char>(data.begin(), data.end())).c_str());
     }
-    const QVector3D lo = geo->boundsMin();
-    const QVector3D hi = geo->boundsMax();
-    std::printf("%s.boundsMin: %s %s %s\n", prefix, hex32(lo.x()).toUtf8().constData(),
-                hex32(lo.y()).toUtf8().constData(), hex32(lo.z()).toUtf8().constData());
-    std::printf("%s.boundsMax: %s %s %s\n", prefix, hex32(hi.x()).toUtf8().constData(),
-                hex32(hi.y()).toUtf8().constData(), hex32(hi.z()).toUtf8().constData());
-    std::printf("%s.bytes: %d\n", prefix, int(data.size()));
-    std::printf("%s.sha256: %s\n", prefix,
-                QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex().constData());
-
-    QFile dump(QDir(dumpDir).filePath(name + QStringLiteral(".bin")));
-    if (!dump.open(QIODevice::WriteOnly)) {
-        std::fprintf(stderr, "probe: не удалось записать дамп %s\n", prefix);
-        return;
+    if (!dumpDir.isEmpty()) {
+        QFile dump(QDir(dumpDir).filePath(name + QStringLiteral(".bin")));
+        if (!dump.open(QIODevice::WriteOnly)) {
+            std::fprintf(stderr, "probe: не удалось записать дамп %s\n", prefix);
+            return;
+        }
+        dump.write(data);
+        dump.close();
     }
-    dump.write(data);
-    dump.close();
+    if (collect != nullptr) {
+        collect->emplace_back(name.toStdString(), data);
+    }
 }
 
-} // namespace
-
-int main(int argc, char **argv)
+// Все 14 случаев на одном входе: тот же порядок, что у питоновской проверки.
+void runCases(const Inputs &in, const QString &dumpDir, bool printReport, CaseBuffers *collect)
 {
-    QGuiApplication app(argc, argv);
-    const QStringList args = QGuiApplication::arguments();
-    if (args.size() < 3) {
-        std::fprintf(stderr, "usage: geometry_probe <input-dir> <dump-dir>\n");
-        return 2;
-    }
-    const QString inDir = args.at(1);
-    const QString dumpDir = args.at(2);
-    QDir().mkpath(dumpDir);
+    // ---- ToolpathGeometry: stride 20, контракт toolpath.vert/.frag ----
+    gv::Aabb tpBox = in.tpBounds;
+    gvgeom::ToolpathGeometry toolpath;
+    toolpath.setPacked(in.tpRaw, in.tpHasBounds ? &tpBox : nullptr, in.tpNv);
+    report(QStringLiteral("toolpath"), &toolpath, toolpath.vertexCount(), 0, dumpDir, printReport,
+           collect);
+
+    gvgeom::ToolpathGeometry toolpathNoBounds;
+    toolpathNoBounds.setPacked(in.tpRaw, nullptr, in.tpNv);
+    report(QStringLiteral("toolpath_nobounds"), &toolpathNoBounds, toolpathNoBounds.vertexCount(), 0,
+           dumpDir, printReport, collect);
+
+    gvgeom::ToolpathGeometry toolpathEmpty;
+    toolpathEmpty.setPacked(QByteArray(), nullptr, 0);
+    report(QStringLiteral("toolpath_empty"), &toolpathEmpty, toolpathEmpty.vertexCount(), 0, dumpDir,
+           printReport, collect);
+
+    // ---- HLRLineGeometry: stride 48, контракт stepledges.vert ----
+    const int hlrCount = int(in.hlrSegs32.size()) / 6;
+
+    gvgeom::HLRLineGeometry hlr;
+    hlr.setReference(in.hlrRef);
+    hlr.setSegments(in.hlrSegs32.data(), hlrCount);
+    report(QStringLiteral("hlr"), &hlr, hlr.vertexCount(), 0, dumpDir, printReport, collect);
+
+    gvgeom::HLRLineGeometry hlrNoRef;
+    hlrNoRef.setSegments(in.hlrSegs32.data(), hlrCount);
+    report(QStringLiteral("hlr_noref"), &hlrNoRef, hlrNoRef.vertexCount(), 0, dumpDir, printReport,
+           collect);
+
+    gvgeom::HLRLineGeometry hlrEmpty;
+    hlrEmpty.setSegments(nullptr, 0);
+    report(QStringLiteral("hlr_empty"), &hlrEmpty, hlrEmpty.vertexCount(), 0, dumpDir, printReport,
+           collect);
+
+    // ---- GridGeometry ----
+    gvgeom::GridGeometry gridGeo;
+    gridGeo.setSize(at(in.grid, 0));
+    gridGeo.setStep(at(in.grid, 1));
+    gridGeo.setLevel(at(in.grid, 2));
+    gridGeo.setCenterX(at(in.grid, 3));
+    gridGeo.setCenterZ(at(in.grid, 4));
+    gridGeo.setFeather(at(in.grid, 5));
+    const int gridStride = gvgeom::GridGeometry::STRIDE;
+    report(QStringLiteral("grid"), &gridGeo, int(gridGeo.vertexData().size()) / gridStride, 0,
+           dumpDir, printReport, collect);
+
+    gvgeom::GridGeometry gridFlatGeo;
+    gridFlatGeo.setSize(at(in.gridFlat, 0));
+    gridFlatGeo.setStep(at(in.gridFlat, 1));
+    gridFlatGeo.setLevel(at(in.gridFlat, 2));
+    gridFlatGeo.setCenterX(at(in.gridFlat, 3));
+    gridFlatGeo.setCenterZ(at(in.gridFlat, 4));
+    gridFlatGeo.setFeather(at(in.gridFlat, 5));
+    report(QStringLiteral("grid_flat"), &gridFlatGeo,
+           int(gridFlatGeo.vertexData().size()) / gridStride, 0, dumpDir, printReport, collect);
+
+    // ---- AxisArrowGeometry ----
+    gvgeom::AxisArrowGeometry axisGeo;
+    axisGeo.setLength(at(in.axis, 0));
+    axisGeo.setHeadLength(at(in.axis, 1));
+    axisGeo.setHeadWidth(at(in.axis, 2));
+    axisGeo.setShaftWidth(at(in.axis, 3));
+    const int axisStride = gvgeom::AxisArrowGeometry::STRIDE;
+    report(QStringLiteral("axis"), &axisGeo, int(axisGeo.vertexData().size()) / axisStride, 0,
+           dumpDir, printReport, collect);
+
+    gvgeom::AxisArrowGeometry axisShortGeo;
+    axisShortGeo.setLength(at(in.axisShort, 0));
+    axisShortGeo.setHeadLength(at(in.axisShort, 1));
+    axisShortGeo.setHeadWidth(at(in.axisShort, 2));
+    axisShortGeo.setShaftWidth(at(in.axisShort, 3));
+    report(QStringLiteral("axis_short"), &axisShortGeo,
+           int(axisShortGeo.vertexData().size()) / axisStride, 0, dumpDir, printReport, collect);
+
+    // ---- MeshGeometry ----
+    gvgeom::MeshGeometry mesh;
+    mesh.setTriangles(in.meshVerts.data(), int(in.meshVerts.size()));
+    report(QStringLiteral("mesh"), &mesh, mesh.triangleCount() * 3, mesh.triangleCount(), dumpDir,
+           printReport, collect);
+
+    gvgeom::MeshGeometry meshEmpty;
+    meshEmpty.setTriangles(in.meshVerts.data(), int(in.meshVerts.size()));
+    meshEmpty.reset();
+    report(QStringLiteral("mesh_empty"), &meshEmpty, 0, meshEmpty.triangleCount(), dumpDir,
+           printReport, collect);
+
+    // ---- ToolGeometry ----
+    gvgeom::ToolGeometry tool;
+    tool.setProfile(in.toolProfile.data(), int(in.toolProfile.size()) / 2, in.toolSegments);
+    report(QStringLiteral("tool"), &tool, tool.triangleCount() * 3, tool.triangleCount(), dumpDir,
+           printReport, collect);
+
+    gvgeom::ToolGeometry toolLow;
+    toolLow.setProfile(in.toolLowProfile.data(), int(in.toolLowProfile.size()) / 2,
+                       in.toolLowSegments);
+    report(QStringLiteral("tool_low"), &toolLow, toolLow.triangleCount() * 3, toolLow.triangleCount(),
+           dumpDir, printReport, collect);
+}
+
+// Файловый вход: каталог пишет питоновская проверка test_geometry_core.py.
+bool loadInputs(const QString &inDir, Inputs *out, std::string *error)
+{
+    const auto file = [&inDir](const char *name) {
+        return QDir(inDir).filePath(QLatin1String(name));
+    };
+    const auto fail = [error](const char *what) {
+        if (error != nullptr)
+            *error = what;
+        return false;
+    };
 
     std::vector<double> tpBounds, hlrRef, hlrSegs, grid, gridFlat, axis, axisShort;
     std::vector<double> meshVerts, toolProfile, toolLowProfile, toolSegments, toolLowSegments;
-    QByteArray tpRaw;
-    const auto fail = [](const char *what) {
-        std::fprintf(stderr, "probe: не прочитан вход %s\n", what);
-        return 1;
-    };
-    const auto file = [&inDir](const char *name) { return QDir(inDir).filePath(QLatin1String(name)); };
-    if (!readBytes(file("tp_raw.bin"), &tpRaw)) return fail("tp_raw.bin");
+    if (!readBytes(file("tp_raw.bin"), &out->tpRaw)) return fail("tp_raw.bin");
     if (!readDoubles(file("tp_bounds.f64"), &tpBounds)) return fail("tp_bounds.f64");
     if (!readDoubles(file("hlr_ref.f64"), &hlrRef)) return fail("hlr_ref.f64");
     if (!readDoubles(file("hlr_segs.f64"), &hlrSegs)) return fail("hlr_segs.f64");
@@ -165,104 +323,189 @@ int main(int argc, char **argv)
     if (!readDoubles(file("tool_segments.f64"), &toolSegments)) return fail("tool_segments.f64");
     if (!readDoubles(file("tool_low_segments.f64"), &toolLowSegments)) return fail("tool_low_segments.f64");
 
-    // ---- ToolpathGeometry: stride 20, контракт toolpath.vert/.frag ----
-    const int tpNv = int(tpRaw.size()) / gvgeom::ToolpathGeometry::STRIDE;
-    gv::Aabb tpBox;
-    tpBox.lo = {at(tpBounds, 0), at(tpBounds, 1), at(tpBounds, 2)};
-    tpBox.hi = {at(tpBounds, 3), at(tpBounds, 4), at(tpBounds, 5)};
+    out->tpNv = int(out->tpRaw.size()) / gvgeom::ToolpathGeometry::STRIDE;
+    out->tpHasBounds = true;
+    out->tpBounds.lo = {at(tpBounds, 0), at(tpBounds, 1), at(tpBounds, 2)};
+    out->tpBounds.hi = {at(tpBounds, 3), at(tpBounds, 4), at(tpBounds, 5)};
+    out->hlrSegs32.assign(hlrSegs.begin(), hlrSegs.end());
+    out->hlrRef[0] = at(hlrRef, 0);
+    out->hlrRef[1] = at(hlrRef, 1);
+    out->hlrRef[2] = at(hlrRef, 2);
+    out->grid = grid;
+    out->gridFlat = gridFlat;
+    out->axis = axis;
+    out->axisShort = axisShort;
+    out->meshVerts = meshVerts;
+    out->toolProfile = toolProfile;
+    out->toolSegments = int(at(toolSegments, 0));
+    out->toolLowProfile = toolLowProfile;
+    out->toolLowSegments = int(at(toolLowSegments, 0));
+    return true;
+}
 
-    gvgeom::ToolpathGeometry toolpath;
-    toolpath.setPacked(tpRaw, &tpBox, tpNv);
-    report(QStringLiteral("toolpath"), &toolpath, toolpath.vertexCount(), 0, dumpDir);
+// Свой вход: траектория - из УП тем же путём, что рантайм (gvcore), остальное -
+// те же числа, что пишет питоновская проверка (см. оговорку в шапке).
+bool buildInputs(const std::string &ngcPath, Inputs *out, std::string *error)
+{
+    std::ifstream fh(std::filesystem::u8path(ngcPath), std::ios::binary);
+    if (!fh) {
+        if (error != nullptr)
+            *error = "не открыт " + ngcPath;
+        return false;
+    }
+    const std::string text((std::istreambuf_iterator<char>(fh)), std::istreambuf_iterator<char>());
+    const gv::ParseResult res = gv::parseGcode(text);
+    const gv::PathData pd = gv::prepareOrdered(res.ordered, res.stages);
+    out->tpRaw = QByteArray(reinterpret_cast<const char *>(pd.feed_stream.bytes.data()),
+                            static_cast<int>(pd.feed_stream.bytes.size()));
+    out->tpNv = pd.feed_stream.nv;
+    out->tpHasBounds = pd.has_bounds;
+    out->tpBounds = pd.bounds;
 
-    gvgeom::ToolpathGeometry toolpathNoBounds;
-    toolpathNoBounds.setPacked(tpRaw, nullptr, tpNv);
-    report(QStringLiteral("toolpath_nobounds"), &toolpathNoBounds, toolpathNoBounds.vertexCount(), 0,
-           dumpDir);
+    // Контур: 7 обычных звеньев, вырожденное (ветка ln == 0) и вдоль оси Y.
+    const auto addSeg = [out](double ax, double ay, double az, double bx, double by, double bz) {
+        const float v[6] = {float(ax), float(ay), float(az), float(bx), float(by), float(bz)};
+        out->hlrSegs32.insert(out->hlrSegs32.end(), v, v + 6);
+    };
+    for (int i = 0; i < 7; ++i)
+        addSeg(i * 3.0, 0.0, i * 1.5, i * 3.0 + 10.0, 2.5 * i, i * 1.5);
+    addSeg(5.0, 5.0, 5.0, 5.0, 5.0, 5.0);
+    addSeg(0.0, 0.0, 0.0, 0.0, 10.0, 0.0);
+    out->hlrRef[0] = 12.5;
+    out->hlrRef[1] = -4.25;
+    out->hlrRef[2] = 7.0;
 
-    gvgeom::ToolpathGeometry toolpathEmpty;
-    toolpathEmpty.setPacked(QByteArray(), nullptr, 0);
-    report(QStringLiteral("toolpath_empty"), &toolpathEmpty, toolpathEmpty.vertexCount(), 0, dumpDir);
+    out->grid = {200.0, 10.0, -2.5, 3.25, -7.5, 0.45};
+    out->gridFlat = {60.0, 7.0, 0.0, -1.5, 2.5, 0.0};
+    out->axis = {12.0, 3.5, 2.0, 0.7};
+    out->axisShort = {3.0, 4.0, 2.0, 0.7};
 
-    // ---- HLRLineGeometry: stride 48, контракт stepledges.vert ----
-    const int hlrCount = int(hlrSegs.size()) / 6;
-    std::vector<float> hlrSegs32(std::size_t(hlrCount) * 6);
-    for (std::size_t i = 0; i < hlrSegs32.size(); ++i)
-        hlrSegs32[i] = float(hlrSegs[i]);
-    double hlrRef3[3] = {at(hlrRef, 0), at(hlrRef, 1), at(hlrRef, 2)};
+    // Меш: куб из 12 треугольников плюс вырожденный (ветка ln == 0 в нормалях).
+    // Координаты не целые нарочно: на целых нормали совпали бы и при ошибке
+    // округления.
+    static const double kCube[8][3] = {{0.0, 0.0, 0.0},    {12.7, 0.0, 0.0},   {12.7, 12.7, 0.0},
+                                      {0.0, 12.7, 0.0},   {0.0, 0.0, 6.3},    {12.7, 0.0, 6.3},
+                                      {12.7, 12.7, 6.3},  {0.0, 12.7, 6.3}};
+    static const int kFaces[12][3] = {{0, 1, 2}, {0, 2, 3}, {4, 6, 5}, {4, 7, 6}, {0, 4, 5}, {0, 5, 1},
+                                     {1, 5, 6}, {1, 6, 2}, {2, 6, 7}, {2, 7, 3}, {3, 7, 4}, {3, 4, 0}};
+    for (const auto &face : kFaces) {
+        for (int k = 0; k < 3; ++k) {
+            out->meshVerts.push_back(kCube[face[k]][0]);
+            out->meshVerts.push_back(kCube[face[k]][1]);
+            out->meshVerts.push_back(kCube[face[k]][2]);
+        }
+    }
+    for (int k = 0; k < 3; ++k) {
+        out->meshVerts.push_back(1.1);
+        out->meshVerts.push_back(2.2);
+        out->meshVerts.push_back(3.3);
+    }
 
-    gvgeom::HLRLineGeometry hlr;
-    hlr.setReference(hlrRef3);
-    hlr.setSegments(hlrSegs32.data(), hlrCount);
-    report(QStringLiteral("hlr"), &hlr, hlr.vertexCount(), 0, dumpDir);
+    // Профиль инструмента: концевой фрез с радиусом скругления (BULL) - обе ветки
+    // веера и четырёхугольники; те же метаданные UI_TOOL, что у проверки.
+    gv::ToolInfo info;
+    info.present = true;
+    info.type = "BULL";
+    info.diameter = 6.0;
+    info.corner_radius = 1.0;
+    info.flute_length = 20.0;
+    info.shank_diameter = 6.0;
+    info.body_length = 40.0;
+    info.overall_length = 60.0;
+    const std::vector<gv::ProfilePoint> prof = gv::toolProfile(info);
+    for (const gv::ProfilePoint &p : prof) {
+        out->toolProfile.push_back(p.radius_mm);
+        out->toolProfile.push_back(p.height_mm);
+    }
+    out->toolSegments = 48;
 
-    gvgeom::HLRLineGeometry hlrNoRef;
-    hlrNoRef.setSegments(hlrSegs32.data(), hlrCount);
-    report(QStringLiteral("hlr_noref"), &hlrNoRef, hlrNoRef.vertexCount(), 0, dumpDir);
+    out->toolLowProfile = {0.0, 0.0, 3.0, 0.0, 3.0, 20.0, 0.0, 20.0};
+    out->toolLowSegments = 3;
+    return true;
+}
 
-    gvgeom::HLRLineGeometry hlrEmpty;
-    hlrEmpty.setSegments(nullptr, 0);
-    report(QStringLiteral("hlr_empty"), &hlrEmpty, hlrEmpty.vertexCount(), 0, dumpDir);
+// УП по умолчанию от корня репозитория (путь пробника); пусто при неудаче.
+std::string defaultNgcPath()
+{
+    const std::string root = gv::manifest::repoRoot();
+    if (root.empty())
+        return {};
+    return root + "/data/cad-testdata/Test_model.ngc";
+}
 
-    // ---- GridGeometry ----
-    gvgeom::GridGeometry gridGeo;
-    gridGeo.setSize(at(grid, 0));
-    gridGeo.setStep(at(grid, 1));
-    gridGeo.setLevel(at(grid, 2));
-    gridGeo.setCenterX(at(grid, 3));
-    gridGeo.setCenterZ(at(grid, 4));
-    gridGeo.setFeather(at(grid, 5));
-    const int gridStride = gvgeom::GridGeometry::STRIDE;
-    report(QStringLiteral("grid"), &gridGeo, int(gridGeo.vertexData().size()) / gridStride, 0, dumpDir);
+} // namespace
 
-    gvgeom::GridGeometry gridFlatGeo;
-    gridFlatGeo.setSize(at(gridFlat, 0));
-    gridFlatGeo.setStep(at(gridFlat, 1));
-    gridFlatGeo.setLevel(at(gridFlat, 2));
-    gridFlatGeo.setCenterX(at(gridFlat, 3));
-    gridFlatGeo.setCenterZ(at(gridFlat, 4));
-    gridFlatGeo.setFeather(at(gridFlat, 5));
-    report(QStringLiteral("grid_flat"), &gridFlatGeo,
-           int(gridFlatGeo.vertexData().size()) / gridStride, 0, dumpDir);
+int main(int argc, char **argv)
+{
+    QGuiApplication app(argc, argv);
+    const QStringList qargs = QGuiApplication::arguments();
+    std::vector<std::string> args;
+    args.reserve(std::size_t(qargs.size()));
+    for (const QString &a : qargs)
+        args.push_back(a.toStdString());
 
-    // ---- AxisArrowGeometry ----
-    gvgeom::AxisArrowGeometry axisGeo;
-    axisGeo.setLength(at(axis, 0));
-    axisGeo.setHeadLength(at(axis, 1));
-    axisGeo.setHeadWidth(at(axis, 2));
-    axisGeo.setShaftWidth(at(axis, 3));
-    const int axisStride = gvgeom::AxisArrowGeometry::STRIDE;
-    report(QStringLiteral("axis"), &axisGeo, int(axisGeo.vertexData().size()) / axisStride, 0, dumpDir);
+    const bool manifestMode = args.size() >= 2 && (args[1] == "--manifest" || args[1] == "--check");
+    const bool selfMode = args.size() >= 2 && args[1] == "--self";
 
-    gvgeom::AxisArrowGeometry axisShortGeo;
-    axisShortGeo.setLength(at(axisShort, 0));
-    axisShortGeo.setHeadLength(at(axisShort, 1));
-    axisShortGeo.setHeadWidth(at(axisShort, 2));
-    axisShortGeo.setShaftWidth(at(axisShort, 3));
-    report(QStringLiteral("axis_short"), &axisShortGeo,
-           int(axisShortGeo.vertexData().size()) / axisStride, 0, dumpDir);
+    Inputs inputs;
+    QString dumpDir;
+    if (manifestMode || selfMode) {
+        std::string ngcPath;
+        std::string manifestPath;
+        if (manifestMode) {
+            if (!gv::manifest::resolveCheckArgs(args, "Test_model.ngc", manifestPath, ngcPath))
+                return 2;
+        } else {
+            ngcPath = args.size() >= 3 ? args[2] : defaultNgcPath();
+            if (ngcPath.empty()) {
+                std::fprintf(stderr, "geometry_probe: корень репозитория от своего каталога не "
+                                     "найден: укажите файл УП явно\n");
+                return 1;
+            }
+        }
+        std::string error;
+        if (!buildInputs(ngcPath, &inputs, &error)) {
+            std::fprintf(stderr, "geometry_probe: вход не построен (%s)\n", error.c_str());
+            return 1;
+        }
+        if (manifestMode) {
+            // Сверка с оракулом: буферы своих геометрий против oracle_manifest.json.
+            CaseBuffers collect;
+            runCases(inputs, QString(), false, &collect);
+            gv::manifest::Manifest manifest;
+            if (!manifest.load(manifestPath, error)) {
+                std::fprintf(stderr, "geometry_probe: манифест не прочитан (%s): %s\n",
+                             manifestPath.c_str(), error.c_str());
+                return 1;
+            }
+            gv::manifest::Checker checker(manifest);
+            for (const auto &entry : collect) {
+                checker.check("geom." + entry.first, "uint8",
+                              gv::sha256Hex(std::vector<unsigned char>(entry.second.begin(),
+                                                                       entry.second.end())),
+                              {static_cast<long long>(entry.second.size())});
+            }
+            checker.printResult();
+            return checker.failures() == 0 ? 0 : 1;
+        }
+        runCases(inputs, QString(), true, nullptr);
+        return 0;
+    }
 
-    // ---- MeshGeometry ----
-    gvgeom::MeshGeometry mesh;
-    mesh.setTriangles(meshVerts.data(), int(meshVerts.size()));
-    report(QStringLiteral("mesh"), &mesh, mesh.triangleCount() * 3, mesh.triangleCount(), dumpDir);
-
-    gvgeom::MeshGeometry meshEmpty;
-    meshEmpty.setTriangles(meshVerts.data(), int(meshVerts.size()));
-    meshEmpty.reset();
-    report(QStringLiteral("mesh_empty"), &meshEmpty, 0, meshEmpty.triangleCount(), dumpDir);
-
-    // ---- ToolGeometry ----
-    gvgeom::ToolGeometry tool;
-    tool.setProfile(toolProfile.data(), int(toolProfile.size()) / 2,
-                    int(at(toolSegments, 0)));
-    report(QStringLiteral("tool"), &tool, tool.triangleCount() * 3, tool.triangleCount(), dumpDir);
-
-    gvgeom::ToolGeometry toolLow;
-    toolLow.setProfile(toolLowProfile.data(), int(toolLowProfile.size()) / 2,
-                       int(at(toolLowSegments, 0)));
-    report(QStringLiteral("tool_low"), &toolLow, toolLow.triangleCount() * 3, toolLow.triangleCount(),
-           dumpDir);
-
+    if (args.size() < 3) {
+        std::fprintf(stderr, "usage: geometry_probe <input-dir> <dump-dir>\n"
+                             "       geometry_probe --self [<file.ngc>]\n"
+                             "       geometry_probe --manifest <oracle_manifest.json> [<file.ngc>]\n"
+                             "       geometry_probe --check [<file.ngc>]\n");
+        return 1;
+    }
+    dumpDir = QString::fromStdString(args[2]);
+    QDir().mkpath(dumpDir);
+    std::string error;
+    if (!loadInputs(QString::fromStdString(args[1]), &inputs, &error)) {
+        std::fprintf(stderr, "probe: не прочитан вход %s\n", error.c_str());
+        return 1;
+    }
+    runCases(inputs, dumpDir, true, nullptr);
     return 0;
 }

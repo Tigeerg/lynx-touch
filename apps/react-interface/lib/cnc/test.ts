@@ -1,23 +1,24 @@
 // Подсистема рабочего места ПРОГОН: показ графики и шторки кода, габариты УП,
 // ракурс траектории. Вынесена из machine.ts по образцу prog.ts и mpg.ts: редуктор
 // сводит подсистемы, а размер машины держит метка tools/check.ps1.
+import { AUTO_VIEW_LABEL } from './data'
 import { PATH_VIEWS } from './toolpath'
-import type { MachineState, Message, TestState } from './types'
+import { AUTO_VIEWS, type MachineState, type Message, type TestState } from './types'
 
-export const initialTest: TestState = { curtain: false, bbox: false, hidePath: false, autoCode: true, view: 'ISO' }
+export const initialTest: TestState = { curtain: false, bbox: false, hidePath: false, autoView: 'both', view: 'ISO' }
 
 export type TestAction =
   | { type: 'TEST_CURTAIN' }
   | { type: 'TEST_BBOX' }
   | { type: 'TEST_CLEAR_PATH' }
-  | { type: 'AUTO_VIEW_TOGGLE' }
+  | { type: 'AUTO_VIEW_CYCLE' }
   | { type: 'PATH_VIEW_CYCLE' }
 
 const TEST_TYPES = new Set<string>([
   'TEST_CURTAIN',
   'TEST_BBOX',
   'TEST_CLEAR_PATH',
-  'AUTO_VIEW_TOGGLE',
+  'AUTO_VIEW_CYCLE',
   'PATH_VIEW_CYCLE',
 ])
 
@@ -42,11 +43,10 @@ export function testReducer(s: MachineState, a: TestAction): Result {
         msg: s.test.hidePath ? 'Графика возвращена' : 'Графика очищена — F6 вернёт отрисовку',
       }
 
-    case 'AUTO_VIEW_TOGGLE':
-      return {
-        s: { ...s, test: { ...s.test, autoCode: !s.test.autoCode } },
-        msg: s.test.autoCode ? 'Вид: графика траектории' : 'Вид: код программы',
-      }
+    case 'AUTO_VIEW_CYCLE': {
+      const autoView = AUTO_VIEWS[(AUTO_VIEWS.indexOf(s.test.autoView) + 1) % AUTO_VIEWS.length]
+      return { s: { ...s, test: { ...s.test, autoView } }, msg: `Вид: ${AUTO_VIEW_LABEL[autoView]}` }
+    }
 
     case 'PATH_VIEW_CYCLE': {
       const view = PATH_VIEWS[(PATH_VIEWS.indexOf(s.test.view) + 1) % PATH_VIEWS.length]

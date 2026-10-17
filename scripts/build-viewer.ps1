@@ -47,9 +47,14 @@
 # Аналитические поверхности вращения STEP (этап 4d плана переноса) лежат в
 # gvstep (occt/step_surfaces), семейства касательных - в gvcore
 # (core/tangents), их общий пробник - <build>/tangents_probe.exe: он тоже берёт
-# суп и поверхности из STEP через gvstep и читает упакованные рёбра STEP из
-# файла проверки, поэтому ему нужны DLL OCCT (Qt - нет). Сверку с эталоном ведёт
-# modules/gcode-viewer/test_tangents_core.py.
+# суп и поверхности из STEP через gvstep, упакованные рёбра STEP строит сам из
+# той же формы тем же путём, что рантайм (occt/step_edges + core/packing), и
+# печатает рядом дайджест питоновского файла проверки, поэтому ему нужны DLL
+# OCCT (Qt - нет). Сверку с эталоном ведёт
+# modules/gcode-viewer/test_tangents_core.py. Его режим --manifest сверяет 22
+# записи tangents.* со своего буфера рёбер; буфер не совпадает с питоновским
+# байт в байт (набор отрезков один, порядок и младшие биты - нет), поэтому
+# оговорка и числа - в cpp/tangents_probe.cpp и cpp/CMakeLists.txt.
 #
 # C-ABI-мост над C++-ядром (этап 5 плана переноса) собирается той же сборкой в
 # <repo>/build/cpp/gvbridge.dll: SHARED-цель gvbridge без Qt над gvcore и gvstep,

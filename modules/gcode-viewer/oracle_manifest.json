@@ -1,4 +1,102 @@
 {
+  "geom.axis": {
+    "dtype": "uint8",
+    "sha256": "e07c4af5d6c4555f38a2847287c8a20f908c6daf0bdeadb99b73b7520d831c16",
+    "shape": [
+      216
+    ]
+  },
+  "geom.axis_short": {
+    "dtype": "uint8",
+    "sha256": "147a48b2a8452c079d14a34022f2a92d0a7ee7f3cf91116830588b1b2f72fd4d",
+    "shape": [
+      216
+    ]
+  },
+  "geom.grid": {
+    "dtype": "uint8",
+    "sha256": "19baf0ba4746e7d93afa8119f34ff6770e426e20ec08e6a8bfeb0fccb4c6d607",
+    "shape": [
+      47040
+    ]
+  },
+  "geom.grid_flat": {
+    "dtype": "uint8",
+    "sha256": "b8e1b33a42320fa52f04f942cc8b52983735b769b7a1a10252abc13fc2779e26",
+    "shape": [
+      8064
+    ]
+  },
+  "geom.hlr": {
+    "dtype": "uint8",
+    "sha256": "00d625ba879e0e351de5df2d0e50cb2467c35d188e2cc9ddddc8cf814d6e7d9f",
+    "shape": [
+      2592
+    ]
+  },
+  "geom.hlr_empty": {
+    "dtype": "uint8",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "shape": [
+      0
+    ]
+  },
+  "geom.hlr_noref": {
+    "dtype": "uint8",
+    "sha256": "0f718844363c3e4bcbc92e16a028db96cf2c406608e6fbffb87c5c28a2972266",
+    "shape": [
+      2592
+    ]
+  },
+  "geom.mesh": {
+    "dtype": "uint8",
+    "sha256": "ba38c990b8a6f1176fff969993d75e0bc33f347ef3b19c6b607724f7edddd367",
+    "shape": [
+      936
+    ]
+  },
+  "geom.mesh_empty": {
+    "dtype": "uint8",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "shape": [
+      0
+    ]
+  },
+  "geom.tool": {
+    "dtype": "uint8",
+    "sha256": "dff7c27ee75d11046da4b62e3c5b8fecf90156aad22a3befedacbead7af1cf9b",
+    "shape": [
+      76032
+    ]
+  },
+  "geom.tool_low": {
+    "dtype": "uint8",
+    "sha256": "401106bd5464a28e8888fbb75029c7f72c5b4e78661a96d79f01d12590a45e57",
+    "shape": [
+      864
+    ]
+  },
+  "geom.toolpath": {
+    "dtype": "uint8",
+    "sha256": "dfcb8b92b72d05eb48c95f4124f011981d2cb7a6a15512ec65f94f293912c168",
+    "shape": [
+      2773520
+    ]
+  },
+  "geom.toolpath_empty": {
+    "dtype": "uint8",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "shape": [
+      0
+    ]
+  },
+  "geom.toolpath_nobounds": {
+    "dtype": "uint8",
+    "sha256": "dfcb8b92b72d05eb48c95f4124f011981d2cb7a6a15512ec65f94f293912c168",
+    "shape": [
+      2773520
+    ]
+  },
   "path.flags": {
     "dtype": "float64",
     "sha256": "9143259749b973e229c240c43d225a8b33103b079374bf19c80e25bac1565ad9",
@@ -300,6 +398,179 @@
     "sha256": "5cd00e26ffa596cc391d87af42bdf04973570b33bd8a6f4dc480e0a7e10be5ea",
     "shape": [
       7
+    ]
+  },
+  "tangents.cone": {
+    "dtype": "float64",
+    "sha256": "e9938d38e2a50a6c361a2d1f33525ad2e2890a3c7dbd1325b6dfeae558596fb8",
+    "shape": [
+      2,
+      9
+    ]
+  },
+  "tangents.fam_A0": {
+    "dtype": "float64",
+    "sha256": "c840b52306f605122ceb598f56412f96ccf4844ed08638bb44b354c0a139bed3",
+    "shape": [
+      124
+    ]
+  },
+  "tangents.fam_A1": {
+    "dtype": "float64",
+    "sha256": "4dc0a85aa82a5cd09ef0c8f98782fd405727ed29e91b14ded0c7cecc0f70d564",
+    "shape": [
+      124
+    ]
+  },
+  "tangents.fam_ARC": {
+    "dtype": "uint8",
+    "sha256": "2fc1444861de8d54664c20c9a1702cfeaa56aff026f63a14e37c0b66dc608723",
+    "shape": [
+      124,
+      64
+    ]
+  },
+  "tangents.fam_D": {
+    "dtype": "float64",
+    "sha256": "84fdd9d467645426ecd16d9b62ffe71dff9eca293b8aaf865a18842d0f508ef1",
+    "shape": [
+      124,
+      3
+    ]
+  },
+  "tangents.fam_DROP": {
+    "dtype": "float64",
+    "sha256": "b04f87b0e6826dd23f393e0c56b0f16c8dd23e9056bbb75871e8507c8b9bd009",
+    "shape": [
+      124,
+      8
+    ]
+  },
+  "tangents.fam_E1": {
+    "dtype": "float64",
+    "sha256": "57dcbc2e8eabac9cc665b38cdf0b8326bf1ff3032b77aa333ca18dd57f305a08",
+    "shape": [
+      124,
+      3
+    ]
+  },
+  "tangents.fam_E2": {
+    "dtype": "float64",
+    "sha256": "9e8694588cda990758b304a7a9386313e03a91421b2b87dba5f19ea3c822c183",
+    "shape": [
+      124,
+      3
+    ]
+  },
+  "tangents.fam_FULL": {
+    "dtype": "uint8",
+    "sha256": "222279196422ea85e3cbad30bf3afd4ab3ebbd124059f34140dffa0257aa3b54",
+    "shape": [
+      124
+    ]
+  },
+  "tangents.fam_O": {
+    "dtype": "float64",
+    "sha256": "b0a4b6871432827e90a53e60018dc3050feebcbcba1343370d6a866d13a801df",
+    "shape": [
+      124,
+      3
+    ]
+  },
+  "tangents.fam_R": {
+    "dtype": "float64",
+    "sha256": "c53aaeecd42b533eb9cb72d85613bf6b692408762c04c9f2e0b43bea03478e34",
+    "shape": [
+      124
+    ]
+  },
+  "tangents.fam_RREF": {
+    "dtype": "float64",
+    "sha256": "eff27c13f4f7381ad874771f249234e46e6c763953035e5655880995f002881a",
+    "shape": [
+      124
+    ]
+  },
+  "tangents.fam_T0": {
+    "dtype": "float64",
+    "sha256": "2cc5d51f1a1925451d75efb534949db63564b01a0f679d66cc3c9193e0ca8dd7",
+    "shape": [
+      124
+    ]
+  },
+  "tangents.fam_T1": {
+    "dtype": "float64",
+    "sha256": "5a8c6e30f8fb9ac2e95550b344f4e8e7c1d004a4acbbdfa043839f2df9d25ce2",
+    "shape": [
+      124
+    ]
+  },
+  "tangents.surfs_cone": {
+    "dtype": "float64",
+    "sha256": "f299d1441d3507668a8bc8a2f19643c4086767691be7f42a320309c7495a0d8e",
+    "shape": [
+      14,
+      9
+    ]
+  },
+  "tangents.surfs_cyl": {
+    "dtype": "float64",
+    "sha256": "5f440cd2401c4e0dc8bd9863f65a27a2d0464577586cbc6a1a9f9e7f94fa102a",
+    "shape": [
+      180,
+      17
+    ]
+  },
+  "tangents.surfs_kind": {
+    "dtype": "int32",
+    "sha256": "6c4f6b2c5c3b588a293cd83c72b32f8f22c9171d6baf7b4329245ff724a33e9a",
+    "shape": [
+      194
+    ]
+  },
+  "tangents.tangent0": {
+    "dtype": "float64",
+    "sha256": "78b9f2ac786fdd5512eb02c181cc097fcdac623a9f109fb0af00b13cdeb51654",
+    "shape": [
+      57,
+      2,
+      3
+    ]
+  },
+  "tangents.tangent1": {
+    "dtype": "float64",
+    "sha256": "80569a598837bcaf12f7387f57887659266e312106798a5f724bd493f2158de5",
+    "shape": [
+      58,
+      2,
+      3
+    ]
+  },
+  "tangents.tangent2": {
+    "dtype": "float64",
+    "sha256": "d140214e3ce250728ab30afbbe9be143de21a066350f9bc36bdd8210943ee081",
+    "shape": [
+      53,
+      2,
+      3
+    ]
+  },
+  "tangents.tangent3": {
+    "dtype": "float64",
+    "sha256": "4872aaa3e0a45086482f811432a23f1318fde72e5876af2a852a66b5564e441f",
+    "shape": [
+      53,
+      2,
+      3
+    ]
+  },
+  "tangents.tangent4": {
+    "dtype": "float64",
+    "sha256": "a394baccb2e8e55deec4fff4c600d62dd261ab5714eee1acf6d9ac117937a4c4",
+    "shape": [
+      56,
+      2,
+      3
     ]
   },
   "topo.d": {

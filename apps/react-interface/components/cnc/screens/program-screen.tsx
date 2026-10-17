@@ -269,10 +269,13 @@ export function ProgramList({
   state,
   dispatch,
   className,
+  bare = false,
 }: {
   state: MachineState
   dispatch: Dispatch<Action>
   className?: string
+  /** Без своей рамки и заголовка: список кадров для общего заголовка. */
+  bare?: boolean
 }) {
   const listRef = useRef<HTMLOListElement>(null)
   const sim = state.sim.active
@@ -285,72 +288,80 @@ export function ProgramList({
     listRef.current?.querySelector<HTMLElement>(`[data-index="${follow}"]`)?.scrollIntoView({ block: 'nearest' })
   }, [follow, file.lines.length])
 
+  const info = (
+    <div className="flex items-center gap-2">
+      <span className="font-mono text-[11px] font-semibold text-muted-foreground" title="Оценка остатка времени">
+        ≈ {formatDuration(restMs)}
+      </span>
+      {state.editMode ? (
+        <span className="flex items-center gap-1.5 rounded-sm bg-warning px-2 py-0.5 text-xs font-bold text-warning-foreground">
+          <SquarePen className="size-3.5" aria-hidden="true" />
+          РЕДАКТИРОВАНИЕ
+        </span>
+      ) : sim ? (
+        <span className="flex items-center gap-1.5 rounded-sm bg-warning px-2 py-0.5 text-xs font-bold text-warning-foreground">
+          <Play className="size-3.5 fill-current" aria-hidden="true" />
+          СИМУЛЯЦИЯ
+        </span>
+      ) : (
+        <div className="flex items-center gap-2 text-[11px] font-medium">
+          <span className="flex items-center gap-1">
+            <Lamp on={state.singleBlock} tone="warning" /> Покадр.
+          </span>
+          <span className="flex items-center gap-1">
+            <Lamp on={state.optStop} tone="primary" /> M01
+          </span>
+          <span className="flex items-center gap-1">
+            <Lamp on={state.dryRun} tone="warning" /> Холост.
+          </span>
+        </div>
+      )}
+    </div>
+  )
+
+  const list = (
+    <ol ref={listRef} className="h-full overflow-hidden py-0.5 font-mono text-sm" aria-label="Кадры программы">
+      {file.lines.map((line, i) => {
+        const current = !state.editMode && (sim ? i === state.sim.line : i === state.line)
+        const cursor = i === state.cursor.prog
+        const editing = state.editor?.line === i
+        return (
+          <li
+            key={i}
+            data-index={i}
+            aria-current={current ? 'step' : undefined}
+            className={cn(
+              'flex items-center gap-2 border-l-4 border-transparent px-2 py-0.5',
+              current && 'border-primary bg-accent',
+              cursor && 'outline-2 -outline-offset-2 outline-foreground/40',
+              cursor && state.editMode && 'border-warning bg-warning/15',
+            )}
+          >
+            <span className="w-8 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{i + 1}</span>
+            <span className="flex w-4 shrink-0 text-primary" aria-hidden="true">
+              {current && <Play className="size-3.5 fill-current" />}
+            </span>
+            {editing ? (
+              <LineEditor value={state.editor!.buffer} dispatch={dispatch} />
+            ) : (
+              <span className="truncate">{highlight(line)}</span>
+            )}
+          </li>
+        )
+      })}
+    </ol>
+  )
+
+  if (bare) return <div className={cn('h-full', className)}>{list}</div>
+
   return (
     <Panel
       title={`Программа ${file.name} · ${file.title}`}
       icon={FileCode}
       className={cn('h-full', className, state.editMode && 'border-warning')}
-      right={
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px] font-semibold text-muted-foreground" title="Оценка остатка времени">
-            ≈ {formatDuration(restMs)}
-          </span>
-          {state.editMode ? (
-            <span className="flex items-center gap-1.5 rounded-sm bg-warning px-2 py-0.5 text-xs font-bold text-warning-foreground">
-              <SquarePen className="size-3.5" aria-hidden="true" />
-              РЕДАКТИРОВАНИЕ
-            </span>
-          ) : sim ? (
-            <span className="flex items-center gap-1.5 rounded-sm bg-warning px-2 py-0.5 text-xs font-bold text-warning-foreground">
-              <Play className="size-3.5 fill-current" aria-hidden="true" />
-              СИМУЛЯЦИЯ
-            </span>
-          ) : (
-            <div className="flex items-center gap-2 text-[11px] font-medium">
-              <span className="flex items-center gap-1">
-                <Lamp on={state.singleBlock} tone="warning" /> Покадр.
-              </span>
-              <span className="flex items-center gap-1">
-                <Lamp on={state.optStop} tone="primary" /> M01
-              </span>
-              <span className="flex items-center gap-1">
-                <Lamp on={state.dryRun} tone="warning" /> Холост.
-              </span>
-            </div>
-          )}
-        </div>
-      }
+      right={info}
     >
-      <ol ref={listRef} className="h-full overflow-hidden py-0.5 font-mono text-sm" aria-label="Кадры программы">
-        {file.lines.map((line, i) => {
-          const current = !state.editMode && (sim ? i === state.sim.line : i === state.line)
-          const cursor = i === state.cursor.prog
-          const editing = state.editor?.line === i
-          return (
-            <li
-              key={i}
-              data-index={i}
-              aria-current={current ? 'step' : undefined}
-              className={cn(
-                'flex items-center gap-2 border-l-4 border-transparent px-2 py-0.5',
-                current && 'border-primary bg-accent',
-                cursor && 'outline-2 -outline-offset-2 outline-foreground/40',
-                cursor && state.editMode && 'border-warning bg-warning/15',
-              )}
-            >
-              <span className="w-8 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{i + 1}</span>
-              <span className="flex w-4 shrink-0 text-primary" aria-hidden="true">
-                {current && <Play className="size-3.5 fill-current" />}
-              </span>
-              {editing ? (
-                <LineEditor value={state.editor!.buffer} dispatch={dispatch} />
-              ) : (
-                <span className="truncate">{highlight(line)}</span>
-              )}
-            </li>
-          )
-        })}
-      </ol>
+      {list}
     </Panel>
   )
 }

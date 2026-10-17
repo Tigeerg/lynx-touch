@@ -130,6 +130,10 @@ endif()
 # на входных данных, которые пишет питоновская проверка, печатает состояние и
 # sha256 буфера и пишет буферы дампом; сверку ведёт
 # modules/gcode-viewer/test_geometry_core.py.
+#
+# Режим --manifest/--check строит вход сам (gvcore: parseGcode + prepareOrdered,
+# toolProfile) и сверяет дайджесты буферов с oracle_manifest.json без Python,
+# поэтому нужен gvcore: траектория берётся из УП тем же путём, что рантайм.
 add_executable(geometry_probe geometry_probe.cpp)
 set_target_properties(geometry_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -137,7 +141,7 @@ set_target_properties(geometry_probe PROPERTIES
 if (MSVC)
     target_compile_options(geometry_probe PRIVATE /utf-8)
 endif()
-target_link_libraries(geometry_probe PRIVATE gvqtgeom Qt6::Core Qt6::Gui Qt6::Quick3D)
+target_link_libraries(geometry_probe PRIVATE gvqtgeom gvcore Qt6::Core Qt6::Gui Qt6::Quick3D)
 
 # STEP, crease-aware нормали и аналитические поверхности (этап 4a и 4d плана
 # переноса): зеркало modules/gcode-viewer/step_import.py, normals.py и
@@ -225,12 +229,22 @@ target_include_directories(silhouette_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 # Пробник аналитических поверхностей STEP и семейств касательных (этап 4d плана
 # переноса): отдельная цель, в плагин не входит. Берёт суп вершин и поверхности
 # вращения из STEP тем же путём gvstep, что питоновские load_step_model и
-# load_step_surfaces, читает упакованные рёбра STEP из файла проверки и строит
+# load_step_surfaces, строит упакованные рёбра STEP сам из той же формы тем же
+# путём, что рантайм (occt/step_edges + core/packing), а из файла проверки
+# берёт их для сличения дайджестов, и строит
 # семейства касательных (ядро gvcore), затем считает отрезки на пяти
 # фиксированных глазах. Печатает числа и sha256 массивов в тех же
 # сериализациях, что Python, и пишет те же массивы дампом; сверку ведёт
 # modules/gcode-viewer/test_tangents_core.py. Семейства живут в gvcore, поэтому
 # цели нужен только слой STEP: DLL OCCT пробнику нужны, DLL Qt - нет.
+#
+# Есть и режим --manifest/--check: он сверяет 22 записи tangents.* манифеста со
+# своего буфера рёбер. Оговорка: свой буфер не совпадает с питоновским
+# packed_edges.f32 байт в байт - набор из 2426 отрезков один, но 64 отрезка
+# стоят на чужой позиции, а 16 расходятся в младших битах (максимум 1.8e-15 мм
+# при значениях порядка 5.7e-14); sha256 4eff01c2... против 926b3836... Разбор
+# чисел идёт в cpp/tangents_probe.cpp; значения записей берёт питоновский вход
+# (oracle_dump.py), а равенство входов отдельно стережёт test_tangents_core.py.
 add_executable(tangents_probe tangents_probe.cpp)
 set_target_properties(tangents_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}

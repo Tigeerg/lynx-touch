@@ -31,7 +31,7 @@ describe('авто: F1-F8 и действия', () => {
       'PART_COUNTER_RESET',
       'BROKEN_TOOL_CHECK',
       undefined,
-      'AUTO_VIEW_TOGGLE',
+      'AUTO_VIEW_CYCLE',
     ])
   })
 
@@ -43,11 +43,13 @@ describe('авто: F1-F8 и действия', () => {
     expect(bounced.screen).toBe('prog')
   })
 
-  it('вид в АВТО переключается своим действием', () => {
-    const on = reducer(initialState, { type: 'AUTO_VIEW_TOGGLE' })
+  it('вид в АВТО идёт по кругу: траектория, gcode, совместно', () => {
+    const a = reducer(initialState, { type: 'AUTO_VIEW_CYCLE' })
+    const b = reducer(a, { type: 'AUTO_VIEW_CYCLE' })
+    const c = reducer(b, { type: 'AUTO_VIEW_CYCLE' })
 
-    expect(on.test.autoCode).toBe(false)
-    expect(on.message?.text).toBe('Вид: графика траектории')
+    expect([a.test.autoView, b.test.autoView, c.test.autoView]).toEqual(['trajectory', 'gcode', 'both'])
+    expect(a.message?.text).toBe('Вид: траектория')
   })
 
   it('счётчики деталей обнуляются в останове', () => {

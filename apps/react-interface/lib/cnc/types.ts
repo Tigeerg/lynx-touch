@@ -70,10 +70,14 @@ export interface TestState {
   bbox: boolean
   /** Графика очищена: траектория не рисуется (F6). */
   hidePath: boolean
-  /** Работа: показывать код, а не графику (F8 «Вид»). */
-  autoCode: boolean
+  /** Работа: что показывать на экране (F8 «Вид»). */
+  autoView: AutoView
   view: PathView
 }
+
+// Режимы вида в АВТО, друг за другом по F8: траектория, gcode, совместно.
+export type AutoView = 'trajectory' | 'gcode' | 'both'
+export const AUTO_VIEWS: AutoView[] = ['trajectory', 'gcode', 'both']
 
 export interface SearchState {
   open: boolean

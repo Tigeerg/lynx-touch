@@ -58,9 +58,10 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { PROBE_STEP_MEASURE, PROBE_STEP_RESULT, PROBE_TOOL } from './probe'
+import { AUTO_VIEW_LABEL } from './data'
 import type { Action } from './machine'
 import { defaultParams, paramAt, TOOLPATH_PARAM, unsavedIds } from './service-data'
-import type { MachineState, ServiceSection } from './types'
+import { AUTO_VIEWS, type MachineState, type ServiceSection } from './types'
 
 export const SERVICE_ICON: Record<ServiceSection, LucideIcon> = {
   system: MonitorCog,
@@ -196,10 +197,9 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       { label: 'Проверка слома', icon: ScanSearch, action: { type: 'BROKEN_TOOL_CHECK' } },
       null,
       {
-        label: s.test.autoCode ? 'Вид: графика' : 'Вид: код',
+        label: `Вид: ${AUTO_VIEW_LABEL[AUTO_VIEWS[(AUTO_VIEWS.indexOf(s.test.autoView) + 1) % AUTO_VIEWS.length]]}`,
         icon: Eye,
-        action: { type: 'AUTO_VIEW_TOGGLE' },
-        active: !s.test.autoCode,
+        action: { type: 'AUTO_VIEW_CYCLE' },
       },
     ]
     return slots(keys)

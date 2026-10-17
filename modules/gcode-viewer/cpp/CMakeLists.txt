@@ -38,6 +38,13 @@
 # modules/gcode-viewer/test_controller_cpp.py.
 #   QML:      import MockBackend 1.0
 #   PySide6:  engine.addImportPath("<repo>/build/qmlbackend")
+#
+# Той же сборкой собирается C++-точка входа вьювера (отказ от Python в рантайме):
+# <repo>/build/viewer/gcodeviewer.exe, исходник - viewer/main.cpp. Она грузит
+# GcodeViewer3D.qml в QQuickView и работает только с плагином MockBackend:
+# питоновского бэкенда в рантайме нет. Запуск - с Qt в PATH (exe линкуется с Qt),
+# каталог плагина и DLL OCCT точка входа добавляет себе сама.
+#   gcodeviewer.exe <УП.ngc>
 
 cmake_minimum_required(VERSION 3.16)
 project(cnc_edges_plugin LANGUAGES CXX)
@@ -354,9 +361,9 @@ target_include_directories(stepledges_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
 # C++-контроллер вьювера (этап 5.4а плана переноса): QML-модуль MockBackend 1.0 с
 # типом GcodeToolpath и шестью геометриями этапа 3. Заменяет питоновскую
-# регистрацию тех же типов (controller.py, geometry.py) при CNC_CPP=controller:
-# контракт QML - URI, имена типов, свойства, слоты и сигналы - тот же, поэтому
-# GcodeViewer3D.qml не меняется.
+# регистрацию тех же типов (controller.py, geometry.py): контракт QML - URI, имена
+# типов, свойства, слоты и сигналы - тот же, поэтому GcodeViewer3D.qml не меняется.
+# Это единственный бэкенд вьювера: точки входа грузят только его.
 #
 # Модуль, как и CNC.Edges, разделён по образцу Qt: резервная библиотека
 # gvqmlbackend.dll несёт типы и логику (её грузит точка входа), точка входа
@@ -403,3 +410,37 @@ if (MSVC)
 else()
     target_compile_options(gvqmlbackend PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
+
+# C++-точка входа вьювера (отказ от Python в рантайме): <repo>/build/viewer/
+# gcodeviewer.exe грузит GcodeViewer3D.qml в QQuickView и работает только с
+# плагином MockBackend - питоновского бэкенда в пути исполнения нет. Каталог
+# вынесен отдельной переменной по той же причине, что у моста: путь знает
+# сторож и сборка, а не генератор CMake.
+#
+# Корень репозитория и файл вьювера записаны в цель на случай запуска exe из
+# другого каталога: по умолчанию точка входа выводит их из своего пути
+# (<репо>/build/viewer -> <репо>).
+get_filename_component(GV_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+set(GV_VIEWER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../build/viewer"
+    CACHE PATH "Каталог, куда кладётся gcodeviewer.exe")
+
+add_executable(gcodeviewer viewer/main.cpp)
+set_target_properties(gcodeviewer PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${GV_VIEWER_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${GV_VIEWER_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${GV_VIEWER_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_VIEWER_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${GV_VIEWER_DIR}
+    # Q_OBJECT-класс живёт в main.cpp: moc собирается автоматически.
+    AUTOMOC ON
+)
+# Qt6::Quick нужен QQuickView (окно для Item-корня вьювера); QtQuick3D движок
+# находит как QML-модуль Qt, отдельной линковки не требует.
+target_link_libraries(gcodeviewer PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
+target_compile_definitions(gcodeviewer PRIVATE
+    GV_REPO_ROOT="${GV_REPO_ROOT}"
+    GV_VIEWER_QML="${CMAKE_CURRENT_SOURCE_DIR}/../GcodeViewer3D.qml")
+if (MSVC)
+    target_compile_options(gcodeviewer PRIVATE /utf-8)
+endif()
+

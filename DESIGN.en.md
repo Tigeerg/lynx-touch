@@ -188,7 +188,9 @@ Checks:
 - the live frame checks (`test_solid_skin.py`, `test_ribbon_width.py`) are red on the development machine
   and on a clean `HEAD` (11792 px against a threshold of 10500; 0.00 px against 2.0) — they were measured on
   another machine and need a hardware GL; the guard does not run them;
-- `tools/check.ps1` (`pnpm guard`) does not run `bench_viewer.py` — performance regressions are not caught.
+- `tools/check.ps1` (`pnpm guard`) does not run `bench_viewer.py` — performance regressions are not caught;
+- `apps/qt-interface/main.qml` instantiates a type `Toolpath` that no backend provides (the class is named
+  `GcodeToolpath`) — the file does not load regardless of the port; `preview.qml` does load.
 
 Outline on the STL branch:
 - On a mesh only sharp transitions are drawn, so there are fewer internal contours than on STEP: B-rep face

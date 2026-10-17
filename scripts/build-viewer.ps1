@@ -7,6 +7,7 @@
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunStlProbe
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunSilhouetteProbe
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunTangentsProbe
+#          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunViewer
 #
 # Генератор — Ninja, конфигурация Release, компилятор MSVC. Пути SDK берутся из
 # окружения с умолчаниями: CNC_QT_DIR (Qt6 с Quick3D), CNC_OCC_DIR (OCCT),
@@ -73,6 +74,13 @@
 # он заменяет питоновскую регистрацию тех же типов; проверка сверяет его свойства и
 # буферы с питоновским эталоном - modules/gcode-viewer/test_controller_cpp.py.
 #
+# Той же сборкой собирается C++-точка входа вьювера (отказ от Python в рантайме):
+# <repo>/build/viewer/gcodeviewer.exe, исходник - cpp/viewer/main.cpp. Она грузит
+# GcodeViewer3D.qml в QQuickView и работает только с плагином MockBackend: питонов-
+# ского бэкенда в рантайме нет. Запуск - с Qt в PATH (exe линкуется с Qt6Core.dll);
+# каталог плагина и DLL OCCT точка входа добавляет себе сама:
+#   build\viewer\gcodeviewer.exe data\cad-testdata\Test_model.ngc
+#
 # Код возврата: 0 — собрано, плагин на месте; 1 — инструмент не найден или ошибка сборки.
 
 [CmdletBinding()]
@@ -95,6 +103,8 @@ param(
     [switch]$RunSilhouetteProbe,
     # Дополнительно прогнать пробник поверхностей и касательных на data/cad-testdata/Test_model.STEP.
     [switch]$RunTangentsProbe,
+    # Дополнительно прогнать C++-точку входа вьювера offscreen на data/cad-testdata/Test_model.ngc.
+    [switch]$RunViewer,
     # Только конфигурирование, без сборки.
     [switch]$ConfigureOnly
 )
@@ -297,6 +307,16 @@ if (Test-Path -LiteralPath $backendQmldir) {
     Fail "модуль MockBackend не собран: нет $backendQmldir"
 }
 
+# C++-точка входа вьювера (отказ от Python в рантайме): <repo>/build/viewer/
+# gcodeviewer.exe. Она - то, чем вьювер запускается без Python; питоновского
+# бэкенда в рантайме нет, поэтому отсутствие exe - ошибка сборки, а не мелочь.
+$viewerExe = Join-Path $root 'build\viewer\gcodeviewer.exe'
+if (Test-Path -LiteralPath $viewerExe) {
+    Write-Host ("build-viewer: точка входа вьювера " + $viewerExe)
+} else {
+    Fail "точка входа вьювера не собрана: нет $viewerExe"
+}
+
 if ($RunProbe) {
     if (-not (Test-Path -LiteralPath $probe)) { Fail "пробника нет: $probe" }
     if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
@@ -358,6 +378,17 @@ if ($RunTangentsProbe) {
     New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
     & $tanProbe $probeStep $dumpDir
     if ($LASTEXITCODE -ne 0) { Fail "пробник поверхностей и касательных вернул $LASTEXITCODE" }
+}
+
+if ($RunViewer) {
+    if (-not (Test-Path -LiteralPath $viewerExe)) { Fail "нет точки входа вьювера: $viewerExe" }
+    if (-not (Test-Path -LiteralPath $probeNgc)) { Fail "нет тестовой УП: $probeNgc" }
+    # Qt в PATH обязателен: exe линкуется с Qt6Core.dll. Каталог плагина и DLL
+    # OCCT точка входа добавляет себе сама.
+    $env:QT_QPA_PLATFORM = 'offscreen'
+    $env:PATH = "$QtDir\bin;$env:PATH"
+    & $viewerExe $probeNgc
+    if ($LASTEXITCODE -ne 0) { Fail "точка входа вьювера вернула $LASTEXITCODE" }
 }
 
 Write-Host 'build-viewer: OK' -ForegroundColor Green

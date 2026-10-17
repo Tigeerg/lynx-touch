@@ -117,17 +117,9 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
 }
 if ($pythonReal) {
   Run-Tool 'py_compile mock_backend.py' { python -m py_compile modules/gcode-viewer/mock_backend.py }
+  # Режим без экрана остаётся на весь прогон сторожа, как было: его наследуют и
+  # прогоны вьювера ниже.
   $env:QT_QPA_PLATFORM = 'offscreen'
-  Run-Tool 'smoke_test_qml.py' { python modules/gcode-viewer/smoke_test_qml.py }
-  # Кода возврата мало: фоновая трассировка или записанное предупреждение внутри
-  # прогона (например, отказ скана коллизий) код выхода не меняют - прогон всё
-  # равно печатает "loaded OK". Такие отказы обязаны быть видны.
-  Run-Tool 'preview_3d.py offscreen' {
-    $log = python modules/gcode-viewer/preview_3d.py 'data/cad-testdata/Test_model.ngc' 2>&1
-    $code = $LASTEXITCODE
-    if ($code -ne 0 -or ($log | Select-String -Pattern 'Traceback|^(WARNING|ERROR) ' -Quiet)) { cmd /c exit 1 }
-    else { cmd /c exit 0 }
-  }
   Run-Tool 'test_tangent_policy.py' { python modules/gcode-viewer/test_tangent_policy.py }
   Run-Tool 'test_normals_golden.py' { python modules/gcode-viewer/test_normals_golden.py }
   Run-Tool 'test_normals_orientation.py' { python modules/gcode-viewer/test_normals_orientation.py }
@@ -139,7 +131,28 @@ if ($pythonReal) {
   Run-Tool 'test_collision.py' { python modules/gcode-viewer/test_collision.py }
   Run-Tool 'oracle_dump.py' { python modules/gcode-viewer/oracle_dump.py }
 } else {
-  Skipped 'python: py_compile, offscreen-прогоны, test_tangent_policy.py, test_normals_golden.py'
+  Skipped 'python: py_compile, test_tangent_policy.py, test_normals_golden.py, oracle_dump.py'
+}
+
+# 5б. Прогоны вьювера идут только на C++-плагине MockBackend: питоновского бэкенда
+#     в рантайме нет, поэтому оба шага требуют собранного плагина. Плагина нет -
+#     шаг пропускается, как остальные инструментальные проверки: на машине без
+#     тулчейна сторож остаётся зелёным.
+$backendQmldir = 'build/qmlbackend/MockBackend/qmldir'
+if ($pythonReal -and (Test-Path -LiteralPath $backendQmldir)) {
+  $env:QT_QPA_PLATFORM = 'offscreen'
+  Run-Tool 'smoke_test_qml.py' { python modules/gcode-viewer/smoke_test_qml.py }
+  # Кода возврата мало: фоновая трассировка или записанное предупреждение внутри
+  # прогона (например, отказ скана коллизий) код выхода не меняют - прогон всё
+  # равно печатает "loaded OK". Такие отказы обязаны быть видны.
+  Run-Tool 'preview_3d.py offscreen' {
+    $log = python modules/gcode-viewer/preview_3d.py 'data/cad-testdata/Test_model.ngc' 2>&1
+    $code = $LASTEXITCODE
+    if ($code -ne 0 -or ($log | Select-String -Pattern 'Traceback|^(WARNING|ERROR) ' -Quiet)) { cmd /c exit 1 }
+    else { cmd /c exit 0 }
+  }
+} else {
+  Skipped 'smoke_test_qml.py и preview_3d.py offscreen: нет python или собранного плагина MockBackend'
 }
 
 # 6. Сборка QML-плагина CNC.Edges (StepEdges), C-ABI-моста gvbridge, шима
@@ -238,6 +251,24 @@ if ($cppReady -and $pythonReal) {
   }
 } else {
   Skipped 'сборка плагина CNC.Edges, ядра gvcore, геометрий, STEP, STL, силуэта, касательных, Qt-геометрий и C++-контроллера: нет тулчейна'
+}
+
+# 7. C++-точка входа вьювера (build/viewer/gcodeviewer.exe, отказ от Python в
+#    рантайме): offscreen-прогон на реальном УП. Нужны собранный exe и Qt в PATH
+#    (exe линкуется с Qt6Core.dll); каталог плагина и DLL OCCT точка входа
+#    добавляет себе сама. Нет exe или Qt - шаг пропускается.
+$viewerExe = 'build/viewer/gcodeviewer.exe'
+if ((Test-Path -LiteralPath $viewerExe) -and (Test-Path -LiteralPath (Join-Path $qtDir 'bin'))) {
+  Run-Tool 'gcodeviewer.exe offscreen' {
+    $env:QT_QPA_PLATFORM = 'offscreen'
+    $env:PATH = (Join-Path $qtDir 'bin') + ';' + $env:PATH
+    $log = & $viewerExe 'data/cad-testdata/Test_model.ngc' 2>&1
+    $code = $LASTEXITCODE
+    if ($code -ne 0 -or ($log | Select-String -Pattern 'FAIL|\[QML warning\]|Traceback' -Quiet)) { cmd /c exit 1 }
+    else { cmd /c exit 0 }
+  }
+} else {
+  Skipped 'gcodeviewer.exe offscreen: нет собранной точки входа или Qt'
 }
 
 Write-Host ''

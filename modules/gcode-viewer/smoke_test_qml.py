@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Headless smoke-test: load the viewer QML (preview_3d.qml) off-screen and
-report parse/warnings. Целевой файл по умолчанию - обёртка вьювера, не
-main.qml: main.qml принадлежит qt-interface и в модуле MockBackend типа
-`Toolpath` не имеет (класс называется GcodeToolpath) - дым-прогон вьювера
-не может зависеть от чужого проекта.
+"""Дым-прогон: загрузить QML вьювера (preview_3d.qml) без экрана и доложить разбор
+и предупреждения. Инструмент разработки.
+
+Целевой файл по умолчанию - обёртка вьювера, не main.qml: main.qml принадлежит
+qt-interface и в модуле MockBackend типа `Toolpath` не имеет (класс называется
+GcodeToolpath) - дым-прогон вьювера не может зависеть от чужого проекта.
+
+Бэкенд - QML-плагин MockBackend (C++, cpp/qmlbackend), и он единственный:
+питоновский бэкенд здесь не импортируется, плагина нет - ошибка и код возврата 2.
 """
 import os
 import sys
@@ -17,32 +21,23 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 QML = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "preview_3d.qml")
 
 sys.path.insert(0, HERE)
-# Модуль MockBackend регистрируется импортом mock_backend - тот же путь,
-# что в preview_3d.py. Без него QML не резолвит типы (@QmlElement) и
-# дым-тест падал на 'module "MockBackend" is not installed'. При
-# CNC_CPP=controller тот же URI приходит из C++-плагина (cpp/qmlbackend), и
-# питоновская регистрация тогда не делается вовсе: движок отказывается от двух
-# регистраций одного имени (см. preview_3d.py).
+
 import gv_cpp  # noqa: E402
-
-CONTROLLER_CPP = gv_cpp.controller_enabled()
-if CONTROLLER_CPP:
-    gv_cpp.prepare_qml_backend_path()
-else:
-    import gv_qtgeom  # noqa: E402
-
-    # Каталог QML-модуля CNC/Edges и DLL OCCT - в PATH до создания движка (см.
-    # preview_3d.py): без сборки helper ничего не меняет.
-    gv_qtgeom.prepare_dll_path()
-    import mock_backend  # noqa: E402,F401
 
 
 def main() -> int:
+    try:
+        backend_import = gv_cpp.require_qml_backend()
+    except gv_cpp.GvCppError as exc:
+        print("FAIL:", exc, file=sys.stderr)
+        return 2
+    # Каталог модуля плагина в PATH до создания движка (см. preview_3d.py).
+    gv_cpp.prepare_qml_backend_path()
+
     app = QApplication(sys.argv)
     engine = QQmlApplicationEngine()
     engine.addImportPath(os.path.join(HERE, "qml"))
-    if CONTROLLER_CPP:
-        engine.addImportPath(gv_cpp.qml_backend_import_path())
+    engine.addImportPath(backend_import)
 
     seen = []
 

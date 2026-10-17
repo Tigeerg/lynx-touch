@@ -34,24 +34,20 @@ from PySide6.QtQml import QQmlApplicationEngine  # noqa: E402
 
 import gv_cpp  # noqa: E402
 
-# CNC_CPP=controller: MockBackend приходит из C++-плагина (cpp/qmlbackend), и
-# питоновские модули того же URI тогда не импортируются: движок отказывается от
-# двух регистраций одного имени (см. preview_3d.py).
-CONTROLLER_CPP = gv_cpp.controller_enabled()
-if CONTROLLER_CPP:
-    gv_cpp.prepare_qml_backend_path()
-    # Питоновский бэкенд не импортируется, а он приводил с собой PySide6.QtQuick и
-    # QtQuick3D: без них корень окна обёрнут как QWindow (нет grabWindow), а
-    # QQuick3DGeometry* из свойства partGeometry не читается конвертером PySide6.
-    from PySide6.QtQuick import QQuickWindow  # noqa: E402,F401
-    from PySide6.QtQuick3D import QQuick3DGeometry  # noqa: E402,F401
-else:
-    import gv_qtgeom  # noqa: E402
-
-    # Каталог QML-модуля CNC/Edges и DLL OCCT - в PATH до создания движка (см.
-    # preview_3d.py): без сборки helper ничего не меняет.
-    gv_qtgeom.prepare_dll_path()
-    import mock_backend  # noqa: E402,F401
+# Бэкенд - QML-плагин MockBackend (C++, cpp/qmlbackend), и он единственный:
+# питоновские модули того же URI здесь не импортируются никогда, плагина нет -
+# отказ с кодом возврата 2 (см. preview_3d.py).
+try:
+    BACKEND_IMPORT = gv_cpp.require_qml_backend()
+except gv_cpp.GvCppError as exc:
+    print("FAIL:", exc, file=sys.stderr)
+    raise SystemExit(2)
+gv_cpp.prepare_qml_backend_path()
+# Питоновский бэкенд приводил с собой PySide6.QtQuick и QtQuick3D: без них корень
+# окна обёрнут как QWindow (нет grabWindow), а QQuick3DGeometry* из свойства
+# partGeometry не читается конвертером PySide6.
+from PySide6.QtQuick import QQuickWindow  # noqa: E402,F401
+from PySide6.QtQuick3D import QQuick3DGeometry  # noqa: E402,F401
 
 NGC = os.path.abspath(os.path.join(HERE, "..", "..", "data", "cad-testdata", "Test_model.ngc"))
 MAX_LINE_PX = 10500
@@ -87,8 +83,7 @@ def main() -> int:
     app = QGuiApplication(sys.argv)
     engine = QQmlApplicationEngine()
     engine.addImportPath(HERE)
-    if CONTROLLER_CPP:
-        engine.addImportPath(gv_cpp.qml_backend_import_path())
+    engine.addImportPath(BACKEND_IMPORT)
     engine.load(QUrl.fromLocalFile(os.path.join(HERE, "preview_3d.qml")))
     roots = engine.rootObjects()
     if not roots:

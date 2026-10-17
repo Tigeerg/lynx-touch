@@ -8,7 +8,10 @@ out-параметры и структуры из C-полей, память б�
 проходит.
 
 Умолчание - моста нет: пустая переменная CNC_CPP значит питоновский путь, как
-раньше. Значения:
+раньше. Флаг переключает только слои питоновского контроллера: вьювер в рантайме
+работает на C++ всегда (см. ниже), а CNC_CPP нужен сверочным проверкам
+(test_cpp_bridge.py, test_controller_cpp.py), которые сравнивают C++-слой с
+питоновским эталоном. Значения:
 
   CNC_CPP=normals     - нормали STL (controller._stl_normals) считает C++;
   CNC_CPP=step        - ветку STEP (_load_model_verts) считает C++ (суп, нормали,
@@ -27,16 +30,26 @@ out-параметры и структуры из C-полей, память б�
                         по-прежнему регистрирует Python и контракт не меняется;
   CNC_CPP=controller  - контроллер вьювера (тип GcodeToolpath) приходит из
                         C++-плагина MockBackend (Qt-модуль из cpp/qmlbackend,
-                        каталог build/qmlbackend/MockBackend). Питоновская
-                        регистрация MockBackend при этом не делается: точки
-                        входа не импортируют mock_backend и отдают движку путь
-                        импорта плагина. Модуля нет - флаг ничего не включает,
-                        поведение прежнее;
+                        каталог build/qmlbackend/MockBackend). Значение оставлено
+                        переключателем сверочной проверки test_controller_cpp.py
+                        (ей нужны оба пути в разных процессах); точки входа
+                        вьювера его не смотрят - плагин у них единственный
+                        (require_qml_backend);
   CNC_CPP=all         - всё перечисленное;
-  пусто/off/0         - всё на Python (умолчание).
+  пусто/off/0         - питоновские слои контроллера (умолчание).
 
-Любой отказ C++-пути виден в журнале: шим пишет logger.warning, а вызывающий
-фолбэкает на Python. Молчаливого отказа нет.
+Рантайм вьювера от флага не зависит. От Python в пути исполнения отказались:
+точки входа вьювера (preview_3d.py, smoke_test_qml.py, render_probe.py,
+test_solid_skin.py, cpp/viewer/main.cpp) грузят QML-плагин MockBackend всегда и
+питоновский бэкенд не импортируют никогда. Плагина нет - внятная ошибка и
+ненулевой код возврата (require_qml_backend): тихого отката на Python нет.
+Питоновские модули ядра (controller.py, geometry.py и прочие) остаются в
+репозитории инструментом разработки и эталоном для сверок - их берут
+oracle_dump.py, bench_viewer.py и сверочные test_*.py.
+
+Любой отказ C++-пути в питоновском контроллере виден в журнале: шим пишет
+logger.warning, а вызывающий фолбэкает на Python. Молчаливого отказа нет. Рантайма
+вьювера это не касается: там плагин единственный, и фолбэка нет вовсе.
 
 Полный путь к библиотеке задаёт CNC_CPP_LIB, иначе берётся <repo>/build/cpp/
 gvbridge.dll (туда её кладёт цель gvbridge, см. cpp/CMakeLists.txt).
@@ -48,9 +61,38 @@ import logging
 import os
 import threading
 
-from gv_common import _np
-from gv_types import (Aabb, ConeSurface, CylinderFamilies, CylinderSurface,
-                      MeshTopology, PathData, TangentFamilies)
+# numpy подгружается по требованию, как и типы ядра: мост зовут сверочные проверки
+# и питоновский контроллер, а вьюверу в рантайме numpy не нужен (импорт numpy -
+# 189 мс на машине разработки, и это лишний питоновский слой в процессе вьювера).
+class _LazyNumpy:
+    """numpy по первому обращению: _np.float64, _np.ascontiguousarray и прочее."""
+
+    def __getattr__(self, name):
+        import numpy
+        return getattr(numpy, name)
+
+
+_np = _LazyNumpy()
+
+# Типы границ питоновского ядра (gv_types) подгружаются по требованию: мост зовут
+# сверочные проверки и питоновский контроллер, а в рантайме вьювера контроллер
+# приходит из C++-плагина. Тянуть в процесс вьювера питоновские типы вместе с
+# numpy незачем (проверка отсутствия - прогон preview_3d.py с оглядом sys.modules).
+_CORE_TYPES = ("Aabb", "ConeSurface", "CylinderFamilies", "CylinderSurface",
+               "MeshTopology", "PathData", "TangentFamilies")
+
+
+def _types():
+    """Модуль gv_types: типы, которые строит мост (см. _CORE_TYPES)."""
+    import gv_types
+    return gv_types
+
+
+def __getattr__(name):
+    """Типы ядра по имени модуля: gv_cpp.PathData и прочие (см. _CORE_TYPES)."""
+    if name in _CORE_TYPES:
+        return getattr(_types(), name)
+    raise AttributeError("модуль %r не имеет атрибута %r" % (__name__, name))
 
 logger = logging.getLogger(__name__)
 
@@ -250,8 +292,32 @@ def controller_enabled() -> bool:
     собирает цель gvqmlbackend в каталог build/qmlbackend/MockBackend. Каталога нет
     - флаг ничего не включает, и точки входа оставляют питоновскую регистрацию:
     включённый флаг без сборки давал бы 'module "MockBackend" is not installed'.
+
+    Функция отвечает только на вопрос сверочной проверки (test_controller_cpp.py:
+    один процесс на каждый путь). Точки входа вьювера флаг не смотрят - у них
+    плагин единственный, и его требует require_qml_backend.
     """
     return mode() in _PART_MODES["controller"] and os.path.isdir(qml_backend_dir())
+
+
+def qml_backend_available() -> bool:
+    """Собран ли QML-модуль MockBackend (в каталоге модуля лежит qmldir)."""
+    return os.path.isfile(os.path.join(qml_backend_dir(), "qmldir"))
+
+
+def require_qml_backend() -> str:
+    """Путь импорта C++-плагина MockBackend; без собранного плагина - отказ.
+
+    Точки входа вьювера зовут её вместо проверки флага: питоновского бэкенда в
+    рантайме нет, подменять его нечем, поэтому отсутствие плагина обязано быть
+    ошибкой с указанием, что собрать, а не тихим откатом.
+    """
+    if not qml_backend_available():
+        raise GvCppError(
+            "QML-модуль MockBackend не собран: нет %s; соберите плагин: "
+            "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 "
+            "(питоновского бэкенда в рантайме нет)" % os.path.join(qml_backend_dir(), "qmldir"))
+    return qml_backend_import_path()
 
 
 def qml_backend_import_path() -> str:
@@ -416,7 +482,7 @@ def build_silhouette_topology(verts):
         raise GvCppError("топология силуэта: код %d, %s" % (code, _last_error(lib)))
     try:
         ne, nf = int(topo.edge_count), int(topo.face_count)
-        return MeshTopology(
+        return _types().MeshTopology(
             ea=_take(topo.ea, ne * 3, _np.float32).reshape(-1, 3),
             eb=_take(topo.eb, ne * 3, _np.float32).reshape(-1, 3),
             # f0/f1 у эталона - машинный int (np.arange): на этой сборке int32,
@@ -525,7 +591,7 @@ def tangent_segments(families, eye):
     return flat.reshape(-1, 2, 3)
 
 
-def prepare_path(text: str) -> PathData:
+def prepare_path(text: str) -> "PathData":
     """Разбор УП и подготовка траектории (PathData из gv_types) из C++.
 
     Точный повтор пары gcode_parser.parse_gcode + path_prep._prepare_ordered:
@@ -545,6 +611,7 @@ def prepare_path(text: str) -> PathData:
 
 def _surfaces(struct):
     """Плоские массивы ABI -> список CylinderSurface/ConeSurface в порядке граней."""
+    types = _types()
     kinds = _take(struct.kinds, struct.surface_count, _np.int32).tolist()
     cyls = _take(struct.cylinders, struct.cylinder_count * _CYL_ROW,
                  _np.float64).reshape(-1, _CYL_ROW)
@@ -556,30 +623,31 @@ def _surfaces(struct):
         if kind == 1:
             row = cones[ni]
             ni += 1
-            out.append(ConeSurface(a=_row(row[0:3]), d=_row(row[3:6]),
-                                   psi=float(row[6]), s0=float(row[7]),
-                                   s1=float(row[8])))
+            out.append(types.ConeSurface(a=_row(row[0:3]), d=_row(row[3:6]),
+                                         psi=float(row[6]), s0=float(row[7]),
+                                         s1=float(row[8])))
         else:
             row = cyls[ci]
             ci += 1
             a0, a1 = float(row[15]), float(row[16])
             # полный круг вместо дуги едет как NaN в a0 и a1 (эталон: (None, None))
             arc = (None, None) if (_np.isnan(a0) and _np.isnan(a1)) else (a0, a1)
-            out.append(CylinderSurface(o=_row(row[0:3]), d=_row(row[3:6]),
-                                       e1=_row(row[6:9]), e2=_row(row[9:12]),
-                                       arc=arc, r=float(row[12]),
-                                       t0=float(row[13]), t1=float(row[14])))
+            out.append(types.CylinderSurface(o=_row(row[0:3]), d=_row(row[3:6]),
+                                             e1=_row(row[6:9]), e2=_row(row[9:12]),
+                                             arc=arc, r=float(row[12]),
+                                             t0=float(row[13]), t1=float(row[14])))
     return out
 
 
 def _flat_surfaces(surfaces):
     """Список поверхностей -> плоские массивы ABI (обратная к _surfaces)."""
+    types = _types()
     count = len(surfaces)
     kinds = _np.empty(count, dtype=_np.int32)
     cyls = []
     cones = []
     for i, s in enumerate(surfaces):
-        if isinstance(s, ConeSurface):
+        if isinstance(s, types.ConeSurface):
             kinds[i] = 1
             cones.append(list(s.a) + list(s.d) + [s.psi, s.s0, s.s1])
         else:
@@ -597,8 +665,9 @@ def _flat_surfaces(surfaces):
 
 def _families(struct):
     """Плоские массивы ABI -> TangentFamilies (типы полей как у эталона)."""
+    types = _types()
     n = int(struct.count)
-    cyl = CylinderFamilies(
+    cyl = types.CylinderFamilies(
         O=_take(struct.O, n * 3, _np.float64).reshape(-1, 3),
         D=_take(struct.D, n * 3, _np.float64).reshape(-1, 3),
         E1=_take(struct.E1, n * 3, _np.float64).reshape(-1, 3),
@@ -614,9 +683,9 @@ def _families(struct):
         ARC=_take(struct.ARC, n * 64, _np.bool_).reshape(-1, 64))
     rows = _take(struct.cones, int(struct.cone_count) * _CONE_ROW,
                  _np.float64).reshape(-1, _CONE_ROW)
-    cones = [ConeSurface(a=_row(r[0:3]), d=_row(r[3:6]), psi=float(r[6]),
-                         s0=float(r[7]), s1=float(r[8])) for r in rows]
-    return TangentFamilies(cylinders=cyl, cones=cones)
+    cones = [types.ConeSurface(a=_row(r[0:3]), d=_row(r[3:6]), psi=float(r[6]),
+                               s0=float(r[7]), s1=float(r[8])) for r in rows]
+    return types.TangentFamilies(cylinders=cyl, cones=cones)
 
 
 def _families_arrays(fam):
@@ -684,14 +753,15 @@ def _fill_topology(struct, keep):
     struct.face_count = keep["faces"]
 
 
-def _path_data(data) -> PathData:
+def _path_data(data) -> "PathData":
     """Поля структуры ABI -> PathData (пустой путь - те же None, что у эталона)."""
+    types = _types()
     if int(data.point_count) == 0:
-        return PathData(seg_count=0, last=(0.0, 0.0, 0.0), pts=None, cum=None,
-                        rapid=None, speeds=None, total=0.0,
-                        rapid_bytes=b"", rapid_nv=0, feed_bytes=b"", feed_nv=0,
-                        bounds=None, center=[0.0, 0.0, 0.0], radius=50.0,
-                        min_y=0.0, stages=[])
+        return types.PathData(seg_count=0, last=(0.0, 0.0, 0.0), pts=None, cum=None,
+                              rapid=None, speeds=None, total=0.0,
+                              rapid_bytes=b"", rapid_nv=0, feed_bytes=b"", feed_nv=0,
+                              bounds=None, center=[0.0, 0.0, 0.0], radius=50.0,
+                              min_y=0.0, stages=[])
     n = int(data.point_count)
     pts = _take(data.pts, n * 3, _np.float64).reshape(-1, 3)
     cum = _take(data.cum, n, _np.float64)
@@ -700,11 +770,11 @@ def _path_data(data) -> PathData:
     speeds = _take(data.speeds, n, _np.float64)
     bounds = None
     if int(data.has_bounds):
-        bounds = Aabb((float(data.bounds[0]), float(data.bounds[1]),
-                       float(data.bounds[2])),
-                      (float(data.bounds[3]), float(data.bounds[4]),
-                       float(data.bounds[5])))
-    return PathData(
+        bounds = types.Aabb((float(data.bounds[0]), float(data.bounds[1]),
+                             float(data.bounds[2])),
+                            (float(data.bounds[3]), float(data.bounds[4]),
+                             float(data.bounds[5])))
+    return types.PathData(
         seg_count=int(data.seg_count),
         last=tuple(float(v) for v in data.last),
         pts=pts, cum=cum, rapid=rapid, speeds=speeds,

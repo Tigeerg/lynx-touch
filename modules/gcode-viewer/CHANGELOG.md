@@ -80,6 +80,7 @@
 | `modules/gcode-viewer/test_controller_cpp.py` | Сверка C++- и питоновского контроллеров на одном УП |
 | `modules/gcode-viewer/cpp/core/tooling.h` / `.cpp` | C++-профили инструмента и оправки: режущая часть, кольца, вылет |
 | `modules/gcode-viewer/cpp/core/collision.h` / `.cpp` | C++-скан коллизий оправки с заготовкой и проверка инструмента |
+| `modules/gcode-viewer/cpp/viewer/main.cpp` | C++-точка входа `gcodeviewer`: окно QML, проводка плагина и OCCT, запуск без Python |
 | `modules/gcode-viewer/oracle_dump.py` | Оракул промежуточных результатов: эталон для переноса на C++ |
 | `modules/gcode-viewer/test_ribbon_width.py` | Живая проверка толщины ленты (2 px по вертикали и горизонтали) |
 | `modules/gcode-viewer/test_solid_skin.py` | Живая проверка: сплошная кожа закрывает скрытые рёбра (без просвечивания) |
@@ -87,11 +88,41 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.26.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.27.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.27.0 — 2026-10-17
+
+- **Вьювер работает только на C++: Python убран из рантайма (перенос завершён).** Питоновский бэкенд
+  (`mock_backend`, `controller`, `geometry`, `gv_types`, `cache_store`) в процессе вьювера больше не
+  импортируется: QML всегда получает C++-плагин `MockBackend` 1.0. Если плагин не собран, точки входа и
+  новая C++-точка входа возвращают код 2 с сообщением, чем собрать (`scripts/build-viewer.ps1`) — тихого
+  отката на Python нет. Переменная `CNC_CPP` из рантайма убрана и осталась только селектором сверочных
+  проверок, которым нужны оба пути в разных процессах. `gv_cpp.py` больше не тянет в процесс вьювера
+  питоновское ядро и `numpy` (подгружаются по требованию, внешний API сохранён).
+- **C++-точка входа `gcodeviewer.exe`.** Новая цель `gcodeviewer` (`cpp/viewer/main.cpp`) создаёт окно QML,
+  сама кладёт каталог плагина и DLL OCCT в `PATH` до создания движка и грузит `GcodeViewer3D.qml` (файл не
+  менялся); offscreen-режим печатает `segments: 70914` и `loaded OK`, живое окно — по сигналам загрузки.
+- **Инструменты разработки.** Питоновские точки входа (`preview_3d.py`, `smoke_test_qml.py`,
+  `render_probe.py`, `test_solid_skin.py`, `test_ribbon_width.py`) переведены на тот же C++-путь. Оракул,
+  `bench_viewer.py` и сверочные тесты остаются на Python — это эталон для сравнения, а не путь исполнения;
+  дисковый кэш `.npz` тоже остался инструментом разработки питоновского пути.
+- **Доказательство отсутствия отката.** С переименованным каталогом `build/qmlbackend/MockBackend`
+  `gcodeviewer.exe` и `preview_3d.py` возвращают код 2 и печатают, что питоновского бэкенда в рантайме нет;
+  после возврата каталога всё снова зелено.
+- **Что тронуто:** `gv_cpp.py`, точки входа, `cpp/CMakeLists.txt`, `scripts/build-viewer.ps1`,
+  `tools/check.ps1` (новый шаг `gcodeviewer.exe offscreen`), `PORT-CPP.md`/`PORT-CPP.en.md`, а также
+  `apps/qt-interface/preview_qml.py` — проводка бэкенда вьювера для `main.qml` (до этой правки файл вообще
+  не мог загрузить `MockBackend`); версия проекта `qt-interface` поднята 0.5.1 -> 0.5.2.
+  `GcodeViewer3D.qml`, шейдеры и оракул не менялись.
+- **Проверки.** Сторож гоняет 100 проверок, зелёный (в том числе новый шаг `gcodeviewer.exe offscreen`);
+  offscreen-прогон exe и `preview_3d.py` — `segments: 70914`, без `Traceback`, `WARNING`, `ERROR` и
+  `[QML warning]`; `render_probe.py` — `edge_px 7905`, `stock_px 67234` (baseline 67235, дрожание захвата
+  кадра ±2 px); `oracle_dump.py` — `RESULT: OK`; `test_controller_cpp.py` — `RESULT: OK`.
+  Версия 0.26.0 -> 0.27.0.
 
 ### 0.26.0 — 2026-10-16
 

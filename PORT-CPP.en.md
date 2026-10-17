@@ -259,6 +259,24 @@ background on a `QThreadPool`. Exactness required repeating the CPython function
 reference; `render_probe` converged (without the flag `edge_px 7905`, `stock_px 67235`; with the flag the same
 numbers). What remains: the disk cache — a separate decision.
 
+**Python is out of the viewer runtime.** The viewer no longer computes in Python: the entry points
+(`preview_3d.py`, `smoke_test_qml.py`, `render_probe.py`, `test_solid_skin.py`) and the new C++ entry
+point `cpp/viewer/main.cpp` (target `gcodeviewer`, `<repo>/build/viewer/gcodeviewer.exe`) always load
+the `MockBackend` QML plugin and never import the Python backend. The `CNC_CPP` flag is gone from the
+runtime: it remains only for the comparison checks (`test_cpp_bridge.py`, `test_controller_cpp.py`),
+which need both paths in separate processes. Without the plugin the viewer fails with a clear message
+naming `scripts/build-viewer.ps1` and a non-zero exit code; there is no silent fallback to Python. The
+C++ entry point runs without an interpreter: it puts the plugin directory and the OCCT DLLs into `PATH`
+itself before the engine is created, Qt must be in the process `PATH` (the exe links against
+`Qt6Core.dll`), and the window comes from `QQuickView` over `GcodeViewer3D.qml`. The runs agree:
+offscreen on `Test_model.ngc` - 70914 segments and `loaded OK`; a live window - the same 70914 and not a
+single `[QML warning]`.
+
+The Python core modules (`controller.py`, `geometry.py` and the rest) stay in the repository as a
+development tool and the reference for comparisons - `oracle_dump.py`, `bench_viewer.py` and the
+comparison `test_*.py` use them. The `.npz` disk cache is a development tool as well: the C++ controller
+always re-reads the model, needs no cache, and the cache is not in the viewer runtime path.
+
 **Stage 4 gives the bulk of the gain.** Stages 2 and 3 are cheap and safe; stage 5 is needed to let
 go of Python altogether but barely speeds anything up on its own.
 

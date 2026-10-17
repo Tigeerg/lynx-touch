@@ -10,6 +10,10 @@ font so QML Text with font.family "lucide" renders icons.
 Usage:
     python preview_qml.py [path/to/file.qml] [width] [height]
 
+Бэкенд вьювера - C++-плагин MockBackend (см. prepare_backend): питоновской
+регистрации этого URI нет, поэтому QML с `import MockBackend 1.0` (main.qml) без
+собранного плагина не грузится, и об этом сообщается кодом возврата 2.
+
 Requires:
     pip install PySide6
 """
@@ -23,6 +27,51 @@ from PySide6.QtWidgets import QApplication
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+# Проводка бэкенда вьювера: main.qml импортирует MockBackend 1.0, а питоновской
+# регистрации этого URI больше нет - бэкенд только C++ (QML-плагин проекта
+# gcode-viewer, modules/gcode-viewer/cpp/qmlbackend). Пути считаются здесь, а не
+# импортом из другого проекта: этот файл - инструмент разработки qt-interface.
+REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
+BACKEND_IMPORT = os.path.join(REPO, "build", "qmlbackend")
+BACKEND_MODULE = os.path.join(BACKEND_IMPORT, "MockBackend")
+
+
+def prepare_backend(qml_file: str) -> bool:
+    """PATH и путь импорта для C++-плагина MockBackend; False - плагина нет.
+
+    QML без импорта MockBackend (preview.qml) бэкенда не требует - тогда ничего не
+    делается. QML с этим импортом (main.qml) без собранного плагина не грузится, и
+    об этом сообщается: отката на питоновскую регистрацию нет.
+
+    Каталог модуля идёт в PATH до создания движка: точка входа Qt-плагина ищет
+    зависимости по PATH, а не через os.add_dll_directory (разбор - PORT-CPP.md,
+    «Ограничения рантайма Qt»).
+    """
+    with open(qml_file, "r", encoding="utf-8") as handle:
+        needs_backend = "MockBackend" in handle.read()
+    if not needs_backend:
+        return True
+    if not os.path.isfile(os.path.join(BACKEND_MODULE, "qmldir")):
+        print("[preview] FAIL QML-модуль MockBackend не собран: нет %s\\qmldir; соберите "
+              "плагин: powershell -NoProfile -ExecutionPolicy Bypass -File "
+              "scripts/build-viewer.ps1" % BACKEND_MODULE, file=sys.stderr)
+        return False
+    dirs = [BACKEND_MODULE]
+    # Умолчание то же, что у сборки (scripts/build-viewer.ps1) и у шима
+    # gv_cpp.py: каталог OCCT из окружения conda, иначе известный путь машины
+    # разработки. Без DLL OCCT точка входа плагина не грузится.
+    occ = os.environ.get("CNC_OCC_DIR")
+    if not occ and os.environ.get("CONDA_PREFIX"):
+        occ = os.path.join(os.environ["CONDA_PREFIX"], "Library")
+    if not occ:
+        occ = r"C:\Users\Tiger\anaconda3\envs\gcode-cpp\Library"
+    dirs.append(os.path.join(occ, "bin"))
+    have = [p.lower() for p in os.environ.get("PATH", "").split(os.pathsep) if p]
+    add = [d for d in dirs if os.path.isdir(d) and d.lower() not in have]
+    if add:
+        os.environ["PATH"] = os.pathsep.join(add + [os.environ.get("PATH", "")])
+    return True
+
 
 def main() -> int:
     qml_file = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "preview.qml")
@@ -31,6 +80,9 @@ def main() -> int:
 
     if not os.path.isfile(qml_file):
         print(f"QML file not found: {qml_file}", file=sys.stderr)
+        return 2
+
+    if not prepare_backend(qml_file):
         return 2
 
     app = QApplication(sys.argv)
@@ -53,6 +105,7 @@ def main() -> int:
     engine = QQmlApplicationEngine()
     engine.addImportPath(os.path.join(HERE, "qml"))
     engine.addImportPath(HERE)
+    engine.addImportPath(BACKEND_IMPORT)      # C++-бэкенд MockBackend (см. prepare_backend)
 
     def _warn(msg: str) -> None:
         print("[QML warning]", msg, file=sys.stderr)

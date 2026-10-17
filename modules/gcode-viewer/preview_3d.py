@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Launch the QtQuick3D G-code viewer (preview_3d.qml + GcodeViewer3D.qml).
+"""Запуск вьювера УП (preview_3d.qml + GcodeViewer3D.qml) - инструмент разработки.
 
-Usage:
-    python preview_3d.py [path/to/file.ngc]
+Использование:
+    python preview_3d.py [путь/к/файлу.ngc]
 
-Registers the MockBackend QML module (mock_backend.py, or the C++ plugin
-cpp/qmlbackend when CNC_CPP=controller), loads the window, optionally overrides
-the toolpath from a .ngc file and shows it.
+Бэкенд вьювера - QML-плагин MockBackend (C++, cpp/qmlbackend): он единственный,
+и питоновские модули того же URI здесь не импортируются никогда. Плагина нет -
+ошибка с указанием, что собрать, и ненулевой код возврата: отката на Python нет.
 
-Headless check:
-    QT_QPA_PLATFORM=offscreen python preview_3d.py
+Каталог модуля плагина обязан попасть в PATH до создания движка: точка входа
+Qt-плагина ищет зависимости по PATH, а не через os.add_dll_directory (разбор -
+test_qt_bridge.py, cpp/exp/exp_qml_diag.py).
+
+Проверка без экрана:
+    QT_QPA_PLATFORM=offscreen python preview_3d.py data/cad-testdata/Test_model.ngc
 """
 import logging
 import os
@@ -25,38 +29,24 @@ sys.path.insert(0, HERE)
 
 import gv_cpp  # noqa: E402
 
-# CNC_CPP=controller: MockBackend приходит из C++-плагина (cpp/qmlbackend, цель
-# gvqmlbackend). Питоновские модули того же URI тогда не импортируются: движок
-# отказывается от двух регистраций одного имени ("Namespace 'MockBackend' has
-# already been used for type registration"), а питоновские геометрии этапа 3
-# C++-контроллеру не нужны. Каталог модуля обязан попасть в PATH до создания
-# движка: точка входа Qt-плагина ищет зависимости по PATH, а не через
-# add_dll_directory (разбор - test_qt_bridge.py, cpp/exp/exp_qml_diag.py). Флаг без
-# собранного модуля ничего не подменяет - путь прежний, питоновский.
-CONTROLLER_CPP = gv_cpp.controller_enabled()
-if CONTROLLER_CPP:
-    gv_cpp.prepare_qml_backend_path()
-else:
-    import gv_qtgeom  # noqa: E402
-
-    # Каталог QML-модуля CNC/Edges и DLL OCCT - в PATH до создания движка (см.
-    # выше). Каталогов сборки нет - PATH не трогаем: на машине без тулчейна
-    # поведение прежнее.
-    gv_qtgeom.prepare_dll_path()
-    import mock_backend  # noqa: E402,F401  (регистрирует "MockBackend" @QmlElement)
-
 
 def main() -> int:
     # Диагностика вьювера идёт через logging; уровень задаёт окружение
     # (CNC_LOG_LEVEL=DEBUG покажет и источник контура), по умолчанию INFO.
     logging.basicConfig(level=os.environ.get("CNC_LOG_LEVEL", "INFO").upper(),
                         format="%(levelname)s %(name)s: %(message)s")
+    try:
+        backend_import = gv_cpp.require_qml_backend()
+    except gv_cpp.GvCppError as exc:
+        print("[preview_3d] FAIL", exc, file=sys.stderr)
+        return 2
+    gv_cpp.prepare_qml_backend_path()
+
     app = QGuiApplication(sys.argv)
 
     engine = QQmlApplicationEngine()
     engine.addImportPath(HERE)
-    if CONTROLLER_CPP:
-        engine.addImportPath(gv_cpp.qml_backend_import_path())
+    engine.addImportPath(backend_import)
     engine.warnings.connect(lambda m: print("[QML warning]", m, file=sys.stderr))
 
     engine.load(QUrl.fromLocalFile(os.path.join(HERE, "preview_3d.qml")))
@@ -67,7 +57,8 @@ def main() -> int:
         print("[preview_3d] FAILED to load QML", file=sys.stderr)
         return 1
 
-    # Optional: load a G-code file through the backend (also auto-loads <same name>.stl/.obj).
+    # Необязательно: загрузить УП через бэкенд (модель <тем же именем>.stl/.obj
+    # подхватывается сама).
     filepath = sys.argv[1] if len(sys.argv) > 1 and os.path.isfile(sys.argv[1]) else None
     backend = roots[0].findChild(QObject, "gcodeToolpath")
 
@@ -92,7 +83,7 @@ def main() -> int:
 
         backend.toolpathLoaded.connect(on_toolpath)
         backend.loadFinished.connect(on_finished)
-        # Parse + geometry + STL run on a worker thread; the UI stays responsive.
+        # Разбор УП, геометрия и модель идут на рабочем потоке: окно не замирает.
         backend.load_gcode_async(filepath)
 
     return app.exec()

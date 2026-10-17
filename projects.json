@@ -17,7 +17,7 @@
     {
       "id": "qt-interface",
       "name": "Qt-порт интерфейса",
-      "version": "0.5.1",
+      "version": "0.5.2",
       "path": "apps/qt-interface",
       "kind": "qml",
       "entry": "main.qml",
@@ -27,7 +27,7 @@
     {
       "id": "gcode-viewer",
       "name": "3D-вьювер УП",
-      "version": "0.26.0",
+      "version": "0.27.0",
       "path": "modules/gcode-viewer",
       "kind": "qml+python",
       "entry": "GcodeViewer3D.qml",

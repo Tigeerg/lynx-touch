@@ -245,6 +245,11 @@ int main(int argc, char *argv[])
     say(QStringLiteral("gcodeviewer: viewer version: %1")
             .arg(root_item->property("viewerVersion").toString()));
 
+    // Диагностика клавиатуры: CNC_KEY_DEBUG=1 включает в корне вьювера печать
+    // признаков нажатия (GcodeViewer3D.qml, keyLogRaw/keyLogState) - ею измеряют
+    // доставку клавиш на разных раскладках. По умолчанию вывод молчит.
+    root_item->setProperty("keyDebug", qEnvironmentVariableIsSet("CNC_KEY_DEBUG"));
+
     if (program.isEmpty()) {
         say(QStringLiteral("gcodeviewer: УП не задана: вьювер пуст "
                            "(аргумент - путь к файлу УП)"));

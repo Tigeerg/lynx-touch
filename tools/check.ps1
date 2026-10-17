@@ -271,6 +271,26 @@ if ((Test-Path -LiteralPath $viewerExe) -and (Test-Path -LiteralPath (Join-Path 
   Skipped 'gcodeviewer.exe offscreen: нет собранной точки входа или Qt'
 }
 
+# 8. Пробник горячих клавиш вьювера (build/viewer/keyprobe.exe): подаёт клавиши с
+#    признаками настоящего события (скан-код, VK и символ по раскладке) на русской и
+#    английской раскладках и сверяет, что каждая горячая клавиша переключила своё
+#    свойство. Дефект «горячие клавиши требовательны к языку» ловится здесь: до фикса
+#    на русской раскладке не срабатывает ни одна буква. Платформа offscreen, живой
+#    сессии не нужно. Нет пробника или Qt - шаг пропускается.
+$keyProbeExe = 'build/viewer/keyprobe.exe'
+if ((Test-Path -LiteralPath $keyProbeExe) -and (Test-Path -LiteralPath (Join-Path $qtDir 'bin'))) {
+  Run-Tool 'keyprobe.exe (раскладки ru и en)' {
+    $env:QT_QPA_PLATFORM = 'offscreen'
+    $env:PATH = (Join-Path $qtDir 'bin') + ';' + $env:PATH
+    $log = & $keyProbeExe 'data/cad-testdata/Test_model.ngc' 2>&1
+    $code = $LASTEXITCODE
+    if ($code -ne 0 -or ($log | Select-String -Pattern 'FAIL|\[QML warning\]|Traceback' -Quiet)) { cmd /c exit 1 }
+    else { cmd /c exit 0 }
+  }
+} else {
+  Skipped 'keyprobe.exe: нет собранного пробника или Qt'
+}
+
 Write-Host ''
 if ($fail.Count -gt 0) {
   Write-Host "GUARD: FAIL ($($fail.Count))" -ForegroundColor Red

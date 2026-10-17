@@ -105,6 +105,8 @@ param(
     [switch]$RunTangentsProbe,
     # Дополнительно прогнать C++-точку входа вьювера offscreen на data/cad-testdata/Test_model.ngc.
     [switch]$RunViewer,
+    # Дополнительно прогнать пробник горячих клавиш вьювера на русской и английской раскладках.
+    [switch]$RunKeyProbe,
     # Только конфигурирование, без сборки.
     [switch]$ConfigureOnly
 )
@@ -317,6 +319,17 @@ if (Test-Path -LiteralPath $viewerExe) {
     Fail "точка входа вьювера не собрана: нет $viewerExe"
 }
 
+# Пробник горячих клавиш (viewer/keyprobe.cpp): грузит тот же GcodeViewer3D.qml и
+# проверяет, что на русской и английской раскладках каждая буквенная горячая клавиша
+# переключает своё свойство. Собирается вместе с точкой входа, проверку гоняет сторож
+# (tools/check.ps1) - здесь только наличие пробника и ключ запуска.
+$keyProbeExe = Join-Path $root 'build\viewer\keyprobe.exe'
+if (Test-Path -LiteralPath $keyProbeExe) {
+    Write-Host ("build-viewer: пробник клавиш " + $keyProbeExe)
+} else {
+    Fail "пробник клавиш не собран: нет $keyProbeExe"
+}
+
 if ($RunProbe) {
     if (-not (Test-Path -LiteralPath $probe)) { Fail "пробника нет: $probe" }
     if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
@@ -389,6 +402,18 @@ if ($RunViewer) {
     $env:PATH = "$QtDir\bin;$env:PATH"
     & $viewerExe $probeNgc
     if ($LASTEXITCODE -ne 0) { Fail "точка входа вьювера вернула $LASTEXITCODE" }
+}
+
+if ($RunKeyProbe) {
+    if (-not (Test-Path -LiteralPath $keyProbeExe)) { Fail "нет пробника клавиш: $keyProbeExe" }
+    if (-not (Test-Path -LiteralPath $probeNgc)) { Fail "нет тестовой УП: $probeNgc" }
+    # Пробнику нужен Qt в PATH (exe линкуется с Qt6Core.dll); каталог плагина и DLL
+    # OCCT он добавляет себе сам, как точка входа вьювера. Платформа offscreen:
+    # живой сессии и переднего окна пробе не нужно.
+    $env:QT_QPA_PLATFORM = 'offscreen'
+    $env:PATH = "$QtDir\bin;$env:PATH"
+    & $keyProbeExe $probeNgc
+    if ($LASTEXITCODE -ne 0) { Fail "пробник клавиш вернул $LASTEXITCODE" }
 }
 
 Write-Host 'build-viewer: OK' -ForegroundColor Green

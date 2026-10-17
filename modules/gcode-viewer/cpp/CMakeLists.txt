@@ -460,3 +460,27 @@ if (MSVC)
     target_compile_options(gcodeviewer PRIVATE /utf-8)
 endif()
 
+# Пробник горячих клавиш (viewer/keyprobe.cpp): грузит тот же GcodeViewer3D.qml в
+# QQuickView и подаёт клавиши с признаками настоящего события (скан-код, VK и символ
+# по раскладке), проверяя, что каждая горячая клавиша переключила своё свойство. Им
+# измеряют дефект «горячие клавиши требовательны к языку»: на русской раскладке
+# буквенные ветки обязаны срабатывать по скан-коду. Платформа - offscreen, окно не
+# показывается, поэтому пробник годится и для сторожа.
+#   keyprobe.exe <УП.ngc> [ru,en]
+add_executable(keyprobe viewer/keyprobe.cpp)
+set_target_properties(keyprobe PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${GV_VIEWER_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${GV_VIEWER_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${GV_VIEWER_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_VIEWER_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${GV_VIEWER_DIR}
+)
+target_link_libraries(keyprobe PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
+target_compile_definitions(keyprobe PRIVATE
+    GV_REPO_ROOT="${GV_REPO_ROOT}"
+    GV_VIEWER_QML="${CMAKE_CURRENT_SOURCE_DIR}/../GcodeViewer3D.qml"
+)
+if (MSVC)
+    target_compile_options(keyprobe PRIVATE /utf-8)
+endif()
+

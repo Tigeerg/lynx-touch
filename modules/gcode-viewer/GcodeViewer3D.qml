@@ -17,7 +17,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.28.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.29.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -835,18 +835,50 @@ Item {
     // ---- Playback: Space = play/pause, Esc = reset to start ----
     // ---- Hotkeys: S stock, M part model, L limit length, T stages,
     // ----          PgUp/PgDn switch stage, P play ----
-    // Раскладка не должна гасить горячие клавиши: на русской раскладке Qt
-    // сообщает для физической X код Key_Ch, а не Key_X, и буквенные ветки ниже
-    // не срабатывали. Буквы сверяются ещё и по nativeVirtualKey (VK-код
-    // физической клавиши), как в панели (apps/qt-interface/main.qml, keyIs).
-    // Служебные клавиши (Space, Esc, стрелки, PgUp/PgDn) от раскладки не
-    // зависят и сверяются по Qt.Key.
-    function keyIs(ev, vk, qtkey) {
-        return ev.nativeVirtualKey === vk || ev.key === qtkey
+    // Раскладка не должна гасить горячие клавиши: на русской раскладке Qt сообщает
+    // для физической X код Key_Ch, а не Key_X, и буквенные ветки ниже не работают.
+    // Буквы сверяются по nativeScanCode - скан-коду физической клавиши, он от
+    // раскладки не зависит. nativeVirtualKey для этого не годится: QML-тип KeyEvent
+    // (QtQuick, qquickevents_p_p.h, класс QQuickKeyEvent) его не отдаёт вовсе, в
+    // обработчике Keys он всегда undefined.
+    // Измерено при CNC_KEY_DEBUG=1 (живой вьювер и проба build/viewer/keyprobe.exe),
+    // клавиши P S M L T E D X F:
+    //   русская раскладка: sc 25 31 50 38 20 18 32 45 33, key 1047 1067 1068 1044
+    //                      1045 1059 1042 1063 1040 (символы з ы ь д е у в ч а);
+    //   латиница:          те же sc, key 80 83 77 76 84 69 68 88 70.
+    // Второе слагаемое - Qt.Key: клавиша без скан-кода и раскладки, где буква стоит
+    // на другом месте. Сочетания с Ctrl/Alt/Meta пропускаются только у букв: для них
+    // это команды приложения и переключатель раскладки, а не горячая клавиша вьювера;
+    // служебные клавиши (Space, Esc, стрелки, PgUp/PgDn) остаются как были - от
+    // раскладки они не зависят и сверяются по Qt.Key.
+    function keyIs(ev, scan, qtkey) {
+        if (ev.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
+            return false
+        return ev.nativeScanCode === scan || ev.key === qtkey
+    }
+
+    // Диагностика клавиатуры: печатает признаки события и состояние переключателей
+    // после обработки. По умолчанию молчит (строка на каждое нажатие - шум), включает
+    // точка входа переменной окружения CNC_KEY_DEBUG (cpp/viewer/main.cpp).
+    property bool keyDebug: false
+    function keyLogRaw(ev) {
+        var cp = ev.text.length > 0 ? ev.text.codePointAt(0) : -1
+        console.log("[key] key=" + ev.key + " cp=" + cp
+            + " vk=" + ev.nativeVirtualKey + " sc=" + ev.nativeScanCode
+            + " mods=" + ev.modifiers + " focus=" + root.activeFocus)
+    }
+    function keyLogState() {
+        console.log("[key] state stock=" + root.showStockVisible + " part=" + root.showPartVisible
+            + " all=" + root.showAllCode + " stages=" + root.stageMode
+            + " edges=" + root.showBrepEdges + " tangents=" + root.showTangentLines
+            + " xray=" + root.xray + " fps=" + root.showFps
+            + " playing=" + root.playing + " dist=" + Math.round(root.pathDist))
     }
 
     Keys.onPressed: (event) => {
-        if (event.key === Qt.Key_Space || root.keyIs(event, 0x50, Qt.Key_P)) {
+        if (root.keyDebug)
+            root.keyLogRaw(event)
+        if (event.key === Qt.Key_Space || root.keyIs(event, 0x19, Qt.Key_P)) {
             root.togglePlay()
             event.accepted = true
         } else if (event.key === Qt.Key_Escape) {
@@ -858,16 +890,16 @@ Item {
         } else if (event.key === Qt.Key_Down) {
             root.speed = Math.max(0.05, root.speed / 1.5)
             event.accepted = true
-        } else if (root.keyIs(event, 0x53, Qt.Key_S)) {
+        } else if (root.keyIs(event, 0x1F, Qt.Key_S)) {
             root.showStockVisible = !root.showStockVisible
             event.accepted = true
-        } else if (root.keyIs(event, 0x4D, Qt.Key_M)) {
+        } else if (root.keyIs(event, 0x32, Qt.Key_M)) {
             root.showPartVisible = !root.showPartVisible
             event.accepted = true
-        } else if (root.keyIs(event, 0x4C, Qt.Key_L)) {
+        } else if (root.keyIs(event, 0x26, Qt.Key_L)) {
             root.showAllCode = !root.showAllCode
             event.accepted = true
-        } else if (root.keyIs(event, 0x54, Qt.Key_T)) {
+        } else if (root.keyIs(event, 0x14, Qt.Key_T)) {
             root.toggleStageMode()
             event.accepted = true
         } else if (event.key === Qt.Key_PageUp) {
@@ -876,20 +908,22 @@ Item {
         } else if (event.key === Qt.Key_PageDown) {
             root.nextStage()
             event.accepted = true
-        } else if (root.keyIs(event, 0x45, Qt.Key_E)) {
+        } else if (root.keyIs(event, 0x12, Qt.Key_E)) {
             root.showBrepEdges = !root.showBrepEdges
             event.accepted = true
-        } else if (root.keyIs(event, 0x44, Qt.Key_D)) {
+        } else if (root.keyIs(event, 0x20, Qt.Key_D)) {
             root.showTangentLines = !root.showTangentLines
             event.accepted = true
-        } else if (root.keyIs(event, 0x58, Qt.Key_X)) {
+        } else if (root.keyIs(event, 0x2D, Qt.Key_X)) {
             root.xray = !root.xray
             event.accepted = true
-        } else if (root.keyIs(event, 0x46, Qt.Key_F)) {
+        } else if (root.keyIs(event, 0x21, Qt.Key_F)) {
             root.showFps = !root.showFps
             if (!root.showFps) root.fpsSmoothed = 0
             event.accepted = true
         }
+        if (root.keyDebug)
+            root.keyLogState()
     }
 
     // Счётчик кадров: правый верхний угол, ниже строки подсказок. Строка

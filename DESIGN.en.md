@@ -192,6 +192,19 @@ Checks:
 - `apps/qt-interface/main.qml` instantiates a type `Toolpath` that no backend provides (the class is named
   `GcodeToolpath`) — the file does not load regardless of the port; `preview.qml` does load.
 
+Remaining after the C++ port (open, with measurements):
+- the panel `apps/qt-interface/main.qml` (and the generated `preview.qml`) compares hotkeys by
+  `nativeVirtualKey`, which the QML `KeyEvent` type does not expose at all (verified in the viewer: the
+  property is `undefined`), so the panel hotkeys depend on the layout; fixing it needs regenerating
+  `preview.qml` (`apps/qt-interface/gen_preview_qml.py`) and its own `qt-interface` version;
+- the C++ entry point `gcodeviewer.exe` does not accept an absolute NC path with Cyrillic characters:
+  the arguments are read as `QString::fromLocal8Bit(argv[i])`, so `GetCommandLineW`/`CommandLineToArgvW`
+  is needed;
+- the `.npz` disk cache was not ported to the C++ path and stays a development tool for the Python
+  reference;
+- the optimisations from `PORT-CPP.md` §11: the NC parse (176 ms), the STEP shape cache in the plugin,
+  quality presets and level auto-detection, trimming the OCCT build, parallelism of the cold stages.
+
 Outline on the STL branch:
 - On a mesh only sharp transitions are drawn, so there are fewer internal contours than on STEP: B-rep face
   boundaries where the surfaces meet tangentially (blend boundaries, seams) cannot be told from triangulation

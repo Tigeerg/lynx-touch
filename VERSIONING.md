@@ -31,7 +31,7 @@
 в манифесте проекта (`package.json`, `modules/gcode-viewer/VERSION`).
 
 Текущее состояние: **продукт 0.15.2**; `react-interface` — **0.11.0**,
-`gcode-viewer` — **0.45.1**, `qt-interface` — **0.5.4**, `cad-testdata` — **0.5.1**.
+`gcode-viewer` — **0.46.0**, `qt-interface` — **0.5.4**, `cad-testdata` — **0.5.1**.
 
 ## 3. Где живут версии
 

@@ -8,6 +8,7 @@
 #include "core/stock_sim.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 
 #include "core/tooling.h"
@@ -19,6 +20,12 @@ namespace {
 // Локальный допуск сравнения радиусов профиля, мм: вершины toolProfile лежат
 // на окружностях, и разность меньше 1e-9 - это та же окружность.
 constexpr double RADIUS_EPS_MM = 1e-9;
+
+// Миллисекунды монотонных часов: цена прохода меряется здесь, а не слоем Qt.
+double msSince(std::chrono::steady_clock::time_point t0)
+{
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+}
 
 } // namespace
 
@@ -199,6 +206,82 @@ void StockField::sweep(const StockCutter& cutter,
         const double t = double(k) / double(steps);
         plunge(cutter, aMm[0] + dx * t, aMm[1] + dy * t, aMm[2] + dz * t);
     }
+}
+
+StockRunResult simulateStock(const PathData& data, const StockBounds& bounds, double cellMm,
+                             const ToolInfo& initialTool,
+                             const std::function<bool(double)>& cancelled,
+                             const std::function<void(double)>& progress)
+{
+    StockRunResult out;
+    const std::size_t n = data.pts.size() / 3;
+    if (n < 2 || data.cum.size() != n || data.total <= 0.0) {
+        return out;                        // проходить нечего
+    }
+
+    // Инструмент этапа: тег UI_TOOL сменяет предыдущий, этап без тега несёт
+    // предыдущий (на станке инструмент меняется только по M6). До первого тега
+    // действует инструмент, с которым пришла программа.
+    std::vector<StockCutter> cutters;
+    cutters.reserve(data.stages.size());
+    ToolInfo carried = initialTool;
+    for (const StageRange& stage : data.stages) {
+        if (stage.info.present) {
+            carried = stage.info;
+        }
+        cutters.push_back(stockCutter(carried));
+    }
+    if (cutters.empty()) {
+        cutters.push_back(stockCutter(carried));
+    }
+
+    // Начало этапа по накопленной длине пути: тем же выражением, что у скана
+    // коллизий (доля этапа умножается на полную длину).
+    std::vector<double> starts;
+    starts.reserve(data.stages.size());
+    for (const StageRange& stage : data.stages) {
+        starts.push_back(stage.start * data.total);
+    }
+
+    const std::chrono::steady_clock::time_point t_reset = std::chrono::steady_clock::now();
+    out.field.reset(bounds, cellMm);
+    out.resetMs = msSince(t_reset);
+
+    const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+    std::size_t stage = 0;
+    for (std::size_t i = 1; i < n; ++i) {
+        const double d = data.cum[i];
+        if (cancelled && cancelled(d)) {
+            out.cancelled = true;
+            out.computeMs = msSince(t0);
+            return out;
+        }
+        // Этап определяется длиной пути до начала хода: d не убывает, поэтому
+        // указатель двигается только вперёд.
+        const double d0 = data.cum[i - 1];
+        while (stage + 1 < starts.size() && starts[stage + 1] <= d0) {
+            ++stage;
+        }
+        // PathData хранит точки сцены (X, Z, -Y): обратно в машинные.
+        const std::array<double, 3> a{data.pts[(i - 1) * 3], -data.pts[(i - 1) * 3 + 2],
+                                      data.pts[(i - 1) * 3 + 1]};
+        const std::array<double, 3> b{data.pts[i * 3], -data.pts[i * 3 + 2],
+                                      data.pts[i * 3 + 1]};
+        const StockCutter& cutter = cutters[std::min(stage, cutters.size() - 1)];
+        if (cutter.maxRadiusMm > 0.0) {
+            out.field.sweep(cutter, a, b);
+        }
+        const double dx = b[0] - a[0];
+        const double dy = b[1] - a[1];
+        const double dz = b[2] - a[2];
+        out.lengthMm += std::sqrt(dx * dx + dy * dy + dz * dz);
+        ++out.moves;
+        if (progress) {
+            progress(d);
+        }
+    }
+    out.computeMs = msSince(t0);
+    return out;
 }
 
 } // namespace gv

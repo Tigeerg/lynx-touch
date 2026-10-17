@@ -19,9 +19,11 @@
 #pragma once
 
 #include <array>
+#include <functional>
 #include <limits>
 #include <vector>
 
+#include "core/path_prep.h"
 #include "gv_types.h"
 
 namespace gv {
@@ -97,5 +99,31 @@ private:
     int ny_ = 0;
     std::vector<float> depth_;
 };
+
+// Итог прохода по траектории: поле и его цена. `cancelled` - проход прерван
+// токеном, поле неполное и публиковать его нельзя.
+struct StockRunResult {
+    StockField field;
+    int moves = 0;
+    double lengthMm = 0.0;
+    double resetMs = 0.0;
+    double computeMs = 0.0;
+    bool cancelled = false;
+};
+
+// Поле по готовой траектории: все ходы, включая быстрые, инструмент этапа из
+// stage.info (этап без UI_TOOL несёт предыдущий, `initialTool` - до первого
+// тега). `pts` в координатах сцены, как в PathData: обратно в машинные
+// (x, -z, y) точки переводятся здесь, чтобы съём шёл по машинной сетке.
+//
+// `cancelled(pathDist)` зовётся перед каждым ходом; истина - проход обрывается
+// без результата. `progress(pathDist)` - после хода, по той же накопленной длине
+// пути, что у скана коллизий. Оба колбэка необязательны. Поток один: порядок
+// ходов - порядок программы, внутри съёма нет потоков и перестановок, поэтому
+// одни и те же путь, инструмент и узел дают бит-в-бит то же поле.
+StockRunResult simulateStock(const PathData& data, const StockBounds& bounds, double cellMm,
+                             const ToolInfo& initialTool,
+                             const std::function<bool(double pathDist)>& cancelled = {},
+                             const std::function<void(double pathDist)>& progress = {});
 
 } // namespace gv

@@ -45,6 +45,7 @@
 // загрузки, чей результат читает рабочий поток.
 #pragma once
 
+#include <QByteArray>
 #include <QObject>
 #include <QQuaternion>
 #include <QString>
@@ -63,6 +64,7 @@
 #include "core/path_prep.h"
 #include "core/quality.h"
 #include "core/silhouette.h"
+#include "core/stock_sim.h"
 #include "core/tangents.h"
 #include "core/tooling.h"
 #include "core/ui_tags.h"
@@ -108,6 +110,15 @@ struct PreparedModel {
     std::shared_ptr<const ModelData> model;
 };
 
+// Токен съёма: номер генерации и время отмены. Генерацию читает рабочий поток
+// (объект может исчезнуть, пока съём идёт), поэтому счётчик лежит в отдельной
+// структуре за shared_ptr. `cancel_us` - монотонное время запроса отмены:
+// рабочий поток вычитает его из своего времени остановки и получает задержку.
+struct StockRunToken {
+    std::atomic<int> generation{0};
+    std::atomic<long long> cancel_us{-1};
+};
+
 class GcodeToolpath : public QObject
 {
     Q_OBJECT
@@ -127,6 +138,19 @@ class GcodeToolpath : public QObject
     Q_PROPERTY(QVector3D stockSize READ stockSize NOTIFY stockChanged)
     Q_PROPERTY(bool hasStock READ hasStock NOTIFY stockChanged)
     Q_PROPERTY(double holderGauge READ holderGauge NOTIFY pathChanged)
+    // Симуляция съёма (core/stock_sim): поле высот как есть, в машинных
+    // координатах. stockDepth - R32F (float32, строка по Y), stockBounds -
+    // [xmin, xmax, ymin, ymax, zmin, zmax] в мм, stockSimState - idle, computing,
+    // ready или cancelled, stockSimProgress - доля длины пути. Рисование - шаг 3.
+    Q_PROPERTY(QByteArray stockDepth READ stockDepth NOTIFY stockSimChanged)
+    Q_PROPERTY(QVariantList stockBounds READ stockBounds NOTIFY stockSimChanged)
+    Q_PROPERTY(double stockCellMm READ stockCellMm NOTIFY stockSimChanged)
+    Q_PROPERTY(int stockCountX READ stockCountX NOTIFY stockSimChanged)
+    Q_PROPERTY(int stockCountY READ stockCountY NOTIFY stockSimChanged)
+    Q_PROPERTY(QString stockSimState READ stockSimState NOTIFY stockSimStateChanged)
+    Q_PROPERTY(double stockSimProgress READ stockSimProgress NOTIFY stockSimProgressChanged)
+    Q_PROPERTY(double stockSimTimeMs READ stockSimTimeMs NOTIFY stockSimChanged)
+    Q_PROPERTY(double stockSimCancelMs READ stockSimCancelMs NOTIFY stockSimChanged)
     Q_PROPERTY(QVariantMap toolInfo READ toolInfo NOTIFY toolInfoChanged)
     Q_PROPERTY(double toolLength READ toolLength NOTIFY toolInfoChanged)
     Q_PROPERTY(double toolRadius READ toolRadius NOTIFY toolInfoChanged)
@@ -180,6 +204,15 @@ public:
     QVector3D stockSize() const { return stock_size_; }
     bool hasStock() const { return has_stock_; }
     double holderGauge() const { return holder_gauge_; }
+    QByteArray stockDepth() const { return stock_depth_; }
+    QVariantList stockBounds() const { return stock_bounds_list_; }
+    double stockCellMm() const { return stock_cell_mm_; }
+    int stockCountX() const { return stock_count_x_; }
+    int stockCountY() const { return stock_count_y_; }
+    QString stockSimState() const { return stock_sim_state_; }
+    double stockSimProgress() const { return stock_sim_progress_; }
+    double stockSimTimeMs() const { return stock_sim_time_ms_; }
+    double stockSimCancelMs() const { return stock_sim_cancel_ms_; }
     QVariantMap toolInfo() const { return tool_info_; }
     double toolLength() const { return tool_length_; }
     double toolRadius() const { return tool_radius_; }
@@ -220,6 +253,9 @@ public:
     // (профиль инструмента - следующая часть шага).
     Q_INVOKABLE void setToolStage(int index);
     Q_INVOKABLE void analyzeCollisions();
+    // Отмена съёма без замены: состояние становится cancelled, поле пустеет.
+    // Смена программы и инструмента отменяют старый съём сами, этой же дорогой.
+    Q_INVOKABLE void cancelStockSim();
     Q_INVOKABLE void setMachineTools(const QVariantList &tools);
     Q_INVOKABLE void setMachineLimits(const QVariantMap &limits);
     Q_INVOKABLE void runToolCheck();
@@ -250,6 +286,9 @@ signals:
     void loadingChanged();
     void toolInfoChanged();
     void collisionsChanged();
+    void stockSimChanged();
+    void stockSimStateChanged();
+    void stockSimProgressChanged();
     void toolCheckChanged();
     void loadFinished();
     void eyeChanged();
@@ -319,6 +358,13 @@ private:
     // Строка коллизии картой контракта QML: d, depth, scene, scene_hb.
     static QVariantMap collisionMap(const gv::CollisionRange &range);
 
+    // ---- симуляция съёма (core/stock_sim) ----------------------------------
+    // Запуск прохода по data_ в фоне. Старый съём отменяется токеном: его поле
+    // не публикуется. Без пути или габарита UI_STOCK публиковать нечего.
+    void startStockSim();
+    // Публикация готового поля: depth R32F, габарит, шаг, узлы и время.
+    void applyStockResult(const gv::StockRunResult &result);
+
     std::shared_ptr<const gv::PathData> data_;
 
     ToolpathGeometry *rapid_ = nullptr;
@@ -355,6 +401,7 @@ private:
     std::map<int, gv::MachineTool> machine_tools_;  // таблица стойки, мм
     gv::MachineLimits machine_limits_;    // пределы осей стойки
     gv::ToolInfo tool_spec_;              // текущий инструмент (профиль и геометрии)
+    gv::ToolInfo program_tool_;           // инструмент программы до первого UI_TOOL этапа
     QVariantMap tool_info_;               // разобранный UI_TOOL для QML
     QString model_path_;                  // сайдкар модели рядом с УП
 
@@ -390,6 +437,19 @@ private:
     // UI_HOLDER: вылет оправки (он же holderGauge) и имя.
     std::optional<gv::HolderTag> holder_tag_;
     int collision_token_ = 0;             // отменяет устаревший скан (GUI-поток)
+
+    // Симуляция съёма: поле уже посчитано, но ещё не нарисовано (шаг 3).
+    QByteArray stock_depth_;              // float32 R32F, countX * countY
+    QVariantList stock_bounds_list_;      // [xmin, xmax, ymin, ymax, zmin, zmax]
+    double stock_cell_mm_ = 0.5;
+    int stock_count_x_ = 0;
+    int stock_count_y_ = 0;
+    QString stock_sim_state_ = QStringLiteral("idle");
+    double stock_sim_progress_ = 0.0;
+    double stock_sim_time_ms_ = 0.0;
+    double stock_sim_cancel_ms_ = -1.0;   // -1: отмена ещё не измерялась
+    int stock_cancel_reported_ = 0;       // генерация последней измеренной отмены
+    std::shared_ptr<StockRunToken> stock_token_ = std::make_shared<StockRunToken>();
 
     // Токены: устаревший результат рабочего потока отбрасывается. Атомарный
     // счётчик взят по указателю: рабочий поток читает счётчик, а не контроллер

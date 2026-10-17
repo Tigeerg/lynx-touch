@@ -571,3 +571,22 @@ if (MSVC)
     target_compile_options(keyprobe PRIVATE /utf-8)
 endif()
 
+# Проба привязки съёма материала к траектории (gv_toolpath): создаёт настоящий
+# GcodeToolpath из QML-модуля MockBackend и грузит реальную УП. Печатает время
+# фонового прохода при пресетах med и high и задержку отмены. Живёт без Python;
+# платформа offscreen ставится сама. CMake-цель нужна Qt (движок QML), сам
+# контроллер приходит из собранного плагина, как у точки входа вьювера.
+add_executable(stock_bind_probe viewer/stock_bind_probe.cpp)
+set_target_properties(stock_bind_probe PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${GV_VIEWER_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${GV_VIEWER_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${GV_VIEWER_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_VIEWER_DIR}
+    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${GV_VIEWER_DIR}
+)
+target_link_libraries(stock_bind_probe PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
+target_compile_definitions(stock_bind_probe PRIVATE GV_REPO_ROOT="${GV_REPO_ROOT}")
+if (MSVC)
+    target_compile_options(stock_bind_probe PRIVATE /utf-8)
+endif()
+

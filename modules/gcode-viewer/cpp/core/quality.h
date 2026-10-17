@@ -65,6 +65,17 @@ struct QualityPreset {
     double decimateTolMm = 0.5;
     double arcDecimateTolMm = 0.1;
     double collisionStepMm = 1.0;
+
+    // Симуляция съёма материала (core/stock_sim): шаг сетки поля в мм.
+    // Замер на Test_model.ngc (70 914 ходов, 137.8 м, габарит UI_STOCK):
+    // 0.5 мм - 60 501 узел, reset 0.1 мс + съём 192.4 мс, поле 236 КиБ;
+    // 0.2 мм - 376 251 узел, 2288.6 мс, поле 1.44 МиБ. 1.0 мм не измерен:
+    // узел вдвое крупнее med, узлов примерно вчетверо меньше.
+    // Повторный замер (Release, /O2 /Ob2, загрузка машины 46 %) дал 396-425 мс
+    // и 7631-8393 мс - ровно вдвое медленнее, и обе пробы сошлись между собой.
+    // Разница не в сборке, а в состоянии машины, поэтому в пресетах стоят числа
+    // первого замера, а оба ряда записаны здесь.
+    double stockSimCellMm = 0.5;
 };
 
 // Значение переменной окружения: пустая строка или отсутствие - значение по
@@ -93,6 +104,15 @@ inline double qualityEnvCollisionStepMm()
         return 1.0;
     }
     return value;
+}
+
+// Шаг сетки симуляции съёма из окружения CNC_STOCK_CELL: им перекрывают шаг
+// пресета, не меняя сам уровень. Пустое или неразбираемое значение - шаг пресета
+// (0), разбор тот же, что у qualityEnvMm.
+inline double qualityEnvStockCellMm()
+{
+    const double value = qualityEnvMm("CNC_STOCK_CELL", 0.0);
+    return value > 0.0 ? value : 0.0;
 }
 
 // Имя уровня без учёта регистра: у соседних флагов окружения (CNC_CPP,
@@ -141,6 +161,8 @@ inline QualityPreset presetFor(const char *level)
         q.silhouetteArcDeg = 70.0;          // предложение
         q.silhouetteMinSpanMm = 3.5;        // предложение
         q.dropOverlapMm = 3.0;              // предложение
+        // Съём: 0.5 мм - 60 501 узел и 192.5 мс на Test_model.ngc (замер).
+        q.stockSimCellMm = 0.5;
     } else if (sameLevelName(name, "high")) {
         q.level = "high";
         // Отклонение тесселяции 0.02 мм: предложение; замер на Test_model - 175808
@@ -162,6 +184,8 @@ inline QualityPreset presetFor(const char *level)
         q.silhouetteArcDeg = 90.0;          // предложение
         q.silhouetteMinSpanMm = 2.0;        // предложение
         q.dropOverlapMm = 1.5;              // предложение
+        // Съём: 0.2 мм - 376 251 узел и 2288.6 мс на Test_model.ngc (замер).
+        q.stockSimCellMm = 0.2;
     } else if (sameLevelName(name, "safe")) {
         q.level = "safe";
         // Самые грубые значения: уровень для слабой машины и крупных моделей.
@@ -180,6 +204,8 @@ inline QualityPreset presetFor(const char *level)
         q.silhouetteArcDeg = 60.0;          // предложение
         q.silhouetteMinSpanMm = 4.0;        // предложение
         q.dropOverlapMm = 4.0;              // предложение
+        // Съём: 1.0 мм - не измерен; узел вдвое крупнее med.
+        q.stockSimCellMm = 1.0;
     } else {
         q.level = "med";                    // пустое или неизвестное имя
     }
@@ -187,6 +213,12 @@ inline QualityPreset presetFor(const char *level)
     q.decimateTolMm = qualityEnvMm("CNC_DECIMATE_TOL", 0.5);
     q.arcDecimateTolMm = qualityEnvMm("CNC_ARC_DECIMATE_TOL", 0.1);
     q.collisionStepMm = qualityEnvCollisionStepMm();
+    // CNC_STOCK_CELL перекрывает шаг пресета: им меряют цену съёма при другом
+    // узле, не вводя нового уровня.
+    const double stock_cell = qualityEnvStockCellMm();
+    if (stock_cell > 0.0) {
+        q.stockSimCellMm = stock_cell;
+    }
     return q;
 }
 

@@ -24,6 +24,7 @@
 #include <QtQml/QQmlEngine>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <exception>
@@ -57,6 +58,15 @@ namespace {
 // в stdout, ни в stderr, а с qInstallMessageHandler доходит. Одного qCWarning мало:
 // отказ C++-контроллера в процессе вьювера остался бы невидимым. Строка в stderr
 // видна всегда, qCWarning - там, где обработчик сообщений установлен.
+// Монотонные микросекунды: по ним меряется задержка отмены съёма - GUI-поток
+// пишет время запроса, рабочий поток вычитает его из времени остановки.
+long long steadyUs()
+{
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+
 void reportRefusal(const QString &text)
 {
     qCWarning(gvController).noquote() << text;
@@ -512,8 +522,12 @@ void GcodeToolpath::setToolStage(int index)
         return;
     const int i = std::max(0, std::min(int(stage_specs_.size()) - 1, index));
     const gv::ToolInfo &spec = stage_specs_[std::size_t(i)];
-    if (spec.present && !sameTool(spec, tool_spec_))
+    if (spec.present && !sameTool(spec, tool_spec_)) {
         applyToolInfo(spec);
+        // Смена инструмента отменяет старый съём; поле считается по инструментам
+        // этапов программы, поэтому результат при том же пути не изменится.
+        startStockSim();
+    }
 }
 
 void GcodeToolpath::analyzeCollisions()
@@ -567,6 +581,165 @@ void GcodeToolpath::analyzeCollisions()
             emit collisionsChanged();
         }, Qt::QueuedConnection);
     }));
+}
+
+void GcodeToolpath::startStockSim()
+{
+    // Смена программы или инструмента отменяет старый проход: генерация растёт,
+    // время запроса пишется до запуска нового. Рабочий видит чужую генерацию и
+    // возвращает неполное поле, которое не публикуется.
+    const bool was_running = stock_sim_state_ == QLatin1String("computing");
+    const std::shared_ptr<StockRunToken> token = stock_token_;
+    const int generation = token->generation.fetch_add(1) + 1;
+    if (was_running)
+        token->cancel_us.store(steadyUs());
+
+    // Без пути или габарита UI_STOCK считать нечего. Отменённый проход остаётся
+    // в состоянии cancelled (результата нет), иначе - idle (ещё не считали).
+    if (!data_ || !stock_bounds_) {
+        stock_depth_.clear();
+        stock_bounds_list_.clear();
+        stock_count_x_ = 0;
+        stock_count_y_ = 0;
+        stock_sim_progress_ = 0.0;
+        stock_sim_time_ms_ = 0.0;
+        const QString next = was_running ? QStringLiteral("cancelled") : QStringLiteral("idle");
+        const bool changed = next != stock_sim_state_;
+        stock_sim_state_ = next;
+        emit stockSimChanged();
+        emit stockSimProgressChanged();
+        if (changed)
+            emit stockSimStateChanged();
+        return;
+    }
+
+    const gv::QualityPreset preset = gv::presetFromEnv();
+    const double cell = preset.stockSimCellMm;
+    const std::array<double, 6> &s = *stock_bounds_;
+    const gv::StockBounds bounds{s[0], s[1], s[2], s[3], s[4], s[5]};
+    const std::shared_ptr<const gv::PathData> data = data_;
+    const gv::ToolInfo initial = program_tool_;
+
+    // Прежнее поле снимается: состояние computing означает, что готового поля
+    // для этого пути нет. Рисование (шаг 3) возьмёт поле только в состоянии ready.
+    stock_depth_.clear();
+    stock_bounds_list_.clear();
+    stock_count_x_ = 0;
+    stock_count_y_ = 0;
+    stock_cell_mm_ = cell;
+    stock_sim_progress_ = 0.0;
+    stock_sim_time_ms_ = 0.0;
+    stock_sim_state_ = QStringLiteral("computing");
+    emit stockSimChanged();
+    emit stockSimProgressChanged();
+    emit stockSimStateChanged();
+
+    QThreadPool::globalInstance()->start(QRunnable::create(
+        [this, generation, token, data, bounds, cell, initial] {
+            double cancel_ms = -1.0;       // задержка отмены этого прохода, мс
+            gv::StockRunResult result;
+            const double total = data->total;
+            double last_progress = 0.0;
+            const double report_step = std::max(1e-6, total / 100.0);
+            try {
+                result = gv::simulateStock(
+                    *data, bounds, cell, initial,
+                    [&token, generation, &cancel_ms](double) {
+                        if (token->generation.load() == generation)
+                            return false;
+                        const long long requested = token->cancel_us.load();
+                        if (requested >= 0)
+                            cancel_ms = double(steadyUs() - requested) / 1000.0;
+                        return true;
+                    },
+                    [this, generation, token, total, report_step, &last_progress](double d) {
+                        // Прогресс - по длине пути, как у скана коллизий; в
+                        // очередь идут только шаги в 1 процент, иначе 70 тысяч
+                        // событий на программу.
+                        if (d - last_progress < report_step)
+                            return;
+                        last_progress = d;
+                        QMetaObject::invokeMethod(this, [this, generation, token, d, total] {
+                            if (token->generation.load() != generation)
+                                return;
+                            stock_sim_progress_ = total > 0.0 ? std::min(1.0, d / total) : 0.0;
+                            emit stockSimProgressChanged();
+                        }, Qt::QueuedConnection);
+                    });
+            } catch (const std::exception &exc) {
+                reportRefusal(QStringLiteral("съём материала не посчитан: %1")
+                                  .arg(QString::fromUtf8(exc.what())));
+                QMetaObject::invokeMethod(this, [this, generation, token] {
+                    if (token->generation.load() != generation)
+                        return;
+                    stock_sim_state_ = QStringLiteral("idle");
+                    emit stockSimStateChanged();
+                }, Qt::QueuedConnection);
+                return;
+            }
+            if (result.cancelled) {
+                // Отменённый проход не публикует поле. Наружу идёт только замер
+                // задержки: он относится к отмене, а не к результату.
+                if (cancel_ms >= 0.0) {
+                    QMetaObject::invokeMethod(this, [this, generation, cancel_ms] {
+                        if (generation < stock_cancel_reported_)
+                            return;          // более свежая отмена уже измерена
+                        stock_cancel_reported_ = generation;
+                        stock_sim_cancel_ms_ = cancel_ms;
+                        emit stockSimChanged();
+                    }, Qt::QueuedConnection);
+                }
+                return;
+            }
+            auto payload = std::make_shared<gv::StockRunResult>(std::move(result));
+            QMetaObject::invokeMethod(this, [this, generation, token, payload] {
+                if (token->generation.load() != generation)
+                    return;                  // пока считали, путь или инструмент сменились
+                applyStockResult(*payload);
+            }, Qt::QueuedConnection);
+        }));
+}
+
+void GcodeToolpath::cancelStockSim()
+{
+    // Отмена без замены: следующий проход начнёт новую генерацию.
+    if (stock_sim_state_ != QLatin1String("computing"))
+        return;
+    stock_token_->generation.fetch_add(1);
+    stock_token_->cancel_us.store(steadyUs());
+    stock_depth_.clear();
+    stock_bounds_list_.clear();
+    stock_count_x_ = 0;
+    stock_count_y_ = 0;
+    stock_sim_progress_ = 0.0;
+    stock_sim_time_ms_ = 0.0;
+    stock_sim_state_ = QStringLiteral("cancelled");
+    emit stockSimChanged();
+    emit stockSimProgressChanged();
+    emit stockSimStateChanged();
+}
+
+void GcodeToolpath::applyStockResult(const gv::StockRunResult &result)
+{
+    const std::vector<float> &depth = result.field.depthMm();
+    stock_depth_ = depth.empty()
+        ? QByteArray()
+        : QByteArray(reinterpret_cast<const char *>(depth.data()),
+                     qsizetype(depth.size() * sizeof(float)));
+    const gv::StockBounds &b = result.field.bounds();
+    stock_bounds_list_ = QVariantList{b.xMinMm, b.xMaxMm, b.yMinMm, b.yMaxMm, b.zMinMm,
+                                      b.zMaxMm};
+    stock_cell_mm_ = result.field.cellMm();
+    stock_count_x_ = result.field.countX();
+    stock_count_y_ = result.field.countY();
+    stock_sim_progress_ = 1.0;
+    // Время прохода целиком: сброс поля плюс съём. Замер идёт в ядре, на том же
+    // рабочем потоке, где считается поле.
+    stock_sim_time_ms_ = result.resetMs + result.computeMs;
+    stock_sim_state_ = QStringLiteral("ready");
+    emit stockSimChanged();
+    emit stockSimProgressChanged();
+    emit stockSimStateChanged();
 }
 
 void GcodeToolpath::setMachineTools(const QVariantList &tools)
@@ -914,8 +1087,10 @@ void GcodeToolpath::applyToolpathData(const std::shared_ptr<const gv::PathData> 
         }
     }
     // Инструмент без единого UI_TOOL в этапах берётся из тега в тексте УП - как у
-    // эталона (_apply_tool_info(parse_ui_tool(text))).
-    applyToolInfo(first.present ? first : gv::parseUiTool(text.toStdString()));
+    // эталона (_apply_tool_info(parse_ui_tool(text))). Он же - инструмент программы
+    // до первого тега этапа: съём не должен зависеть от выбранного этапа.
+    program_tool_ = first.present ? first : gv::parseUiTool(text.toStdString());
+    applyToolInfo(program_tool_);
 
     // Заготовка (UI_STOCK) публикуется до трансформы: подгонка модели под её
     // нижний угол без заготовки не работает. Оправка (UI_HOLDER) и её вылет
@@ -943,6 +1118,7 @@ void GcodeToolpath::applyToolpathData(const std::shared_ptr<const gv::PathData> 
     feed_->setPacked(toByteArray(data->feed_stream.bytes), bounds, data->feed_stream.nv);
     emit pathChanged();
     analyzeCollisions();                 // скан коллизий оправки с заготовкой
+    startStockSim();                     // съём материала по всей программе в фоне
     runToolCheck();                      // сверка УП со станочной таблицей
 }
 

@@ -27,8 +27,10 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -43,6 +45,7 @@
 #endif
 
 #include "core/gcode_parser.h"
+#include "core/path_prep.h"
 #include "core/stock_sim.h"
 #include "core/tooling.h"
 #include "core/ui_tags.h"
@@ -146,6 +149,23 @@ double segmentDistanceMm(double px, double py,
         t = std::min(1.0, std::max(0.0, ((px - ax) * dx + (py - ay) * dy) / l2));
     }
     return std::hypot(px - (ax + dx * t), py - (ay + dy * t));
+}
+
+// Дайджест поля (FNV-1a 64 по сырым float32): прогоны одного пути, инструмента
+// и узла обязаны дать одно и то же поле бит в бит. Порядок узлов - порядок
+// depthMm (строка по Y), он же порядок буфера R32F.
+std::uint64_t fieldDigest(const std::vector<float>& depth)
+{
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (float value : depth) {
+        unsigned char bytes[sizeof(float)];
+        std::memcpy(bytes, &value, sizeof(float));
+        for (unsigned char byte : bytes) {
+            hash ^= byte;
+            hash *= 1099511628211ULL;
+        }
+    }
+    return hash;
 }
 
 // Истинная сфера радиуса r с остриём в tipZ: верх материала в колонке.
@@ -451,6 +471,66 @@ int main(int argc, char** argv)
         maxDev = std::max(maxDev, std::fabs(outsideHeight));
         const bool outsideOk = std::fabs(outsideHeight) < 1e-6;
         reportCase("near_miss_step", 2, maxDev, 1e-5, fullCellWouldMiss && outsideOk);
+    }
+
+    // 6. Привязка поля к траектории. Короткая программа разбирается тем же
+    //    путём, что у вьювера (parseGcode + prepareOrdered), и проходит через
+    //    simulateStock - тот же проход по PathData, что зовёт фоновый рабочий
+    //    backend'а. Сверка - с аналитикой плоского прохода, как в случае 1;
+    //    дайджест поля обязан совпасть у двух прогонов (детерминизм).
+    {
+        const std::string program =
+            "G21 G90\n"
+            "G0 X-2 Y0 Z5\n"
+            "G1 Z-1 F100\n"
+            "G1 X2 F100\n"
+            "G0 Z5\n";
+        const gv::ParseResult parsed = gv::parseGcode(program);
+        const gv::PathData data = gv::prepareOrdered(parsed.ordered, parsed.stages);
+        gv::StockBounds bounds;
+        bounds.xMinMm = -5.0;
+        bounds.xMaxMm = 5.0;
+        bounds.yMinMm = -5.0;
+        bounds.yMaxMm = 5.0;
+        bounds.zMinMm = -10.0;
+        bounds.zMaxMm = 0.0;
+        const gv::ToolInfo tool = makeTool(ToolSpec{"FLAT", 6.0});
+        const double cell = 0.5;
+        const gv::StockRunResult first =
+            gv::simulateStock(data, bounds, cell, tool);
+        const gv::StockRunResult second =
+            gv::simulateStock(data, bounds, cell, tool);
+
+        const double r = 3.0;
+        const double tipZ = -1.0;
+        const double halfStep = cell * 0.25;
+        int checked = 0;
+        double maxDev = 0.0;
+        bool deeper = false;
+        for (int iy = 0; iy < first.field.countY(); ++iy) {
+            for (int ix = 0; ix < first.field.countX(); ++ix) {
+                const double x = first.field.nodeXMm(ix);
+                const double y = first.field.nodeYMm(iy);
+                const double d = segmentDistanceMm(x, y, -2.0, 0.0, 2.0, 0.0);
+                const double analytic = (d <= r) ? tipZ : 0.0;
+                const double height = first.field.heightMm(ix, iy);
+                if (height < analytic - 1e-6) {
+                    deeper = true;
+                }
+                if (d <= r - halfStep || d >= r + halfStep) {
+                    maxDev = std::max(maxDev, std::fabs(height - analytic));
+                    ++checked;
+                }
+            }
+        }
+        const std::uint64_t digest_a = fieldDigest(first.field.depthMm());
+        const std::uint64_t digest_b = fieldDigest(second.field.depthMm());
+        std::printf("note stock_bind moves=%d length_mm=%.1f digest=%016llx twice=%d\n",
+                    first.moves, first.lengthMm,
+                    static_cast<unsigned long long>(digest_a),
+                    digest_a == digest_b ? 1 : 0);
+        reportCase("stock_bind", checked, maxDev, 1e-5,
+                   !deeper && digest_a == digest_b && first.moves > 0);
     }
 
     // ---- замер: один проход ------------------------------------------------

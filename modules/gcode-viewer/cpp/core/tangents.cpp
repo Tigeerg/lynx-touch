@@ -6,11 +6,14 @@
 // произведения считаются тем же порядком слагаемых, что у numpy.
 #include "core/tangents.h"
 
+#include "core/np_helpers.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <utility>
 
 namespace gv {
 namespace {
@@ -20,32 +23,16 @@ constexpr double TWO_PI = 2.0 * PI;          // как 2 * math.pi в этало
 constexpr double DEG_TO_RAD = PI / 180.0;    // как math.radians: x * (pi / 180)
 constexpr double NAN_ = std::numeric_limits<double>::quiet_NaN();
 
-// Скалярное произведение: у numpy это a @ b (сумма слева направо).
-inline double dot3(const double* a, const double* b) {
-    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
+// Скалярное произведение, векторное произведение и остаток по знаку делителя -
+// общие тела в core/np_helpers.h.
+using gv::np::cross3;
+using gv::np::dot3;
+using gv::np::npMod;
 
-// Норма 3-вектора (np.linalg.norm): корень из суммы квадратов.
+// Норма 3-вектора (np.linalg.norm): корень из суммы квадратов. Тело - общее в
+// core/np_helpers.h.
 inline double norm3(const double* v) {
-    return std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-}
-
-// Векторное произведение, как np.cross для 3-векторов.
-inline void cross3(const double* a, const double* b, double* out) {
-    out[0] = a[1] * b[2] - a[2] * b[1];
-    out[1] = a[2] * b[0] - a[0] * b[2];
-    out[2] = a[0] * b[1] - a[1] * b[0];
-}
-
-// Остаток как numpy %: знак результата совпадает со знаком делителя, а fmod
-// берёт знак делимого. Разница видна на (phi - aa0) и (dphi + pi), где вход
-// бывает отрицательным.
-inline double npMod(double x, double y) {
-    const double r = std::fmod(x, y);
-    if (r != 0.0 && ((r < 0.0) != (y < 0.0))) {
-        return r + y;
-    }
-    return r;
+    return gv::np::norm3Sqrt(v);
 }
 
 // Округление пол-к-чётному: np.round(x, n) в numpy умножает на 10^n, округляет
@@ -321,10 +308,6 @@ SkinTriangles buildSkinTriangles(const std::vector<double>& soup,
         }
     }
     return out;
-}
-
-CylinderFamilies emptyCylinderFamilies() {
-    return CylinderFamilies();
 }
 
 TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,

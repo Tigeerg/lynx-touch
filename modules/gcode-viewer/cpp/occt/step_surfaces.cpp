@@ -25,6 +25,7 @@
 #include <gp_Dir.hxx>
 #include <gp_Pnt.hxx>
 
+#include "core/np_helpers.h"
 #include "occt/step_import.h"
 
 namespace gv {
@@ -33,29 +34,17 @@ namespace {
 constexpr double PI = 3.14159265358979323846;
 constexpr double TWO_PI = 2.0 * PI;
 
-inline double dot3(const double* a, const double* b) {
-    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
+// Скалярное произведение, векторное произведение и остаток по знаку делителя -
+// общие тела в core/np_helpers.h.
+using gv::np::cross3;
+using gv::np::dot3;
+using gv::np::npMod;
 
 // Норма 3-вектора: у эталона это (сумма квадратов) ** 0.5, то есть pow, а не
 // sqrt: на значениях около единицы они расходятся в младшем бите, и это видно
-// в нормализованном направлении оси.
+// в нормализованном направлении оси. Тело - общее в core/np_helpers.h.
 inline double norm3(const double* v) {
-    return std::pow(v[0] * v[0] + v[1] * v[1] + v[2] * v[2], 0.5);
-}
-
-inline void cross3(const double* a, const double* b, double* out) {
-    out[0] = a[1] * b[2] - a[2] * b[1];
-    out[1] = a[2] * b[0] - a[0] * b[2];
-    out[2] = a[0] * b[1] - a[1] * b[0];
-}
-
-inline double npMod(double x, double y) {
-    const double r = std::fmod(x, y);
-    if (r != 0.0 && ((r < 0.0) != (y < 0.0))) {
-        return r + y;
-    }
-    return r;
+    return gv::np::norm3Pow(v);
 }
 
 // round(a, 6) в Python: округление пол-к-чётному до шестого знака. Значения -
@@ -77,14 +66,19 @@ void unitDir(const gp_Dir& dir, double out[3]) {
 
 } // namespace
 
-StepSurfaceList loadStepSurfaces(const TopoDS_Shape& shape, double deflection) {
+StepSurfaceList loadStepSurfaces(const TopoDS_Shape& shape, double deflection,
+                                 bool shapeAlreadyMeshed) {
     StepSurfaceList out;
     try {
         // Тесселяция нужна эталону ради ветки узлов грани. Параметры те же, что
         // у load_step_model, поэтому на уже размёщенной форме повторный проход
         // ничего не делает; вызывается ради совпадения пути с эталоном.
-        BRepMesh_IncrementalMesh mesher(shape, deflection, false, deflection * 2.0, true);
-        mesher.Perform();
+        // shapeAlreadyMeshed=true (путь loadStepBundleAll) пропускает шаг: форма
+        // размещена выше тем же вызовом с теми же параметрами.
+        if (!shapeAlreadyMeshed) {
+            BRepMesh_IncrementalMesh mesher(shape, deflection, false, deflection * 2.0, true);
+            mesher.Perform();
+        }
     } catch (const Standard_Failure&) {
         return out;
     }

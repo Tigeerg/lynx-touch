@@ -81,6 +81,8 @@
 | `modules/gcode-viewer/cpp/core/tooling.h` / `.cpp` | C++-профили инструмента и оправки: режущая часть, кольца, вылет |
 | `modules/gcode-viewer/cpp/core/collision.h` / `.cpp` | C++-скан коллизий оправки с заготовкой и проверка инструмента |
 | `modules/gcode-viewer/cpp/viewer/main.cpp` | C++-точка входа `gcodeviewer`: окно QML, проводка плагина и OCCT, запуск без Python |
+| `modules/gcode-viewer/cpp/bench_probe.cpp` | Пробник замеров: время фаз холодной загрузки и цена кадра |
+| `modules/gcode-viewer/cpp/core/np_helpers.h` | Общие числовые помощники ядра (скалярное и векторное произведение, нормы, округление) |
 | `modules/gcode-viewer/oracle_dump.py` | Оракул промежуточных результатов: эталон для переноса на C++ |
 | `modules/gcode-viewer/test_ribbon_width.py` | Живая проверка толщины ленты (2 px по вертикали и горизонтали) |
 | `modules/gcode-viewer/test_solid_skin.py` | Живая проверка: сплошная кожа закрывает скрытые рёбра (без просвечивания) |
@@ -88,11 +90,41 @@
 
 Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
 
-**Текущая версия вьювера:** `0.27.0` (см. `modules/gcode-viewer/VERSION`).
+**Текущая версия вьювера:** `0.28.0` (см. `modules/gcode-viewer/VERSION`).
 
 ---
 
 ## История версий
+
+### 0.28.0 — 2026-10-17
+
+- **Замеры фаз и дешёвые правки C++ (шаг оптимизации, часть 1).** Заведён пробник `cpp/bench_probe.cpp`
+  (цель `bench_probe`): печатает время фаз холодной загрузки и цену кадра. Замеры на i5-10400F (это НЕ
+  Atom/Ion — слабое железо сейчас недоступно): чтение STEP 610 мс (сам OCCT), тесселяция 185 мс,
+  поверхности 70 мс, топология силуэта 35 мс, нормали кожи 28,5 мс, семейства касательных 25 мс, разбор УП
+  174 мс (крупнейшая фаза УП), подготовка траектории 7 мс, скан коллизий 2,1 мс; кадр: силуэт по мешу
+  0,14 мс, аналитический 0,019 мс.
+- **Сняты копии на пути STEP -> суп.** Оценка §11 подтвердилась: суп материализовался шесть раз, нормали
+  четыре; стало три и две (`orientShellOutwardInPlace` и `std::move` на всём пути). Это минус около 10 МБ
+  копий супа и 3,3 МБ нормалей — по микро-замеру 1,6 мс и 13 МБ пиковой памяти; на общее время не влияет.
+- **Убран второй `BRepMesh`** на пути `loadStepBundleAll` (флаг «форма уже размещена»). Замер показал, что
+  на размещённой форме вызов и так был пустым проходом: выигрыш во времени около нуля, правка оставлена как
+  гигиена — заявление §11 «минус проход тесселяции» на этом пути не подтвердилось.
+- **Горячий путь и чистка.** В `HLRLineGeometry::setSegments` убрана копия `segs` (0,0014 мс — в пределах
+  шума). Удалён мёртвый `emptyCylinderFamilies` и поле `MeshGeometry::stride_`; общие помощники (`dot3`,
+  `cross3`, `npMod`, `roundToInt`, нормы) вынесены в `cpp/core/np_helpers.h` и переиспользованы. Две нормы
+  оставлены раздельно: у эталона в одном месте `sqrt`, в другом `pow` — они расходятся в младшем бите, и
+  склеивать их нельзя.
+- **Поправка к §11 по факту.** `packedPositions` не мёртв — вызывается в рантайме
+  (`cpp/qmlbackend/gv_toolpath.cpp`); `parseUi*` и `loadStepModel(string)` используются мостом и пробниками.
+- **Что тронуто:** `cpp/core/{normals,outline,tangents}`, `cpp/occt/{step_import,step_bundle,step_surfaces}`,
+  `cpp/qt/gv_geometry`, `cpp/qmlbackend/gv_toolpath.cpp`, `cpp/CMakeLists.txt`; добавлены
+  `cpp/bench_probe.cpp`, `cpp/core/np_helpers.h`. Результаты не изменились.
+- **Проверки.** Сторож гоняет 100 проверок, зелёный; `oracle_dump.py` — `RESULT: OK`; сверки
+  `test_controller_cpp.py`, `test_step_core.py`, `test_stl_core.py`, `test_silhouette_core.py`,
+  `test_tangents_core.py`, `test_geometry_core.py` — `RESULT: OK`; offscreen `gcodeviewer.exe` и
+  `preview_3d.py` — `segments: 70914` без предупреждений; `render_probe.py` — `edge_px 7905`,
+  `stock_px 67235`. Версия 0.27.0 -> 0.28.0.
 
 ### 0.27.0 — 2026-10-17
 

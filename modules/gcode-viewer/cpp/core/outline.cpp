@@ -8,6 +8,8 @@
 // переассоциация и FMA сдвинули бы младшие биты нормалей и расстояний.
 #include "core/outline.h"
 
+#include "core/np_helpers.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -28,15 +30,15 @@ constexpr double DEG_TO_RAD = 3.14159265358979323846 / 180.0;
 constexpr double RDP_DEGENERATE = 1e-12;            // короче - отрезок вырожден: мерим расстояние до точки
 constexpr std::uint32_t NO_VERTEX = 0xffffffffu;
 
-// numpy.round: пол-к-чётному (std::nearbyint в режиме по умолчанию).
-std::int64_t roundToInt(double v) {
-    return static_cast<std::int64_t>(std::nearbyint(v));
-}
+// numpy.round: пол-к-чётному (std::nearbyint в режиме по умолчанию). Тело -
+// общее в core/np_helpers.h.
+using gv::np::roundToInt;
 
 // Корень из суммы трёх квадратов: тем же порядком слагаемых, что numpy
 // (сложение слева направо, длина вектора мала - парного суммирования нет).
-double norm3(const double v[3]) {
-    return std::sqrt(((v[0] * v[0] + v[1] * v[1]) + v[2] * v[2]));
+// Тело - общее в core/np_helpers.h.
+inline double norm3(const double v[3]) {
+    return gv::np::norm3Sqrt(v);
 }
 
 // Индексы точек, остающихся после упрощения полилинии (Дуглас-Пекер).

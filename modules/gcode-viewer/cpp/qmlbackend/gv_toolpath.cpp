@@ -29,6 +29,7 @@
 #include <exception>
 #include <mutex>
 #include <optional>
+#include <utility>
 
 #include "core/gcode_parser.h"
 #include "core/normals.h"
@@ -254,13 +255,15 @@ gv::PackedEdges packStepEdges(const std::vector<double> &flat)
 bool fillStlModel(const QString &path, ModelData *out, QString *error)
 {
     const QByteArray utf8 = path.toUtf8();
-    const std::vector<double> soup =
+    std::vector<double> soup =
         gv::loadStlVertices(std::string(utf8.constData(), std::size_t(utf8.size())));
     if (soup.empty()) {
         *error = QStringLiteral("STL не прочитан или пуст: %1").arg(path);
         return false;
     }
-    out->verts = gv::orientShellOutward(soup);
+    // Суп перемещается в кожу и разворачивается на месте: лишней копии супа нет.
+    out->verts = std::move(soup);
+    gv::orientShellOutwardInPlace(out->verts);
     out->normals = gv::smoothFaceNormals(out->verts);
     out->topo = gv::buildSilhouetteTopology(out->verts);
     return true;
@@ -297,11 +300,13 @@ std::shared_ptr<ModelData> readModelData(const QString &path, QString *used_path
     const QByteArray utf8 = path.toUtf8();
     const std::string file(utf8.constData(), std::size_t(utf8.size()));
     try {
-        const gv::StepBundleAll all = gv::loadStepBundleAll(file);
+        gv::StepBundleAll all = gv::loadStepBundleAll(file);
         out->is_step = true;
-        out->verts = all.bundle.verts;
-        out->normals = all.bundle.normals;
-        out->surfaces = all.surfaces;
+        // Перемещение: суп, нормали и поверхности едут в материал модели без
+        // копии (на Test_model это около 5 МБ).
+        out->verts = std::move(all.bundle.verts);
+        out->normals = std::move(all.bundle.normals);
+        out->surfaces = std::move(all.surfaces);
         out->step_edges = packStepEdges(all.bundle.segments);
         out->has_step_edges = true;
         // Семейства касательных строятся один раз на модель и живут до её смены:

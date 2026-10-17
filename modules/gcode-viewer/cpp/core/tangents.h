@@ -111,10 +111,6 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
                                      const PackedEdges* packedEdges = nullptr,
                                      const SkinTriangles* skin = nullptr);
 
-// Пустые цилиндрические массивы (зеркало _empty_families): силуэт только по
-// конусам - так проверки сверяют политику конусов отдельно.
-CylinderFamilies emptyCylinderFamilies();
-
 // Кадровый проход: обе касательные стороны каждого логического цилиндра и
 // образующие конусов на глазу eyeMm (raw-кадр модели). Результат - плоский ряд
 // (M,2,3) float64: две точки на отрезок, порядок тот же, что у эталона.

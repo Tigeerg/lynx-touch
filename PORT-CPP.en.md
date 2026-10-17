@@ -419,3 +419,15 @@ are what should move into the presets.
 9. Drop the duplicated STEP reads and the dead code, and hoist the shared helpers (low risk).
 10. Reconcile the numbers in the docs and the code: 4884/2426 against 18986 for the Test_model outline
     (zero risk).
+
+**Status and measurements (part 1 done, 0.28.0).** A `bench_probe` was added; the measurements on an
+i5-10400F (this is NOT an Atom/Ion) show where the time actually goes: STEP read 610 ms and tessellation
+185 ms (OCCT itself), NC parse 174 ms, surfaces 70 ms, silhouette topology 35 ms, normals 28.5 ms, tangent
+families 25 ms; per frame: mesh silhouette 0.14 ms, analytic 0.019 ms. Done: the copies on the STEP -> soup
+path are gone (six soup materialisations became three, four normal ones became two; ~1.6 ms and 13 MB of
+peak), the second `BRepMesh` on the `loadStepBundleAll` path is gone (measured: on an already-meshed shape it
+was an empty pass, so the gain is about zero — kept as hygiene), dead code removed, the shared numeric
+helpers moved into `core/np_helpers.h`. Corrections to the list above: `packedPositions` is NOT dead (called
+at runtime from `gv_toolpath.cpp`), and the "one tessellation pass less" claim did not hold. The main
+remaining targets by payoff are the NC parse (176 ms) and the STEP shape cache in the plugin (0.6-0.9 s per
+deflection change), not the items 1-4.

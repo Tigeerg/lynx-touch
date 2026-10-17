@@ -242,6 +242,22 @@ target_link_libraries(tangents_probe PRIVATE gvstep)
 # Заголовки слоёв включают TopoDS_Shape.hxx: инклюды OCCT у gvstep приватные.
 target_include_directories(tangents_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
+# Пробник замеров (не входит ни в плагин, ни в ядро): фазы холодной загрузки
+# модели STEP и УП по шагам и цена кадра (силуэт и установка буферов HLR).
+# Печатает строки "phase <имя> <мс>" и "frame <имя> <мс>". Ему нужны OCCT (фазы
+# STEP) и Qt (установка буферов HLRLineGeometry - цель gvqtgeom). Запуск - с DLL
+# OCCT и Qt в PATH:
+#   bench_probe.exe <файл.step> <файл.ngc> [повторы фаз] [повторы кадров]
+add_executable(bench_probe bench_probe.cpp)
+set_target_properties(bench_probe PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+if (MSVC)
+    target_compile_options(bench_probe PRIVATE /utf-8 /fp:precise)
+endif()
+target_link_libraries(bench_probe PRIVATE gvstep gvqtgeom Qt6::Core Qt6::Gui Qt6::Quick3D)
+target_include_directories(bench_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
+
 # C-ABI-мост над Qt-free слоями (этап 5 плана переноса): нормали кожи и модель
 # STEP одним вызовом, наружу - только C-типы и буферы, выделенные библиотекой.
 # Qt в цели нет; OCCT есть, потому что STEP без него не читается. Библиотеку

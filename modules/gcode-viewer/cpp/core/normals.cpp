@@ -1,5 +1,7 @@
 #include "core/normals.h"
 
+#include "core/np_helpers.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -40,10 +42,9 @@ struct WeldKeyHash {
 };
 
 // numpy.round: пол-к-чётному (std::nearbyint в режиме по умолчанию) - тот же
-// приём, что у ключей прямых рёбер в stepledgesgeometry.cpp.
-inline std::int64_t roundToInt(double v) {
-    return static_cast<std::int64_t>(std::nearbyint(v));
-}
+// приём, что у ключей прямых рёбер в stepledgesgeometry.cpp. Тело живёт в
+// core/np_helpers.h, чтобы не копироваться в outline.cpp и silhouette.cpp.
+using gv::np::roundToInt;
 
 using Vec3 = std::array<double, 3>;
 

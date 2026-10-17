@@ -20,7 +20,14 @@ namespace gv {
 // касательных, поэтому его нельзя переставлять. Неразобранные грани
 // пропускаются - как глотает исключения эталон. Пустой список у формы без
 // цилиндров и конусов.
-StepSurfaceList loadStepSurfaces(const TopoDS_Shape& shape, double deflection = 0.05);
+//
+// shapeAlreadyMeshed=true пропускает тесселяцию: форма уже размещена с теми же
+// параметрами (путь loadStepBundleAll: тесселяцию кожи сделал loadStepModel).
+// Повторный BRepMesh_IncrementalMesh на размещённой форме ничего не делает, но
+// шаг лишний; параметры у обоих вызовов одни, поэтому пропуск результат не
+// меняет. По умолчанию (false) тесселяция идёт - путь по файлу форму не размещал.
+StepSurfaceList loadStepSurfaces(const TopoDS_Shape& shape, double deflection = 0.05,
+                                 bool shapeAlreadyMeshed = false);
 
 // То же по пути: чтение STEP внутри. Путь - UTF-8, ошибка чтения -
 // std::runtime_error.

@@ -6,6 +6,8 @@
 
 #include <TopoDS_Shape.hxx>
 
+#include <utility>
+
 namespace gv {
 namespace {
 
@@ -14,11 +16,13 @@ namespace {
 // loadStepBundleAll было одно и то же, а не две редакции подряд.
 StepBundle bundleFromShape(const TopoDS_Shape &shape, double deflection)
 {
-    const StepModel model = loadStepModel(shape, deflection);
+    StepModel model = loadStepModel(shape, deflection);
 
     StepBundle out;
-    out.verts = model.verts;
-    out.normals = model.normals;
+    // Перемещение, а не копия: суп около 3 МБ, нормали около 1.6 МБ - набор
+    // модель->суп раньше материализовал их повторно.
+    out.verts = std::move(model.verts);
+    out.normals = std::move(model.normals);
 
     // Допуск рёбер у эталона задан отдельно от тесселяции (0.05 мм жёстко), а
     // склейку делает вызывающий: у Python её ведёт _coalesce_segments, и порядок
@@ -49,8 +53,10 @@ StepBundleAll loadStepBundleAll(const std::string &utf8Path, double deflection)
     StepBundleAll out;
     out.bundle = bundleFromShape(shape, deflection);
     // Поверхности - после тесселяции: эталон тоже читает форму один раз, а
-    // тесселяцию кожи и обход граней ведёт по ней же.
-    out.surfaces = loadStepSurfaces(shape, deflection);
+    // тесселяцию кожи и обход граней ведёт по ней же. Форма уже размещена
+    // (loadStepModel выше), поэтому тесселяция пропускается: тот же вызов с теми
+    // же параметрами уже прошёл, повтор был бы пустым проходом.
+    out.surfaces = loadStepSurfaces(shape, deflection, true);
     return out;
 }
 

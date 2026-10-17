@@ -45,6 +45,11 @@ std::vector<double> tessellateSoup(const TopoDS_Shape& shape, double deflection 
 // на вогнутых участках (карманах, отверстиях) он выворачивает их внутрь.
 std::vector<double> orientShellOutward(const std::vector<double>& soup);
 
+// То же решение, но разворот на месте: у супа из loadStepModel копии больше нет -
+// этот вызов экономит материализацию супа (около 3 МБ на Test_model). Результат
+// тот же, что у orientShellOutward(soup), но soup меняется. Пустой суп не трогает.
+void orientShellOutwardInPlace(std::vector<double>& soup);
+
 // load_step_model по сетке и нормалям: тесселяция, ориентация, нормали кожи.
 StepModel loadStepModel(const TopoDS_Shape& shape, double deflection = 0.05);
 

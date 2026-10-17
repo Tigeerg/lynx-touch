@@ -149,21 +149,30 @@ void HLRLineGeometry::setSegments(const float *segs, int count)
     const int m = count;
     // Радиальный отжим FLOAT_SCALE запекается здесь (буфер статичен на загрузку);
     // сдвиг вдоль луча зрения живёт в stepledges.vert (eyeRaw + camFloatMm).
-    std::vector<float> a(segs, segs + std::size_t(m) * 6);
-    if (!ref_.empty()) {
-        for (std::size_t i = 0; i < a.size(); ++i) {
-            const float r = ref_[i % 3];
-            a[i] = r + (a[i] - r) * FLOAT_SCALE;      // порядок операций как в numpy
-        }
-    }
+    // Отжим считается на паре концов на месте, без копии всего массива segs.
+    const bool scaled = !ref_.empty();
 
     static const int pick[6] = {0, 1, 1, 0, 1, 0};
     static const float sgn[6] = {1.0f, 1.0f, -1.0f, 1.0f, -1.0f, -1.0f};
     std::vector<float> vert(std::size_t(m) * 6 * 12, 0.0f);
     LoHi range;
     for (int s = 0; s < m; ++s) {
-        const float *pa = &a[std::size_t(s) * 6];
-        const float *pb = pa + 3;
+        const float *ra = &segs[std::size_t(s) * 6];
+        const float *rb = ra + 3;
+        float pa[3];
+        float pb[3];
+        if (scaled) {
+            for (int j = 0; j < 3; ++j) {
+                const float r = ref_[std::size_t(j)];
+                pa[j] = r + (ra[j] - r) * FLOAT_SCALE;    // порядок операций как в numpy
+                pb[j] = r + (rb[j] - r) * FLOAT_SCALE;
+            }
+        } else {
+            for (int j = 0; j < 3; ++j) {
+                pa[j] = ra[j];
+                pb[j] = rb[j];
+            }
+        }
         float d[3];
         for (int j = 0; j < 3; ++j)
             d[j] = pb[j] - pa[j];
@@ -477,7 +486,6 @@ void MeshGeometry::setTriangles(const double *verts, int nFloats, const double *
         }
         lo_ = {range.lo[0], range.lo[1], range.lo[2]};
         hi_ = {range.hi[0], range.hi[1], range.hi[2]};
-        stride_ = STRIDE;
         rebuild();
         return;
     }
@@ -486,7 +494,6 @@ void MeshGeometry::setTriangles(const double *verts, int nFloats, const double *
     // потребителей, а модели приходят массивом.
     data_.clear();
     nv_ = 0;
-    stride_ = STRIDE;
     lo_ = {0.0, 0.0, 0.0};
     hi_ = {0.0, 0.0, 0.0};
     rebuild();
@@ -496,7 +503,6 @@ void MeshGeometry::reset()
 {
     data_.clear();
     nv_ = 0;
-    stride_ = STRIDE;
     rebuild();
 }
 

@@ -192,7 +192,6 @@ private:
 
     QByteArray data_;             // упакованные float32 position + normal
     int nv_ = 0;
-    int stride_ = STRIDE;         // зеркало поля _stride в Python (в сборке не участвует)
     std::array<double, 3> lo_{0.0, 0.0, 0.0};
     std::array<double, 3> hi_{0.0, 0.0, 0.0};
 };

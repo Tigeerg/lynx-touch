@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <stdexcept>
+#include <utility>
 
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <BRep_Tool.hxx>
@@ -151,10 +152,10 @@ std::vector<double> tessellateSoup(const TopoDS_Shape& shape, double deflection)
     return soup;
 }
 
-std::vector<double> orientShellOutward(const std::vector<double>& soup) {
+void orientShellOutwardInPlace(std::vector<double>& soup) {
     const std::size_t faces = soup.size() / 9;
     if (faces == 0) {
-        return {};
+        return;
     }
 
     // Центроид модели: наивная аккумуляция по столбцам в возрастании номера
@@ -181,26 +182,35 @@ std::vector<double> orientShellOutward(const std::vector<double>& soup) {
         }
     }
     if (bufferedSum(prod) >= 0.0) {
-        return soup;                                     // оболочка смотрит наружу
+        return;                                          // оболочка смотрит наружу
     }
 
-    std::vector<double> flipped(soup.size(), 0.0);
+    // Разворот на месте: у грани меняются местами первый и третий углы (на месте
+    // копии p0 <- p2, p2 <- p0). Значения те же, что у покадрового разворота.
     for (std::size_t f = 0; f < faces; ++f) {
         const std::size_t p = f * 9;
         for (int d = 0; d < 3; ++d) {
-            flipped[p + std::size_t(d)] = soup[p + 6 + std::size_t(d)];      // было 2 -> стало 0
-            flipped[p + 3 + std::size_t(d)] = soup[p + 3 + std::size_t(d)];
-            flipped[p + 6 + std::size_t(d)] = soup[p + std::size_t(d)];
+            std::swap(soup[p + std::size_t(d)], soup[p + 6 + std::size_t(d)]);
         }
     }
-    return flipped;
+}
+
+std::vector<double> orientShellOutward(const std::vector<double>& soup) {
+    if (soup.size() / 9 == 0) {
+        return {};
+    }
+    std::vector<double> out = soup;
+    orientShellOutwardInPlace(out);
+    return out;
 }
 
 StepModel loadStepModel(const TopoDS_Shape& shape, double deflection) {
     StepModel out;
-    const std::vector<double> soup = tessellateSoup(shape, deflection);
-    out.tri_count = static_cast<int>(soup.size() / 9);
-    out.verts = orientShellOutward(soup);
+    // Суп строится прямо в out.verts и разворачивается на месте: отдельные
+    // материализации под тесселяцию, ориентацию и нормали больше не нужны.
+    out.verts = tessellateSoup(shape, deflection);
+    out.tri_count = static_cast<int>(out.verts.size() / 9);
+    orientShellOutwardInPlace(out.verts);
     if (!out.verts.empty()) {
         out.normals = smoothFaceNormals(out.verts);
     }

@@ -418,6 +418,19 @@ GcodeToolpath::GcodeToolpath(QObject *parent)
     QTimer::singleShot(0, this, &GcodeToolpath::ready);
 }
 
+GcodeToolpath::~GcodeToolpath()
+{
+    // Задачи пула (загрузка, обводка, скан коллизий) зовут контроллер по this:
+    // reportRefusal из потока и QMetaObject::invokeMethod(this, ...). Задача,
+    // живущая дольше объекта, бьёт по мёртвому QObject - SIGSEGV в
+    // QObject::thread() на выходе (Test_model.ngc, offscreen, код 139; то же
+    // на точке входа preview_3d.py). waitForDone держит GUI-поток, пока задачи
+    // не закончатся: их отложенные вызовы к этому моменту уже не нужны, их
+    // отбрасывает ~QObject. Глобальный пул в этом процессе держит только задачи
+    // контроллера, поэтому ожидание ограничено ими.
+    QThreadPool::globalInstance()->waitForDone();
+}
+
 // ---------------------------------------------------------------------------
 // Свойства: данные траектории
 // ---------------------------------------------------------------------------

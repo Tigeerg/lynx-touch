@@ -161,6 +161,10 @@ class GcodeToolpath : public QObject
 
 public:
     explicit GcodeToolpath(QObject *parent = nullptr);
+    // Дожидается задачи пула: они зовут контроллер по this (invokeMethod,
+    // reportRefusal), и живущая дольше объекта задача бьёт по мёртвому QObject -
+    // SIGSEGV в QObject::thread() на выходе (Test_model.ngc, код 139).
+    ~GcodeToolpath() override;
 
     // ---- свойства: данные траектории --------------------------------------
     QVector3D center() const;

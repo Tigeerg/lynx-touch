@@ -17,7 +17,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.48.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.49.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -256,6 +256,28 @@ Item {
         }
     }
 
+    // Живая публикация поля: пока программа играет, поле догоняет pathDist раз
+    // в 100 мс - каденция из DESIGN.md (чаще нельзя: обновление текстуры - целый
+    // буфер; на заготовке Test_model 150x100 мм это 242 КиБ на тик при узле
+    // 0.5 мм и 1.44 МиБ при 0.2 мм). Вне проигрывания таймера нет: остановка и
+    // перемотка догоняются одним вызовом на изменение pathDist/playing, а первый
+    // проход считается и без них.
+    Timer {
+        interval: 100
+        repeat: true
+        running: root.playing && root.moveLength > 0
+        onTriggered: if (path) path.stockFollow(root.pathDist)
+    }
+    Connections {
+        target: root
+        function onPathDistChanged() {
+            if (!root.playing && path) path.stockFollow(root.pathDist)
+        }
+        function onPlayingChanged() {
+            if (!root.playing && path) path.stockFollow(root.pathDist)
+        }
+    }
+
     // Orientation floor: centered on the STOCK bottom face (falls back to the toolpath)
     readonly property bool stockFloor: (path !== null) && path.hasStock
     readonly property real floorLevel: stockFloor ? (path.stockCenter.y - path.stockSize.y / 2)
@@ -462,6 +484,15 @@ Item {
         // bias есть только у резца, который стоит ВНУТРИ материала; поверхность
         // съёма и есть материал, и с ним она перестала бы прятать путь под
         // собой, а резаная стенка врала бы о геометрии.
+        // За кем право при совпадении: у готовой программы снятая поверхность и
+        // есть кожа детали, и в местах касания они спорят за один пиксель.
+        // Право отдано коже: она - исходная геометрия (STEP/STL), а поле -
+        // производная выборка с узлом 0.5 мм, и его ошибка на порядки больше
+        // точности кожи. Спор решается сдвигом ТОЛЬКО ГЛУБИНЫ в вершинном
+        // шейдере (stocksurface.vert, depthOffset): позиции вершин не двигаются,
+        // поэтому габарит и глубина реза не врут, а совпавшие поверхности
+        // выигрывает кожа. Сдвиг вперёд (как у рёбер) дал бы обратное: поле
+        // закрасило бы деталь.
         Node {
             visible: root.showStockVisible && root.stockFieldDrawn
             eulerRotation: Qt.vector3d(-90, 0, 0)
@@ -477,6 +508,15 @@ Item {
                 materials: CustomMaterial {
                     shadingMode: CustomMaterial.Shaded
                     property real cellMm: path ? path.stockCellMm : 0.5
+                    // Сдвиг глубины от кожи детали (см. комментарий узла):
+                    // 1e-6 NDC - около 0.15 мм на дистанции облёта 300 мм, то
+                    // есть меньше четверти пикселя, но на два порядка больше шума
+                    // float32 в позициях, который и решает спор. Замер на кадре
+                    // 1024x600 (Test_model, деталь видна): без сдвига кожа
+                    // проигрывает совпавший верх на 74-78 пикселях, при 1e-6 они
+                    // уходят к коже, а 1e-4 (в 100 раз больше) убирало бы под неё
+                    // уже настоящий остаток - ещё 240 пикселей.
+                    property real depthOffset: 1e-6
                     property color stockColor: "#9AA3AE"
                     property TextureInput stockField: TextureInput {
                         texture: Texture {
@@ -940,14 +980,16 @@ Item {
 
     // ---- display modes ----
     property bool showStockVisible: true     // показывать заготовку
-    // Чем рисуется заготовка. Поле - когда фон посчитал его целиком
-    // (stockSimState ready) и уровень не safe: у safe поле рисуется грубейшим
-    // узлом и дороже всего кадра (DESIGN.md, разд. 13). Пока поля нет, на экране
-    // прежняя коробка: сцена не пустеет на время счёта. Коробку вместо поля
-    // можно включить нарочно для сравнения - клавишей B или CNC_STOCK_BOX=1.
+    // Чем рисуется заготовка. Поле - когда контроллер опубликовал готовое поле
+    // (stockHasField) и уровень не safe: у safe поле рисуется грубейшим узлом и
+    // дороже всего кадра (DESIGN.md, разд. 13). Признак поля, а не состояние
+    // stockSimState: пока считается новое поле (тик, перемотка), на экране
+    // остаётся прежнее целое, и рисование не должно на это время пропадать.
+    // Коробка - пока поля нет (первый проход), после отказа (инструмент картой
+    // не выражается) и по клавише B / CNC_STOCK_BOX=1 для сравнения.
     property bool stockPlainBox: false       // коробка вместо поля (B, CNC_STOCK_BOX)
     readonly property bool stockFieldDrawn: !root.stockPlainBox && !root.qualitySafe
-        && path !== null && path.hasStock && path.stockSimState === "ready"
+        && path !== null && path.hasStock && path.stockHasField
     property bool showPartVisible: true      // show the part model (STL)
     property bool showAllCode: true          // true = whole code at once, false = limit draw distance
     property bool xray: false             // сплошная кожа по умолчанию:

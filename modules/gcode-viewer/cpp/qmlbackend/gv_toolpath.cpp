@@ -532,9 +532,10 @@ void GcodeToolpath::setToolStage(int index)
     const gv::ToolInfo &spec = stage_specs_[std::size_t(i)];
     if (spec.present && !sameTool(spec, tool_spec_)) {
         applyToolInfo(spec);
-        // Смена инструмента отменяет старый съём; поле считается по инструментам
-        // этапов программы, поэтому результат при том же пути не изменится.
-        startStockSim();
+        // Съём здесь не пересчитывается: поле строится по инструментам ЭТАПОВ
+        // программы (stockCutterPlan), а выбранный этап в него не входит.
+        // Перезапуск отменил бы живой обход и вернул поле к полной программе -
+        // на проигрывании это показало бы снятое, которого ещё нет.
     }
 }
 
@@ -591,26 +592,52 @@ void GcodeToolpath::analyzeCollisions()
     }));
 }
 
+void GcodeToolpath::clearStockField()
+{
+    stock_depth_.clear();
+    stock_bounds_list_.clear();
+    stock_count_x_ = 0;
+    stock_count_y_ = 0;
+    stock_has_field_ = false;
+    // Текстура снова 1x1: прошлые байты не держат память GPU, а QML не остаётся
+    // с текстурой чужого размера, когда поля нет.
+    if (stock_field_ != nullptr) {
+        stock_field_->setSize(QSize(1, 1));
+        stock_field_->setTextureData(QByteArray(4, '\0'));
+        stock_field_->update();
+    }
+}
+
 void GcodeToolpath::startStockSim()
 {
-    // Смена программы или инструмента отменяет старый проход: генерация растёт,
-    // время запроса пишется до запуска нового. Рабочий видит чужую генерацию и
-    // возвращает неполное поле, которое не публикуется.
-    const bool was_running = stock_sim_state_ == QLatin1String("computing");
+    // Смена программы отменяет старый проход: генерация растёт, время запроса
+    // пишется до запуска нового. Рабочий видит чужую генерацию и возвращает
+    // неполное поле, которое не публикуется.
+    const bool was_running = stock_sim_state_ == QLatin1String("computing")
+            || stock_tick_in_flight_;
     const std::shared_ptr<StockRunToken> token = stock_token_;
     const int generation = token->generation.fetch_add(1) + 1;
     if (was_running)
         token->cancel_us.store(steadyUs());
 
+    // Поле снимается здесь и только здесь: оно посчитано для прежних пути,
+    // заготовки и инструментов, а новая программа к ним отношения не имеет.
+    // Дальше поле живёт до готового нового - ни полный проход, ни тик, ни
+    // перемотка его не чистят (DESIGN.md: "пока считается - видно последнее
+    // целое поле"). Первый проход программы прежнего поля не имеет, и на экране
+    // остаётся коробка заготовки; отменённый проход не публикует ничего, то есть
+    // оставляет на экране то же последнее целое поле.
+    stock_session_.reset();
+    stock_tick_in_flight_ = false;
+    stock_live_target_ = 0.0;
+    clearStockField();
+    stock_sim_progress_ = 0.0;
+    stock_sim_time_ms_ = 0.0;
+    stock_sim_tick_ms_ = 0.0;
+
     // Без пути или габарита UI_STOCK считать нечего. Отменённый проход остаётся
     // в состоянии cancelled (результата нет), иначе - idle (ещё не считали).
     if (!data_ || !stock_bounds_) {
-        stock_depth_.clear();
-        stock_bounds_list_.clear();
-        stock_count_x_ = 0;
-        stock_count_y_ = 0;
-        stock_sim_progress_ = 0.0;
-        stock_sim_time_ms_ = 0.0;
         const QString next = was_running ? QStringLiteral("cancelled") : QStringLiteral("idle");
         const bool changed = next != stock_sim_state_;
         stock_sim_state_ = next;
@@ -627,133 +654,284 @@ void GcodeToolpath::startStockSim()
     const gv::StockBounds bounds{s[0], s[1], s[2], s[3], s[4], s[5]};
     const std::shared_ptr<const gv::PathData> data = data_;
     const gv::ToolInfo initial = program_tool_;
-
-    // Прежнее поле снимается: состояние computing означает, что готового поля
-    // для этого пути нет. Рисование (шаг 3) возьмёт поле только в состоянии ready.
-    stock_depth_.clear();
-    stock_bounds_list_.clear();
-    stock_count_x_ = 0;
-    stock_count_y_ = 0;
     stock_cell_mm_ = cell;
-    stock_sim_progress_ = 0.0;
-    stock_sim_time_ms_ = 0.0;
     stock_sim_state_ = QStringLiteral("computing");
     emit stockSimChanged();
     emit stockSimProgressChanged();
     emit stockSimStateChanged();
 
+    // Полный проход идёт до конца программы: пока оператор не играет, на экране
+    // остаток, снятый всей программой. Живой обход начинается с этого поля.
     QThreadPool::globalInstance()->start(QRunnable::create(
         [this, generation, token, data, bounds, cell, initial] {
-            double cancel_ms = -1.0;       // задержка отмены этого прохода, мс
-            gv::StockRunResult result;
+            auto session = std::make_shared<StockSession>();
+            session->data = data;
+            auto payload = std::make_shared<StockPassPayload>();
             const double total = data->total;
+            payload->total_mm = total;
+            double cancel_ms = -1.0;       // задержка отмены этого прохода, мс
             double last_progress = 0.0;
             const double report_step = std::max(1e-6, total / 100.0);
             try {
-                result = gv::simulateStock(
-                    *data, bounds, cell, initial,
-                    [&token, generation, &cancel_ms](double) {
+                if (!session->walk.start(*data, bounds, cell,
+                                         gv::stockCutterPlan(*data, initial))) {
+                    payload->refused = session->walk.refusedStage() >= 0;
+                    payload->refused_stage = session->walk.refusedStage();
+                    payload->refused_tool = session->walk.refusedTool();
+                } else {
+                    const bool done = session->walk.advanceTo(
+                        total,
+                        [&token, generation, &cancel_ms](double) {
+                            if (token->generation.load() == generation)
+                                return false;
+                            const long long requested = token->cancel_us.load();
+                            if (requested >= 0)
+                                cancel_ms = double(steadyUs() - requested) / 1000.0;
+                            return true;
+                        },
+                        [this, generation, token, report_step, total,
+                         &last_progress](double d) {
+                            // Прогресс - по длине пути, как у скана коллизий; в
+                            // очередь идут только шаги в 1 процент, иначе 70
+                            // тысяч событий на программу.
+                            if (d - last_progress < report_step)
+                                return;
+                            last_progress = d;
+                            QMetaObject::invokeMethod(this, [this, generation, token, d, total] {
+                                if (token->generation.load() != generation)
+                                    return;
+                                stock_sim_progress_ = total > 0.0 ? std::min(1.0, d / total) : 0.0;
+                                emit stockSimProgressChanged();
+                            }, Qt::QueuedConnection);
+                        });
+                    payload->cancelled = !done;
+                }
+            } catch (const std::exception &exc) {
+                reportRefusal(QStringLiteral("съём материала не посчитан: %1")
+                                  .arg(QString::fromUtf8(exc.what())));
+                payload->failed = true;
+            }
+            if (payload->cancelled && cancel_ms >= 0.0) {
+                // Отменённый проход не публикует поле. Наружу идёт только замер
+                // задержки: он относится к отмене, а не к результату.
+                QMetaObject::invokeMethod(this, [this, generation, cancel_ms] {
+                    if (generation < stock_cancel_reported_)
+                        return;              // более свежая отмена уже измерена
+                    stock_cancel_reported_ = generation;
+                    stock_sim_cancel_ms_ = cancel_ms;
+                    emit stockSimChanged();
+                }, Qt::QueuedConnection);
+            }
+            if (payload->cancelled) {
+                return;                      // отменённый проход не публикует ничего
+            }
+            if (!payload->refused && !payload->failed) {
+                const gv::StockField &field = session->walk.field();
+                const std::vector<float> &depth = field.depthMm();
+                payload->depth = depth.empty()
+                    ? QByteArray()
+                    : QByteArray(reinterpret_cast<const char *>(depth.data()),
+                                 qsizetype(depth.size() * sizeof(float)));
+                const gv::StockBounds &b = field.bounds();
+                payload->bounds = QVariantList{b.xMinMm, b.xMaxMm, b.yMinMm, b.yMaxMm,
+                                               b.zMinMm, b.zMaxMm};
+                payload->cell_mm = field.cellMm();
+                payload->count_x = field.countX();
+                payload->count_y = field.countY();
+                payload->has_field = !payload->depth.isEmpty();
+                payload->target_mm = total;
+                // Сброс поля плюс обход: та же цена, что simulateStock отдаёт
+                // двумя числами.
+                payload->time_ms = session->walk.lastResetMs()
+                        + session->walk.advanceMs();
+                payload->session = session;
+            }
+            QMetaObject::invokeMethod(this, [this, generation, token, payload] {
+                if (token->generation.load() != generation)
+                    return;                  // пока считали, программу сменили
+                applyStockPass(*payload);
+            }, Qt::QueuedConnection);
+        }));
+}
+
+void GcodeToolpath::stockFollow(double pathDistMm)
+{
+    // Живая публикация: поле должно отражать съём до pathDist. Тик задаёт QML
+    // (около 10 Гц), здесь только цель и запуск; пока тик идёт, вызов двигает
+    // цель, и её догоняет завершение тика.
+    if (!stock_session_ || !data_ || !(data_->total > 0.0))
+        return;                            // поля ещё нет: первый проход в работе
+    const double target = std::max(0.0, std::min(data_->total, pathDistMm));
+    if (target == stock_live_target_ && !stock_tick_in_flight_)
+        return;                            // это уже показано
+    stock_live_target_ = target;
+    startStockTick();
+}
+
+void GcodeToolpath::startStockTick()
+{
+    if (stock_tick_in_flight_ || !stock_session_) {
+        return;
+    }
+    const std::shared_ptr<StockSession> session = stock_session_;
+    const std::shared_ptr<StockRunToken> token = stock_token_;
+    const int generation = token->generation.load();
+    const double target = stock_live_target_;
+    stock_tick_in_flight_ = true;
+    // Работа идёт, а на экране прежнее целое поле: оно уже не описывает текущий
+    // pathDist, и состояние это говорит.
+    if (stock_sim_state_ != QLatin1String("computing")) {
+        stock_sim_state_ = QStringLiteral("computing");
+        emit stockSimStateChanged();
+    }
+    QThreadPool::globalInstance()->start(QRunnable::create(
+        [this, session, target, token, generation] {
+            const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+            auto payload = std::make_shared<StockPassPayload>();
+            payload->total_mm = session->data->total;
+            payload->target_mm = target;
+            double cancel_ms = -1.0;
+            try {
+                // Назад по пути обход сам сбрасывает поле и идёт с начала; вперёд -
+                // продолжает с курсора. Оба пути дают одно поле (проверка
+                // stock_live в stock_sim_probe: дайджест равен полному проходу).
+                payload->cancelled = !session->walk.advanceTo(
+                    target, [&token, generation, &cancel_ms](double) {
                         if (token->generation.load() == generation)
                             return false;
                         const long long requested = token->cancel_us.load();
                         if (requested >= 0)
                             cancel_ms = double(steadyUs() - requested) / 1000.0;
                         return true;
-                    },
-                    [this, generation, token, total, report_step, &last_progress](double d) {
-                        // Прогресс - по длине пути, как у скана коллизий; в
-                        // очередь идут только шаги в 1 процент, иначе 70 тысяч
-                        // событий на программу.
-                        if (d - last_progress < report_step)
-                            return;
-                        last_progress = d;
-                        QMetaObject::invokeMethod(this, [this, generation, token, d, total] {
-                            if (token->generation.load() != generation)
-                                return;
-                            stock_sim_progress_ = total > 0.0 ? std::min(1.0, d / total) : 0.0;
-                            emit stockSimProgressChanged();
-                        }, Qt::QueuedConnection);
                     });
             } catch (const std::exception &exc) {
                 reportRefusal(QStringLiteral("съём материала не посчитан: %1")
                                   .arg(QString::fromUtf8(exc.what())));
-                QMetaObject::invokeMethod(this, [this, generation, token] {
-                    if (token->generation.load() != generation)
-                        return;
-                    stock_sim_state_ = QStringLiteral("idle");
-                    emit stockSimStateChanged();
-                }, Qt::QueuedConnection);
-                return;
+                payload->failed = true;
             }
-            if (result.cancelled) {
-                // Отменённый проход не публикует поле. Наружу идёт только замер
-                // задержки: он относится к отмене, а не к результату.
-                if (cancel_ms >= 0.0) {
-                    QMetaObject::invokeMethod(this, [this, generation, cancel_ms] {
-                        if (generation < stock_cancel_reported_)
-                            return;          // более свежая отмена уже измерена
+            payload->time_ms =
+                std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - t0).count();
+            if (!payload->cancelled && !payload->failed) {
+                // Копия поля на рабочем потоке: частичной загрузки у
+                // QQuick3DTextureData нет, поэтому тик платит за весь буфер.
+                const gv::StockField &field = session->walk.field();
+                const std::vector<float> &depth = field.depthMm();
+                payload->depth = depth.empty()
+                    ? QByteArray()
+                    : QByteArray(reinterpret_cast<const char *>(depth.data()),
+                                 qsizetype(depth.size() * sizeof(float)));
+                const gv::StockBounds &b = field.bounds();
+                payload->bounds = QVariantList{b.xMinMm, b.xMaxMm, b.yMinMm, b.yMaxMm,
+                                               b.zMinMm, b.zMaxMm};
+                payload->cell_mm = field.cellMm();
+                payload->count_x = field.countX();
+                payload->count_y = field.countY();
+                payload->has_field = !payload->depth.isEmpty();
+            }
+            QMetaObject::invokeMethod(this, [this, token, generation, payload, cancel_ms] {
+                if (token->generation.load() != generation) {
+                    // Пока тик считался, программу сменили или съём отменили:
+                    // тик ничего не публикует, только замер отмены.
+                    if (cancel_ms >= 0.0 && generation >= stock_cancel_reported_) {
                         stock_cancel_reported_ = generation;
                         stock_sim_cancel_ms_ = cancel_ms;
                         emit stockSimChanged();
-                    }, Qt::QueuedConnection);
+                    }
+                    return;
                 }
-                return;
-            }
-            auto payload = std::make_shared<gv::StockRunResult>(std::move(result));
-            QMetaObject::invokeMethod(this, [this, generation, token, payload] {
-                if (token->generation.load() != generation)
-                    return;                  // пока считали, путь или инструмент сменились
-                applyStockResult(*payload);
+                stock_tick_in_flight_ = false;
+                if (payload->failed) {
+                    applyStockPass(*payload);  // состояние перестаёт быть computing
+                    return;
+                }
+                if (payload->cancelled || !payload->has_field)
+                    return;                  // неполное поле не публикуется
+                applyStockPass(*payload);
+                if (stock_live_target_ != payload->target_mm)
+                    startStockTick();        // цель сдвинулась за время тика
             }, Qt::QueuedConnection);
         }));
 }
 
 void GcodeToolpath::cancelStockSim()
 {
-    // Отмена без замены: следующий проход начнёт новую генерацию.
+    // Отмена без замены: генерация растёт, следующий проход начнёт новую.
     if (stock_sim_state_ != QLatin1String("computing"))
         return;
     stock_token_->generation.fetch_add(1);
     stock_token_->cancel_us.store(steadyUs());
-    stock_depth_.clear();
-    stock_bounds_list_.clear();
-    stock_count_x_ = 0;
-    stock_count_y_ = 0;
-    stock_sim_progress_ = 0.0;
-    stock_sim_time_ms_ = 0.0;
+    stock_tick_in_flight_ = false;
+    // Новое поле не публикуется, живой обход останавливается: отмена прекращает
+    // работу, но не переписывает уже посчитанное - последнее целое поле остаётся
+    // на экране (если оно было; у отменённого первого прохода его нет).
+    stock_session_.reset();
     stock_sim_state_ = QStringLiteral("cancelled");
     emit stockSimChanged();
     emit stockSimProgressChanged();
     emit stockSimStateChanged();
 }
 
-void GcodeToolpath::applyStockResult(const gv::StockRunResult &result)
+void GcodeToolpath::applyStockPass(const StockPassPayload &payload)
 {
-    const std::vector<float> &depth = result.field.depthMm();
-    stock_depth_ = depth.empty()
-        ? QByteArray()
-        : QByteArray(reinterpret_cast<const char *>(depth.data()),
-                     qsizetype(depth.size() * sizeof(float)));
-    const gv::StockBounds &b = result.field.bounds();
-    stock_bounds_list_ = QVariantList{b.xMinMm, b.xMaxMm, b.yMinMm, b.yMaxMm, b.zMinMm,
-                                      b.zMaxMm};
-    stock_cell_mm_ = result.field.cellMm();
-    stock_count_x_ = result.field.countX();
-    stock_count_y_ = result.field.countY();
+    if (payload.refused) {
+        // Инструмент картой высот не выражается: поля нет, на экране коробка
+        // заготовки, причина - в строке отказа (reportRefusal: qCWarning и
+        // stderr, второй канал не заводится).
+        stock_session_.reset();
+        clearStockField();
+        stock_sim_progress_ = 0.0;
+        stock_sim_state_ = QStringLiteral("refused");
+        emit stockSimChanged();
+        emit stockSimProgressChanged();
+        emit stockSimStateChanged();
+        reportRefusal(QStringLiteral(
+            "съём материала не построен: инструмент T%1 (этап %2) картой высот не "
+            "выражается - поднутрение; показана коробка заготовки")
+                          .arg(payload.refused_tool)
+                          .arg(payload.refused_stage + 1));
+        return;
+    }
+    if (payload.failed) {
+        stock_sim_state_ = QStringLiteral("idle");
+        emit stockSimStateChanged();
+        return;
+    }
+    if (!payload.has_field) {
+        return;                            // публиковать нечего
+    }
+    // Поле подменяется только здесь и только целым: пока тик или перемотка
+    // считались, на экране было прежнее поле, а не смесь.
+    stock_depth_ = payload.depth;
+    stock_bounds_list_ = payload.bounds;
+    stock_cell_mm_ = payload.cell_mm;
+    stock_count_x_ = payload.count_x;
+    stock_count_y_ = payload.count_y;
+    stock_has_field_ = true;
     // Та же копия поля идёт текстурой в вершинный шейдер: размер - число узлов,
     // порядок строк тот же (строка буфера лежит на V = 0), поэтому texcoord узла
     // - центр его текселя. Обновление - целым буфером: частичной загрузки у
-    // QQuick3DTextureData нет, а поле публикуется один раз на проход.
-    if (stock_field_ != nullptr && !stock_depth_.isEmpty()) {
+    // QQuick3DTextureData нет, и это цена тика (замер - stockSimTickMs).
+    if (stock_field_ != nullptr) {
         stock_field_->setSize(QSize(stock_count_x_, stock_count_y_));
         stock_field_->setFormat(QQuick3DTextureData::R32F);
         stock_field_->setTextureData(stock_depth_);
         stock_field_->update();
     }
-    stock_sim_progress_ = 1.0;
-    // Время прохода целиком: сброс поля плюс съём. Замер идёт в ядре, на том же
-    // рабочем потоке, где считается поле.
-    stock_sim_time_ms_ = result.resetMs + result.computeMs;
+    stock_sim_progress_ = payload.total_mm > 0.0
+        ? std::max(0.0, std::min(1.0, payload.target_mm / payload.total_mm))
+        : 0.0;
+    if (payload.session) {
+        // Полный проход: с его поля начинается живой обход. Время - сброс поля
+        // плюс обход; замер идёт в ядре, на том же рабочем потоке.
+        stock_session_ = payload.session;
+        stock_live_target_ = payload.target_mm;
+        stock_sim_time_ms_ = payload.time_ms;
+        stock_sim_tick_ms_ = 0.0;
+    } else {
+        // Тик: обход продолжен с курсора, плюс копия поля на рабочем потоке.
+        stock_sim_tick_ms_ = payload.time_ms;
+    }
     stock_sim_state_ = QStringLiteral("ready");
     emit stockSimChanged();
     emit stockSimProgressChanged();

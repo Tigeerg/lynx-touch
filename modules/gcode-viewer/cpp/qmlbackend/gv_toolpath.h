@@ -120,6 +120,37 @@ struct StockRunToken {
     std::atomic<long long> cancel_us{-1};
 };
 
+// Живой обход вместе с путём: путь держится shared_ptr, пока жив обход -
+// контроллер может сменить программу, а рабочий поток ещё дочитывает прежнюю.
+// Поле и курсор обхода трогает только рабочий поток (один тик за раз), GUI-поток
+// читает из объекта лишь путь.
+struct StockSession {
+    std::shared_ptr<const gv::PathData> data;
+    gv::StockWalk walk;
+};
+
+// Готовое поле с рабочего потока. Байты копируются на рабочем потоке (весь
+// буфер; частичной загрузки у QQuick3DTextureData нет), поэтому GUI-поток только
+// подменяет опубликованное поле. `session` заполняется у полного прохода: это
+// обход с курсором на конце программы, с него продолжаются живые тики.
+struct StockPassPayload {
+    QByteArray depth;                  // R32F, count_x * count_y float32
+    QVariantList bounds;               // [xmin, xmax, ymin, ymax, zmin, zmax], мм
+    double cell_mm = 0.5;
+    int count_x = 0;
+    int count_y = 0;
+    double target_mm = 0.0;            // длина пути, съём до которой в поле
+    double total_mm = 0.0;
+    double time_ms = 0.0;              // обход; у полного прохода ещё и сброс поля
+    bool has_field = false;
+    bool cancelled = false;            // тик прерван токеном: не публикуется
+    bool refused = false;              // инструмент картой не выражается
+    bool failed = false;               // исключение в ядре: не публикуется
+    int refused_stage = -1;
+    int refused_tool = 0;
+    std::shared_ptr<StockSession> session;   // у полного прохода: живой обход
+};
+
 class GcodeToolpath : public QObject
 {
     Q_OBJECT
@@ -142,19 +173,27 @@ class GcodeToolpath : public QObject
     // Симуляция съёма (core/stock_sim): поле высот как есть, в машинных
     // координатах. stockDepth - R32F (float32, строка по Y), stockBounds -
     // [xmin, xmax, ymin, ymax, zmin, zmax] в мм, stockSimState - idle, computing,
-    // ready или cancelled, stockSimProgress - доля длины пути. stockField - то же
-    // поле текстурой R32F для рисования (шаг 3): строка буфера - строка
-    // текстуры, узел - тексель; она живёт от создания контроллера, поэтому
-    // Texture в QML не остаётся без данных и движок не жалуется.
+    // ready, cancelled или refused (инструмент картой не выражается; поля нет),
+    // stockSimProgress - доля длины пути, до которой поле посчитано.
+    // stockHasField - поле опубликовано целиком и его можно рисовать; пока
+    // считается новое, опубликовано прежнее целое поле (оно же остаётся после
+    // отмены), поэтому рисование смотрит на этот признак, а не на состояние.
+    // stockSimTimeMs - цена полного прохода, stockSimTickMs - цена последнего
+    // живого тика (обход плюс копия поля), мс. stockField - то же поле текстурой
+    // R32F для рисования (шаг 3): строка буфера - строка текстуры, узел -
+    // тексель; она живёт от создания контроллера, поэтому Texture в QML не
+    // остаётся без данных и движок не жалуется.
     Q_PROPERTY(QByteArray stockDepth READ stockDepth NOTIFY stockSimChanged)
     Q_PROPERTY(QVariantList stockBounds READ stockBounds NOTIFY stockSimChanged)
     Q_PROPERTY(double stockCellMm READ stockCellMm NOTIFY stockSimChanged)
     Q_PROPERTY(int stockCountX READ stockCountX NOTIFY stockSimChanged)
     Q_PROPERTY(int stockCountY READ stockCountY NOTIFY stockSimChanged)
+    Q_PROPERTY(bool stockHasField READ stockHasField NOTIFY stockSimChanged)
     Q_PROPERTY(QQuick3DTextureData *stockField READ stockField NOTIFY stockSimChanged)
     Q_PROPERTY(QString stockSimState READ stockSimState NOTIFY stockSimStateChanged)
     Q_PROPERTY(double stockSimProgress READ stockSimProgress NOTIFY stockSimProgressChanged)
     Q_PROPERTY(double stockSimTimeMs READ stockSimTimeMs NOTIFY stockSimChanged)
+    Q_PROPERTY(double stockSimTickMs READ stockSimTickMs NOTIFY stockSimChanged)
     Q_PROPERTY(double stockSimCancelMs READ stockSimCancelMs NOTIFY stockSimChanged)
     Q_PROPERTY(QVariantMap toolInfo READ toolInfo NOTIFY toolInfoChanged)
     Q_PROPERTY(double toolLength READ toolLength NOTIFY toolInfoChanged)
@@ -215,9 +254,11 @@ public:
     double stockCellMm() const { return stock_cell_mm_; }
     int stockCountX() const { return stock_count_x_; }
     int stockCountY() const { return stock_count_y_; }
+    bool stockHasField() const { return stock_has_field_; }
     QString stockSimState() const { return stock_sim_state_; }
     double stockSimProgress() const { return stock_sim_progress_; }
     double stockSimTimeMs() const { return stock_sim_time_ms_; }
+    double stockSimTickMs() const { return stock_sim_tick_ms_; }
     double stockSimCancelMs() const { return stock_sim_cancel_ms_; }
     QVariantMap toolInfo() const { return tool_info_; }
     double toolLength() const { return tool_length_; }
@@ -259,9 +300,16 @@ public:
     // (профиль инструмента - следующая часть шага).
     Q_INVOKABLE void setToolStage(int index);
     Q_INVOKABLE void analyzeCollisions();
-    // Отмена съёма без замены: состояние становится cancelled, поле пустеет.
-    // Смена программы и инструмента отменяют старый съём сами, этой же дорогой.
+    // Отмена съёма без замены: состояние становится cancelled, новое поле не
+    // публикуется. Последнее целое поле остаётся на экране, живой обход
+    // снимается: отмена останавливает работу, а не переписывает уже посчитанное.
+    // Смена программы отменяет старый съём сама, этой же дорогой.
     Q_INVOKABLE void cancelStockSim();
+    // Живая публикация: поле должно отражать съём до pathDistMm. Зовётся из QML
+    // около 10 раз в секунду, пока идёт проигрывание (и один раз на остановку
+    // или перемотку). Тик идёт в пуле и продолжает обход с последнего целого
+    // хода; назад по пути обход начинается заново. GUI не ждёт.
+    Q_INVOKABLE void stockFollow(double pathDistMm);
     Q_INVOKABLE void setMachineTools(const QVariantList &tools);
     Q_INVOKABLE void setMachineLimits(const QVariantMap &limits);
     Q_INVOKABLE void runToolCheck();
@@ -365,11 +413,18 @@ private:
     static QVariantMap collisionMap(const gv::CollisionRange &range);
 
     // ---- симуляция съёма (core/stock_sim) ----------------------------------
-    // Запуск прохода по data_ в фоне. Старый съём отменяется токеном: его поле
-    // не публикуется. Без пути или габарита UI_STOCK публиковать нечего.
+    // Запуск полного прохода по data_ в фоне: поле до конца программы. Старый
+    // съём отменяется токеном: его поле не публикуется. Без пути или габарита
+    // UI_STOCK публиковать нечего.
     void startStockSim();
-    // Публикация готового поля: depth R32F, габарит, шаг, узлы и время.
-    void applyStockResult(const gv::StockRunResult &result);
+    // Один живой тик: продолжить обход до stock_live_target_ в пуле. Пока тик
+    // считается, на экране прежнее целое поле.
+    void startStockTick();
+    // Публикация готового поля: depth R32F, габарит, шаг, узлы и время. Только
+    // здесь поле подменяется - цельность важнее свежести.
+    void applyStockPass(const StockPassPayload &payload);
+    // Поле снято с публикации: байты, габарит, узлы и текстура (снова 1x1).
+    void clearStockField();
 
     std::shared_ptr<const gv::PathData> data_;
 
@@ -454,12 +509,21 @@ private:
     double stock_cell_mm_ = 0.5;
     int stock_count_x_ = 0;
     int stock_count_y_ = 0;
+    bool stock_has_field_ = false;
     QString stock_sim_state_ = QStringLiteral("idle");
     double stock_sim_progress_ = 0.0;
     double stock_sim_time_ms_ = 0.0;
+    double stock_sim_tick_ms_ = 0.0;
     double stock_sim_cancel_ms_ = -1.0;   // -1: отмена ещё не измерялась
     int stock_cancel_reported_ = 0;       // генерация последней измеренной отмены
     std::shared_ptr<StockRunToken> stock_token_ = std::make_shared<StockRunToken>();
+    // Живой обход: поле и курсор, с которого продолжается тик. Пустой - живого
+    // съёма нет (полный проход ещё считается, отказ или отмена).
+    std::shared_ptr<StockSession> stock_session_;
+    // Цель последнего тика, мм пути (GUI-поток). Тик в пуле один: вызов во время
+    // тика только двигает цель, её догоняет завершение.
+    double stock_live_target_ = 0.0;
+    bool stock_tick_in_flight_ = false;
 
     // Токены: устаревший результат рабочего потока отбрасывается. Атомарный
     // счётчик взят по указателю: рабочий поток читает счётчик, а не контроллер

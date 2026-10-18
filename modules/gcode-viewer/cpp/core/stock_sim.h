@@ -18,6 +18,12 @@
 // положениями не больше шага; глубина обрезана толщиной заготовки; h(r) -
 // линейная интерполяция по вершинам профиля (у шара их 12, отсюда расхождение с
 // истинной сферой около 0.006 мм при r = 3).
+//
+// Живая публикация (StockWalk): поле и курсор обхода живут между вызовами, съём
+// до текущего pathDist продолжается с последнего целого хода, а не считается
+// заново; назад по пути - сброс и обход с начала. Инструмент с поднутрением
+// (лоллипоп, ласточка, Т-слот) картой не выражается: обход отказывается целиком,
+// поля не публикуется (DESIGN.md, "Симуляция съёма материала").
 #pragma once
 
 #include <array>
@@ -39,6 +45,7 @@ struct StockCutter {
     std::vector<double> heightMm;      // высота над остриём в узле
     double maxRadiusMm = 0.0;          // шире не режет
     double exposedMm = 0.0;            // вылет инструмента, мм
+    int number = 0;                    // номер UI_TOOL: им называется отказ
     bool undercut = false;             // шире кверху: картой не выражается
 
     // h(r), мм; +infinity вне maxRadiusMm.
@@ -46,12 +53,26 @@ struct StockCutter {
 };
 
 // Инструмент из UI_TOOL: профиль gv::toolProfile, режет до toolExposedLength.
+// Тип с поднутрением (лоллипоп, ласточка, Т-слот) помечается undercut: профиль
+// такой формы toolProfile строит как прямую фрезу, и съём срезал бы материал,
+// который на станке остаётся.
 StockCutter stockCutter(const ToolInfo& info);
 
 // Таблица по готовому профилю (r, y), мм. Нужна пробнику: проверка строит
 // профиль сама, не через UI_TOOL.
 StockCutter stockCutterFromProfile(const std::vector<ProfilePoint>& profile,
                                    double exposedMm);
+
+// Инструменты этапов программы: UI_TOOL сменяет предыдущий, этап без тега несёт
+// предыдущий (на станке инструмент меняется только по M6); до первого тега
+// действует `initialTool`. Этапов нет - один инструмент `initialTool`.
+std::vector<StockCutter> stockCutterPlan(const PathData& data, const ToolInfo& initialTool);
+
+// Этап, чей инструмент карта высот не выражает, или -1: у него поднутрение
+// (профиль шире кверху), а карта по колонке срезала бы материал, который на
+// станке остаётся. Программа считается целиком: один такой этап делает ложью
+// всё поле, а не только свой участок.
+int stockUndercutStage(const std::vector<StockCutter>& cutters);
 
 // Габарит заготовки в машинных координатах, мм.
 struct StockBounds {
@@ -103,6 +124,63 @@ private:
     std::vector<float> depth_;
 };
 
+// Обход программы с полем и курсором: съём монотонен, поэтому обход продолжается
+// с последнего целого хода, и тик живой публикации платит только за новый участок
+// пути. Назад по пути (цель позади курсора) поле сбрасывается и обход идёт с
+// начала. Объект не потокобезопасен: поле и курсор трогает один поток за раз.
+class StockWalk {
+public:
+    // Начать обход с нуля: поле под габарит и узел. Ложь - поля не будет:
+    // инструмент этапа картой не выражается (refusedStage) или проходить
+    // нечего (ходов меньше двух). Поле тогда пустое.
+    bool start(const PathData& data, const StockBounds& bounds, double cellMm,
+               std::vector<StockCutter> cutters);
+
+    bool started() const { return started_; }
+    int refusedStage() const { return refused_stage_; }
+    int refusedTool() const { return refused_tool_; }
+    // Длина пути, съём до которой уже в поле, мм.
+    double cursorMm() const { return cursor_mm_; }
+
+    // Продолжить обход до длины пути targetMm. Ходы берутся целиком: ход,
+    // кончающийся позже цели, ждёт следующего вызова. `cancelled(pathDist)` -
+    // как в simulateStock, ложь возврата - обход прерван токеном и неполон.
+    // `progress(pathDist)` - после целого хода, как в simulateStock.
+    bool advanceTo(double targetMm,
+                   const std::function<bool(double pathDist)>& cancelled = {},
+                   const std::function<void(double pathDist)>& progress = {});
+
+    StockField& field() { return field_; }
+    const StockField& field() const { return field_; }
+    int moves() const { return moves_; }
+    double lengthMm() const { return length_mm_; }
+    // Время последнего сброса поля (аллокация) и обхода после него, мс: по ним
+    // меряется перемотка, а сумма - цена полного прохода.
+    double lastResetMs() const { return last_reset_ms_; }
+    double advanceMs() const { return advance_ms_; }
+
+private:
+    // Поле с нуля, курсор в начало программы.
+    void restart();
+
+    const PathData* data_ = nullptr;
+    std::vector<StockCutter> cutters_;
+    std::vector<double> starts_;        // начало этапа по длине пути, мм
+    StockBounds bounds_;
+    double cellMm_ = 0.5;
+    StockField field_;
+    std::size_t next_ = 1;              // индекс точки конца следующего хода
+    std::size_t stage_ = 0;
+    double cursor_mm_ = 0.0;
+    int moves_ = 0;
+    double length_mm_ = 0.0;
+    double last_reset_ms_ = 0.0;
+    double advance_ms_ = 0.0;
+    bool started_ = false;
+    int refused_stage_ = -1;
+    int refused_tool_ = 0;
+};
+
 // Верхняя сетка поля для рисования: вершина на узел поля, texcoord - центр его
 // текселя. Формат 20 Б на вершину (позиция 3f + texcoord 2f), как у буферов
 // траектории; позиции - машинные мм, в узле стоит верх заготовки (zMaxMm):
@@ -137,7 +215,9 @@ std::vector<float> stockShellVertices(const StockBounds& bounds, double cellMm,
                                       double gapBottomMm);
 
 // Итог прохода по траектории: поле и его цена. `cancelled` - проход прерван
-// токеном, поле неполное и публиковать его нельзя.
+// токеном, поле неполное и публиковать его нельзя. `refused` - инструмент
+// программы картой высот не выражается (поднутрение): поля нет вовсе,
+// `refusedStage` называет этап (с нуля), `refusedTool` - номер UI_TOOL.
 struct StockRunResult {
     StockField field;
     int moves = 0;
@@ -145,12 +225,18 @@ struct StockRunResult {
     double resetMs = 0.0;
     double computeMs = 0.0;
     bool cancelled = false;
+    bool refused = false;
+    int refusedStage = -1;
+    int refusedTool = 0;
 };
 
 // Поле по готовой траектории: все ходы, включая быстрые, инструмент этапа из
 // stage.info (этап без UI_TOOL несёт предыдущий, `initialTool` - до первого
 // тега). `pts` в координатах сцены, как в PathData: обратно в машинные
 // (x, -z, y) точки переводятся здесь, чтобы съём шёл по машинной сетке.
+//
+// Обход идёт StockWalk до конца программы; тот же объект с целью меньше полной
+// длины даёт поле до текущего pathDist (живая публикация, см. StockWalk).
 //
 // `cancelled(pathDist)` зовётся перед каждым ходом; истина - проход обрывается
 // без результата. `progress(pathDist)` - после хода, по той же накопленной длине

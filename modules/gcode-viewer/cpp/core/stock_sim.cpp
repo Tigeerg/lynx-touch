@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <string>
 
 #include "core/tooling.h"
 
@@ -97,7 +98,43 @@ StockCutter stockCutter(const ToolInfo& info)
     if (!info.present) {
         return StockCutter{};
     }
-    return stockCutterFromProfile(toolProfile(info), toolExposedLength(info));
+    StockCutter cutter = stockCutterFromProfile(toolProfile(info), toolExposedLength(info));
+    cutter.number = info.number;
+    // Форма с поднутрением по определению шире кверху. toolProfile строит её
+    // веткой FLAT/BULL/LOLLIPOP/DOVETAIL/PROBE как прямую фрезу, то есть форма
+    // уже потеряна, - поэтому отказ идёт по типу, а не по профилю.
+    const std::string& type = info.type;
+    if (type == "LOLLIPOP" || type == "DOVETAIL" || type == "T_SLOT" || type == "TSLOT") {
+        cutter.undercut = true;
+    }
+    return cutter;
+}
+
+std::vector<StockCutter> stockCutterPlan(const PathData& data, const ToolInfo& initialTool)
+{
+    std::vector<StockCutter> cutters;
+    cutters.reserve(data.stages.size());
+    ToolInfo carried = initialTool;
+    for (const StageRange& stage : data.stages) {
+        if (stage.info.present) {
+            carried = stage.info;
+        }
+        cutters.push_back(stockCutter(carried));
+    }
+    if (cutters.empty()) {
+        cutters.push_back(stockCutter(carried));
+    }
+    return cutters;
+}
+
+int stockUndercutStage(const std::vector<StockCutter>& cutters)
+{
+    for (std::size_t i = 0; i < cutters.size(); ++i) {
+        if (cutters[i].undercut) {
+            return int(i);
+        }
+    }
+    return -1;
 }
 
 void StockField::reset(const StockBounds& bounds, double cellMm)
@@ -298,79 +335,129 @@ std::vector<float> stockShellVertices(const StockBounds& bounds, double cellMm,
     return vertices;
 }
 
+bool StockWalk::start(const PathData& data, const StockBounds& bounds, double cellMm,
+                      std::vector<StockCutter> cutters)
+{
+    data_ = nullptr;
+    started_ = false;
+    refused_stage_ = -1;
+    refused_tool_ = 0;
+    cutters_ = std::move(cutters);
+    // Отказ считается до аллокации поля: для такого инструмента поля нет вовсе,
+    // а не пустое поле.
+    const int refused = stockUndercutStage(cutters_);
+    if (refused >= 0) {
+        refused_stage_ = refused;
+        refused_tool_ = cutters_[std::size_t(refused)].number;
+        return false;
+    }
+    const std::size_t n = data.pts.size() / 3;
+    if (n < 2 || data.cum.size() != n || !(data.total > 0.0) || cutters_.empty()) {
+        return false;                      // проходить нечего
+    }
+    data_ = &data;
+    bounds_ = bounds;
+    cellMm_ = cellMm;
+    // Начало этапа по накопленной длине пути: тем же выражением, что у скана
+    // коллизий (доля этапа умножается на полную длину).
+    starts_.clear();
+    starts_.reserve(data.stages.size());
+    for (const StageRange& stage : data.stages) {
+        starts_.push_back(stage.start * data.total);
+    }
+    restart();
+    started_ = true;
+    return true;
+}
+
+void StockWalk::restart()
+{
+    const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+    field_.reset(bounds_, cellMm_);
+    last_reset_ms_ = msSince(t0);
+    next_ = 1;
+    stage_ = 0;
+    cursor_mm_ = 0.0;
+    moves_ = 0;
+    length_mm_ = 0.0;
+    advance_ms_ = 0.0;
+}
+
+bool StockWalk::advanceTo(double targetMm, const std::function<bool(double)>& cancelled,
+                          const std::function<void(double)>& progress)
+{
+    if (!started_ || data_ == nullptr) {
+        return true;
+    }
+    // Перемотка: поле снова целая заготовка, курсор в начало. Прежнее поле
+    // живёт до этого вызова - публикует его вызывающий, а не обход.
+    if (targetMm < cursor_mm_) {
+        restart();
+    }
+    if (!(targetMm > cursor_mm_)) {
+        return true;
+    }
+    const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+    const std::size_t n = data_->pts.size() / 3;
+    for (std::size_t i = next_; i < n; ++i) {
+        const double d = data_->cum[i];
+        if (d > targetMm) {
+            break;                         // ход кончается позже цели: не трогаем
+        }
+        if (cancelled && cancelled(d)) {
+            advance_ms_ += msSince(t0);
+            return false;
+        }
+        // Этап определяется длиной пути до начала хода: d не убывает, поэтому
+        // указатель двигается только вперёд и переживает тики.
+        const double d0 = data_->cum[i - 1];
+        while (stage_ + 1 < starts_.size() && starts_[stage_ + 1] <= d0) {
+            ++stage_;
+        }
+        // PathData хранит точки сцены (X, Z, -Y): обратно в машинные.
+        const std::array<double, 3> a{data_->pts[(i - 1) * 3], -data_->pts[(i - 1) * 3 + 2],
+                                      data_->pts[(i - 1) * 3 + 1]};
+        const std::array<double, 3> b{data_->pts[i * 3], -data_->pts[i * 3 + 2],
+                                      data_->pts[i * 3 + 1]};
+        const StockCutter& cutter = cutters_[std::min(stage_, cutters_.size() - 1)];
+        if (cutter.maxRadiusMm > 0.0) {
+            field_.sweep(cutter, a, b);
+        }
+        const double dx = b[0] - a[0];
+        const double dy = b[1] - a[1];
+        const double dz = b[2] - a[2];
+        length_mm_ += std::sqrt(dx * dx + dy * dy + dz * dz);
+        ++moves_;
+        next_ = i + 1;
+        cursor_mm_ = d;
+        if (progress) {
+            progress(d);
+        }
+    }
+    advance_ms_ += msSince(t0);
+    return true;
+}
+
 StockRunResult simulateStock(const PathData& data, const StockBounds& bounds, double cellMm,
                              const ToolInfo& initialTool,
                              const std::function<bool(double)>& cancelled,
                              const std::function<void(double)>& progress)
 {
     StockRunResult out;
-    const std::size_t n = data.pts.size() / 3;
-    if (n < 2 || data.cum.size() != n || data.total <= 0.0) {
-        return out;                        // проходить нечего
+    StockWalk walk;
+    if (!walk.start(data, bounds, cellMm, stockCutterPlan(data, initialTool))) {
+        out.refused = walk.refusedStage() >= 0;
+        out.refusedStage = walk.refusedStage();
+        out.refusedTool = walk.refusedTool();
+        return out;                        // поля нет: причина в refusedStage
     }
-
-    // Инструмент этапа: тег UI_TOOL сменяет предыдущий, этап без тега несёт
-    // предыдущий (на станке инструмент меняется только по M6). До первого тега
-    // действует инструмент, с которым пришла программа.
-    std::vector<StockCutter> cutters;
-    cutters.reserve(data.stages.size());
-    ToolInfo carried = initialTool;
-    for (const StageRange& stage : data.stages) {
-        if (stage.info.present) {
-            carried = stage.info;
-        }
-        cutters.push_back(stockCutter(carried));
-    }
-    if (cutters.empty()) {
-        cutters.push_back(stockCutter(carried));
-    }
-
-    // Начало этапа по накопленной длине пути: тем же выражением, что у скана
-    // коллизий (доля этапа умножается на полную длину).
-    std::vector<double> starts;
-    starts.reserve(data.stages.size());
-    for (const StageRange& stage : data.stages) {
-        starts.push_back(stage.start * data.total);
-    }
-
-    const std::chrono::steady_clock::time_point t_reset = std::chrono::steady_clock::now();
-    out.field.reset(bounds, cellMm);
-    out.resetMs = msSince(t_reset);
-
     const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
-    std::size_t stage = 0;
-    for (std::size_t i = 1; i < n; ++i) {
-        const double d = data.cum[i];
-        if (cancelled && cancelled(d)) {
-            out.cancelled = true;
-            out.computeMs = msSince(t0);
-            return out;
-        }
-        // Этап определяется длиной пути до начала хода: d не убывает, поэтому
-        // указатель двигается только вперёд.
-        const double d0 = data.cum[i - 1];
-        while (stage + 1 < starts.size() && starts[stage + 1] <= d0) {
-            ++stage;
-        }
-        // PathData хранит точки сцены (X, Z, -Y): обратно в машинные.
-        const std::array<double, 3> a{data.pts[(i - 1) * 3], -data.pts[(i - 1) * 3 + 2],
-                                      data.pts[(i - 1) * 3 + 1]};
-        const std::array<double, 3> b{data.pts[i * 3], -data.pts[i * 3 + 2],
-                                      data.pts[i * 3 + 1]};
-        const StockCutter& cutter = cutters[std::min(stage, cutters.size() - 1)];
-        if (cutter.maxRadiusMm > 0.0) {
-            out.field.sweep(cutter, a, b);
-        }
-        const double dx = b[0] - a[0];
-        const double dy = b[1] - a[1];
-        const double dz = b[2] - a[2];
-        out.lengthMm += std::sqrt(dx * dx + dy * dy + dz * dz);
-        ++out.moves;
-        if (progress) {
-            progress(d);
-        }
-    }
+    out.cancelled = !walk.advanceTo(data.total, cancelled, progress);
     out.computeMs = msSince(t0);
+    out.resetMs = walk.lastResetMs();
+    out.moves = walk.moves();
+    out.lengthMm = walk.lengthMm();
+    out.field = std::move(walk.field());
     return out;
 }
 

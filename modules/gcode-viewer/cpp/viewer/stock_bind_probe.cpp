@@ -1,14 +1,24 @@
 // viewer/stock_bind_probe.cpp - проба привязки поля съёма к траектории в
-// C++-контроллере (этап 2 симуляции съёма).
+// C++-контроллере (этапы 2-4 симуляции съёма).
 //
 // Проба грузит настоящий QML-модуль MockBackend и создаёт GcodeToolpath, затем
 // зовёт load_gcode_async на реальной УП. Для пресетов med и high печатает узел,
 // время фонового прохода, число узлов и размер поля, а для med ещё сверяет
 // текстуру рисования (stockField) с опубликованным полем: размер, формат R32F и
-// байты обязаны совпасть. Затем запускает ещё один проход, ждёт начала счёта и
-// отменяет его: печатается задержка от запроса отмены до остановки рабочего
-// потока и проверяется, что отменённый проход ничего не опубликовал (поле
-// пусто, состояние cancelled).
+// байты обязаны совпасть.
+//
+// Живой съём (этап 4). После полного поля программа перематывается на четверть
+// пути: пока тик считается, состояние computing, а опубликованное поле обязано
+// остаться прежним целым (этап 1: поле не снимается на время счёта). Затем тик
+// доходит, поле - до четверти пути, и вперёд до конца: дайджест (FNV-1a по
+// байтам) обязан совпасть с полным проходом - инкрементальный обход не имеет
+// права отличаться от одного прохода. Отмена живого тика публикует не новое
+// поле, а последнее целое; отмена первого прохода (поля ещё нет) не публикует
+// ничего.
+//
+// Отказ (этап 2). УП с инструментом TYPE=LOLLIPOP: карта высот поднутрения не
+// выражает, поэтому состояние refused, поле пусто (stockHasField ложь, узлов 0),
+// а причина - строкой отказа в stderr.
 //
 // Запуск (Qt в PATH; платформа offscreen ставится сама):
 // build\viewer\stock_bind_probe.exe [путь к файлу УП]
@@ -30,6 +40,7 @@
 #include <QUrl>
 
 #include <functional>
+#include <cstdint>
 
 #ifndef GV_REPO_ROOT
 #  define GV_REPO_ROOT ""
@@ -124,6 +135,18 @@ QString stateOf(QObject *controller)
     return controller->property("stockSimState").toString();
 }
 
+// FNV-1a 64 по байтам поля: живой обход обязан дать тот же буфер, что и полный
+// проход, байт в байт (та же сверка, что case stock_live в stock_sim_probe).
+std::uint64_t bytesDigest(const QByteArray &bytes)
+{
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (char byte : bytes) {
+        hash ^= static_cast<unsigned char>(byte);
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
 bool startLoad(QObject *controller, const QString &path)
 {
     return QMetaObject::invokeMethod(controller, "load_gcode_async",
@@ -144,6 +167,23 @@ bool waitReady(QObject *controller, int timeoutMs)
     return waitUntil(controller,
                      [controller] { return stateOf(controller) == QLatin1String("ready"); },
                      timeoutMs, QStringLiteral("state ready"));
+}
+
+// Состояние computing: либо полный проход, либо живой тик. Поле при этом уже
+// опубликовано прежнее целое - это и проверяется.
+bool waitState(QObject *controller, const char *state, int timeoutMs)
+{
+    return waitUntil(controller,
+                     [controller, state] {
+                         return stateOf(controller) == QLatin1String(state);
+                     },
+                     timeoutMs, QString::fromLatin1(state));
+}
+
+bool follow(QObject *controller, double pathDistMm)
+{
+    return QMetaObject::invokeMethod(controller, "stockFollow",
+                                     Q_ARG(double, pathDistMm));
 }
 
 void reportRun(QObject *controller, const char *quality)
@@ -253,14 +293,120 @@ int main(int argc, char *argv[])
     }
 
     qputenv("CNC_QUALITY", "high");
+    QByteArray fullField;
+    std::uint64_t fullDigest = 0;
+    double totalMm = 0.0;
     if (!startLoad(controller, program) || !waitComputing(controller, 120000)
         || !waitReady(controller, 120000)) {
         ++failures;
     } else {
         reportRun(controller, "high");
+        fullField = controller->property("stockDepth").toByteArray();
+        fullDigest = bytesDigest(fullField);
+        totalMm = controller->property("moveLength").toDouble();
+        say(QStringLiteral("stock_bind: full digest=%1 bytes=%2 total_mm=%3")
+                .arg(static_cast<qulonglong>(fullDigest), 16, 16, QLatin1Char('0'))
+                .arg(fullField.size())
+                .arg(totalMm, 0, 'f', 1));
     }
 
-    // Отмена: дождаться, пока проход реально начнёт считать, и отменить его.
+    // Точка 1 и точка 4 сразу: перемотка на четверть пути. Пока тик считается,
+    // на экране обязано остаться прежнее целое поле (состояние computing, байты
+    // не изменились), а после тика - поле до четверти, побайтово отличное от
+    // полного. Затем вперёд до конца: живой обход обязан дать ровно полный
+    // буфер (дайджест равен), иначе инкрементальный съём врёт.
+    if (totalMm > 0.0 && !fullField.isEmpty()) {
+        const double quarter = totalMm * 0.25;
+        if (!follow(controller, quarter)) {
+            warn(QStringLiteral("stock_bind: FAIL слот stockFollow не найден"));
+            ++failures;
+        } else {
+            const bool computing = waitState(controller, "computing", 5000);
+            const QByteArray duringRewind = controller->property("stockDepth").toByteArray();
+            const bool kept = duringRewind == fullField;
+            say(QStringLiteral("stock_bind: rewind computing=%1 last_field_kept=%2 "
+                               "bytes=%3 state=%4")
+                    .arg(computing ? 1 : 0)
+                    .arg(kept ? 1 : 0)
+                    .arg(duringRewind.size())
+                    .arg(stateOf(controller)));
+            if (!computing || !kept) {
+                ++failures;
+            }
+            if (!waitReady(controller, 120000)) {
+                ++failures;
+            } else {
+                const QByteArray prefix = controller->property("stockDepth").toByteArray();
+                const std::uint64_t prefixDigest = bytesDigest(prefix);
+                const double progress = controller->property("stockSimProgress").toDouble();
+                const int prefixBytes = prefix.size();
+                const bool rewound = prefixDigest != fullDigest && !prefix.isEmpty();
+                say(QStringLiteral("stock_bind: rewind progress=%1 digest=%2 bytes=%3 "
+                                   "changed=%4")
+                        .arg(progress, 0, 'f', 2)
+                        .arg(static_cast<qulonglong>(prefixDigest), 16, 16, QLatin1Char('0'))
+                        .arg(prefixBytes)
+                        .arg(rewound ? 1 : 0));
+                if (!rewound || progress < 0.2 || progress > 0.3) {
+                    ++failures;
+                }
+                if (!follow(controller, totalMm) || !waitReady(controller, 120000)) {
+                    ++failures;
+                } else {
+                    const QByteArray forward =
+                        controller->property("stockDepth").toByteArray();
+                    const std::uint64_t forwardDigest = bytesDigest(forward);
+                    const double tickMs =
+                        controller->property("stockSimTickMs").toDouble();
+                    const bool same = forwardDigest == fullDigest
+                            && forward.size() == fullField.size();
+                    say(QStringLiteral("stock_bind: forward digest=%1 full=%2 equal=%3 "
+                                       "tick_ms=%4")
+                            .arg(static_cast<qulonglong>(forwardDigest), 16, 16, QLatin1Char('0'))
+                            .arg(static_cast<qulonglong>(fullDigest), 16, 16, QLatin1Char('0'))
+                            .arg(same ? 1 : 0)
+                            .arg(tickMs, 0, 'f', 3));
+                    if (!same || tickMs <= 0.0) {
+                        ++failures;
+                    }
+                }
+            }
+        }
+    }
+
+    // Отмена живого тика: новое поле не публикуется, последнее целое остаётся
+    // как было (байты не изменились), состояние cancelled, задержка измерена.
+    if (totalMm > 0.0 && !fullField.isEmpty()) {
+        if (!follow(controller, totalMm * 0.5)
+            || stateOf(controller) != QLatin1String("computing")
+            || !QMetaObject::invokeMethod(controller, "cancelStockSim")) {
+            warn(QStringLiteral("stock_bind: FAIL отмена тика не началась"));
+            ++failures;
+        } else {
+            const bool stopped = waitUntil(
+                controller,
+                [controller] {
+                    return stateOf(controller) == QLatin1String("cancelled")
+                        && controller->property("stockSimCancelMs").toDouble() >= 0.0;
+                },
+                30000, QStringLiteral("cancelled tick"));
+            const QByteArray after = controller->property("stockDepth").toByteArray();
+            const double cancelMs = controller->property("stockSimCancelMs").toDouble();
+            const bool kept = after == fullField;
+            say(QStringLiteral("stock_bind: cancel tick state=%1 depth_bytes=%2 kept=%3 "
+                               "cancel_ms=%4")
+                    .arg(stateOf(controller))
+                    .arg(after.size())
+                    .arg(kept ? 1 : 0)
+                    .arg(cancelMs, 0, 'f', 1));
+            if (!stopped || !kept || cancelMs < 0.0) {
+                ++failures;
+            }
+        }
+    }
+
+    // Отмена первого прохода: прежнего поля у новой программы нет, поэтому
+    // отменять нечего - на экране коробка, байтов нет.
     qputenv("CNC_QUALITY", "med");
     if (!startLoad(controller, program)) {
         ++failures;
@@ -286,15 +432,52 @@ int main(int argc, char *argv[])
                 },
                 30000, QStringLiteral("cancelled with cancel_ms"));
             const double cancel_ms = controller->property("stockSimCancelMs").toDouble();
-            const int bytes = controller->property("stockDepth").toByteArray().size();
+            const QByteArray depth = controller->property("stockDepth").toByteArray();
+            const bool hasField = controller->property("stockHasField").toBool();
             if (stopped) {
-                say(QStringLiteral("stock_bind: cancel_ms=%1 state=%2 depth_bytes=%3")
+                say(QStringLiteral("stock_bind: cancel first pass cancel_ms=%1 state=%2 "
+                                   "depth_bytes=%3 has_field=%4")
                         .arg(cancel_ms, 0, 'f', 1)
                         .arg(stateOf(controller))
-                        .arg(bytes));
+                        .arg(depth.size())
+                        .arg(hasField ? 1 : 0));
             }
-            if (!stopped || bytes != 0)
+            if (!stopped || !depth.isEmpty() || hasField) {
                 ++failures;
+            }
+        }
+    }
+
+    // Отказ: инструмент с поднутрением (лоллипоп) картой высот не выражается.
+    // UI_TOOL проверяется целиком - разбор, этап, отказ; поля не публикуется,
+    // состояние refused, причина - строкой отказа в stderr (её видно в выводе).
+    {
+        const QString undercutProgram = QStringLiteral(
+            "(UI_STOCK: XMIN=-20. XMAX=20. YMIN=-20. YMAX=20. ZMIN=-10. ZMAX=0.)\n"
+            "(UI_TOOL: T=7 TYPE=LOLLIPOP D=10. CR=0. TIPD=0. FL=5. SL=5. BL=20. OL=20. NF=2)\n"
+            "G21 G90\n"
+            "G0 X0 Y0 Z5\n"
+            "G1 Z-1 F100\n"
+            "G1 X10 F100\n");
+        int segments = 0;
+        const bool loaded = QMetaObject::invokeMethod(
+            controller, "load_string", Q_RETURN_ARG(int, segments),
+            Q_ARG(QString, undercutProgram));
+        const bool refused = loaded && waitState(controller, "refused", 30000);
+        const QByteArray depth = controller->property("stockDepth").toByteArray();
+        const bool hasField = controller->property("stockHasField").toBool();
+        const int nodes = controller->property("stockCountX").toInt()
+                * controller->property("stockCountY").toInt();
+        say(QStringLiteral("stock_bind: undercut loaded=%1 segments=%2 state=%3 "
+                           "depth_bytes=%4 has_field=%5 nodes=%6")
+                .arg(loaded ? 1 : 0)
+                .arg(segments)
+                .arg(stateOf(controller))
+                .arg(depth.size())
+                .arg(hasField ? 1 : 0)
+                .arg(nodes));
+        if (!refused || !depth.isEmpty() || hasField || nodes != 0) {
+            ++failures;
         }
     }
 

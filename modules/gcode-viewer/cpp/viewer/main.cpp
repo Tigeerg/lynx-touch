@@ -52,6 +52,7 @@
  * build/viewer/gcodeviewer data/cad-testdata/Test_model.ngc
  */
 #include <QDir>
+#include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -64,6 +65,7 @@
 #include <QQuickView>
 #include <QQuickWindow>
 #include <QTextStream>
+#include <QThread>
 #include <QTimer>
 #include <QUrl>
 
@@ -265,6 +267,31 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
                                   Q_ARG(QString, program));
         say(QStringLiteral("gcodeviewer: loaded g-code from: %1 segments: %2")
                 .arg(program).arg(segments));
+    }
+
+    // Поле съёма считается фоном (QThreadPool), поэтому кадр снимается после
+    // того, как оно готово: иначе в кадре была бы коробка заготовки, а не
+    // остаток материала. Потолок ожидания - 20 с на медленной машине и крупном
+    // узле; состояние и признак поля печатаются, чтобы это было видно, а не
+    // подразумевалось.
+    if (backend != nullptr && !program.isEmpty()) {
+        QElapsedTimer wait;
+        wait.start();
+        QString state = backend->property("stockSimState").toString();
+        while (wait.elapsed() < 20000
+               && state != QLatin1String("ready")
+               && state != QLatin1String("refused")
+               && state != QLatin1String("idle")
+               && state != QLatin1String("cancelled")) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            QThread::msleep(1);
+            state = backend->property("stockSimState").toString();
+        }
+        say(QStringLiteral("gcodeviewer: stockSimState=%1 after %2 ms field=%3")
+                .arg(state)
+                .arg(wait.elapsed())
+                .arg(backend->property("stockHasField").toBool() ? QStringLiteral("yes")
+                                                                 : QStringLiteral("no")));
     }
 
     // Ждём нарисованные кадры: grabWindow до первого кадра отдаёт пустую картинку.

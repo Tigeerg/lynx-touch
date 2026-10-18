@@ -38,6 +38,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <vector>
@@ -699,6 +700,55 @@ int main(int argc, char** argv)
                    shapeOk && bottomFaces == 2 && topFaces == 0);
     }
 
+    // 9. Поднутрение: карта высот его не выражает, и обход обязан отказаться, а
+    // не нарисовать срез, которого на станке не будет. Проверяются оба входа:
+    // готовый профиль (лоллипоп: радиус растёт, падает и снова растёт - такую
+    // форму UI_TOOL не описывает) и тип UI_TOOL LOLLIPOP, для которого профиль
+    // строится как прямая фреза и форма уже потеряна. Поля в обоих случаях нет:
+    // не пустое, а не созданное вовсе.
+    {
+        const std::string program =
+            "(UI_TOOL: T=7 TYPE=LOLLIPOP D=10. CR=0. TIPD=0. FL=5. SL=5. BL=20. OL=20. NF=2)\n"
+            "G21 G90\n"
+            "G0 X0 Y0 Z5\n"
+            "G1 Z-1 F100\n"
+            "G1 X10 F100\n";
+        const gv::ParseResult parsed = gv::parseGcode(program);
+        const gv::PathData data = gv::prepareOrdered(parsed.ordered, parsed.stages);
+        gv::StockBounds bounds;
+        bounds.xMinMm = -20.0;
+        bounds.xMaxMm = 20.0;
+        bounds.yMinMm = -20.0;
+        bounds.yMaxMm = 20.0;
+        bounds.zMinMm = -10.0;
+        bounds.zMaxMm = 0.0;
+        const double cell = 0.5;
+
+        // Готовый профиль лоллипопа: рост радиуса, шейка, снова рост.
+        const std::vector<gv::ProfilePoint> profile{
+            {0.0, 0.0}, {1.0, 1.0}, {2.0, 2.0}, {3.0, 3.0}, {1.5, 5.0}, {4.0, 7.0}};
+        const gv::StockCutter cutter = gv::stockCutterFromProfile(profile, 8.0);
+        gv::StockWalk walk;
+        const bool profileStarted = walk.start(data, bounds, cell, {cutter});
+        const bool profileEmpty = walk.field().empty();
+        const bool profileRefused = walk.refusedStage() == 0;
+
+        // Тип UI_TOOL: отказ идёт по типу, до профиля.
+        const gv::StockRunResult byTag =
+            gv::simulateStock(data, bounds, cell, gv::ToolInfo{});
+        const gv::StockCutter byType = gv::stockCutter(parsed.stages.front().info);
+        std::printf("note stock_undercut profile_undercut=%d stage=%d field_nodes=%d "
+                    "type_undercut=%d tag_refused=%d tag_stage=%d tag_tool=%d tag_nodes=%d\n",
+                    cutter.undercut ? 1 : 0, walk.refusedStage(),
+                    walk.field().countX() * walk.field().countY(),
+                    byType.undercut ? 1 : 0, byTag.refused ? 1 : 0, byTag.refusedStage,
+                    byTag.refusedTool, byTag.field.countX() * byTag.field.countY());
+        const bool ok = cutter.undercut && !profileStarted && profileEmpty && profileRefused
+                && byType.undercut && byTag.refused && byTag.refusedStage == 0
+                && byTag.refusedTool == 7 && byTag.field.empty();
+        reportCase("stock_undercut", 8, 0.0, 0.0, ok);
+    }
+
     // ---- замер: один проход ------------------------------------------------
     {
         const double cell = 0.5;
@@ -828,12 +878,115 @@ int main(int argc, char** argv)
             printPhase(name, timing.resetMs);
             std::snprintf(name, sizeof(name), "stock_sim_sweep_%s", suffix);
             printPhase(name, timing.sweepMs);
-            std::printf("program cell_mm=%.1f nodes=%dx%d cells=%lld moves=%d "
-                        "positions=%lld length_mm=%.1f reset_ms=%.3f sweep_ms=%.3f total_ms=%.3f\n",
+            std::printf("program cell_mm=%.1f nodes=%dx%d cells=%lld field_bytes=%lld "
+                        "moves=%d positions=%lld length_mm=%.1f reset_ms=%.3f sweep_ms=%.3f "
+                        "total_ms=%.3f\n",
                         cell, timing.countX, timing.countY,
-                        (long long)timing.countX * timing.countY, timing.moves,
+                        (long long)timing.countX * timing.countY,
+                        (long long)timing.countX * timing.countY * 4, timing.moves,
                         timing.positions, timing.lengthMm, timing.resetMs,
                         timing.sweepMs, timing.resetMs + timing.sweepMs);
+        }
+
+        // ---- живой обход: тики 10 Гц, перемотка, дайджест -------------------
+        // Поле, накопленное тиками, обязано совпасть бит в бит с полем одного
+        // прохода до той же длины пути, а после перемотки - с проходом с начала
+        // до цели перемотки. Тик - 100 мс машинного времени: цель растёт на путь,
+        // который станок проходит на запрограммированной подаче (speedAt, мм/с),
+        // как на проигрывании 1:1 в QML. Сверка побитовая (FNV-1a по float32):
+        // здесь важен тот же порядок накопления минимумов, а допуск в мм скрыл
+        // бы разошедшийся съём.
+        {
+            const gv::PathData data = gv::prepareOrdered(parsed.ordered, parsed.stages);
+            const gv::ToolInfo initial = gv::parseUiTool(text);
+            const double cell = 0.5;
+            const gv::StockRunResult full = gv::simulateStock(data, bounds, cell, initial);
+            const std::uint64_t digestFull = fieldDigest(full.field.depthMm());
+
+            // Скорость исходящего сегмента под курсором: тот же выбор сегмента,
+            // что у path.speedAt в QML (верхняя граница по накопленной длине).
+            const std::vector<double>& cum = data.cum;
+            const auto speedAt = [&cum, &data](double d) {
+                const std::size_t n = cum.size();
+                if (n < 2) {
+                    return 0.0;
+                }
+                const std::size_t i = std::size_t(
+                    std::upper_bound(cum.begin(), cum.end(), d) - cum.begin());
+                const std::size_t idx = i == 0 ? 0 : std::min(i - 1, n - 2);
+                return idx < data.speeds.size() ? data.speeds[idx] : 0.0;
+            };
+
+            gv::StockWalk walk;
+            const bool started = walk.start(data, bounds, cell,
+                                            gv::stockCutterPlan(data, initial));
+            std::vector<double> tickMs;
+            double target = 0.0;
+            while (started && target < data.total) {
+                double v = speedAt(target);
+                if (!(v > 0.0)) {
+                    v = 10.0;              // как QML: без подачи 10 мм/с
+                }
+                target = std::min(data.total, target + v * 0.1);
+                const Clock::time_point t0 = Clock::now();
+                walk.advanceTo(target);
+                tickMs.push_back(msSince(t0));
+            }
+            const double cursorAfterTicks = walk.cursorMm();
+            const std::uint64_t digestLive = fieldDigest(walk.field().depthMm());
+
+            // Перемотка: цель позади курсора, обход сбрасывает поле и идёт с
+            // начала. Меряется вместе со сбросом, трижды, на половине программы.
+            const double rewindTarget = data.total * 0.5;
+            std::vector<double> rewindMs;
+            std::uint64_t digestRewind = 0;
+            for (int rep = 0; rep < 3; ++rep) {
+                walk.advanceTo(data.total);          // поле снова полное
+                const Clock::time_point t0 = Clock::now();
+                walk.advanceTo(rewindTarget);
+                rewindMs.push_back(msSince(t0));
+                digestRewind = fieldDigest(walk.field().depthMm());
+            }
+            // Поле с начала до цели перемотки - отдельным обходом: с ним и
+            // сверяется поле после перемотки.
+            gv::StockWalk prefix;
+            const bool prefixStarted = prefix.start(data, bounds, cell,
+                                                    gv::stockCutterPlan(data, initial));
+            prefix.advanceTo(rewindTarget);
+            const std::uint64_t digestPrefix = fieldDigest(prefix.field().depthMm());
+
+            const std::size_t fieldBytes =
+                walk.field().depthMm().size() * sizeof(float);
+            const double tickMax = tickMs.empty()
+                ? 0.0 : *std::max_element(tickMs.begin(), tickMs.end());
+            const double tickTotal = std::accumulate(tickMs.begin(), tickMs.end(), 0.0);
+            const std::size_t tickBusy = std::size_t(std::count_if(
+                tickMs.begin(), tickMs.end(), [](double ms) { return ms > 0.0; }));
+            std::printf("note stock_live ticks=%zu tick_mean_ms=%.4f tick_median_ms=%.4f "
+                        "tick_max_ms=%.3f tick_busy=%zu total_ms=%.1f cursor_mm=%.1f "
+                        "total_mm=%.1f rewind_target_mm=%.1f rewind_median_ms=%.3f "
+                        "rewinds=%zu\n",
+                        tickMs.size(), tickMs.empty() ? 0.0 : tickTotal / double(tickMs.size()),
+                        median(tickMs), tickMax, tickBusy, tickTotal, cursorAfterTicks,
+                        data.total, rewindTarget, median(rewindMs), rewindMs.size());
+            // Память поля: ядро, копия QByteArray для текстуры и копия в GPU -
+            // три буфера, как считает DESIGN.md.
+            std::printf("note stock_live field_bytes=%zu peak_bytes=%zu nodes=%dx%d "
+                        "digest_full=%016llx digest_live=%016llx digest_rewind=%016llx "
+                        "digest_prefix=%016llx\n",
+                        fieldBytes, fieldBytes * 3, walk.field().countX(),
+                        walk.field().countY(),
+                        static_cast<unsigned long long>(digestFull),
+                        static_cast<unsigned long long>(digestLive),
+                        static_cast<unsigned long long>(digestRewind),
+                        static_cast<unsigned long long>(digestPrefix));
+            printPhase("stock_live_tick_0_5",
+                       tickTotal / double(std::max<std::size_t>(1, tickMs.size())));
+            printPhase("stock_live_rewind_0_5", median(rewindMs));
+            reportCase("stock_live", int(tickMs.size()), 0.0, 0.0,
+                       started && prefixStarted && digestLive == digestFull
+                           && digestRewind == digestPrefix && !tickMs.empty()
+                           && walk.field().countX() == full.field.countX());
         }
         std::printf("program file=%s parse_ms=%.3f stages=%zu moves=%zu\n",
                     ngcPath.c_str(), parseMs, parsed.stages.size(), moves.size());

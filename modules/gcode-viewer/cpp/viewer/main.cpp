@@ -179,6 +179,17 @@ void prependPath(const QStringList &dirs)
 #endif
 }
 
+// Переключатели чистого вида - у съёмки кадра и у живого окна одни и те же:
+// снятие линий УП (CNC_NO_TOOLPATH) и кожи детали (CNC_NO_PART_SKIN). Это те же
+// ручки, что клавиши G и K вьювера (GcodeViewer3D.qml): у съёмки кадра клавиш
+// нет вовсе, поэтому кадр для сравнения вида снимают переменной. Без переменных
+// поведение прежнее - и линии, и кожа видны.
+void applyCleanViewEnv(QQuickItem *root_item)
+{
+    root_item->setProperty("showToolpath", !qEnvironmentVariableIsSet("CNC_NO_TOOLPATH"));
+    root_item->setProperty("showPartSkin", !qEnvironmentVariableIsSet("CNC_NO_PART_SKIN"));
+}
+
 // Дым-прогон (--smoke): загрузить QML вьювера без экрана и доложить разбор.
 // Проверка неглубокая: "вьювер вообще стартует", геометрия не меряется. Размер
 // корня берётся в том же окне 1024x600, что у обычного запуска.
@@ -248,11 +259,13 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
         return 1;
     }
 
-    // Те же свойства сцены, что у обычного запуска: уровень качества и коробка
-    // вместо поля съёма (CNC_STOCK_BOX). Иначе кадр показывал бы не то, что
+    // Те же свойства сцены, что у обычного запуска: уровень качества, коробка
+    // вместо поля съёма (CNC_STOCK_BOX) и переключатели чистого вида
+    // (CNC_NO_TOOLPATH, CNC_NO_PART_SKIN). Иначе кадр показывал бы не то, что
     // видит оператор.
     root_item->setProperty("quality", QString::fromLatin1(gv::presetFromEnv().level));
     root_item->setProperty("stockPlainBox", qEnvironmentVariableIsSet("CNC_STOCK_BOX"));
+    applyCleanViewEnv(root_item);
 
     view.show();
     if (!program.isEmpty()) {
@@ -494,6 +507,7 @@ int main(int argc, char *argv[])
     // для сравнения (та же ручка, что клавиша B). По умолчанию коробки нет:
     // заготовку рисует поле высот.
     root_item->setProperty("stockPlainBox", qEnvironmentVariableIsSet("CNC_STOCK_BOX"));
+    applyCleanViewEnv(root_item);
 
     if (program.isEmpty()) {
         say(QStringLiteral("gcodeviewer: УП не задана: вьювер пуст "

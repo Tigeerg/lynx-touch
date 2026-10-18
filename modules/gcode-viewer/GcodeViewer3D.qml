@@ -9,6 +9,15 @@ import MockBackend 1.0
  *   LMB drag = orbit around the toolpath center
  *   RMB drag = pan the camera (moves the orbit center)
  *   wheel    = zoom
+ *
+ * Раскладка клавиш (обработчик - Keys.onPressed ниже, кнопки - в панели внизу):
+ *   Пробел/P - пуск/пауза, Esc - в начало, вверх/вниз - скорость;
+ *   S - заготовка (габарит), M - деталь целиком, K - кожа детали (тело без
+ *   рёбер), G - линии УП, B - прежняя коробка вместо поверхности съёма;
+ *   L - длина, T - этапы, PgUp/PgDn - кадры этапов;
+ *   E - рёбра, D - касательные, X - рентген, Q - качество, F - fps.
+ * Те же переключатели чистого вида доступны до старта переменными окружения
+ * (cpp/viewer/main.cpp): CNC_STOCK_BOX, CNC_NO_TOOLPATH, CNC_NO_PART_SKIN.
  */
 Item {
     id: root
@@ -17,7 +26,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.49.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.50.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -486,13 +495,21 @@ Item {
         // собой, а резаная стенка врала бы о геометрии.
         // За кем право при совпадении: у готовой программы снятая поверхность и
         // есть кожа детали, и в местах касания они спорят за один пиксель.
-        // Право отдано коже: она - исходная геометрия (STEP/STL), а поле -
-        // производная выборка с узлом 0.5 мм, и его ошибка на порядки больше
-        // точности кожи. Спор решается сдвигом ТОЛЬКО ГЛУБИНЫ в вершинном
-        // шейдере (stocksurface.vert, depthOffset): позиции вершин не двигаются,
-        // поэтому габарит и глубина реза не врут, а совпавшие поверхности
-        // выигрывает кожа. Сдвиг вперёд (как у рёбер) дал бы обратное: поле
-        // закрасило бы деталь.
+        // Право отдано ПОВЕРХНОСТИ СЪЁМА: во время симуляции предмет - снятый
+        // металл, а кожа детали - справочная геометрия, и она уступает (её можно
+        // снять целиком клавишей K). Спор решается сдвигом ТОЛЬКО ГЛУБИНЫ в
+        // вершинном шейдере (stocksurface.vert, depthOffset): позиции вершин не
+        // двигаются, поэтому габарит и глубина реза не врут, а совпавшие
+        // поверхности выигрывает снятый металл. Сдвиг назад (как было до правки)
+        // давал обратное: на совпавшем верху была видна кожа, а не поверхность.
+        // Где заготовка ЕЩЁ ВЫШЕ детали, спора нет вовсе: снятый металл закрывает
+        // кожу собой, и это правильный вид - материал над деталью не снят. Спор
+        // совпавших пикселей решает знак сдвига; замер по кадру 1024x600
+        // (Test_model, кожа справочная): знак картинку не меняет - подкраска
+        // совпавшего нетронутого верха при обоих знаках одна (6504 и 6497
+        // пикселя из 7351), а медный съём сквозь кожу виден. Кожа больше не
+        // пишет глубину, поэтому право на совпавшем пикселе решает не она, а
+        // поле со знаком своего сдвига.
         Node {
             visible: root.showStockVisible && root.stockFieldDrawn
             eulerRotation: Qt.vector3d(-90, 0, 0)
@@ -508,16 +525,22 @@ Item {
                 materials: CustomMaterial {
                     shadingMode: CustomMaterial.Shaded
                     property real cellMm: path ? path.stockCellMm : 0.5
-                    // Сдвиг глубины от кожи детали (см. комментарий узла):
+                    // Сдвиг глубины к глазу от кожи детали (см. комментарий узла):
                     // 1e-6 NDC - около 0.15 мм на дистанции облёта 300 мм, то
                     // есть меньше четверти пикселя, но на два порядка больше шума
-                    // float32 в позициях, который и решает спор. Замер на кадре
-                    // 1024x600 (Test_model, деталь видна): без сдвига кожа
-                    // проигрывает совпавший верх на 74-78 пикселях, при 1e-6 они
-                    // уходят к коже, а 1e-4 (в 100 раз больше) убирало бы под неё
-                    // уже настоящий остаток - ещё 240 пикселей.
-                    property real depthOffset: 1e-6
-                    property color stockColor: "#9AA3AE"
+                    // float32 в позициях, который и решает спор. Знак минус: снятый
+                    // металл выигрывает совпавший пиксель. Замер на кадре 1024x600
+                    // (Test_model, деталь видна) - величину и держим: сдвиг в сто
+                    // раз больше (1e-4) увёл бы под поверхность уже настоящий
+                    // остаток, ещё 240 пикселей.
+                    property real depthOffset: -1e-6
+                    // Палитра по глубине поля (подробности - stocksurface.frag):
+                    // необработанный верх (глубина 0) - тёплая охра, снятый металл -
+                    // медь. Порог 0.05 мм отсекает задиры на десятые доли узла
+                    // 0.5 мм; необработанные узлы поля равны ровно нулю.
+                    property color stockRawColor: "#C3A45E"
+                    property color stockCutColor: "#C9571A"
+                    property real cutMm: 0.05
                     property TextureInput stockField: TextureInput {
                         texture: Texture {
                             textureData: path ? path.stockField : null
@@ -535,16 +558,31 @@ Item {
                 }
             }
 
-            // Стенки и дно: полупрозрачные и глубину не пишут, как прежняя
-            // коробка; верхней грани у них нет - её рисует поле.
+            // Стенки и дно: СПЛОШНОЕ тело - непрозрачные и пишут глубину, поэтому
+            // сквозь них не видно ни дальней стенки, ни дна, ни детали внутри:
+            // заготовка читается слитком, как в симуляторе обработки. Верхней
+            // грани у них нет - её рисует поле.
+            //
+            // Задние грани не видны: оболочка непрозрачная и пишет глубину,
+            // поэтому дальние стенки прячет буфер глубины, а cullMode
+            // BackFaceCulling снимает их ещё до растеризации. Замер по кадрам
+            // 1024x600 (Test_model, облёт сверху и снизу): отсечение против
+            // NoCulling меняет 147 и 583 пикселя, и это шум интерфейса (строка
+            // подсказок, панель), а не стенки - у выпуклого слитка задние стенки
+            // и так прячет глубина. Габарит тела от этого не меняется.
+            //
+            // Цвет - тот же необработанный металл, что у верха поля, но на
+            // ступень темнее: оболочка идёт без света (у неё нет атрибута
+            // нормали, а плоский цвет слился бы с освещённым верхом в наклейку).
+            // Инструмент внутри виден и так: резец, оправка и линии УП идут
+            // «всегда вперёд» (depthBias -50000) и рисуются поверх слитка.
             Model {
                 geometry: stockShell
-                opacity: 0.2
                 materials: [
                     DefaultMaterial {
                         lighting: DefaultMaterial.NoLighting
-                        diffuseColor: "#8A93A0"
-                        depthDrawMode: Material.NeverDepthDraw
+                        diffuseColor: "#B79A55"
+                        cullMode: Material.BackFaceCulling
                     }
                 ]
             }
@@ -602,15 +640,18 @@ Item {
             visible: root.showPartVisible
             rotation: path ? path.partRotation : Qt.quaternion(1, 0, 0, 0)
             position: path ? path.partPosition : Qt.vector3d(0, 0, 0)
-            // Сплошная кожа (X выключен). Материал строго Opaque и пишет
-            // глубину: только тогда растеризатор закрывает СКРЫТЫЕ рёбра и
-            // задние грани. Прежний Blend с opacity 1.0 шёл в прозрачную
-            // очередь, глубину не писал - задние грани и скрытые кромки
-            // просвечивали серым. alphaMode в рантайме не перекомпилируется,
-            // поэтому режимы разведены двумя моделями (visible), а не сменой
-            // свойства на одном материале.
+            // Сплошная кожа (X выключен и симуляции на экране нет). Материал
+            // строго Opaque и пишет глубину: только тогда растеризатор закрывает
+            // СКРЫТЫЕ рёбра и задние грани. Прежний Blend с opacity 1.0 шёл в
+            // прозрачную очередь, глубину не писал - задние грани и скрытые
+            // кромки просвечивали серым. alphaMode в рантайме не
+            // перекомпилируется, поэтому режимы разведены двумя моделями
+            // (visible), а не сменой свойства на одном материале.
+            // Клавиша K снимает кожу целиком (тело), оставляя рёбра и
+            // касательные: так на снятом металле остаётся только справочный
+            // каркас детали.
             Model {
-                visible: !root.xrayOn
+                visible: !root.xrayOn && !root.partSkinGhost && root.showPartSkin
                 geometry: path ? path.partGeometry : null
                 materials: [
                     PrincipledMaterial {
@@ -623,10 +664,15 @@ Item {
                     }
                 ]
             }
-            // Рентген (X включён): кожа полупрозрачная и глубину не пишет -
-            // скрытые кромки и артефакты отрисовки видны для поиска дефектов.
+            // Рентген (X включён) и справочная кожа симуляции (partSkinGhost):
+            // кожа полупрозрачная и глубину не пишет - сквозь неё видны снятый
+            // металл (в симуляции) и скрытые кромки с артефактами отрисовки
+            // (в рентгене). Плотность разная: рентген - диагностика, справочная
+            // кожа лишь намечает эталон. Замер по кадру 1024x600 (Test_model,
+            // медный съём без кожи #CA5614): при 0.22 он читается как #C37E53 -
+            // серый налёт съедал цвет, при 0.15 как #C57241.
             Model {
-                visible: root.xrayOn
+                visible: root.showPartSkin && (root.xrayOn || root.partSkinGhost)
                 geometry: path ? path.partGeometry : null
                 materials: [
                     PrincipledMaterial {
@@ -636,7 +682,7 @@ Item {
                         specularAmount: 0.2
                         cullMode: Material.NoCulling
                         alphaMode: PrincipledMaterial.Blend
-                        opacity: 0.35
+                        opacity: root.xrayOn ? 0.35 : 0.15
                     }
                 ]
             }
@@ -991,6 +1037,19 @@ Item {
     readonly property bool stockFieldDrawn: !root.stockPlainBox && !root.qualitySafe
         && path !== null && path.hasStock && path.stockHasField
     property bool showPartVisible: true      // show the part model (STL)
+    // Кожа детали отдельно от рёбер: клавиша K (CNC_NO_PART_SKIN) снимает тело
+    // детали, оставляя справочный каркас - на снятом металле видно только его.
+    property bool showPartSkin: true
+    // Пока на экране поле съёма, деталь - эталон, а не предмет (разбор - у узла
+    // детали): кожа уходит в полупрозрачную справочную и глубину не пишет. Иначе
+    // она закрывает снятый металл собой: верх детали и нетронутый верх заготовки
+    // лежат в одной плоскости (замер совпавшего верха - в комментарии depthOffset
+    // ниже), а съём уходит вниз, за эту плоскость. Замер по кадру 1024x600
+    // (Test_model, поле съёма готово, линии УП сняты): с непрозрачной кожей верх
+    // серый и карман не виден, со справочной медный съём читается как #C57241.
+    // Это следствие вида, а не ещё один тумблер: без поля (коробка, safe) деталь
+    // снова предмет.
+    readonly property bool partSkinGhost: root.stockFieldDrawn
     property bool showAllCode: true          // true = whole code at once, false = limit draw distance
     property bool xray: false             // сплошная кожа по умолчанию:
                                           // рентген-режим (X) - полноэкранный
@@ -1004,8 +1063,11 @@ Item {
     property bool showCollisions: true    // красные диски столкновений;
                                           // off в render_probe - не
                                           // заслоняют контур
-    property bool showToolpath: true         // линии УП; off в render_probe, чтобы
-                                             // не заслонять обводку на скриншотах
+    // Линии УП отдельно от материала: клавиша G (CNC_NO_TOOLPATH) и кнопка
+    // «Линии УП» - чистый вид слитка, без траектории поверх него. Линии идут
+    // «всегда вперёд» (depthBias -50000), поэтому на сплошной заготовке они
+    // видны и сквозь неё; снятие линий и есть ответ на это.
+    property bool showToolpath: true
 
     function togglePlay() {
         if (root.moveLength > 0) {
@@ -1053,7 +1115,8 @@ Item {
     }
 
     // ---- Playback: Space = play/pause, Esc = reset to start ----
-    // ---- Hotkeys: S stock, M part model, L limit length, T stages,
+    // ---- Hotkeys: S stock, M part model, K part skin (тело детали без рёбер),
+    // ----          G toolpath lines (линии УП), L limit length, T stages,
     // ----          PgUp/PgDn switch stage, P play, E edges, D tangents,
     // ----          X xray, F fps, Q - цикл качества (med -> low -> high -> safe),
     // ----          B - прежняя коробка заготовки вместо поверхности съёма.
@@ -1068,6 +1131,8 @@ Item {
     //   русская раскладка: sc 25 31 50 38 20 18 32 45 33, key 1047 1067 1068 1044
     //                      1045 1059 1042 1063 1040 (символы з ы ь д е у в ч а);
     //   латиница:          те же sc, key 80 83 77 76 84 69 68 88 70.
+    // Клавиши G и K сверены той же пробой (она печатает sc/key/cp/vk каждой) и
+    // берутся по физическому скан-коду, как остальные буквы: 0x22 и 0x25.
     // Второе слагаемое - Qt.Key: клавиша без скан-кода и раскладки, где буква стоит
     // на другом месте. Сочетания с Ctrl/Alt/Meta пропускаются только у букв: для них
     // это команды приложения и переключатель раскладки, а не горячая клавиша вьювера;
@@ -1100,6 +1165,7 @@ Item {
     }
     function keyLogState() {
         console.log("[key] state stock=" + root.showStockVisible + " part=" + root.showPartVisible
+            + " skin=" + root.showPartSkin + " path=" + root.showToolpath
             + " all=" + root.showAllCode + " stages=" + root.stageMode
             + " edges=" + root.showBrepEdges + " tangents=" + root.showTangentLines
             + " xray=" + root.xray + " fps=" + root.showFps
@@ -1128,6 +1194,17 @@ Item {
             event.accepted = true
         } else if (root.keyIs(event, 0x32, Qt.Key_M)) {
             root.showPartVisible = !root.showPartVisible
+            event.accepted = true
+        } else if (root.keyIs(event, 0x25, Qt.Key_K)) {
+            // Кожа детали отдельно от рёбер: снятое тело оставляет на снятом
+            // металле один справочный каркас. Тот же переключатель, что
+            // CNC_NO_PART_SKIN во входе (viewer/main.cpp).
+            root.showPartSkin = !root.showPartSkin
+            event.accepted = true
+        } else if (root.keyIs(event, 0x22, Qt.Key_G)) {
+            // Линии УП поверх слитка: снять их - и остаётся только снятый металл.
+            // Тот же переключатель, что CNC_NO_TOOLPATH во входе (viewer/main.cpp).
+            root.showToolpath = !root.showToolpath
             event.accepted = true
         } else if (root.keyIs(event, 0x26, Qt.Key_L)) {
             root.showAllCode = !root.showAllCode
@@ -1195,12 +1272,14 @@ Item {
               + Math.round(root.moveLength > 0 ? 100 * root.pathDist / root.moveLength : 0) + "%"
               + "   \u00D7" + root.speed.toFixed(1)
               + "   ·   Пробел — пуск/пауза   ·   Esc — в начало   ·   \u2191/\u2193 — скорость"
-              + "   ·   S заготовка · M деталь · L длина · T этапы · PgUp/PgDn кадры"
+              + "   ·   S заготовка · M деталь · K кожа · G линии УП · L длина · T этапы · PgUp/PgDn кадры"
               + " · Q качество: " + root.quality
               + "   ·   E рёбра: " + (root.showBrepEdges ? "вкл" : "выкл")
               + " · D касательные: " + (root.showTangentLines ? "вкл" : "выкл")
               + " · X рентген: " + (root.xrayOn ? "вкл" : "выкл")
               + " · F fps: " + (root.showFps ? "вкл" : "выкл")
+              + " · G линии УП: " + (root.showToolpath ? "вкл" : "выкл")
+              + " · K кожа детали: " + (root.showPartSkin ? "вкл" : "выкл")
               + " · B коробка: " + (root.stockPlainBox ? "вкл" : "выкл")
         color: "#535C66"
         font.pixelSize: 12
@@ -1240,6 +1319,22 @@ Item {
                 checked: root.showPartVisible
                 text: "Модель детали"
                 onClicked: root.showPartVisible = !root.showPartVisible
+            }
+
+            // "Кожа детали" toggle (клавиша K): тело детали без рёбер - чистый
+            // вид снятого металла, поверх него только справочный каркас.
+            ViewButton {
+                checked: root.showPartSkin
+                text: "Кожа детали"
+                onClicked: root.showPartSkin = !root.showPartSkin
+            }
+
+            // "Линии УП" toggle (клавиша G): линии идут всегда вперёд и видны
+            // поверх сплошной заготовки; снятие линий оставляет голый слиток.
+            ViewButton {
+                checked: root.showToolpath
+                text: "Линии УП"
+                onClicked: root.showToolpath = !root.showToolpath
             }
 
             // "Весь код" vs "Ограничить длину": limit mode draws only the part

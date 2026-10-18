@@ -191,6 +191,16 @@ void applyCleanViewEnv(QQuickItem *root_item)
     root_item->setProperty("showPartSkin", !qEnvironmentVariableIsSet("CNC_NO_PART_SKIN"));
 }
 
+// CNC_STOCK_ROUND: скругление ступеней съёма до старта - та же ручка, что клавиша R
+// (GcodeViewer3D.qml, stockRoundSteps). По умолчанию выключено: включённое скругление
+// двигает нарисованную поверхность (кромка реза до узла, 0.5 мм), а поле и меш
+// остаются прежними. У съёмки кадра клавиш нет, поэтому кадр сравнения берут
+// переменной.
+void applyStockRoundEnv(QQuickItem *root_item)
+{
+    root_item->setProperty("stockRoundSteps", qEnvironmentVariableIsSet("CNC_STOCK_ROUND"));
+}
+
 // Цвета палитры остатка материала до старта. Пара "переменная -> свойство" одной
 // таблицей: свойство у обоих цветов однотипное, а имя переменной - часть
 // контракта запуска (README, GcodeViewer3D.qml).
@@ -296,12 +306,13 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
 
     // Те же свойства сцены, что у обычного запуска: уровень качества, коробка
     // вместо поля съёма (CNC_STOCK_BOX), переключатели чистого вида
-    // (CNC_NO_TOOLPATH, CNC_NO_PART_SKIN) и цвета палитры слитка
-    // (CNC_STOCK_RAW, CNC_STOCK_CUT). Иначе кадр показывал бы не то, что видит
-    // оператор.
+    // (CNC_NO_TOOLPATH, CNC_NO_PART_SKIN), скругление ступеней съёма
+    // (CNC_STOCK_ROUND) и цвета палитры слитка (CNC_STOCK_RAW, CNC_STOCK_CUT).
+    // Иначе кадр показывал бы не то, что видит оператор.
     root_item->setProperty("quality", QString::fromLatin1(gv::presetFromEnv().level));
     root_item->setProperty("stockPlainBox", qEnvironmentVariableIsSet("CNC_STOCK_BOX"));
     applyCleanViewEnv(root_item);
+    applyStockRoundEnv(root_item);
     applyStockColorEnv(root_item);
 
     view.show();
@@ -545,6 +556,7 @@ int main(int argc, char *argv[])
     // заготовку рисует поле высот.
     root_item->setProperty("stockPlainBox", qEnvironmentVariableIsSet("CNC_STOCK_BOX"));
     applyCleanViewEnv(root_item);
+    applyStockRoundEnv(root_item);
 
     // CNC_STOCK_RAW/CNC_STOCK_CUT: цвета палитры слитка до старта (те же две
     // ручки, что пресеты и клавиша C).

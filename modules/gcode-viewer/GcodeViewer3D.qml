@@ -28,7 +28,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.51.1"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.52.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -563,6 +563,11 @@ Item {
                     property color stockRawColor: root.stockRawColor
                     property color stockCutColor: root.stockCutColor
                     property real cutMm: 0.05
+                    // Скругление ступеней съёма: свойство узла (клавиша R,
+                    // CNC_STOCK_ROUND), по умолчанию выключено. Разбор и цена -
+                    // в stocksurface.vert: нарисованная поверхность перестаёт
+                    // совпадать с полем, кромка реза уезжает до узла (0.5 мм).
+                    property bool stockRound: root.stockRoundSteps
                     property vector3d stockLamp: root.stockLamp
                     property real stockTone: root.stockTone
                     property TextureInput stockField: TextureInput {
@@ -587,13 +592,21 @@ Item {
             // заготовка читается слитком, как в симуляторе обработки. Верхней
             // грани у них нет - её рисует поле.
             //
-            // Задние грани не видны: оболочка непрозрачная и пишет глубину,
-            // поэтому дальние стенки прячет буфер глубины, а cullMode
-            // BackFaceCulling снимает их ещё до растеризации. Замер по кадрам
-            // 1024x600 (Test_model, облёт сверху и снизу): отсечение против
-            // NoCulling меняет 147 и 583 пикселя, и это шум интерфейса (строка
-            // подсказок, панель), а не стенки - у выпуклого слитка задние стенки
-            // и так прячет глубина. Габарит тела от этого не меняется.
+            // Сторона отсечения здесь ОБРАТНАЯ обычной. Оболочку собирает ядро
+            // (core/stock_sim, stockShellVertices), и намотка её пятиугольников
+            // такова, что правая нормаль смотрит ВНУТРЬ коробки; этот буфер
+            // сверяет случай stockshell пробника stock_sim_probe и менять его
+            // нельзя. При BackFaceCulling отсекались не дальние стенки, а
+            // БЛИЖНИЕ: три грани, смотрящие на камеру, исчезали, и сквозь них
+            // читались пол, справочная кожа детали и линии УП - та самая жалоба
+            // на просвет боковой грани слитка. Замер по кадрам 1024x600
+            // (Test_model, вид с полем съёма, ни линий УП, ни кожи):
+            // BackFaceCulling против FrontFaceCulling - 13990 пикселей по стенке
+            // слитка, то есть ближняя стенка была снята целиком, и на её месте
+            // читались пол и справочная кожа детали. FrontFaceCulling снимает
+            // дальние грани (их и так прячет буфер глубины) и оставляет ближние.
+            // Если намотку в ядре однажды поправят, эту строку надо вернуть на
+            // BackFaceCulling.
             //
             // Цвет и светлота - те же, что у верха поля: тот же необработанный
             // металл (stockRawColor) и та же лампа слитка, но нормаль грани
@@ -620,7 +633,7 @@ Item {
                     sourceBlend: CustomMaterial.NoBlend
                     destinationBlend: CustomMaterial.NoBlend
                     depthDrawMode: Material.OpaqueOnlyDepthDraw
-                    cullMode: Material.BackFaceCulling
+                    cullMode: Material.FrontFaceCulling
                     vertexShader: "stockshell.vert"
                     fragmentShader: "stockshell.frag"
                 }
@@ -1073,6 +1086,13 @@ Item {
     // Коробка - пока поля нет (первый проход), после отказа (инструмент картой
     // не выражается) и по клавише B / CNC_STOCK_BOX=1 для сравнения.
     property bool stockPlainBox: false       // коробка вместо поля (B, CNC_STOCK_BOX)
+    // Скругление ступеней съёма: глубина узла берётся не из текселя, а как
+    // среднее по плюс-окрестности, поэтому нарисованная поверхность перестаёт
+    // совпадать с полем - кромка реза скругляется и уезжает вглубь до одного узла
+    // (0.5 мм), мелкое окно теряет до половины глубины. Поле и меш не трогаются:
+    // величина живёт только в вершинном шейдере (stocksurface.vert). Клавиша R,
+    // CNC_STOCK_ROUND=1; по умолчанию выключено - тогда вид и числа прежние.
+    property bool stockRoundSteps: false
     readonly property bool stockFieldDrawn: !root.stockPlainBox && !root.qualitySafe
         && path !== null && path.hasStock && path.stockHasField
 
@@ -1206,7 +1226,8 @@ Item {
     // ----          G toolpath lines (линии УП), L limit length, T stages,
     // ----          PgUp/PgDn switch stage, P play, E edges, D tangents,
     // ----          X xray, F fps, Q - цикл качества (med -> low -> high -> safe),
-    // ----          B - прежняя коробка заготовки вместо поверхности съёма.
+    // ----          B - прежняя коробка заготовки вместо поверхности съёма,
+    // ----          C - палитра слитка, R - скругление ступеней съёма.
     // Раскладка не должна гасить горячие клавиши: на русской раскладке Qt сообщает
     // для физической X код Key_Ch, а не Key_X, и буквенные ветки ниже не работают.
     // Буквы сверяются по nativeScanCode - скан-коду физической клавиши, он от
@@ -1258,6 +1279,7 @@ Item {
             + " xray=" + root.xray + " fps=" + root.showFps
             + " quality=" + root.quality
             + " box=" + root.stockPlainBox + " field=" + root.stockFieldDrawn
+            + " round=" + root.stockRoundSteps
             + " palette=" + root.stockPresets[root.stockPreset].name
             + " raw=" + root.stockRawColor + " cut=" + root.stockCutColor
             + " playing=" + root.playing + " dist=" + Math.round(root.pathDist))
@@ -1336,6 +1358,12 @@ Item {
             // (cpp/viewer/main.cpp).
             root.cycleStockPreset()
             event.accepted = true
+        } else if (root.keyIs(event, 0x13, Qt.Key_R)) {
+            // Скругление ступеней съёма (цена - в комментарии свойства): сравнение
+            // вида на живом кадре. Тот же тумблер, что CNC_STOCK_ROUND во входе
+            // (cpp/viewer/main.cpp).
+            root.stockRoundSteps = !root.stockRoundSteps
+            event.accepted = true
         }
         if (root.keyDebug)
             root.keyLogState()
@@ -1377,6 +1405,7 @@ Item {
               + " · G линии УП: " + (root.showToolpath ? "вкл" : "выкл")
               + " · K кожа детали: " + (root.showPartSkin ? "вкл" : "выкл")
               + " · B коробка: " + (root.stockPlainBox ? "вкл" : "выкл")
+              + " · R скругление ступеней: " + (root.stockRoundSteps ? "вкл" : "выкл")
         color: "#535C66"
         font.pixelSize: 12
         font.bold: true

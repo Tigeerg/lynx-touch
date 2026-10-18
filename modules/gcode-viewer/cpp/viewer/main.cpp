@@ -51,6 +51,7 @@
  * Linux (Qt и OCCT находит rpath сборки, PATH и LD_LIBRARY_PATH не нужны):
  * build/viewer/gcodeviewer data/cad-testdata/Test_model.ngc
  */
+#include <QColor>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QEventLoop>
@@ -190,6 +191,40 @@ void applyCleanViewEnv(QQuickItem *root_item)
     root_item->setProperty("showPartSkin", !qEnvironmentVariableIsSet("CNC_NO_PART_SKIN"));
 }
 
+// Цвета палитры остатка материала до старта. Пара "переменная -> свойство" одной
+// таблицей: свойство у обоих цветов однотипное, а имя переменной - часть
+// контракта запуска (README, GcodeViewer3D.qml).
+struct StockColorEnv {
+    const char *variable;
+    const char *property;
+};
+
+// CNC_STOCK_RAW и CNC_STOCK_CUT ставят цвета палитры по "#RRGGBB" (или
+// "#AARRGGBB") - те же две ручки, что пресеты вьювера и клавиша C
+// (GcodeViewer3D.qml, stockPresets): переменная задаёт цвет пары до старта,
+// пресет остаётся тем, что был. Непонятная строка - отказ с причиной в stderr:
+// молча красить слиток в чёрный нельзя, по его цвету читают, где металл снят.
+void applyStockColorEnv(QQuickItem *root_item)
+{
+    const StockColorEnv vars[] = {
+        { "CNC_STOCK_RAW", "stockRawColor" },
+        { "CNC_STOCK_CUT", "stockCutColor" },
+    };
+    for (const StockColorEnv &var : vars) {
+        const QString text = qEnvironmentVariable(var.variable);
+        if (text.isEmpty())
+            continue;
+        const QColor color(text);
+        if (!color.isValid()) {
+            warn(QStringLiteral("gcodeviewer: %1: цвет не разобран: %2 "
+                                "(ожидается #RRGGBB)")
+                         .arg(QString::fromLatin1(var.variable), text));
+            continue;
+        }
+        root_item->setProperty(var.property, color);
+    }
+}
+
 // Дым-прогон (--smoke): загрузить QML вьювера без экрана и доложить разбор.
 // Проверка неглубокая: "вьювер вообще стартует", геометрия не меряется. Размер
 // корня берётся в том же окне 1024x600, что у обычного запуска.
@@ -260,12 +295,14 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
     }
 
     // Те же свойства сцены, что у обычного запуска: уровень качества, коробка
-    // вместо поля съёма (CNC_STOCK_BOX) и переключатели чистого вида
-    // (CNC_NO_TOOLPATH, CNC_NO_PART_SKIN). Иначе кадр показывал бы не то, что
-    // видит оператор.
+    // вместо поля съёма (CNC_STOCK_BOX), переключатели чистого вида
+    // (CNC_NO_TOOLPATH, CNC_NO_PART_SKIN) и цвета палитры слитка
+    // (CNC_STOCK_RAW, CNC_STOCK_CUT). Иначе кадр показывал бы не то, что видит
+    // оператор.
     root_item->setProperty("quality", QString::fromLatin1(gv::presetFromEnv().level));
     root_item->setProperty("stockPlainBox", qEnvironmentVariableIsSet("CNC_STOCK_BOX"));
     applyCleanViewEnv(root_item);
+    applyStockColorEnv(root_item);
 
     view.show();
     if (!program.isEmpty()) {
@@ -508,6 +545,10 @@ int main(int argc, char *argv[])
     // заготовку рисует поле высот.
     root_item->setProperty("stockPlainBox", qEnvironmentVariableIsSet("CNC_STOCK_BOX"));
     applyCleanViewEnv(root_item);
+
+    // CNC_STOCK_RAW/CNC_STOCK_CUT: цвета палитры слитка до старта (те же две
+    // ручки, что пресеты и клавиша C).
+    applyStockColorEnv(root_item);
 
     if (program.isEmpty()) {
         say(QStringLiteral("gcodeviewer: УП не задана: вьювер пуст "

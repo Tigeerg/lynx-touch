@@ -14,10 +14,12 @@ import MockBackend 1.0
  *   Пробел/P - пуск/пауза, Esc - в начало, вверх/вниз - скорость;
  *   S - заготовка (габарит), M - деталь целиком, K - кожа детали (тело без
  *   рёбер), G - линии УП, B - прежняя коробка вместо поверхности съёма;
+ *   C - палитра остатка материала (пресеты);
  *   L - длина, T - этапы, PgUp/PgDn - кадры этапов;
  *   E - рёбра, D - касательные, X - рентген, Q - качество, F - fps.
  * Те же переключатели чистого вида доступны до старта переменными окружения
- * (cpp/viewer/main.cpp): CNC_STOCK_BOX, CNC_NO_TOOLPATH, CNC_NO_PART_SKIN.
+ * (cpp/viewer/main.cpp): CNC_STOCK_BOX, CNC_NO_TOOLPATH, CNC_NO_PART_SKIN, а
+ * цвета палитры - CNC_STOCK_RAW и CNC_STOCK_CUT (по "#RRGGBB").
  */
 Item {
     id: root
@@ -26,7 +28,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.50.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.51.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -332,6 +334,25 @@ Item {
     // Оболочка - та же коробка без верхней грани (верх рисует поле), с прежним
     // микро-сдвигом против z-fighting: он двигает только стенки, физический
     // габарит заготовки не меняется.
+    // Границы стенок (габарит плюс зазоры) стоят здесь, а не у материала: ими
+    // собрана геометрия оболочки, и из них же вершинный шейдер стенок
+    // (stockshell.vert) выбирает, на какой грани стоит вершина - одно число,
+    // один источник.
+    readonly property real shellGapSideMm: 1.5 * root.outlineMmPerPx
+    readonly property real shellGapTopMm: 1.0 * root.outlineMmPerPx
+    readonly property real shellGapBottomMm: 1.0 * root.outlineMmPerPx
+    readonly property vector3d shellCenter: path
+        ? Qt.vector3d((path.stockBounds[0] + path.stockBounds[1]) / 2,
+                      (path.stockBounds[2] + path.stockBounds[3]) / 2,
+                      (path.stockBounds[4] - root.shellGapBottomMm
+                       + path.stockBounds[5] + root.shellGapTopMm) / 2)
+        : Qt.vector3d(0, 0, 0)
+    readonly property vector3d shellHalf: path
+        ? Qt.vector3d((path.stockBounds[1] - path.stockBounds[0]) / 2 + root.shellGapSideMm,
+                      (path.stockBounds[3] - path.stockBounds[2]) / 2 + root.shellGapSideMm,
+                      (path.stockBounds[5] - path.stockBounds[4]
+                       + root.shellGapTopMm + root.shellGapBottomMm) / 2)
+        : Qt.vector3d(1, 1, 1)
     StockSurfaceGeometry {
         id: stockSurface
         boundList: path ? path.stockBounds : []
@@ -345,9 +366,9 @@ Item {
         cellMm: path ? path.stockCellMm : 0.5
         countX: path ? path.stockCountX : 0
         countY: path ? path.stockCountY : 0
-        gapSideMm: 1.5 * root.outlineMmPerPx
-        gapTopMm: 1.0 * root.outlineMmPerPx
-        gapBottomMm: 1.0 * root.outlineMmPerPx
+        gapSideMm: root.shellGapSideMm
+        gapTopMm: root.shellGapTopMm
+        gapBottomMm: root.shellGapBottomMm
     }
 
     // Project a 3D point to View3D screen coordinates (manual perspective)
@@ -515,15 +536,20 @@ Item {
             eulerRotation: Qt.vector3d(-90, 0, 0)
 
             // Верх поля: непрозрачный и пишет глубину - он и есть материал.
-            // Затенённый материал (свет сцены тот же, что у кожи детали):
-            // плоский цвет слился бы в пятно, а по тени резаной стенки глубина
-            // читается. Текстура поля - nearest: узел сетки стоит в центре
-            // своего текселя, линейная выборка R32F на ветке OpenGL 3.3 не
-            // гарантирована и смазала бы стенку реза на полклетки.
+            // Светлота - своя, от нормали (stockTone/stockLamp, разбор -
+            // stocksurface.vert): свет сцены давал дну кармана светлоту меньше
+            // стенки, и снятый металл читался конусом, а стенки - почти одним
+            // цветом.
+            // Цвет - палитра пресетов (клавиша C, CNC_STOCK_RAW/CNC_STOCK_CUT):
+            // нетронутый верх (глубина 0) одним цветом, снятый металл другим.
+            // Порог 0.05 мм отсекает задиры на десятые доли узла 0.5 мм.
+            // Текстура поля - nearest: узел сетки стоит в центре своего текселя,
+            // линейная выборка R32F на ветке OpenGL 3.3 не гарантирована и
+            // смазала бы стенку реза на полклетки.
             Model {
                 geometry: stockSurface
                 materials: CustomMaterial {
-                    shadingMode: CustomMaterial.Shaded
+                    shadingMode: CustomMaterial.Unshaded
                     property real cellMm: path ? path.stockCellMm : 0.5
                     // Сдвиг глубины к глазу от кожи детали (см. комментарий узла):
                     // 1e-6 NDC - около 0.15 мм на дистанции облёта 300 мм, то
@@ -534,13 +560,11 @@ Item {
                     // раз больше (1e-4) увёл бы под поверхность уже настоящий
                     // остаток, ещё 240 пикселей.
                     property real depthOffset: -1e-6
-                    // Палитра по глубине поля (подробности - stocksurface.frag):
-                    // необработанный верх (глубина 0) - тёплая охра, снятый металл -
-                    // медь. Порог 0.05 мм отсекает задиры на десятые доли узла
-                    // 0.5 мм; необработанные узлы поля равны ровно нулю.
-                    property color stockRawColor: "#C3A45E"
-                    property color stockCutColor: "#C9571A"
+                    property color stockRawColor: root.stockRawColor
+                    property color stockCutColor: root.stockCutColor
                     property real cutMm: 0.05
+                    property vector3d stockLamp: root.stockLamp
+                    property real stockTone: root.stockTone
                     property TextureInput stockField: TextureInput {
                         texture: Texture {
                             textureData: path ? path.stockField : null
@@ -571,20 +595,35 @@ Item {
             // подсказок, панель), а не стенки - у выпуклого слитка задние стенки
             // и так прячет глубина. Габарит тела от этого не меняется.
             //
-            // Цвет - тот же необработанный металл, что у верха поля, но на
-            // ступень темнее: оболочка идёт без света (у неё нет атрибута
-            // нормали, а плоский цвет слился бы с освещённым верхом в наклейку).
+            // Цвет и светлота - те же, что у верха поля: тот же необработанный
+            // металл (stockRawColor) и та же лампа слитка, но нормаль грани
+            // считается здесь, в вершинном шейдере, из положения вершины
+            // (stockshell.vert): буфер оболочки - одни позиции, его сверяет
+            // случай stockshell пробника (30 вершин по три числа), менять его
+            // нельзя. Прежде оболочка шла совсем без света (у материала не было
+            // нормали) и все стенки были залиты одним #B79A55 - отсюда и жалоба
+            // на странный цвет боковых граней.
             // Инструмент внутри виден и так: резец, оправка и линии УП идут
             // «всегда вперёд» (depthBias -50000) и рисуются поверх слитка.
             Model {
                 geometry: stockShell
-                materials: [
-                    DefaultMaterial {
-                        lighting: DefaultMaterial.NoLighting
-                        diffuseColor: "#B79A55"
-                        cullMode: Material.BackFaceCulling
-                    }
-                ]
+                materials: CustomMaterial {
+                    shadingMode: CustomMaterial.Unshaded
+                    property color stockRawColor: root.stockRawColor
+                    property vector3d stockLamp: root.stockLamp
+                    property real stockTone: root.stockTone
+                    // Границы стенок в машинных мм (габарит плюс зазоры): те же
+                    // числа, из которых собрана геометрия оболочки, стоят рядом
+                    // с ней - у узла остатка материала.
+                    property vector3d shellCenter: root.shellCenter
+                    property vector3d shellHalf: root.shellHalf
+                    sourceBlend: CustomMaterial.NoBlend
+                    destinationBlend: CustomMaterial.NoBlend
+                    depthDrawMode: Material.OpaqueOnlyDepthDraw
+                    cullMode: Material.BackFaceCulling
+                    vertexShader: "stockshell.vert"
+                    fragmentShader: "stockshell.frag"
+                }
             }
         }
 
@@ -1036,6 +1075,54 @@ Item {
     property bool stockPlainBox: false       // коробка вместо поля (B, CNC_STOCK_BOX)
     readonly property bool stockFieldDrawn: !root.stockPlainBox && !root.qualitySafe
         && path !== null && path.hasStock && path.stockHasField
+
+    // ---- Палитра остатка материала: два цвета и пресеты для подбора контраста ----
+    // Поле отвечает на один вопрос - "где уже снято": нетронутый верх одним
+    // цветом, снятый металл другим. Пресеты подобраны под соседей по экрану -
+    // кожу детали #B9BEC4 (светлеет светом до #E5E6E5), зелёный быстрый ход
+    // #1D9247, синий рабочий #0362BB, чёрные рёбра, серо-синюю сетку пола
+    // #C9CED4 и белый фон #FCFDFF, - и друг под друга: у "светлое-тёмное"
+    // ступени разведены по светлоте (верх почти белый, снятый металл почти
+    // чёрный), у "жёлтый-фиолетовый" и "бирюза-киноварь" - по дополнительному
+    // тону (верх и снятый металл на противоположных сторонах круга).
+    // Клавиша C листает пресеты вживую; CNC_STOCK_RAW и CNC_STOCK_CUT ставят
+    // свои цвета до старта (cpp/viewer/main.cpp): цвета тогда стоят как заданы,
+    // а пресет остаётся тем, что был.
+    property int stockPreset: 0
+    readonly property var stockPresets: [
+        { name: "охра-медь",          raw: "#C3A45E", cut: "#C9571A" },
+        { name: "светлое-тёмное",     raw: "#F7ECC0", cut: "#3A332A" },
+        { name: "жёлтый-фиолетовый",  raw: "#F5D31F", cut: "#6B34C8" },
+        { name: "бирюза-киноварь",    raw: "#35C4C0", cut: "#D6391C" }
+    ]
+    property color stockRawColor: stockPresets[stockPreset].raw
+    property color stockCutColor: stockPresets[stockPreset].cut
+
+    // ---- Лампа слитка: своя светлота вместо света сцены ----
+    // Свет сцены настроен под кожу детали (грани почти вертикальные), и на
+    // слитке дно кармана выходило темнее стенки (замер в stocksurface.vert:
+    // #B34B10 против #C75414, 0.88) - карман читался конусом. Поэтому светлота
+    // слитка (верх поля и стенки - stocksurface.vert и stockshell.vert) берётся
+    // от нормали: ступень тона плюс одно направление. Лампа - в машинных осях
+    // (X, Y, Z): сверху и со стороны камеры (машинные +X, -Y), поэтому видимые
+    // стенки светлее невидимых; тон 0.35 - ступень невидимой стенки, верх
+    // получает 0.95. Замер по кадру 1024x600 (Test_model, линии УП и кожа
+    // сняты, пресет по умолчанию): нетронутый верх #BEA05C, дно кармана
+    // #C45516, ближняя стенка кармана #7D330A, стенки слитка #907944 и #967E47
+    // - дно светлее ближней стенки в 1.57 раза. Плоский верх и плоское дно
+    // кармана получают ровно одну светлоту: их различает цвет палитры.
+    property vector3d stockLamp: Qt.vector3d(0.9, -0.55, 2.4)
+    property real stockTone: 0.35
+
+    // Пресет задаёт оба цвета сразу.
+    function applyStockPreset(index) {
+        var count = root.stockPresets.length
+        root.stockPreset = ((index % count) + count) % count
+        root.stockRawColor = root.stockPresets[root.stockPreset].raw
+        root.stockCutColor = root.stockPresets[root.stockPreset].cut
+    }
+    function cycleStockPreset() { root.applyStockPreset(root.stockPreset + 1) }
+
     property bool showPartVisible: true      // show the part model (STL)
     // Кожа детали отдельно от рёбер: клавиша K (CNC_NO_PART_SKIN) снимает тело
     // детали, оставляя справочный каркас - на снятом металле видно только его.
@@ -1171,6 +1258,8 @@ Item {
             + " xray=" + root.xray + " fps=" + root.showFps
             + " quality=" + root.quality
             + " box=" + root.stockPlainBox + " field=" + root.stockFieldDrawn
+            + " palette=" + root.stockPresets[root.stockPreset].name
+            + " raw=" + root.stockRawColor + " cut=" + root.stockCutColor
             + " playing=" + root.playing + " dist=" + Math.round(root.pathDist))
     }
 
@@ -1241,6 +1330,12 @@ Item {
             // переключатель, что CNC_STOCK_BOX во входе (viewer/main.cpp).
             root.stockPlainBox = !root.stockPlainBox
             event.accepted = true
+        } else if (root.keyIs(event, 0x2E, Qt.Key_C)) {
+            // Палитра остатка материала: пресеты один за другим (подбор контраста
+            // на живом кадре). Цвета до старта ставят CNC_STOCK_RAW/CNC_STOCK_CUT
+            // (cpp/viewer/main.cpp).
+            root.cycleStockPreset()
+            event.accepted = true
         }
         if (root.keyDebug)
             root.keyLogState()
@@ -1271,6 +1366,7 @@ Item {
               + (root.playing ? "\u25B6 " : "\u23F8 ")
               + Math.round(root.moveLength > 0 ? 100 * root.pathDist / root.moveLength : 0) + "%"
               + "   \u00D7" + root.speed.toFixed(1)
+              + "   ·   C палитра: " + root.stockPresets[root.stockPreset].name
               + "   ·   Пробел — пуск/пауза   ·   Esc — в начало   ·   \u2191/\u2193 — скорость"
               + "   ·   S заготовка · M деталь · K кожа · G линии УП · L длина · T этапы · PgUp/PgDn кадры"
               + " · Q качество: " + root.quality

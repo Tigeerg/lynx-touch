@@ -257,11 +257,18 @@ void applyStockColorEnv(QQuickItem *root_item)
 }
 
 // CNC_STOCK_GHOST: заготовка полупрозрачной до старта - та же ручка, что клавиша
-// V (GcodeViewer3D.qml, stockGhost). Переменная без значения включает вид: так же
-// включаются CNC_STOCK_BOX и CNC_NO_TOOLPATH.
+// V (GcodeViewer3D.qml, stockGhost). Стекло теперь умолчание, поэтому переменная
+// не включает вид, а снимает его: пустая переменная или 1/true/on оставляют
+// стекло, а 0/false/off/no ставят сплошной до старта - так кадры сравнивают
+// виды, как их зовёт оператор, и молчаливой подмены вида нет.
 void applyStockGhostEnv(QQuickItem *root_item)
 {
-    root_item->setProperty("stockGhost", qEnvironmentVariableIsSet("CNC_STOCK_GHOST"));
+    if (!qEnvironmentVariableIsSet("CNC_STOCK_GHOST"))
+        return;                                // умолчание вьювера: стекло
+    const QString text = qEnvironmentVariable("CNC_STOCK_GHOST").trimmed().toLower();
+    const bool solid = text == QLatin1String("0") || text == QLatin1String("false")
+            || text == QLatin1String("off") || text == QLatin1String("no");
+    root_item->setProperty("stockGhost", !solid);
 }
 
 // CNC_PART_MODE: вид детали до старта - та же ручка, что клавиша M

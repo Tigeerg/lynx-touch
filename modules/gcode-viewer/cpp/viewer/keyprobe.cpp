@@ -11,6 +11,9 @@
  * V - заготовка полупрозрачной, R - вид остатка заготовки: точный -> гладкий ->
  * скруглённый; у R и M проверяется и круг положений: сколько положений, столько
  * нажатий обязаны вернуть вид к исходному, и промежуточные - отличаться).
+ * После клавиш проверяются две связи вида, а не переключателя: призрак кожи
+ * детали гаснет вместе со скрытым габаритом заготовки (S), а боковой зазор
+ * стенок заготовки равен нулю - стенка стоит на габарите поля (shellGapSideMm).
  *
  * Чем это отличается от живой пробы с SendInput (tools/keyprobe.ps1): живая проба
  * требует переднего окна в незапертой сессии, а перевод скан-кода в VK и символ
@@ -26,7 +29,9 @@
  * Код возврата: 0 - все клавиши сработали, 1 - нет, 2 - нечего проверять.
  */
 #include <QChar>
+#include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QKeyEvent>
@@ -37,6 +42,7 @@
 #include <QQuickView>
 #include <QStringList>
 #include <QTextStream>
+#include <QThread>
 #include <QUrl>
 #include <QVariant>
 
@@ -379,6 +385,69 @@ int run(const QString &program, const QStringList &layouts)
                 .arg(tag).arg(quiet).arg(quietFailed));
         quiet = 0;
         quietFailed = 0;
+    }
+
+    // Связь видов заготовки и детали - не отдельный тумблер. Призрак кожи детали
+    // (partSkinGhost) держится на готовом поле съёма, но обязан гаснуть и тогда,
+    // когда габарит заготовки спрятали (клавиша S): прятать нечего, и вид кожи
+    // снова решает partMode, а не наличие поля в данных. Заявил оператор: при
+    // скрытом габарите деталь оставалась полупрозрачной. Проба ставит виды
+    // вручную, дожидается поля и сверяет связь нажатием S - проверка красна до
+    // правки, где призрак не смотрел на видимость заготовки.
+    if (backend != nullptr) {
+        QString state = backend->property("stockSimState").toString();
+        QElapsedTimer wait;
+        wait.start();
+        while (wait.elapsed() < 20000
+               && state != QLatin1String("ready") && state != QLatin1String("refused")
+               && state != QLatin1String("idle") && state != QLatin1String("cancelled")) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+            QThread::msleep(1);
+            state = backend->property("stockSimState").toString();
+        }
+        const bool hasField = backend->property("stockHasField").toBool();
+        root->setProperty("partMode", 0);
+        root->setProperty("showStockVisible", true);
+        const bool ghostShown = root->property("partSkinGhost").toBool();
+        const LayoutKey sKey = resolveKey(0x1F, QStringLiteral("00000409"));   // S
+        press(view, sKey, Qt::NoModifier);
+        const bool stockHidden = !root->property("showStockVisible").toBool();
+        const bool ghostHidden = root->property("partSkinGhost").toBool();
+        const int partModeAfter = root->property("partMode").toInt();
+        press(view, sKey, Qt::NoModifier);           // вернуть габарит на место
+        // Поле готово -> призрак при видимой заготовке; габарит спрятан -> призрака
+        // нет, а вид детали не тронут (partMode 0). Без готового поля первую
+        // половину связи не с чем сверять, и проба это называет, а не молчит.
+        if (hasField) {
+            ++total;
+            if (ghostShown)
+                ++fired;
+            else
+                warn(QStringLiteral("keyprobe: FAIL кожа детали не призрак при видимой заготовке "
+                                    "и готовом поле"));
+            ++total;
+            if (stockHidden && !ghostHidden && partModeAfter == 0)
+                ++fired;
+            else
+                warn(QStringLiteral("keyprobe: FAIL со скрытым габаритом кожа детали не вернулась "
+                                    "в сплошную (stock=%1 ghost=%2 partMode=%3)")
+                         .arg(stockHidden).arg(ghostHidden).arg(partModeAfter));
+        } else {
+            say(QStringLiteral("keyprobe: поле съёма не готово (%1) - связь заготовки и кожи "
+                               "не проверена").arg(state));
+        }
+
+        // Стенка заготовки стоит на габарите поля: боковой зазор - ноль
+        // (GcodeViewer3D.qml, shellGapSideMm). Положительный зазор сдвигал стенку
+        // наружу и оставлял вдоль верхнего ребра полку, сквозь которую читались
+        // фон и нутро слитка. Проверка красна до правки.
+        const double sideGap = root->property("shellGapSideMm").toDouble();
+        ++total;
+        if (sideGap == 0.0)
+            ++fired;
+        else
+            warn(QStringLiteral("keyprobe: FAIL боковой зазор стенок заготовки не ноль: %1 мм")
+                     .arg(sideGap));
     }
 
     if (fired == total && total > 0) {

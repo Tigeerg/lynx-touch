@@ -566,6 +566,176 @@ double shiftedArcCritical(const StockProfilePiece& piece, double l2, double d2,
 
 } // namespace
 
+namespace {
+
+// Минимум H(P) = min_t (z(t) + h(r(t))) одного хода A -> B в точке (px, py):
+// общая часть StockField::sweepExact (узел сетки) и точечного съёма границы
+// реза (stockCutBoundary: произвольная точка ребра клетки). px/py - смещение
+// точки от начала хода, мм; az, dz, dx, dy, l2 и оба корня - из хода.
+// Возвращает высоту в машинном Z, мм; +бесконечность - ни один участок не
+// достаёт точки. Вынесено, чтобы узел поля и точка границы считались ОДНОЙ
+// формулой (правка минимума не разъезжается между полем и границей).
+double sweepNodeHeight(const StockProfile& prof, double az, double dz,
+                       double dx, double dy, double l2, double rootL2, double rootL2dz,
+                       double px, double py)
+{
+    // Проекция точки на прямую хода: tStar; d2 - квадрат расстояния до
+    // прямой. Через них r(t)^2 = l2 * (t - tStar)^2 + d2.
+    const double tStar = (px * dx + py * dy) / l2;
+    const double d2 = std::max(0.0, px * px + py * py - l2 * tStar * tStar);
+    const double d = std::sqrt(d2);
+    // Минимум H(P) по участкам. На каждом участке f(t) выпукла, поэтому
+    // минимум стоит в критической точке, зажатой в под-интервал радиуса,
+    // либо на его конце. h считается прямо по участку: обращение к общей
+    // огибающей на каждого кандидата повторяло бы обход участков.
+    const auto pieceHeight = [](const StockProfilePiece& piece, double r) {
+        if (piece.kind == StockProfilePiece::Kind::Line) {
+            const double spanR = piece.r1Mm - piece.r0Mm;
+            return spanR > 0.0
+                    ? piece.h0Mm + (piece.h1Mm - piece.h0Mm) * (r - piece.r0Mm) / spanR
+                    : piece.h0Mm;
+        }
+        const double q = r - piece.centerRMm;
+        const double inside = piece.arcRadiusMm * piece.arcRadiusMm - q * q;
+        return inside > 0.0 ? piece.centerHMm - std::sqrt(inside) : piece.centerHMm;
+    };
+    const auto heightAtT = [&](const StockProfilePiece& piece, double t) {
+        const double u = t - tStar;
+        return az + dz * t + pieceHeight(piece, std::sqrt(l2 * u * u + d2));
+    };
+    double best = std::numeric_limits<double>::infinity();
+
+    // Один участок - почти все инструменты (плоская, шар, фаска, сверло):
+    // под-интервал радиуса один, и минимум берётся за одно обращение к h.
+    if (prof.pieces.size() == 1) {
+        const StockProfilePiece& piece = prof.pieces.front();
+        const double r1sq = piece.r1Mm * piece.r1Mm;
+        if (r1sq + 1e-9 < d2) {
+            return best;                   // точка дальше инструмента: не режет
+        }
+        const double w = r1sq > d2 ? std::sqrt((r1sq - d2) / l2) : 0.0;
+        const double lo = std::max(0.0, tStar - w);
+        const double hi = std::min(1.0, tStar + w);
+        if (!(hi >= lo)) {
+            return best;
+        }
+        if (piece.kind == StockProfilePiece::Kind::Line) {
+            const double spanR = piece.r1Mm - piece.r0Mm;
+            const double slope = spanR > 0.0 ? (piece.h1Mm - piece.h0Mm) / spanR : 0.0;
+            if (!(slope > 0.0)) {
+                // Плоское острие: h постоянна на всём резе, минимум z на
+                // конце под-интервала - ни sqrt, ни обращения к профилю.
+                best = std::min(az + dz * lo, az + dz * hi) + piece.h0Mm;
+            } else {
+                double u = 0.0;
+                const double denom = slope * slope * l2 - dz * dz;
+                if (denom > 0.0 && d > 0.0) {
+                    u = -dz * d / (rootL2 * std::sqrt(denom));
+                }
+                const double t = std::min(hi, std::max(lo, tStar + u));
+                best = heightAtT(piece, t);
+            }
+        } else if (std::fabs(piece.centerRMm) <= RADIUS_EPS_MM
+                   && piece.r0Mm <= RADIUS_EPS_MM) {
+            // Дуга с центром на оси - истинная сфера: минимум замкнут.
+            double u = 0.0;
+            const double inside = piece.arcRadiusMm * piece.arcRadiusMm - d2;
+            if (inside > 0.0) {
+                u = -dz * std::sqrt(inside) / (rootL2 * rootL2dz);
+            }
+            const double t = std::min(hi, std::max(lo, tStar + u));
+            best = heightAtT(piece, t);
+        } else {
+            const double t = shiftedArcCritical(piece, l2, d2, tStar, dz, lo, hi);
+            best = heightAtT(piece, t);
+        }
+        return best;
+    }
+
+    for (const StockProfilePiece& piece : prof.pieces) {
+        const double r0sq = piece.r0Mm * piece.r0Mm;
+        const double r1sq = piece.r1Mm * piece.r1Mm;
+        if (r1sq + 1e-9 < d2) {
+            continue;                      // точка дальше участка: он не режет
+        }
+        const double w0 = r0sq > d2 ? std::sqrt((r0sq - d2) / l2) : 0.0;
+        const double w1 = r1sq > d2 ? std::sqrt((r1sq - d2) / l2) : 0.0;
+        // Критическая точка участка (u = t - tStar) - один раз на точку.
+        double uCritical = std::numeric_limits<double>::infinity();
+        bool shiftedArc = false;
+        if (piece.kind == StockProfilePiece::Kind::Line) {
+            const double spanR = piece.r1Mm - piece.r0Mm;
+            const double slope = spanR > 0.0 ? (piece.h1Mm - piece.h0Mm) / spanR : 0.0;
+            if (slope > 0.0 && slope * slope * l2 > dz * dz && d > 0.0) {
+                uCritical = -dz * d / (rootL2 * std::sqrt(slope * slope * l2 - dz * dz));
+            }
+        } else if (std::fabs(piece.centerRMm) <= RADIUS_EPS_MM
+                   && piece.r0Mm <= RADIUS_EPS_MM) {
+            const double inside = piece.arcRadiusMm * piece.arcRadiusMm - d2;
+            if (inside > 0.0) {
+                uCritical = -dz * std::sqrt(inside) / (rootL2 * rootL2dz);
+            }
+        } else {
+            shiftedArc = true;             // скругление угла: Ньютон на интервале
+        }
+        // Под-интервалы, где r(t) лежит в [r0, r1]: tStar + [w0, w1] и
+        // tStar - [w1, w0].
+        for (int side = 0; side < 2; ++side) {
+            const double lo = std::max(0.0, tStar + (side == 0 ? w0 : -w1));
+            const double hi = std::min(1.0, tStar + (side == 0 ? w1 : -w0));
+            if (!(hi >= lo)) {
+                continue;
+            }
+            best = std::min(best, heightAtT(piece, lo));
+            if (hi > lo) {
+                best = std::min(best, heightAtT(piece, hi));
+            }
+            if (std::isfinite(uCritical)) {
+                const double t = std::min(hi, std::max(lo, tStar + uCritical));
+                best = std::min(best, heightAtT(piece, t));
+            } else if (shiftedArc) {
+                const double t = shiftedArcCritical(piece, l2, d2, tStar, dz, lo, hi);
+                best = std::min(best, heightAtT(piece, t));
+            }
+        }
+    }
+    return best;
+}
+
+// Глубина точечного съёма хода A -> B в точке (px, py), мм: та же величина,
+// что хранит узел поля (глубина от верха, обрезана толщиной). Ноль - точка не
+// тронута. Вертикальный ход (l2 == 0) разбирается как в StockField::sweepExact.
+double sweepPointDepth(const StockProfile& prof, const std::array<double, 3>& a,
+                       const std::array<double, 3>& b, double px, double py,
+                       double topMm, double thicknessMm)
+{
+    if (prof.empty()) {
+        return 0.0;
+    }
+    const double dx = b[0] - a[0];
+    const double dy = b[1] - a[1];
+    const double dz = b[2] - a[2];
+    const double l2 = dx * dx + dy * dy;
+    double best = std::numeric_limits<double>::infinity();
+    if (!(l2 > 0.0)) {
+        const double r = std::hypot(px - a[0], py - a[1]);
+        if (r > prof.maxRadiusMm) {
+            return 0.0;
+        }
+        best = std::min(a[2], b[2]) + prof.heightAt(r);
+    } else {
+        best = sweepNodeHeight(prof, a[2], dz, dx, dy, l2, std::sqrt(l2),
+                               std::sqrt(l2 + dz * dz), px - a[0], py - a[1]);
+    }
+    if (!std::isfinite(best)) {
+        return 0.0;
+    }
+    const double depth = topMm - best;
+    return depth > 0.0 ? std::min(depth, thicknessMm) : 0.0;
+}
+
+} // namespace
+
 void StockField::sweepExact(const StockCutter& cutter,
                             const std::array<double, 3>& aMm,
                             const std::array<double, 3>& bMm)
@@ -654,126 +824,8 @@ void StockField::sweepExact(const StockCutter& cutter,
         const std::size_t row = std::size_t(iy) * std::size_t(nx_);
         for (int ix = ix0; ix <= ix1; ++ix) {
             const double px = nodeXMm(ix) - ax;
-            // Проекция узла на прямую хода: tStar; d2 - квадрат расстояния до
-            // прямой. Через них r(t)^2 = l2 * (t - tStar)^2 + d2.
-            const double tStar = (px * dx + py * dy) / l2;
-            const double d2 = std::max(0.0, px * px + py * py - l2 * tStar * tStar);
-            const double d = std::sqrt(d2);
-            // Минимум H(P) по участкам. На каждом участке f(t) выпукла, поэтому
-            // минимум стоит в критической точке, зажатой в под-интервал радиуса,
-            // либо на его конце. h считается прямо по участку: обращение к общей
-            // огибающей на каждого кандидата повторяло бы обход участков.
-            const auto pieceHeight = [](const StockProfilePiece& piece, double r) {
-                if (piece.kind == StockProfilePiece::Kind::Line) {
-                    const double spanR = piece.r1Mm - piece.r0Mm;
-                    return spanR > 0.0
-                            ? piece.h0Mm + (piece.h1Mm - piece.h0Mm) * (r - piece.r0Mm) / spanR
-                            : piece.h0Mm;
-                }
-                const double q = r - piece.centerRMm;
-                const double inside = piece.arcRadiusMm * piece.arcRadiusMm - q * q;
-                return inside > 0.0 ? piece.centerHMm - std::sqrt(inside) : piece.centerHMm;
-            };
-            const auto heightAtT = [&](const StockProfilePiece& piece, double t) {
-                const double u = t - tStar;
-                return az + dz * t + pieceHeight(piece, std::sqrt(l2 * u * u + d2));
-            };
-            double best = std::numeric_limits<double>::infinity();
-
-            // Один участок - почти все инструменты (плоская, шар, фаска, сверло):
-            // под-интервал радиуса один, и минимум берётся за одно обращение к h.
-            if (prof.pieces.size() == 1) {
-                const StockProfilePiece& piece = prof.pieces.front();
-                const double r1sq = piece.r1Mm * piece.r1Mm;
-                if (r1sq + 1e-9 < d2) {
-                    continue;                  // узел дальше инструмента: не режет
-                }
-                const double w = r1sq > d2 ? std::sqrt((r1sq - d2) / l2) : 0.0;
-                const double lo = std::max(0.0, tStar - w);
-                const double hi = std::min(1.0, tStar + w);
-                if (!(hi >= lo)) {
-                    continue;
-                }
-                if (piece.kind == StockProfilePiece::Kind::Line) {
-                    const double spanR = piece.r1Mm - piece.r0Mm;
-                    const double slope = spanR > 0.0 ? (piece.h1Mm - piece.h0Mm) / spanR : 0.0;
-                    if (!(slope > 0.0)) {
-                        // Плоское острие: h постоянна на всём резе, минимум z на
-                        // конце под-интервала - ни sqrt, ни обращения к профилю.
-                        best = std::min(az + dz * lo, az + dz * hi) + piece.h0Mm;
-                    } else {
-                        double u = 0.0;
-                        const double denom = slope * slope * l2 - dz * dz;
-                        if (denom > 0.0 && d > 0.0) {
-                            u = -dz * d / (rootL2 * std::sqrt(denom));
-                        }
-                        const double t = std::min(hi, std::max(lo, tStar + u));
-                        best = heightAtT(piece, t);
-                    }
-                } else if (std::fabs(piece.centerRMm) <= RADIUS_EPS_MM
-                           && piece.r0Mm <= RADIUS_EPS_MM) {
-                    // Дуга с центром на оси - истинная сфера: минимум замкнут.
-                    double u = 0.0;
-                    const double inside = piece.arcRadiusMm * piece.arcRadiusMm - d2;
-                    if (inside > 0.0) {
-                        u = -dz * std::sqrt(inside) / (rootL2 * rootL2dz);
-                    }
-                    const double t = std::min(hi, std::max(lo, tStar + u));
-                    best = heightAtT(piece, t);
-                } else {
-                    const double t = shiftedArcCritical(piece, l2, d2, tStar, dz, lo, hi);
-                    best = heightAtT(piece, t);
-                }
-            } else {
-                for (const StockProfilePiece& piece : prof.pieces) {
-                    const double r0sq = piece.r0Mm * piece.r0Mm;
-                    const double r1sq = piece.r1Mm * piece.r1Mm;
-                    if (r1sq + 1e-9 < d2) {
-                        continue;              // узел дальше участка: он не режет
-                    }
-                    const double w0 = r0sq > d2 ? std::sqrt((r0sq - d2) / l2) : 0.0;
-                    const double w1 = r1sq > d2 ? std::sqrt((r1sq - d2) / l2) : 0.0;
-                    // Критическая точка участка (u = t - tStar) - один раз на узел.
-                    double uCritical = std::numeric_limits<double>::infinity();
-                    bool shiftedArc = false;
-                    if (piece.kind == StockProfilePiece::Kind::Line) {
-                        const double spanR = piece.r1Mm - piece.r0Mm;
-                        const double slope = spanR > 0.0 ? (piece.h1Mm - piece.h0Mm) / spanR : 0.0;
-                        if (slope > 0.0 && slope * slope * l2 > dz * dz && d > 0.0) {
-                            uCritical = -dz * d / (rootL2 * std::sqrt(slope * slope * l2 - dz * dz));
-                        }
-                    } else if (std::fabs(piece.centerRMm) <= RADIUS_EPS_MM
-                               && piece.r0Mm <= RADIUS_EPS_MM) {
-                        const double inside = piece.arcRadiusMm * piece.arcRadiusMm - d2;
-                        if (inside > 0.0) {
-                            uCritical = -dz * std::sqrt(inside)
-                                    / (rootL2 * rootL2dz);
-                        }
-                    } else {
-                        shiftedArc = true;     // скругление угла: Ньютон на интервале
-                    }
-                    // Под-интервалы, где r(t) лежит в [r0, r1]: tStar + [w0, w1] и
-                    // tStar - [w1, w0].
-                    for (int side = 0; side < 2; ++side) {
-                        const double lo = std::max(0.0, tStar + (side == 0 ? w0 : -w1));
-                        const double hi = std::min(1.0, tStar + (side == 0 ? w1 : -w0));
-                        if (!(hi >= lo)) {
-                            continue;
-                        }
-                        best = std::min(best, heightAtT(piece, lo));
-                        if (hi > lo) {
-                            best = std::min(best, heightAtT(piece, hi));
-                        }
-                        if (std::isfinite(uCritical)) {
-                            const double t = std::min(hi, std::max(lo, tStar + uCritical));
-                            best = std::min(best, heightAtT(piece, t));
-                        } else if (shiftedArc) {
-                            const double t = shiftedArcCritical(piece, l2, d2, tStar, dz, lo, hi);
-                            best = std::min(best, heightAtT(piece, t));
-                        }
-                    }
-                }
-            }
+            const double best = sweepNodeHeight(prof, az, dz, dx, dy, l2, rootL2,
+                                                rootL2dz, px, py);
             if (!std::isfinite(best)) {
                 continue;
             }
@@ -898,6 +950,360 @@ StockWallMesh stockCutWall(const StockBounds& bounds, double cellMm,
     mesh.vertices.reserve(contour.size() * 4 * 4);
     mesh.indices.reserve(contour.size() * 6);
     for (const StockContourSegment& segment : contour) {
+        const double d0 = bilinearDepth(depthMm, countX, countY,
+                                        segment.x0Mm, segment.y0Mm, bounds, cellMm);
+        const double d1 = bilinearDepth(depthMm, countX, countY,
+                                        segment.x1Mm, segment.y1Mm, bounds, cellMm);
+        // Низ на дне реза, верх на плоскости нетронутого верха: стык верх/дно
+        // идёт по одному контуру, щели нет.
+        const std::uint32_t base = std::uint32_t(mesh.vertices.size() / 4);
+        const float quad[4][4] = {
+            {float(segment.x0Mm), float(segment.y0Mm), float(double(zTop) - d0), float(d0)},
+            {float(segment.x1Mm), float(segment.y1Mm), float(double(zTop) - d1), float(d1)},
+            {float(segment.x1Mm), float(segment.y1Mm), zTop, float(d1)},
+            {float(segment.x0Mm), float(segment.y0Mm), zTop, float(d0)},
+        };
+        for (int v = 0; v < 4; ++v) {
+            for (int c = 0; c < 4; ++c) {
+                mesh.vertices.push_back(quad[v][c]);
+            }
+        }
+        mesh.indices.push_back(base + 0);
+        mesh.indices.push_back(base + 1);
+        mesh.indices.push_back(base + 2);
+        mesh.indices.push_back(base + 0);
+        mesh.indices.push_back(base + 2);
+        mesh.indices.push_back(base + 3);
+    }
+    return mesh;
+}
+
+namespace {
+
+// Расстояние от точки до отрезка в XY, мм.
+double pointSegmentDistanceMm(double px, double py, double ax, double ay,
+                              double bx, double by)
+{
+    const double dx = bx - ax;
+    const double dy = by - ay;
+    const double l2 = dx * dx + dy * dy;
+    double t = 0.0;
+    if (l2 > 0.0) {
+        t = std::min(1.0, std::max(0.0, ((px - ax) * dx + (py - ay) * dy) / l2));
+    }
+    return std::hypot(px - (ax + dx * t), py - (ay + dy * t));
+}
+
+} // namespace
+
+StockBoundaryResult stockCutBoundary(const PathData& data, const StockBounds& bounds,
+                                     double cellMm, const std::vector<StockCutter>& cutters,
+                                     const std::vector<float>& depthMm, int countX, int countY,
+                                     double cutMm, StockBoundaryCache* cache, int refineSteps)
+{
+    StockBoundaryResult out;
+    const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+    if (countX < 2 || countY < 2 || !(cellMm > 0.0) || cutters.empty()
+            || depthMm.size() < std::size_t(countX) * std::size_t(countY)) {
+        return out;
+    }
+    const double thicknessMm = bounds.zMaxMm - bounds.zMinMm;
+    const std::size_t n = data.pts.size() / 3;
+    if (n < 2 || !(thicknessMm > 0.0)) {
+        return out;
+    }
+    const int cellsX = countX - 1;
+    const int cellsY = countY - 1;
+    const std::size_t cellCount = std::size_t(cellsX) * std::size_t(cellsY);
+
+    // Состояние: кэш вызывающего (живой тик) или местный (сборка без состояния).
+    StockBoundaryCache local;
+    StockBoundaryCache& state = (cache != nullptr) ? *cache : local;
+    const bool reuse = cache != nullptr
+            && state.countX == countX && state.countY == countY && state.cellMm == cellMm
+            && state.bounds.xMinMm == bounds.xMinMm && state.bounds.xMaxMm == bounds.xMaxMm
+            && state.bounds.yMinMm == bounds.yMinMm && state.bounds.yMaxMm == bounds.yMaxMm
+            && state.bounds.zMinMm == bounds.zMinMm && state.bounds.zMaxMm == bounds.zMaxMm
+            && state.cellSegments.size() == cellCount
+            && state.depth.size() == depthMm.size();
+
+    if (!reuse) {
+        // Ходы в машинных координатах и номер инструмента этапа - тем же
+        // правилом, что StockWalk::advanceTo: этап определяется длиной пути до
+        // начала хода.
+        state.bounds = bounds;
+        state.countX = countX;
+        state.countY = countY;
+        state.cellMm = cellMm;
+        state.moveA.clear();
+        state.moveB.clear();
+        state.moveCutter.clear();
+        state.moveA.reserve(n - 1);
+        state.moveB.reserve(n - 1);
+        state.moveCutter.reserve(n - 1);
+        std::vector<double> starts;
+        starts.reserve(data.stages.size());
+        for (const StageRange& stage : data.stages) {
+            starts.push_back(stage.start * data.total);
+        }
+        std::size_t stage = 0;
+        for (std::size_t i = 1; i < n; ++i) {
+            const double d0 = data.cum[i - 1];
+            while (stage + 1 < starts.size() && starts[stage + 1] <= d0) {
+                ++stage;
+            }
+            const int ci = int(std::min(stage, cutters.size() - 1));
+            if (!(cutters[std::size_t(ci)].maxRadiusMm > 0.0)) {
+                continue;
+            }
+            const std::array<double, 3> a{data.pts[(i - 1) * 3], -data.pts[(i - 1) * 3 + 2],
+                                          data.pts[(i - 1) * 3 + 1]};
+            const std::array<double, 3> b{data.pts[i * 3], -data.pts[i * 3 + 2],
+                                          data.pts[i * 3 + 1]};
+            // Ход целиком выше заготовки не режет: как в StockField::sweepExact.
+            if (std::min(a[2], b[2]) >= bounds.zMaxMm) {
+                continue;
+            }
+            state.moveA.push_back(a);
+            state.moveB.push_back(b);
+            state.moveCutter.push_back(ci);
+        }
+        if (state.moveA.empty()) {
+            return out;
+        }
+
+        // Раскладка ходов по плиткам: точка перебирает ходы только своей плитки,
+        // а плитка получает каждый ход, чья капсула её пересекает, поэтому
+        // выборка полна (капсула хода - bbox отрезка плюс радиус инструмента).
+        // Плитка в две клетки: замер на Test_model (узел 0.5) - 8 клеток дали
+        // 45.2 млн обращений к глубине и 391 мс, 2 клетки - 15.6 млн и 160 мс.
+        constexpr int TILE_CELLS = 2;
+        state.tileMm = double(TILE_CELLS) * cellMm;
+        state.tileCountX = std::max(1, int(std::ceil(
+                (bounds.xMaxMm - bounds.xMinMm) / state.tileMm)));
+        state.tileCountY = std::max(1, int(std::ceil(
+                (bounds.yMaxMm - bounds.yMinMm) / state.tileMm)));
+        const int tx = state.tileCountX;
+        const int ty = state.tileCountY;
+        const double tileMm = state.tileMm;
+        state.buckets.assign(std::size_t(tx) * std::size_t(ty), {});
+        for (std::size_t mi = 0; mi < state.moveA.size(); ++mi) {
+            const double radius = cutters[std::size_t(state.moveCutter[mi])].maxRadiusMm;
+            const double x0 = std::min(state.moveA[mi][0], state.moveB[mi][0]) - radius;
+            const double x1 = std::max(state.moveA[mi][0], state.moveB[mi][0]) + radius;
+            const double y0 = std::min(state.moveA[mi][1], state.moveB[mi][1]) - radius;
+            const double y1 = std::max(state.moveA[mi][1], state.moveB[mi][1]) + radius;
+            const int i0 = std::max(0, int(std::floor((x0 - bounds.xMinMm) / tileMm)));
+            const int i1 = std::min(tx - 1, int(std::floor((x1 - bounds.xMinMm) / tileMm)));
+            const int j0 = std::max(0, int(std::floor((y0 - bounds.yMinMm) / tileMm)));
+            const int j1 = std::min(ty - 1, int(std::floor((y1 - bounds.yMinMm) / tileMm)));
+            for (int jy = j0; jy <= j1; ++jy) {
+                for (int ix = i0; ix <= i1; ++ix) {
+                    state.buckets[std::size_t(jy) * std::size_t(tx) + std::size_t(ix)]
+                            .push_back(int(mi));
+                }
+            }
+        }
+        state.cellSegments.assign(cellCount, {});
+    }
+
+    const int tx = state.tileCountX;
+    const int ty = state.tileCountY;
+    const double tileMm = state.tileMm;
+    const std::vector<std::array<double, 3>>& moveA = state.moveA;
+    const std::vector<std::array<double, 3>>& moveB = state.moveB;
+    const std::vector<int>& moveCutter = state.moveCutter;
+    const std::vector<std::vector<int>>& buckets = state.buckets;
+
+    // Точная глубина в произвольной точке: перебор ходов своей плитки, каждый -
+    // той же формулой, что узел поля (sweepPointDepth).
+    const auto depthAt = [&](double xMm, double yMm) {
+        const int ix = std::min(tx - 1, std::max(0, int(std::floor((xMm - bounds.xMinMm) / tileMm))));
+        const int iy = std::min(ty - 1, std::max(0, int(std::floor((yMm - bounds.yMinMm) / tileMm))));
+        double depth = 0.0;
+        for (int mi : buckets[std::size_t(iy) * std::size_t(tx) + std::size_t(ix)]) {
+            const double d = sweepPointDepth(cutters[std::size_t(moveCutter[std::size_t(mi)])].profile,
+                                             moveA[std::size_t(mi)], moveB[std::size_t(mi)],
+                                             xMm, yMm, bounds.zMaxMm, thicknessMm);
+            if (d > depth) {
+                depth = d;
+            }
+            ++out.evaluations;
+        }
+        return depth;
+    };
+
+    const int steps = std::max(1, refineSteps);
+    const auto at = [&](int ix, int iy) {
+        return double(depthMm[std::size_t(iy) * std::size_t(countX) + std::size_t(ix)]);
+    };
+    // Отрезки одной клетки: marching squares по знакам узлов поля, положение
+    // перехода на ребре уточняется делением отрезка по ТОЧНОЙ аналитической
+    // глубине. Знак на концах ребра взят из поля (в узле глубина точна), поэтому
+    // скобка верна, а узел задаёт лишь выбор ребра - ошибка от узла не зависит.
+    const auto computeCell = [&](int ix, int iy, std::vector<StockContourSegment>& segments,
+                                 int& crossingEdges) {
+        segments.clear();
+        crossingEdges = 0;
+        const double x0 = bounds.xMinMm + double(ix) * cellMm;
+        const double x1 = x0 + cellMm;
+        const double y0 = bounds.yMinMm + double(iy) * cellMm;
+        const double y1 = y0 + cellMm;
+        // Углы 0..3: 0 - (x0, y0), 1 - (x1, y0), 2 - (x1, y1), 3 - (x0, y1).
+        const double f[4] = {at(ix, iy) - cutMm, at(ix + 1, iy) - cutMm,
+                             at(ix + 1, iy + 1) - cutMm, at(ix, iy + 1) - cutMm};
+        const double cx[4] = {x0, x1, x1, x0};
+        const double cy[4] = {y0, y0, y1, y1};
+        double px[4];
+        double py[4];
+        int count = 0;
+        for (int e = 0; e < 4; ++e) {
+            const int a = e;
+            const int b = (e + 1) & 3;
+            if ((f[a] < 0.0) == (f[b] < 0.0)) {
+                continue;
+            }
+            const bool cutA = !(f[a] < 0.0);
+            double lo = 0.0;
+            double hi = 1.0;
+            for (int s = 0; s < steps; ++s) {
+                const double mid = 0.5 * (lo + hi);
+                const double dm = depthAt(cx[a] + (cx[b] - cx[a]) * mid,
+                                          cy[a] + (cy[b] - cy[a]) * mid);
+                if ((!(dm < cutMm)) == cutA) {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+            const double t = 0.5 * (lo + hi);
+            px[count] = cx[a] + (cx[b] - cx[a]) * t;
+            py[count] = cy[a] + (cy[b] - cy[a]) * t;
+            ++count;
+        }
+        if (count == 2) {
+            segments.push_back(StockContourSegment{px[0], py[0], px[1], py[1]});
+            crossingEdges = 2;
+        } else if (count == 4) {
+            // Седло: знак среднего по клетке решает, какая пара отрезков - то же
+            // правило, что у stockCutContour (детерминизм).
+            const double center = 0.25 * (f[0] + f[1] + f[2] + f[3]);
+            if (center < 0.0) {
+                segments.push_back(StockContourSegment{px[0], py[0], px[1], py[1]});
+                segments.push_back(StockContourSegment{px[2], py[2], px[3], py[3]});
+            } else {
+                segments.push_back(StockContourSegment{px[0], py[0], px[3], py[3]});
+                segments.push_back(StockContourSegment{px[1], py[1], px[2], py[2]});
+            }
+            crossingEdges = 4;
+        }
+    };
+
+    // Какие клетки считать: при первой сборке все, дальше - только те, чьи узлы
+    // изменились (съём монотонен: глубина узла только растёт). Цена тика
+    // пропорциональна новому участку границы, а не всей границе.
+    std::vector<int> dirty;
+    if (!reuse) {
+        dirty.reserve(cellCount);
+        for (std::size_t cell = 0; cell < cellCount; ++cell) {
+            dirty.push_back(int(cell));
+        }
+    } else {
+        for (int iy = 0; iy < countY; ++iy) {
+            for (int ix = 0; ix < countX; ++ix) {
+                const std::size_t idx = std::size_t(iy) * std::size_t(countX) + std::size_t(ix);
+                if (depthMm[idx] == state.depth[idx]) {
+                    continue;
+                }
+                // Узел (ix, iy) входит в клетки (ix-1..ix, iy-1..iy).
+                for (int cy = iy - 1; cy <= iy; ++cy) {
+                    for (int cx = ix - 1; cx <= ix; ++cx) {
+                        if (cx < 0 || cy < 0 || cx >= cellsX || cy >= cellsY) {
+                            continue;
+                        }
+                        dirty.push_back(cy * cellsX + cx);
+                    }
+                }
+            }
+        }
+        std::sort(dirty.begin(), dirty.end());
+        dirty.erase(std::unique(dirty.begin(), dirty.end()), dirty.end());
+    }
+
+    std::vector<StockContourSegment> segments;
+    for (int cell : dirty) {
+        int crossingEdges = 0;
+        computeCell(cell % cellsX, cell / cellsX, segments, crossingEdges);
+        state.cellSegments[std::size_t(cell)] = segments;
+        out.crossingEdges += crossingEdges;
+    }
+    // Плоский список отрезков: порядок клеток фиксирован, значит детерминирован.
+    for (const std::vector<StockContourSegment>& cell : state.cellSegments) {
+        out.segments.insert(out.segments.end(), cell.begin(), cell.end());
+    }
+    state.depth = depthMm;                     // поле на момент сборки
+    out.buildMs = msSince(t0);
+    return out;
+}
+
+std::vector<float> stockCutSignedDistance(const StockBounds& bounds, double cellMm,
+                                          const std::vector<float>& depthMm,
+                                          int countX, int countY,
+                                          const std::vector<StockContourSegment>& segments,
+                                          double cutMm, double radiusMm)
+{
+    std::vector<float> out;
+    if (countX < 2 || countY < 2 || !(cellMm > 0.0) || !(radiusMm > 0.0)
+            || depthMm.size() < std::size_t(countX) * std::size_t(countY)) {
+        return out;
+    }
+    out.assign(std::size_t(countX) * std::size_t(countY), float(radiusMm));
+    for (int iy = 0; iy < countY; ++iy) {
+        for (int ix = 0; ix < countX; ++ix) {
+            const std::size_t idx = std::size_t(iy) * std::size_t(countX) + std::size_t(ix);
+            // Знак - по глубине узла (в узле она точна): снято - отрицательно.
+            if (double(depthMm[idx]) > cutMm) {
+                out[idx] = float(-radiusMm);
+            }
+        }
+    }
+    for (const StockContourSegment& segment : segments) {
+        const double x0 = std::min(segment.x0Mm, segment.x1Mm) - radiusMm;
+        const double x1 = std::max(segment.x0Mm, segment.x1Mm) + radiusMm;
+        const double y0 = std::min(segment.y0Mm, segment.y1Mm) - radiusMm;
+        const double y1 = std::max(segment.y0Mm, segment.y1Mm) + radiusMm;
+        const int ix0 = std::max(0, int(std::ceil((x0 - bounds.xMinMm) / cellMm)));
+        const int ix1 = std::min(countX - 1, int(std::floor((x1 - bounds.xMinMm) / cellMm)));
+        const int iy0 = std::max(0, int(std::ceil((y0 - bounds.yMinMm) / cellMm)));
+        const int iy1 = std::min(countY - 1, int(std::floor((y1 - bounds.yMinMm) / cellMm)));
+        for (int iy = iy0; iy <= iy1; ++iy) {
+            const double py = bounds.yMinMm + double(iy) * cellMm;
+            for (int ix = ix0; ix <= ix1; ++ix) {
+                const double px = bounds.xMinMm + double(ix) * cellMm;
+                const double dist = pointSegmentDistanceMm(px, py, segment.x0Mm, segment.y0Mm,
+                                                           segment.x1Mm, segment.y1Mm);
+                const std::size_t idx = std::size_t(iy) * std::size_t(countX) + std::size_t(ix);
+                if (dist < std::fabs(double(out[idx]))) {
+                    out[idx] = float(out[idx] < 0.0f ? -dist : dist);
+                }
+            }
+        }
+    }
+    return out;
+}
+
+StockWallMesh stockCutWallFromSegments(const StockBounds& bounds, double cellMm,
+                                       const std::vector<float>& depthMm, int countX, int countY,
+                                       const std::vector<StockContourSegment>& segments)
+{
+    StockWallMesh mesh;
+    if (segments.empty()) {
+        return mesh;
+    }
+    const float zTop = float(bounds.zMaxMm);
+    mesh.vertices.reserve(segments.size() * 4 * 4);
+    mesh.indices.reserve(segments.size() * 6);
+    for (const StockContourSegment& segment : segments) {
         const double d0 = bilinearDepth(depthMm, countX, countY,
                                         segment.x0Mm, segment.y0Mm, bounds, cellMm);
         const double d1 = bilinearDepth(depthMm, countX, countY,

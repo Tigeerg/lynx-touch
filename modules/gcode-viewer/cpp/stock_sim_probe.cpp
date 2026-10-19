@@ -35,6 +35,15 @@
 // Прежние случаи (flat_sweep, ball_plunge, cone_plunge, near_miss_step) остаются
 // сверкой старой выборки по таблице: их числа не трогаются.
 //
+// 1в. Точная граница реза (PLAN-STOCK.md, 1.5). Случаи boundary_wall и
+// boundary_ball мерят ошибку границы в МИЛЛИМЕТРАХ против аналитики (капсула
+// радиуса 3 и круг радиуса s05) на узлах 0.5 и 0.2 мм и сравнивают три подхода:
+// marching squares по полю (было), поле в 5-8 раз мельче и точную границу
+// (stockCutBoundary). boundary_drawn - нулевой уровень знакового расстояния
+// (им рисуется цвет и линия, stocksurface.frag). boundary_incremental держит
+// совпадение границы с состоянием (StockBoundaryCache) и полной сборки после
+// подрастания поля.
+//
 // 2. Замер. Время одного прохода длиной 50 мм и время всего Test_model.ngc
 // (все ходы, включая быстрые, инструмент этапа, габарит из UI_STOCK) при узле
 // 0.5 и 0.2 мм - это предложения пресетов из DESIGN.md. Печатаются строки
@@ -54,9 +63,11 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <numeric>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
@@ -1251,6 +1262,218 @@ int main(int argc, char** argv)
                    wallOk && !contour.empty());
     }
 
+    // 7г. Точная граница реза (PLAN-STOCK.md, 1.5): ОТДЕЛЬНОЕ представление,
+    // независимое от узла поля. Мера - ошибка границы в МИЛЛИМЕТРАХ против
+    // аналитики, на двух узлах поля (0.5 - умолчание med, 0.2 - план). Одной
+    // мерой меряются три подхода:
+    //   coarse - marching squares по полю (как было: граница = порог поля),
+    //   fine   - поле мельче (0.1 и 0.0625 мм) и marching squares по нему,
+    //   exact  - stockCutBoundary (переход ребра уточняется по точной глубине хода).
+    // Стенка - плоская фреза по прямой (граница - капсула радиуса 3 вокруг
+    // отрезка), шар - врезание шара (граница - круг радиуса s05 из аналитики
+    // профиля, той же, что у случая stocksurface_exact). Ещё меряется НАРИСОВАННАЯ
+    // граница: нулевой уровень знакового расстояния (stockCutSignedDistance) -
+    // им фрагмент рисует цвет и линию (stocksurface.frag).
+    {
+        const double cutMm = 0.05;
+        gv::StockBounds bounds;
+        bounds.xMinMm = -5.0;
+        bounds.xMaxMm = 5.0;
+        bounds.yMinMm = -5.0;
+        bounds.yMaxMm = 5.0;
+        bounds.zMinMm = -5.0;
+        bounds.zMaxMm = 0.0;
+        const double tipZ = -1.0;
+        const double r = 3.0;
+        const double chord = cutMm + r + tipZ - bounds.zMaxMm;
+        const double s05 = std::sqrt(std::max(0.0, r * r - chord * chord));
+
+        const std::string wallProgram =
+            "G21 G90\n"
+            "G0 X-2 Y0 Z5\n"
+            "G1 Z-1 F100\n"
+            "G1 X2 F100\n"
+            "G0 Z5\n";
+        const std::string ballProgram =
+            "G21 G90\n"
+            "G0 X0 Y0 Z5\n"
+            "G1 Z-1 F100\n";
+        const gv::ParseResult wallParsed = gv::parseGcode(wallProgram);
+        const gv::PathData wallData = gv::prepareOrdered(wallParsed.ordered, wallParsed.stages);
+        const gv::ParseResult ballParsed = gv::parseGcode(ballProgram);
+        const gv::PathData ballData = gv::prepareOrdered(ballParsed.ordered, ballParsed.stages);
+        const gv::ToolInfo wallTool = makeTool(ToolSpec{"FLAT", 6.0});
+        const gv::ToolInfo ballTool = makeTool(ToolSpec{"BALL", 6.0});
+
+        // Расстояние точки границы до аналитической границы реза, мм.
+        const auto wallDev = [](double x, double y) {
+            return std::fabs(segmentDistanceMm(x, y, -2.0, 0.0, 2.0, 0.0) - 3.0);
+        };
+        const auto ballDev = [s05](double x, double y) {
+            return std::fabs(std::hypot(x, y) - s05);
+        };
+        const auto measureEnds = [](const std::vector<gv::StockContourSegment>& segments,
+                                    auto dev) {
+            double worst = 0.0;
+            int checked = 0;
+            for (const gv::StockContourSegment& s : segments) {
+                worst = std::max(worst, dev(s.x0Mm, s.y0Mm));
+                worst = std::max(worst, dev(s.x1Mm, s.y1Mm));
+                checked += 2;
+            }
+            return std::pair<int, double>(checked, worst);
+        };
+        // Нулевой уровень знакового расстояния на рёбрах клеток поля - то, что
+        // видно на экране: цвет и линия идут по нему (stocksurface.frag).
+        const auto measureDrawn = [](const gv::StockBounds& b, double cell,
+                                     const std::vector<float>& sd, int nx, int ny,
+                                     double cut, auto dev) {
+            double worst = 0.0;
+            int checked = 0;
+            const auto at = [&](int ix, int iy) {
+                return double(sd[std::size_t(iy) * std::size_t(nx) + std::size_t(ix)]);
+            };
+            for (int iy = 0; iy < ny; ++iy) {
+                for (int ix = 0; ix < nx; ++ix) {
+                    const double x0 = b.xMinMm + ix * cell;
+                    const double y0 = b.yMinMm + iy * cell;
+                    const double f = at(ix, iy);
+                    if (ix + 1 < nx) {
+                        const double g = at(ix + 1, iy);
+                        if ((f < 0.0) != (g < 0.0)) {
+                            const double t = f / (f - g);
+                            worst = std::max(worst, dev(x0 + t * cell, y0));
+                            ++checked;
+                        }
+                    }
+                    if (iy + 1 < ny) {
+                        const double g = at(ix, iy + 1);
+                        if ((f < 0.0) != (g < 0.0)) {
+                            const double t = f / (f - g);
+                            worst = std::max(worst, dev(x0, y0 + t * cell));
+                            ++checked;
+                        }
+                    }
+                }
+            }
+            (void)cut;
+            return std::pair<int, double>(checked, worst);
+        };
+
+        const double cells[2] = {0.5, 0.2};
+        int exactChecked = 0;
+        int drawnChecked = 0;
+        double wallExactWorst = 0.0;
+        double ballExactWorst = 0.0;
+        double drawnWorst = 0.0;
+        bool shapesOk = true;
+        for (double cell : cells) {
+            for (int shape = 0; shape < 2; ++shape) {
+                const gv::PathData& data = shape == 0 ? wallData : ballData;
+                const gv::ToolInfo& tool = shape == 0 ? wallTool : ballTool;
+                const std::function<double(double, double)> dev = shape == 0
+                        ? std::function<double(double, double)>(wallDev)
+                        : std::function<double(double, double)>(ballDev);
+                const char* name = shape == 0 ? "wall" : "ball";
+
+                const gv::StockRunResult run = gv::simulateStock(data, bounds, cell, tool);
+                const gv::StockField& field = run.field;
+                const std::vector<gv::StockCutter> cutters = gv::stockCutterPlan(data, tool);
+                const gv::StockBoundaryResult boundary = gv::stockCutBoundary(
+                    data, bounds, cell, cutters, field.depthMm(),
+                    field.countX(), field.countY(), cutMm);
+                const std::vector<gv::StockContourSegment> coarse = gv::stockCutContour(
+                    bounds, cell, field.depthMm(), field.countX(), field.countY(), cutMm);
+                const auto coarseStat = measureEnds(coarse, dev);
+                const auto exactStat = measureEnds(boundary.segments, dev);
+
+                // Поле мельче: 0.1 мм (пример плана) и 0.0625 мм (узел/8 при 0.5).
+                double fine01 = 0.0;
+                double fine006 = 0.0;
+                {
+                    const gv::StockRunResult f1 = gv::simulateStock(data, bounds, 0.1, tool);
+                    fine01 = measureEnds(gv::stockCutContour(bounds, 0.1, f1.field.depthMm(),
+                                                             f1.field.countX(), f1.field.countY(),
+                                                             cutMm), dev).second;
+                    const gv::StockRunResult f2 = gv::simulateStock(data, bounds, 0.0625, tool);
+                    fine006 = measureEnds(gv::stockCutContour(bounds, 0.0625, f2.field.depthMm(),
+                                                              f2.field.countX(), f2.field.countY(),
+                                                              cutMm), dev).second;
+                }
+                const std::vector<float> sd = gv::stockCutSignedDistance(
+                    bounds, cell, field.depthMm(), field.countX(), field.countY(),
+                    boundary.segments, cutMm, cell * 3.0);
+                const auto drawnStat = measureDrawn(bounds, cell, sd, field.countX(),
+                                                    field.countY(), cutMm, dev);
+
+                std::printf("note boundary_%s cell=%.2f coarse=%.4f fine_0.1=%.4f "
+                            "fine_0.0625=%.4f exact=%.6f drawn=%.4f segs=%d coarse_segs=%d "
+                            "exact_ms=%.1f evals=%lld\n",
+                            name, cell, coarseStat.second, fine01, fine006, exactStat.second,
+                            drawnStat.second, int(boundary.segments.size()), int(coarse.size()),
+                            boundary.buildMs, boundary.evaluations);
+                shapesOk = shapesOk && !boundary.segments.empty()
+                        && boundary.segments.size() == coarse.size();
+                exactChecked += coarseStat.first + exactStat.first;
+                drawnChecked += drawnStat.first;
+                drawnWorst = std::max(drawnWorst, drawnStat.second);
+                if (shape == 0) {
+                    wallExactWorst = std::max(wallExactWorst, exactStat.second);
+                } else {
+                    ballExactWorst = std::max(ballExactWorst, exactStat.second);
+                }
+            }
+        }
+        // Точная граница: допуск 1e-3 мм - на два порядка строже цели 0.05-0.1 мм
+        // и на два-три порядка лучше прежней (coarse). Нарисованная (нулевой
+        // уровень знакового расстояния) - в пределах цели 0.05 мм.
+        reportCase("boundary_wall", exactChecked, wallExactWorst, 1e-3, shapesOk);
+        reportCase("boundary_ball", exactChecked, ballExactWorst, 1e-3, shapesOk);
+        reportCase("boundary_drawn", drawnChecked, drawnWorst, 0.05, drawnChecked > 0);
+
+        // Инкрементальный тик: граница с состоянием (кэш) после подрастания поля
+        // обязана совпасть с полной сборкой отрезок в отрезок, а цена - упасть.
+        // Поле монотонно (глубина узла только растёт), поэтому тик пересчитывает
+        // лишь клетки с изменившимися узлами.
+        {
+            const double cell = 0.5;
+            const gv::StockRunResult run = gv::simulateStock(wallData, bounds, cell, wallTool);
+            const std::vector<gv::StockCutter> cutters = gv::stockCutterPlan(wallData, wallTool);
+            const int gx = run.field.countX();
+            std::vector<float> grown = run.field.depthMm();
+            for (int iy = 8; iy <= 14; ++iy) {
+                for (int ix = 8; ix <= 14; ++ix) {
+                    grown[std::size_t(iy) * std::size_t(gx) + std::size_t(ix)] =
+                        std::max(grown[std::size_t(iy) * std::size_t(gx) + std::size_t(ix)], 1.0f);
+                }
+            }
+            gv::StockBoundaryCache cache;
+            const gv::StockBoundaryResult first = gv::stockCutBoundary(
+                wallData, bounds, cell, cutters, run.field.depthMm(), gx, run.field.countY(),
+                cutMm, &cache);
+            const Clock::time_point tInc = Clock::now();
+            const gv::StockBoundaryResult inc = gv::stockCutBoundary(
+                wallData, bounds, cell, cutters, grown, gx, run.field.countY(), cutMm, &cache);
+            const double incMs = msSince(tInc);
+            const gv::StockBoundaryResult full = gv::stockCutBoundary(
+                wallData, bounds, cell, cutters, grown, gx, run.field.countY(), cutMm, nullptr);
+            bool same = inc.segments.size() == full.segments.size();
+            double maxDelta = 0.0;
+            for (std::size_t i = 0; i < inc.segments.size() && i < full.segments.size(); ++i) {
+                maxDelta = std::max(maxDelta, std::fabs(inc.segments[i].x0Mm - full.segments[i].x0Mm));
+                maxDelta = std::max(maxDelta, std::fabs(inc.segments[i].y0Mm - full.segments[i].y0Mm));
+                maxDelta = std::max(maxDelta, std::fabs(inc.segments[i].x1Mm - full.segments[i].x1Mm));
+                maxDelta = std::max(maxDelta, std::fabs(inc.segments[i].y1Mm - full.segments[i].y1Mm));
+            }
+            std::printf("note boundary_incremental first_segments=%d inc_segments=%d "
+                        "full_segments=%d inc_ms=%.4f full_ms=%.4f max_delta_mm=%.3e\n",
+                        int(first.segments.size()), int(inc.segments.size()),
+                        int(full.segments.size()), incMs, full.buildMs, maxDelta);
+            reportCase("boundary_incremental", int(inc.segments.size()), maxDelta, 1e-12,
+                       same && !inc.segments.empty() && !full.segments.empty());
+        }
+    }
+
     // 8. Оболочка коробки: пять прямоугольников без верхней грани. Проверяется
     // форма, а не буфер: вершин 30, каждая - угол габарита, увеличенного на
     // зазоры; у каждого треугольника одна координата постоянна (грани
@@ -1656,8 +1879,7 @@ int main(int argc, char** argv)
 
         const double cells[] = {0.5, 0.2};
         for (double cell : cells) {
-            const ProgramTiming timing = runProgram(moves, cutters, bounds, cell);
-            const char* suffix = (cell < 0.35) ? "0_2" : "0_5";
+            const ProgramTiming timing = runProgram(moves, cutters, bounds, cell);            const char* suffix = (cell < 0.35) ? "0_2" : "0_5";
             char name[64];
             std::snprintf(name, sizeof(name), "stock_sim_reset_%s", suffix);
             printPhase(name, timing.resetMs);
@@ -1689,6 +1911,34 @@ int main(int argc, char** argv)
                         timing.positions);
         }
 
+        // Цена точной границы реза и её знакового расстояния на обоих узлах поля:
+        // время и байты. Поле - тем же simulateStock (его цена в строках выше).
+        const gv::PathData pricePath = gv::prepareOrdered(parsed.ordered, parsed.stages);
+        for (double cell : cells) {
+            const gv::ToolInfo initial = gv::parseUiTool(text);
+            const gv::StockRunResult run = gv::simulateStock(pricePath, bounds, cell, initial);
+            const std::vector<gv::StockCutter> plan = gv::stockCutterPlan(pricePath, initial);
+            const Clock::time_point tBoundary = Clock::now();
+            const gv::StockBoundaryResult boundary = gv::stockCutBoundary(
+                pricePath, bounds, cell, plan, run.field.depthMm(), run.field.countX(),
+                run.field.countY(), 0.05);
+            const double boundaryMs = msSince(tBoundary);
+            const Clock::time_point tSd = Clock::now();
+            const std::vector<float> sd = gv::stockCutSignedDistance(
+                bounds, cell, run.field.depthMm(), run.field.countX(), run.field.countY(),
+                boundary.segments, 0.05, cell * 3.0);
+            const double sdMs = msSince(tSd);
+            char name[64];
+            std::snprintf(name, sizeof(name), "stock_boundary_%s",
+                          (cell < 0.35) ? "0_2" : "0_5");
+            printPhase(name, boundaryMs);
+            std::printf("note boundary_price cell=%.1f segments=%d evaluations=%lld "
+                        "boundary_ms=%.1f sd_ms=%.1f boundary_bytes=%lld sd_bytes=%lld\n",
+                        cell, int(boundary.segments.size()), boundary.evaluations,
+                        boundaryMs, sdMs, (long long)boundary.segments.size() * 16,
+                        (long long)sd.size() * 4);
+        }
+
         // ---- живой обход: тики 10 Гц, перемотка, дайджест -------------------
         // Поле, накопленное тиками, обязано совпасть бит в бит с полем одного
         // прохода до той же длины пути, а после перемотки - с проходом с начала
@@ -1703,6 +1953,43 @@ int main(int argc, char** argv)
             const double cell = 0.5;
             const gv::StockRunResult full = gv::simulateStock(data, bounds, cell, initial);
             const std::uint64_t digestFull = fieldDigest(full.field.depthMm());
+
+            // Цена живого тика: граница с состоянием от 5 % длины пути и два шага
+            // (0.5 % и 0.1 %). Пересчитываются только клетки с изменившимися узлами.
+            {
+                const gv::ToolInfo initial = gv::parseUiTool(text);
+                const std::vector<gv::StockCutter> plan = gv::stockCutterPlan(data, initial);
+                gv::StockWalk walk;
+                if (walk.start(data, bounds, cell, plan)) {
+                    walk.advanceTo(data.total * 0.05);
+                    gv::StockBoundaryCache cache;
+                    const gv::StockBoundaryResult first = gv::stockCutBoundary(
+                        data, bounds, cell, plan, walk.field().depthMm(),
+                        walk.field().countX(), walk.field().countY(), 0.05, &cache);
+                    // Два шага живого тика: 0.5 % и 0.1 % длины пути. Цена обязана
+                    // падать вместе с шагом - платит только новый участок.
+                    walk.advanceTo(data.total * 0.055);
+                    const Clock::time_point tTick = Clock::now();
+                    const gv::StockBoundaryResult tick = gv::stockCutBoundary(
+                        data, bounds, cell, plan, walk.field().depthMm(),
+                        walk.field().countX(), walk.field().countY(), 0.05, &cache);
+                    const double tickMs = msSince(tTick);
+                    walk.advanceTo(data.total * 0.056);
+                    const Clock::time_point tTick2 = Clock::now();
+                    const gv::StockBoundaryResult tick2 = gv::stockCutBoundary(
+                        data, bounds, cell, plan, walk.field().depthMm(),
+                        walk.field().countX(), walk.field().countY(), 0.05, &cache);
+                    const double tick2Ms = msSince(tTick2);
+                    std::printf("note boundary_tick first_segments=%d tick_segments=%d "
+                                "tick_ms=%.3f tick_evals=%lld small_segments=%d small_ms=%.3f "
+                                "small_evals=%lld\n",
+                                int(first.segments.size()), int(tick.segments.size()),
+                                tickMs, tick.evaluations, int(tick2.segments.size()), tick2Ms,
+                                tick2.evaluations);
+                    printPhase("stock_boundary_tick_0_5", tickMs);
+                    printPhase("stock_boundary_tick_small_0_5", tick2Ms);
+                }
+            }
 
             // Что поле говорит на кромке габарита: сколько узлов периметра снято,
             // насколько глубоко и остались ли нетронутые. Это те числа, с

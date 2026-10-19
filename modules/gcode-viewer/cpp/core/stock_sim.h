@@ -325,6 +325,68 @@ StockWallMesh stockCutWall(const StockBounds& bounds, double cellMm,
                            const std::vector<float>& depthMm, int countX, int countY,
                            double cutMm);
 
+// Точная граница реза - ОТДЕЛЬНОЕ представление, независимое от карты высот
+// (PLAN-STOCK.md, этап 1.5). Полилиния нулевого уровня (глубина - cutMm):
+// marching squares по знакам узлов поля выбирает рёбра-кандидаты, а положение
+// перехода на ребре уточняется делением отрезка по ТОЧНОЙ аналитической
+// глубине хода (та же формула, что у узла поля), поэтому ошибка не зависит от
+// узла. Знак в узле берётся из поля: в узле глубина поля точна, поэтому узел
+// задаёт лишь выбор ребра, а не положение границы. Поле, его байты и его
+// сверки не трогаются - граница считается по ходам заново.
+struct StockBoundaryResult {
+    std::vector<StockContourSegment> segments;   // отрезки границы, машинные мм
+    int crossingEdges = 0;                        // рёбер с переходом порога
+    long long evaluations = 0;                    // обращений к точной глубине
+    double buildMs = 0.0;
+};
+
+// Состояние точной границы реза для живого тика: раскладка ходов по плиткам и
+// отрезки ПО КЛЕТКАМ поля. Контроллер держит его в сессии и передаёт в
+// stockCutBoundary, поэтому первый вызов (полный проход) строит всё, а тик
+// пересчитывает только клетки, чьи узлы изменились (съём монотонен: глубина
+// узла только растёт), - цена тика пропорциональна новому участку границы, а не
+// всей границе. Члены - внутренние; наружу торчит только StockBoundaryResult.
+// Пустой указатель - сборка без состояния (вся граница каждый раз).
+struct StockBoundaryCache {
+    StockBounds bounds;                                        // геометрия сборки
+    int countX = 0;
+    int countY = 0;
+    double cellMm = 0.0;
+    int tileCountX = 0;                                        // раскладка ходов
+    int tileCountY = 0;
+    double tileMm = 0.0;
+    std::vector<float> depth;                                  // поле на момент сборки
+    std::vector<std::vector<StockContourSegment>> cellSegments;  // (countX-1)*(countY-1)
+    std::vector<std::array<double, 3>> moveA;                  // ходы: начало, машинные мм
+    std::vector<std::array<double, 3>> moveB;                  // ходы: конец
+    std::vector<int> moveCutter;                               // ход -> инструмент этапа
+    std::vector<std::vector<int>> buckets;                     // плитка -> номера ходов
+};
+
+StockBoundaryResult stockCutBoundary(const PathData& data, const StockBounds& bounds,
+                                     double cellMm, const std::vector<StockCutter>& cutters,
+                                     const std::vector<float>& depthMm, int countX, int countY,
+                                     double cutMm, StockBoundaryCache* cache = nullptr,
+                                     int refineSteps = 24);
+
+// Знаковое расстояние до точной границы в узлах поля, мм: отрицательно там, где
+// глубина выше порога (снято). Это представление границы для рисования:
+// нулевой уровень между узлами линеен, поэтому цвет и линия идут по границе, а
+// не по ступеням узла. Магнитуда - расстояние до ближайшего отрезка полилинии
+// (не дальше radiusMm), знак - по глубине узла (она в узле точна).
+std::vector<float> stockCutSignedDistance(const StockBounds& bounds, double cellMm,
+                                          const std::vector<float>& depthMm,
+                                          int countX, int countY,
+                                          const std::vector<StockContourSegment>& segments,
+                                          double cutMm, double radiusMm);
+
+// Стенка по готовой полилинии границы: буфер тот же, что у stockCutWall
+// (4 float на вершину), но контур приходит извне - точной границей. Низ - по
+// глубине поля в точке контура (билинейно), верх - плоскость нетронутого верха.
+StockWallMesh stockCutWallFromSegments(const StockBounds& bounds, double cellMm,
+                                       const std::vector<float>& depthMm, int countX, int countY,
+                                       const std::vector<StockContourSegment>& segments);
+
 // Стенки и дно коробки заготовки: пять прямоугольников, верхней грани нет -
 // её рисует поле. Позиции - машинные мм, коробка крупнее габарита на зазоры:
 // ими разводят совпадающие грани заготовки и детали (прежние доли пикселя),

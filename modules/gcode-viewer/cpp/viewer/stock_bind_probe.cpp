@@ -488,14 +488,16 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Точные слои реза (PLAN-STOCK.md, 3.1): новые геометрии qmlbackend/gv_stockgeom
+    // Точные слои реза (PLAN-STOCK.md, 1.5): новые геометрии qmlbackend/gv_stockgeom
     // (StockCutWallGeometry, StockCutContourGeometry) обязаны строить стенку и
-    // контур по полю глубин. Проверка детерминированная: синтетическое поле -
-    // полуплоскость (глубина 1 мм при x >= 5), поэтому контур - одна вертикальная
-    // линия через 20 клеток строк, то есть ровно 20 отрезков. Стенка - 20 квадов
-    // (40 треугольников, 80 вершин), контур - 40 вершин. Числа сверяются с
+    // контур по ТОЧНОЙ границе (готовые отрезки, boundaryData), а поле глубин
+    // (depthData) нужно только низу стенки. Проверка детерминированная:
+    // синтетическая граница - вертикальная линия x = 5 от y = 0 до 10, то есть
+    // ровно 20 отрезков по клетке 0.5, а поле - полуплоскость (глубина 1 мм при
+    // x >= 5), поэтому низ стенки на дне реза. Стенка - 20 квадов (40
+    // треугольников, 80 вершин), контур - 40 вершин. Числа сверяются с
     // ожиданием, а не с «больше нуля»: так проверка красна, если геометрия
-    // потеряет поле или перепутает формат. Габарит обеих - габарит поля.
+    // потеряет границу или перепутает формат. Габарит обеих - габарит поля.
     {
         const int nx = 21;
         const int ny = 21;
@@ -506,6 +508,15 @@ int main(int argc, char *argv[])
         for (int iy = 0; iy < ny; ++iy) {
             for (int ix = 0; ix < nx; ++ix)
                 values[iy * nx + ix] = (ix >= 10) ? 1.0f : 0.0f;   // x >= 5 мм
+        }
+        QByteArray boundary((ny - 1) * 4 * int(sizeof(float)), '\0');
+        float *segments = reinterpret_cast<float *>(boundary.data());
+        for (int i = 0; i < ny - 1; ++i) {
+            const float y = float(i) * 0.5f;
+            segments[i * 4 + 0] = 5.0f;
+            segments[i * 4 + 1] = y;
+            segments[i * 4 + 2] = 5.0f;
+            segments[i * 4 + 3] = y + 0.5f;
         }
         const QVariantList bounds{0.0, 10.0, 0.0, 10.0, -5.0, 0.0};
         auto makeGeometry = [&](const QString &type, QString *detail) {
@@ -522,6 +533,7 @@ int main(int argc, char *argv[])
                 object->setProperty("countY", ny);
                 object->setProperty("cutMm", cutMm);
                 object->setProperty("depthData", depth);
+                object->setProperty("boundaryData", boundary);
             }
             return object;
         };

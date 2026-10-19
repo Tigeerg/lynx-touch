@@ -375,6 +375,29 @@ void StockField::reset(const StockBounds& bounds, double cellMm)
     nx_ = int(std::floor(extentX / cellMm)) + 1;
     ny_ = int(std::floor(extentY / cellMm)) + 1;
     depth_.assign(std::size_t(nx_) * std::size_t(ny_), 0.0f);
+    event_overwrites_ = 0;
+    if (record_events_) {
+        event_mm_.assign(depth_.size(), 0.0f);   // хроника реза вместе с полем
+        event_count_.assign(depth_.size(), 0);
+    } else {
+        event_mm_.clear();
+        event_count_.clear();
+    }
+    event_at_ = 0.0f;
+}
+
+void StockField::recordEvents(bool on)
+{
+    record_events_ = on;
+    if (on && event_mm_.size() != depth_.size()) {
+        event_mm_.assign(depth_.size(), 0.0f);
+        event_count_.assign(depth_.size(), 0);
+    }
+    if (!on) {
+        event_mm_.clear();
+        event_count_.clear();
+    }
+    event_at_ = 0.0f;
 }
 
 double StockField::heightMm(int ix, int iy) const
@@ -438,6 +461,17 @@ void StockField::plunge(const StockCutter& cutter, double xMm, double yMm, doubl
             const float value = float(depth);
             if (value > cell) {
                 cell = value;
+                if (!event_mm_.empty()) {
+                    const std::size_t eventIdx = row + std::size_t(ix);
+                    std::uint8_t& count = event_count_[eventIdx];
+                    if (count < 255) {
+                        ++count;
+                    }
+                    if (count == 2) {
+                        ++event_overwrites_;
+                    }
+                    event_mm_[eventIdx] = event_at_;
+                }
             }
         }
     }
@@ -580,9 +614,20 @@ void StockField::sweepExact(const StockCutter& cutter,
                     continue;
                 }
                 depth = std::min(depth, thicknessMm);
-                float& cell = depth_[std::size_t(iy) * std::size_t(nx_) + std::size_t(ix)];
+                const std::size_t idx = std::size_t(iy) * std::size_t(nx_) + std::size_t(ix);
+                float& cell = depth_[idx];
                 if (float(depth) > cell) {
                     cell = float(depth);
+                    if (!event_mm_.empty()) {
+                        std::uint8_t& count = event_count_[idx];
+                        if (count < 255) {
+                            ++count;
+                        }
+                        if (count == 2) {
+                            ++event_overwrites_;
+                        }
+                        event_mm_[idx] = event_at_;
+                    }
                 }
             }
         }
@@ -740,6 +785,17 @@ void StockField::sweepExact(const StockCutter& cutter,
             float& cell = depth_[row + std::size_t(ix)];
             if (float(depth) > cell) {
                 cell = float(depth);
+                if (!event_mm_.empty()) {
+                    const std::size_t eventIdx = row + std::size_t(ix);
+                    std::uint8_t& count = event_count_[eventIdx];
+                    if (count < 255) {
+                        ++count;
+                    }
+                    if (count == 2) {
+                        ++event_overwrites_;
+                    }
+                    event_mm_[eventIdx] = event_at_;
+                }
             }
         }
     }
@@ -845,12 +901,13 @@ std::vector<float> stockShellVertices(const StockBounds& bounds, double cellMm,
 }
 
 bool StockWalk::start(const PathData& data, const StockBounds& bounds, double cellMm,
-                      std::vector<StockCutter> cutters)
+                      std::vector<StockCutter> cutters, bool recordEvents)
 {
     data_ = nullptr;
     started_ = false;
     refused_stage_ = -1;
     refused_tool_ = 0;
+    record_events_ = recordEvents;
     cutters_ = std::move(cutters);
     // Отказ считается до аллокации поля: для такого инструмента поля нет вовсе,
     // а не пустое поле.
@@ -883,6 +940,9 @@ void StockWalk::restart()
 {
     const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
     field_.reset(bounds_, cellMm_);
+    if (record_events_) {
+        field_.recordEvents(true);
+    }
     last_reset_ms_ = msSince(t0);
     next_ = 1;
     stage_ = 0;
@@ -929,6 +989,9 @@ bool StockWalk::advanceTo(double targetMm, const std::function<bool(double)>& ca
         const std::array<double, 3> b{data_->pts[i * 3], -data_->pts[i * 3 + 2],
                                       data_->pts[i * 3 + 1]};
         const StockCutter& cutter = cutters_[std::min(stage_, cutters_.size() - 1)];
+        if (record_events_) {
+            field_.setEventMm(d);          // углубление узла помечается концом хода
+        }
         if (cutter.maxRadiusMm > 0.0) {
             field_.sweepExact(cutter, a, b);
         }

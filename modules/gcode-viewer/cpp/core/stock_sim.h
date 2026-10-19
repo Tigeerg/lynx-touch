@@ -175,12 +175,32 @@ public:
     // Глубины для текстуры: countX * countY float32, глубина от zMaxMm вниз.
     const std::vector<float>& depthMm() const { return depth_; }
 
+    // Хроника реза (PLAN-STOCK-TIMEFIELD.md, опора 2): запись длины пути, на
+    // которой узел последний раз углубился. Включают ДО reset: буфер длин
+    // выделяется вместе с полем. Выключено - буфера нет, цена нулевая.
+    void recordEvents(bool on);
+    bool eventsRecorded() const { return event_mm_.size() == depth_.size(); }
+    // Длина пути, которой помечается следующее углубление узла, мм. Съём
+    // монотонен, поэтому метка только растёт (порядок программы).
+    void setEventMm(double pathMm) { event_at_ = float(pathMm); }
+    // Длина пути последнего углубления узла, мм; 0 - узел не тронут.
+    const std::vector<float>& eventMm() const { return event_mm_; }
+    // Сколько узлов углублено больше одного раза: цена одномерной метки
+    // времени (хроника реза, PLAN-STOCK-TIMEFIELD.md, опора 2). Счётчик - байт
+    // на узел рядом с меткой; 255 углублений и больше считаются одним значением.
+    long long eventOverwrites() const { return event_overwrites_; }
+
 private:
     StockBounds bounds_;
     double cellMm_ = 0.5;
     int nx_ = 0;
     int ny_ = 0;
     std::vector<float> depth_;
+    std::vector<float> event_mm_;      // длина пути углубления, если включена
+    std::vector<std::uint8_t> event_count_;   // байт на узел: сколько раз углублён
+    bool record_events_ = false;
+    float event_at_ = 0.0f;
+    long long event_overwrites_ = 0;   // узлов, углублённых больше одного раза
 };
 
 // Обход программы с полем и курсором: съём монотонен, поэтому обход продолжается
@@ -191,9 +211,10 @@ class StockWalk {
 public:
     // Начать обход с нуля: поле под габарит и узел. Ложь - поля не будет:
     // инструмент этапа картой не выражается (refusedStage) или проходить
-    // нечего (ходов меньше двух). Поле тогда пустое.
+    // нечего (ходов меньше двух). Поле тогда пустое. recordEvents - вместе с
+    // полем вести хронику реза (длину пути углубления на узел, см. StockField).
     bool start(const PathData& data, const StockBounds& bounds, double cellMm,
-               std::vector<StockCutter> cutters);
+               std::vector<StockCutter> cutters, bool recordEvents = false);
 
     bool started() const { return started_; }
     int refusedStage() const { return refused_stage_; }
@@ -236,6 +257,7 @@ private:
     double last_reset_ms_ = 0.0;
     double advance_ms_ = 0.0;
     bool started_ = false;
+    bool record_events_ = false;        // вести хронику реза вместе с полем
     int refused_stage_ = -1;
     int refused_tool_ = 0;
 };

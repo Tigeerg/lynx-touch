@@ -101,6 +101,7 @@ add_library(gvcore STATIC
     core/packing.cpp
     core/path_prep.cpp
     core/silhouette.cpp
+    core/stock_front.cpp
     core/stock_sim.cpp
     core/stl_import.cpp
     core/tangents.cpp
@@ -255,6 +256,20 @@ if (MSVC)
     target_compile_options(stock_sim_probe PRIVATE /utf-8)
 endif()
 target_link_libraries(stock_sim_probe PRIVATE gvcore)
+
+# Пробник хроники реза (core/stock_front, PLAN-STOCK-TIMEFIELD.md, этап 1):
+# отдельная цель, в плагин не входит, ни Qt, ни OCCT не требует. Сверяет поле
+# хроники с аналитикой (плоская, шар, конус), поле-порог на момент t - с обходом
+# с начала до той же длины, и меряет цену перемотки порогом и пересчётом.
+#   front_stock_probe.exe [файл.ngc]
+add_executable(front_stock_probe front_stock_probe.cpp)
+set_target_properties(front_stock_probe PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+)
+if (MSVC)
+    target_compile_options(front_stock_probe PRIVATE /utf-8)
+endif()
+target_link_libraries(front_stock_probe PRIVATE gvcore)
 
 # Пробник топологии силуэта и силуэта на фиксированных глазах (этап 4c плана
 # переноса): отдельная цель, в плагин не входит. Берёт суп вершин из STEP тем же

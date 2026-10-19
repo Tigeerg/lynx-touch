@@ -191,14 +191,32 @@ void applyCleanViewEnv(QQuickItem *root_item)
     root_item->setProperty("showPartSkin", !qEnvironmentVariableIsSet("CNC_NO_PART_SKIN"));
 }
 
-// CNC_STOCK_ROUND: скругление ступеней съёма до старта - та же ручка, что клавиша R
-// (GcodeViewer3D.qml, stockRoundSteps). По умолчанию выключено: включённое скругление
-// двигает нарисованную поверхность (кромка реза до узла, 0.5 мм), а поле и меш
-// остаются прежними. У съёмки кадра клавиш нет, поэтому кадр сравнения берут
-// переменной.
-void applyStockRoundEnv(QQuickItem *root_item)
+// CNC_STOCK_VIEW: вид остатка заготовки до старта - та же ручка, что клавиша R
+// (GcodeViewer3D.qml, stockView). Три вида: exact (точный по узлам поля),
+// smooth (гладкий: дроблённый меш, высота билинейная - вид по умолчанию) и
+// rounded (скруглённый: глубина узла - среднее по окрестности, прежний тумблер
+// CNC_STOCK_ROUND). CNC_STOCK_ROUND=1 остаётся как сокращение для rounded:
+// переменная была в контракте запуска, и её поведение сохранено. Непонятная
+// строка - отказ с причиной в stderr: молча показать не тот вид нельзя, кадры
+// сравнивают по видам.
+void applyStockViewEnv(QQuickItem *root_item)
 {
-    root_item->setProperty("stockRoundSteps", qEnvironmentVariableIsSet("CNC_STOCK_ROUND"));
+    const char *names[] = { "exact", "smooth", "rounded" };
+    if (qEnvironmentVariableIsSet("CNC_STOCK_ROUND")) {
+        root_item->setProperty("stockView", 2);
+    }
+    const QString text = qEnvironmentVariable("CNC_STOCK_VIEW").trimmed().toLower();
+    if (text.isEmpty())
+        return;
+    for (int i = 0; i < 3; ++i) {
+        if (text == QLatin1String(names[i])) {
+            root_item->setProperty("stockView", i);
+            return;
+        }
+    }
+    warn(QStringLiteral("gcodeviewer: CNC_STOCK_VIEW: вид не разобран: %1 "
+                        "(ожидается exact, smooth или rounded)")
+                 .arg(text));
 }
 
 // Цвета палитры остатка материала до старта. Пара "переменная -> свойство" одной
@@ -306,13 +324,13 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
 
     // Те же свойства сцены, что у обычного запуска: уровень качества, коробка
     // вместо поля съёма (CNC_STOCK_BOX), переключатели чистого вида
-    // (CNC_NO_TOOLPATH, CNC_NO_PART_SKIN), скругление ступеней съёма
-    // (CNC_STOCK_ROUND) и цвета палитры слитка (CNC_STOCK_RAW, CNC_STOCK_CUT).
+    // (CNC_NO_TOOLPATH, CNC_NO_PART_SKIN), вид остатка (CNC_STOCK_VIEW,
+    // CNC_STOCK_ROUND) и цвета палитры слитка (CNC_STOCK_RAW, CNC_STOCK_CUT).
     // Иначе кадр показывал бы не то, что видит оператор.
     root_item->setProperty("quality", QString::fromLatin1(gv::presetFromEnv().level));
     root_item->setProperty("stockPlainBox", qEnvironmentVariableIsSet("CNC_STOCK_BOX"));
     applyCleanViewEnv(root_item);
-    applyStockRoundEnv(root_item);
+    applyStockViewEnv(root_item);
     applyStockColorEnv(root_item);
 
     view.show();
@@ -556,7 +574,7 @@ int main(int argc, char *argv[])
     // заготовку рисует поле высот.
     root_item->setProperty("stockPlainBox", qEnvironmentVariableIsSet("CNC_STOCK_BOX"));
     applyCleanViewEnv(root_item);
-    applyStockRoundEnv(root_item);
+    applyStockViewEnv(root_item);
 
     // CNC_STOCK_RAW/CNC_STOCK_CUT: цвета палитры слитка до старта (те же две
     // ручки, что пресеты и клавиша C).

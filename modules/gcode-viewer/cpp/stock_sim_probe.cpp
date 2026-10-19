@@ -17,7 +17,11 @@
 // Там же рисуемая часть: случай stocksurface строит меш верха поля
 // (stockSurfaceMesh) и повторяет вершинный шейдер (texcoord -> узел поля, высота
 // = верх заготовки минус глубина, кадр сцены - поворот узла), случай stockshell
-// проверяет форму оболочки коробки: стенки и дно без верхней грани.
+// проверяет форму оболочки коробки: стенки и дно без верхней грани, а случай
+// stocksurface_fine - рисование гладкого вида: дроблённую сетку (подузел на
+// сетке узла, texcoord - его доля клетки), билинейную высоту подузла и правило
+// уступа (на плоской клетке у кромки нормаль плоская, на клетке-стенке - наклон
+// стенки). Поле во всех трёх случаях одно и то же: рисование его не трогает.
 //
 // 2. Замер. Время одного прохода длиной 50 мм и время всего Test_model.ngc
 // (все ходы, включая быстрые, инструмент этапа, габарит из UI_STOCK) при узле
@@ -624,6 +628,176 @@ int main(int argc, char** argv)
                     planeDev, posDev, cell);
         reportCase("stocksurface", checked, maxDev, tol,
                    geometryOk && planeDev <= tol && posDev <= cell * 0.5 + 1e-6);
+    }
+
+    // 7б. Гладкий вид: дроблённая сетка рисования и правило уступа. Поле при
+    // этом не трогается - случай 7 сверяет его по узлам (и только его числа
+    // держат манифест), а здесь проверяется то, что видно на экране: подузлы
+    // стоят на сетке узла поля, texcoord - их доля клетки, высота подузла
+    // билинейна (её считает вершинный шейдер, stocksurface.vert), а нормаль на
+    // клетке со уступом берётся наклоном самой стенки, а не полусуммой с плоским
+    // верхом. Проверка красна до правки: полусумма даёт на плоской клетке у
+    // кромки полклетки наклона стенки - ту самую полосу, что видна глазом.
+    {
+        const double cell = 0.5;
+        const int subdiv = 2;
+        gv::StockBounds bounds;
+        bounds.xMinMm = -5.0;
+        bounds.xMaxMm = 5.0;
+        bounds.yMinMm = -5.0;
+        bounds.yMaxMm = 5.0;
+        bounds.zMinMm = -5.0;
+        bounds.zMaxMm = 5.0;
+        gv::StockField field;
+        field.reset(bounds, cell);
+        const gv::StockCutter cutter = gv::stockCutter(makeTool(ToolSpec{ "FLAT", 6.0 }));
+        field.plunge(cutter, -1.5, -2.5, -1.0);
+
+        const int nx = field.countX();
+        const int ny = field.countY();
+        const gv::StockSurfaceMesh mesh = gv::stockSurfaceMesh(bounds, cell, nx, ny, subdiv);
+        const int drawnX = (nx - 1) * subdiv + 1;
+        const int drawnY = (ny - 1) * subdiv + 1;
+        bool geometryOk = mesh.countX == drawnX && mesh.countY == drawnY
+                && int(mesh.vertices.size()) == 5 * drawnX * drawnY
+                && int(mesh.indices.size()) == 6 * (drawnX - 1) * (drawnY - 1);
+        int checked = 0;
+        double maxDev = 0.0;
+        for (int jy = 0; jy < drawnY; ++jy) {
+            for (int jx = 0; jx < drawnX; ++jx) {
+                const float* vertex = &mesh.vertices[(std::size_t(jy) * std::size_t(drawnX)
+                                                      + std::size_t(jx)) * 5];
+                // Подузел - доля клетки поля: он обязан лечь на сетку узла
+                // (шаг клетка / subdiv), а texcoord - в ту же долю клетки.
+                const double tx = double(jx) / double(subdiv);
+                const double ty = double(jy) / double(subdiv);
+                const double x = bounds.xMinMm + tx * cell;
+                const double y = bounds.yMinMm + ty * cell;
+                const double u = (tx + 0.5) / double(nx);
+                const double v = (ty + 0.5) / double(ny);
+                geometryOk = geometryOk
+                        && std::fabs(double(vertex[0]) - std::min(x, bounds.xMaxMm)) < 1e-4
+                        && std::fabs(double(vertex[1]) - std::min(y, bounds.yMaxMm)) < 1e-4
+                        && std::fabs(double(vertex[3]) - u) < 1e-6
+                        && std::fabs(double(vertex[4]) - v) < 1e-6;
+                ++checked;
+            }
+        }
+
+        // Ожидаемая высота нарисованной поверхности в подузле: билинейная по
+        // узлам клетки - то же, что считает fieldSample в stocksurface.vert.
+        const std::vector<float>& depth = field.depthMm();
+        const auto nodeDepth = [&depth, nx, ny](int ix, int iy) {
+            ix = std::max(0, std::min(nx - 1, ix));
+            iy = std::max(0, std::min(ny - 1, iy));
+            return double(depth[std::size_t(iy) * std::size_t(nx) + std::size_t(ix)]);
+        };
+        const auto bilinearDepth = [&nodeDepth, nx, ny](double u, double v) {
+            const double p = u * double(nx) - 0.5;
+            const double q = v * double(ny) - 0.5;
+            const double bx = std::floor(p);
+            const double by = std::floor(q);
+            const double fx = p - bx;
+            const double fy = q - by;
+            const int ix = int(bx);
+            const int iy = int(by);
+            const double d0 = nodeDepth(ix, iy) * (1.0 - fx) + nodeDepth(ix + 1, iy) * fx;
+            const double d1 = nodeDepth(ix, iy + 1) * (1.0 - fx) + nodeDepth(ix + 1, iy + 1) * fx;
+            return d0 * (1.0 - fy) + d1 * fy;
+        };
+        // Подузел в середине клетки поля обязан дать полусумму её узлов по
+        // дробной оси и узел - по целой: это и есть билинейная высота, которой
+        // шейдер опускает вершину.
+        int bilinearChecked = 0;
+        double bilinearDev = 0.0;
+        for (int iy = 0; iy + 1 < ny; ++iy) {
+            for (int ix = 0; ix + 1 < nx; ++ix) {
+                const double u = (double(ix) + 1.0) / double(nx);
+                const double v = (double(iy) + 0.5) / double(ny);
+                const double expect = 0.5 * (nodeDepth(ix, iy) + nodeDepth(ix + 1, iy));
+                bilinearDev = std::max(bilinearDev, std::fabs(bilinearDepth(u, v) - expect));
+                ++bilinearChecked;
+                const double u2 = (double(ix) + 0.5) / double(nx);
+                const double v2 = (double(iy) + 1.0) / double(ny);
+                const double expect2 = 0.5 * (nodeDepth(ix, iy) + nodeDepth(ix, iy + 1));
+                bilinearDev = std::max(bilinearDev, std::fabs(bilinearDepth(u2, v2) - expect2));
+                ++bilinearChecked;
+            }
+        }
+
+        // Наклон по X в подузле, как его считает шейдер: разности соседних узлов
+        // ловят уступ, на клетке со уступом наклон - собственный градиент клетки,
+        // иначе - центральная разность через 2 * NORMAL_SPAN клетки. Здесь
+        // повторена только ось X и только те точки, где ответ различает правила.
+        const auto shaderSlopeX = [&nodeDepth, nx, ny, cell](double u, double v) {
+            const double stepMm = cell;                   // STEP_CELLS = 1
+            const double du = 1.0 / double(nx);
+            const auto sample = [&nodeDepth, nx, ny](double uu, double vv) {
+                const double p = uu * double(nx) - 0.5;
+                const double q = vv * double(ny) - 0.5;
+                const double bx = std::floor(p);
+                const double by = std::floor(q);
+                const double fx = p - bx;
+                const double fy = q - by;
+                const int ix = int(bx);
+                const int iy = int(by);
+                const double a = nodeDepth(ix, iy) * (1.0 - fx) + nodeDepth(ix + 1, iy) * fx;
+                const double b = nodeDepth(ix, iy + 1) * (1.0 - fx) + nodeDepth(ix + 1, iy + 1) * fx;
+                return a * (1.0 - fy) + b * fy;
+            };
+            const double depth = sample(u, v);
+            const double r1 = sample(u + du, v);
+            const double l1 = sample(u - du, v);
+            const double r2 = sample(u + 2.0 * du, v);
+            const double l2 = sample(u - 2.0 * du, v);
+            const double span = 4.0 * cell;               // 2 * NORMAL_SPAN клетки
+            const bool jr = std::max(std::fabs(r1 - depth), std::fabs(r2 - r1)) > stepMm;
+            const bool jl = std::max(std::fabs(depth - l1), std::fabs(l1 - l2)) > stepMm;
+            if (!jr && !jl)
+                return (r2 - l2) / span;
+            const double p = u * double(nx) - 0.5;
+            const double q = v * double(ny) - 0.5;
+            const double fy = q - std::floor(q);
+            const int ix = int(std::floor(p));
+            const int iy = int(std::floor(q));
+            const double g = (nodeDepth(ix + 1, iy) - nodeDepth(ix, iy)) * (1.0 - fy)
+                           + (nodeDepth(ix + 1, iy + 1) - nodeDepth(ix, iy + 1)) * fy;
+            return g / cell;
+        };
+
+        // Клетка со уступом по X: справа на много клеток глубже, слева плоско.
+        // Ряд по Y берётся тот, где стенка прямая (соседние узлы равны): тогда
+        // ответ не зависит от доли внутри клетки по Y и сверка точная.
+        int wallCells = 0;
+        double ruleDev = 0.0;
+        for (int iy = 0; iy + 1 < ny; ++iy) {
+            for (int ix = 1; ix + 1 < nx; ++ix) {
+                const double step = nodeDepth(ix + 1, iy) - nodeDepth(ix, iy);
+                if (std::fabs(step) < 2.0 * cell)          // не уступ, а склон
+                    continue;
+                if (std::fabs(nodeDepth(ix, iy) - nodeDepth(ix - 1, iy)) > 1e-6)
+                    continue;                              // слева не плоско
+                if (nodeDepth(ix, iy) != nodeDepth(ix, iy + 1)
+                        || nodeDepth(ix + 1, iy) != nodeDepth(ix + 1, iy + 1))
+                    continue;                              // стенка не прямая по Y
+                // Плоская клетка слева: наклон обязан быть нулевым - полосы у
+                // кромки нет. Полусумма здесь давала бы полклетки наклона.
+                const double flat = shaderSlopeX(double(ix) / double(nx),
+                                                 (double(iy) + 0.5) / double(ny));
+                // Клетка-стенка: наклон обязан быть наклоном самой стенки.
+                const double wall = shaderSlopeX(double(ix + 1) / double(nx),
+                                                 (double(iy) + 0.5) / double(ny));
+                ruleDev = std::max(ruleDev, std::fabs(flat));
+                ruleDev = std::max(ruleDev, std::fabs(wall - step / cell));
+                ++wallCells;
+            }
+        }
+        std::printf("note stocksurface_fine subdiv=%d drawn=%dx%d cells=%d bilinear=%d "
+                    "wall_cells=%d rule_dev_mm/mm=%.3e\n",
+                    subdiv, drawnX, drawnY, checked, bilinearChecked, wallCells, ruleDev);
+        reportCase("stocksurface_fine", checked + bilinearChecked + wallCells,
+                   std::max(maxDev, std::max(bilinearDev, ruleDev)), 1e-6,
+                   geometryOk && wallCells > 0);
     }
 
     // 8. Оболочка коробки: пять прямоугольников без верхней грани. Проверяется

@@ -35,6 +35,7 @@ class StockSurfaceGeometry : public QQuick3DGeometry
     Q_PROPERTY(double cellMm READ cellMm WRITE setCellMm NOTIFY changed)
     Q_PROPERTY(int countX READ countX WRITE setCountX NOTIFY changed)
     Q_PROPERTY(int countY READ countY WRITE setCountY NOTIFY changed)
+    Q_PROPERTY(int subdiv READ subdiv WRITE setSubdiv NOTIFY changed)
     Q_PROPERTY(int vertexCount READ vertexCount NOTIFY changed)
     Q_PROPERTY(int triangleCount READ triangleCount NOTIFY changed)
 
@@ -49,6 +50,11 @@ public:
     void setCountX(int value);
     int countY() const { return count_y_; }
     void setCountY(int value);
+    // Дробление клетки поля в рисуемом меше (1 - узел поля). Меняет только
+    // геометрию рисования: поле и его сверки считаются по узлам (core/stock_sim,
+    // stockSurfaceMesh). Нужно гладкому виду - см. stocksurface.vert.
+    int subdiv() const { return subdiv_; }
+    void setSubdiv(int value);
 
     int vertexCount() const { return vertex_count_; }
     int triangleCount() const { return triangle_count_; }
@@ -69,6 +75,7 @@ private:
     double cell_mm_ = 0.5;
     int count_x_ = 0;
     int count_y_ = 0;
+    int subdiv_ = 1;
     int vertex_count_ = 0;
     int triangle_count_ = 0;
 };

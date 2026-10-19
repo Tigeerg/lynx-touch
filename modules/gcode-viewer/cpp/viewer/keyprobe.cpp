@@ -8,7 +8,9 @@
  * переключить своё (P - пуск, S - заготовка, M - деталь, K - кожа детали без
  * рёбер, G - линии УП, L - весь код, T - этапы, E - рёбра, D - касательные,
  * X - рентген, F - fps, B - коробка вместо поля съёма, C - палитра слитка,
- * R - скругление ступеней съёма).
+ * R - вид остатка заготовки: точный -> гладкий -> скруглённый; у R проверяется и
+ * круг положений: сколько положений, столько нажатий обязаны вернуть вид к
+ * исходному, и промежуточные - отличаться).
  *
  * Чем это отличается от живой пробы с SendInput (tools/keyprobe.ps1): живая проба
  * требует переднего окна в незапертой сессии, а перевод скан-кода в VK и символ
@@ -154,7 +156,7 @@ const ProbeKey KEYS[] = {
     { "F", 0x21, "showFps" },
     { "B", 0x30, "stockPlainBox" },
     { "C", 0x2E, "stockPreset" },
-    { "R", 0x13, "stockRoundSteps" },
+    { "R", 0x13, "stockView" },
 };
 
 // Раскладка и номер клавиши по скан-коду: то, что система сообщает о физическом
@@ -323,6 +325,45 @@ int run(const QString &program, const QStringList &layouts)
                              .arg(modifier == Qt::ControlModifier ? QStringLiteral("Ctrl")
                                                                   : QStringLiteral("Alt"))
                              .arg(QString::fromLatin1(key.property)));
+                }
+            }
+
+            // Клавиша с числом положений больше двух (R - вид остатка заготовки:
+            // точный, гладкий, скруглённый) проверяется ещё и кругом: столько
+            // нажатий, сколько положений, обязаны вернуть свойство к исходному
+            // значению, а промежуточные - отличаться. Иначе «сработала» значило бы
+            // только «что-то изменилось», и залипшее положение прошло бы проверку.
+            if (property == QByteArray("stockView")) {
+                const int start = root->property(property.constData()).toInt();
+                const int positions = root->property("stockViewNames").toList().size();
+                for (int step = 1; step <= positions; ++step) {
+                    const int from = root->property(property.constData()).toInt();
+                    press(view, resolved, Qt::NoModifier);
+                    const int to = root->property(property.constData()).toInt();
+                    const bool distinct = (step == positions) ? (to == start) : (to != from);
+                    say(QStringLiteral("keyprobe: [%1] %2 круг %3/%4 sc=0x%5 key=%6 cp=%7 vk=0x%8 "
+                                       "%9: %10 -> %11 %12")
+                            .arg(tag)
+                            .arg(QString::fromLatin1(key.name))
+                            .arg(step)
+                            .arg(positions)
+                            .arg(resolved.scan, 2, 16, QLatin1Char('0'))
+                            .arg(resolved.key)
+                            .arg(resolved.text.isNull() ? 0 : resolved.text.unicode())
+                            .arg(resolved.vk, 2, 16, QLatin1Char('0'))
+                            .arg(QString::fromLatin1(key.property))
+                            .arg(from)
+                            .arg(to)
+                            .arg(distinct ? QStringLiteral("положение своё")
+                                          : QStringLiteral("положение НЕ своё")));
+                    total++;
+                    if (distinct)
+                        fired++;
+                    else
+                        warn(QStringLiteral("keyprobe: [%1] %2: круг положений не сошёлся "
+                                            "(%3 -> %4 при %5 положениях)")
+                                 .arg(tag, QString::fromLatin1(key.name))
+                                 .arg(from).arg(to).arg(positions));
                 }
             }
         }

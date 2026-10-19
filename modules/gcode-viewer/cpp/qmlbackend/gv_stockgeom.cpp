@@ -95,6 +95,15 @@ void StockSurfaceGeometry::setCountY(int value)
     emit changed();
 }
 
+void StockSurfaceGeometry::setSubdiv(int value)
+{
+    if (value == subdiv_)
+        return;
+    subdiv_ = value;
+    rebuild();
+    emit changed();
+}
+
 void StockSurfaceGeometry::rebuild()
 {
     clear();
@@ -108,7 +117,7 @@ void StockSurfaceGeometry::rebuild()
     }
 
     const gv::StockSurfaceMesh mesh =
-            gv::stockSurfaceMesh(bounds_, cell_mm_, count_x_, count_y_);
+            gv::stockSurfaceMesh(bounds_, cell_mm_, count_x_, count_y_, subdiv_);
     vertex_count_ = int(mesh.vertices.size() / 5);
     triangle_count_ = mesh.triangleCount();
     if (vertex_count_ == 0 || triangle_count_ == 0) {

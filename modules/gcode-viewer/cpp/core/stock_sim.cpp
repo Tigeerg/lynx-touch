@@ -246,28 +246,37 @@ void StockField::sweep(const StockCutter& cutter,
 }
 
 StockSurfaceMesh stockSurfaceMesh(const StockBounds& bounds, double cellMm,
-                                  int countX, int countY)
+                                  int countX, int countY, int subdiv)
 {
     StockSurfaceMesh mesh;
     if (countX < 2 || countY < 2 || !(cellMm > 0.0)) {
         return mesh;
     }
-    mesh.countX = countX;
-    mesh.countY = countY;
+    // Число подклеток на клетку поля: 1 - прежняя сетка по узлам.
+    const int k = subdiv < 1 ? 1 : subdiv;
+    const int drawnX = (countX - 1) * k + 1;
+    const int drawnY = (countY - 1) * k + 1;
+    mesh.countX = drawnX;
+    mesh.countY = drawnY;
 
     const float zTop = float(bounds.zMaxMm);
 
-    mesh.vertices.reserve(std::size_t(countX) * std::size_t(countY) * 5);
-    for (int iy = 0; iy < countY; ++iy) {
+    mesh.vertices.reserve(std::size_t(drawnX) * std::size_t(drawnY) * 5);
+    for (int jy = 0; jy < drawnY; ++jy) {
+        // Координата в узлах поля: целая часть - номер узла, дробная - доля
+        // клетки. При k = 1 это ровно номер узла, поэтому прежний буфер
+        // воспроизводится бит в бит.
+        const double ty = double(jy) / double(k);
         // Узел поля, а в последней строке - растянутый до габарита (см.
         // заголовок): иначе верх не дошёл бы до стенки коробки.
-        const double nodeY = bounds.yMinMm + double(iy) * cellMm;
-        const double y = (iy == countY - 1) ? std::min(nodeY, bounds.yMaxMm) : nodeY;
-        const float v = float((double(iy) + 0.5) / double(countY));
-        for (int ix = 0; ix < countX; ++ix) {
-            const double nodeX = bounds.xMinMm + double(ix) * cellMm;
-            const double x = (ix == countX - 1) ? std::min(nodeX, bounds.xMaxMm) : nodeX;
-            const float u = float((double(ix) + 0.5) / double(countX));
+        const double nodeY = bounds.yMinMm + ty * cellMm;
+        const double y = (jy == drawnY - 1) ? std::min(nodeY, bounds.yMaxMm) : nodeY;
+        const float v = float((ty + 0.5) / double(countY));
+        for (int jx = 0; jx < drawnX; ++jx) {
+            const double tx = double(jx) / double(k);
+            const double nodeX = bounds.xMinMm + tx * cellMm;
+            const double x = (jx == drawnX - 1) ? std::min(nodeX, bounds.xMaxMm) : nodeX;
+            const float u = float((tx + 0.5) / double(countX));
             mesh.vertices.push_back(float(x));
             mesh.vertices.push_back(float(y));
             mesh.vertices.push_back(zTop);
@@ -276,13 +285,13 @@ StockSurfaceMesh stockSurfaceMesh(const StockBounds& bounds, double cellMm,
         }
     }
 
-    const std::size_t quads = std::size_t(countX - 1) * std::size_t(countY - 1);
+    const std::size_t quads = std::size_t(drawnX - 1) * std::size_t(drawnY - 1);
     mesh.indices.reserve(quads * 6);
-    for (int iy = 0; iy + 1 < countY; ++iy) {
-        for (int ix = 0; ix + 1 < countX; ++ix) {
-            const std::uint32_t a = std::uint32_t(iy * countX + ix);
+    for (int jy = 0; jy + 1 < drawnY; ++jy) {
+        for (int jx = 0; jx + 1 < drawnX; ++jx) {
+            const std::uint32_t a = std::uint32_t(jy * drawnX + jx);
             const std::uint32_t b = a + 1;
-            const std::uint32_t d = a + std::uint32_t(countX);
+            const std::uint32_t d = a + std::uint32_t(drawnX);
             const std::uint32_t c = d + 1;
             mesh.indices.push_back(a);
             mesh.indices.push_back(b);

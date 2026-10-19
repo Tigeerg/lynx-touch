@@ -14,12 +14,15 @@ import MockBackend 1.0
  *   Пробел/P - пуск/пауза, Esc - в начало, вверх/вниз - скорость;
  *   S - заготовка (габарит), M - деталь целиком, K - кожа детали (тело без
  *   рёбер), G - линии УП, B - прежняя коробка вместо поверхности съёма;
- *   C - палитра остатка материала (пресеты);
+ *   C - палитра остатка материала (пресеты), R - вид остатка по кругу
+ *   (точный -> гладкий -> скруглённый);
  *   L - длина, T - этапы, PgUp/PgDn - кадры этапов;
  *   E - рёбра, D - касательные, X - рентген, Q - качество, F - fps.
  * Те же переключатели чистого вида доступны до старта переменными окружения
- * (cpp/viewer/main.cpp): CNC_STOCK_BOX, CNC_NO_TOOLPATH, CNC_NO_PART_SKIN, а
- * цвета палитры - CNC_STOCK_RAW и CNC_STOCK_CUT (по "#RRGGBB").
+ * (cpp/viewer/main.cpp): CNC_STOCK_BOX, CNC_NO_TOOLPATH, CNC_NO_PART_SKIN,
+ * вид остатка - CNC_STOCK_VIEW (exact/smooth/rounded, умолчание smooth) и
+ * прежнее сокращение CNC_STOCK_ROUND=1 для rounded, а цвета палитры -
+ * CNC_STOCK_RAW и CNC_STOCK_CUT (по "#RRGGBB").
  */
 Item {
     id: root
@@ -28,7 +31,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.52.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.53.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -359,6 +362,9 @@ Item {
         cellMm: path ? path.stockCellMm : 0.5
         countX: path ? path.stockCountX : 0
         countY: path ? path.stockCountY : 0
+        // Дробление клетки поля в рисуемом меше (гладкий вид). Поле, его текстура
+        // и сверки считаются по узлам: дробление живёт только здесь.
+        subdiv: root.stockSubdiv
     }
     StockShellGeometry {
         id: stockShell
@@ -545,7 +551,9 @@ Item {
             // Порог 0.05 мм отсекает задиры на десятые доли узла 0.5 мм.
             // Текстура поля - nearest: узел сетки стоит в центре своего текселя,
             // линейная выборка R32F на ветке OpenGL 3.3 не гарантирована и
-            // смазала бы стенку реза на полклетки.
+            // смазала бы стенку реза на полклетки. Гладкий вид интерполирует
+            // поле сам, четырьмя nearest-выборками (stocksurface.vert): своей
+            // интерполяции фильтр драйвера не касается.
             Model {
                 geometry: stockSurface
                 materials: CustomMaterial {
@@ -563,11 +571,10 @@ Item {
                     property color stockRawColor: root.stockRawColor
                     property color stockCutColor: root.stockCutColor
                     property real cutMm: 0.05
-                    // Скругление ступеней съёма: свойство узла (клавиша R,
-                    // CNC_STOCK_ROUND), по умолчанию выключено. Разбор и цена -
-                    // в stocksurface.vert: нарисованная поверхность перестаёт
-                    // совпадать с полем, кромка реза уезжает до узла (0.5 мм).
-                    property bool stockRound: root.stockRoundSteps
+                    // Вид остатка: свойство узла (клавиша R, CNC_STOCK_VIEW,
+                    // CNC_STOCK_ROUND). Разбор видов и их цена - в
+                    // stocksurface.vert.
+                    property int stockView: root.stockView
                     property vector3d stockLamp: root.stockLamp
                     property real stockTone: root.stockTone
                     property TextureInput stockField: TextureInput {
@@ -1086,13 +1093,29 @@ Item {
     // Коробка - пока поля нет (первый проход), после отказа (инструмент картой
     // не выражается) и по клавише B / CNC_STOCK_BOX=1 для сравнения.
     property bool stockPlainBox: false       // коробка вместо поля (B, CNC_STOCK_BOX)
-    // Скругление ступеней съёма: глубина узла берётся не из текселя, а как
-    // среднее по плюс-окрестности, поэтому нарисованная поверхность перестаёт
-    // совпадать с полем - кромка реза скругляется и уезжает вглубь до одного узла
-    // (0.5 мм), мелкое окно теряет до половины глубины. Поле и меш не трогаются:
-    // величина живёт только в вершинном шейдере (stocksurface.vert). Клавиша R,
-    // CNC_STOCK_ROUND=1; по умолчанию выключено - тогда вид и числа прежние.
-    property bool stockRoundSteps: false
+    // Вид остатка заготовки: 0 - точный по узлам поля, 1 - гладкий (меш
+    // дроблённый, высота билинейная), 2 - скруглённый (глубина узла - среднее по
+    // окрестности). Один переключатель на все три: клавиша R листает по кругу,
+    // CNC_STOCK_VIEW ставит вид до старта, а CNC_STOCK_ROUND=1 остаётся
+    // сокращением для третьего (прежняя ручка скругления).
+    // По умолчанию гладкий: им сняты обе жалобы на рваность - полоса вдоль
+    // кромки ступени и мозаика мелких граней на стенке. Цены: у точного вида
+    // полоса в клетку на верху у кромки и грани меша; у скруглённого кромка реза
+    // уезжает вглубь до узла (0.5 мм) и мелкое окно теряет до половины глубины;
+    // у гладкого нарисованная поверхность расходится с полем до четверти
+    // кручения клетки, кромка реза скругляется на полклетки, а меш крупнее в
+    // subdiv^2 раз. Разбор - в stocksurface.vert.
+    property int stockView: 1
+    // Дробление клетки поля в рисуемом меше: только у гладкого вида. 2 - потому
+    // что полосы и мозаика живут на масштабе клетки, и вдвое мелкой клетки
+    // хватает: вершина встаёт и в середине клетки, где и решается спор о стороне
+    // уступа (stocksurface.vert). Цена - вчетверо больше вершин и треугольников
+    // (замер: 60501 узел поля и 120000 треугольников против 241001 вершины и
+    // 480000 треугольников; поле, его текстура и сверки не меняются).
+    readonly property int stockSubdiv: root.stockView === 1 ? 2 : 1
+    readonly property var stockViewNames: ["точный", "гладкий", "скруглённый"]
+    readonly property string stockViewName: root.stockViewNames[root.stockView]
+    function cycleStockView() { root.stockView = (root.stockView + 1) % root.stockViewNames.length }
     readonly property bool stockFieldDrawn: !root.stockPlainBox && !root.qualitySafe
         && path !== null && path.hasStock && path.stockHasField
 
@@ -1227,7 +1250,7 @@ Item {
     // ----          PgUp/PgDn switch stage, P play, E edges, D tangents,
     // ----          X xray, F fps, Q - цикл качества (med -> low -> high -> safe),
     // ----          B - прежняя коробка заготовки вместо поверхности съёма,
-    // ----          C - палитра слитка, R - скругление ступеней съёма.
+    // ----          C - палитра слитка, R - вид остатка (точный/гладкий/скруглённый).
     // Раскладка не должна гасить горячие клавиши: на русской раскладке Qt сообщает
     // для физической X код Key_Ch, а не Key_X, и буквенные ветки ниже не работают.
     // Буквы сверяются по nativeScanCode - скан-коду физической клавиши, он от
@@ -1279,7 +1302,7 @@ Item {
             + " xray=" + root.xray + " fps=" + root.showFps
             + " quality=" + root.quality
             + " box=" + root.stockPlainBox + " field=" + root.stockFieldDrawn
-            + " round=" + root.stockRoundSteps
+            + " view=" + root.stockViewName + " subdiv=" + root.stockSubdiv
             + " palette=" + root.stockPresets[root.stockPreset].name
             + " raw=" + root.stockRawColor + " cut=" + root.stockCutColor
             + " playing=" + root.playing + " dist=" + Math.round(root.pathDist))
@@ -1359,10 +1382,10 @@ Item {
             root.cycleStockPreset()
             event.accepted = true
         } else if (root.keyIs(event, 0x13, Qt.Key_R)) {
-            // Скругление ступеней съёма (цена - в комментарии свойства): сравнение
-            // вида на живом кадре. Тот же тумблер, что CNC_STOCK_ROUND во входе
-            // (cpp/viewer/main.cpp).
-            root.stockRoundSteps = !root.stockRoundSteps
+            // Вид остатка заготовки: точный -> гладкий -> скруглённый (цена
+            // каждого - в комментарии свойства). Тот же переключатель, что
+            // CNC_STOCK_VIEW и CNC_STOCK_ROUND во входе (cpp/viewer/main.cpp).
+            root.cycleStockView()
             event.accepted = true
         }
         if (root.keyDebug)
@@ -1405,7 +1428,7 @@ Item {
               + " · G линии УП: " + (root.showToolpath ? "вкл" : "выкл")
               + " · K кожа детали: " + (root.showPartSkin ? "вкл" : "выкл")
               + " · B коробка: " + (root.stockPlainBox ? "вкл" : "выкл")
-              + " · R скругление ступеней: " + (root.stockRoundSteps ? "вкл" : "выкл")
+              + " · R вид остатка: " + root.stockViewName
         color: "#535C66"
         font.pixelSize: 12
         font.bold: true

@@ -9,6 +9,8 @@
 
 #include <QVector3D>
 
+#include <cstring>
+
 namespace gvqml {
 
 namespace {
@@ -45,6 +47,21 @@ bool parseBounds(const QVariantList &list, gv::StockBounds *out)
     out->zMinMm = list.at(4).toDouble();
     out->zMaxMm = list.at(5).toDouble();
     return out->xMaxMm > out->xMinMm && out->yMaxMm > out->yMinMm;
+}
+
+// Поле глубин из байтов: countX * countY float32 в порядке depthMm. Размер не
+// совпал (поля ещё нет или оно чужого узла) - пусто, рисовать нечего.
+std::vector<float> floatsFromBytes(const QByteArray &bytes, int countX, int countY)
+{
+    if (countX < 2 || countY < 2)
+        return {};
+    const qsizetype expected = qsizetype(countX) * qsizetype(countY)
+            * qsizetype(sizeof(float));
+    if (bytes.size() != expected)
+        return {};
+    std::vector<float> out(std::size_t(countX) * std::size_t(countY));
+    std::memcpy(out.data(), bytes.constData(), std::size_t(bytes.size()));
+    return out;
 }
 
 } // namespace
@@ -246,6 +263,217 @@ void StockShellGeometry::rebuild()
               QVector3D(float(bounds_.xMaxMm + gap_side_mm_),
                         float(bounds_.yMaxMm + gap_side_mm_),
                         float(bounds_.zMaxMm + gap_top_mm_)));
+    update();
+}
+
+// ---------------------------------------------------------------------------
+// StockCutWallGeometry
+// ---------------------------------------------------------------------------
+StockCutWallGeometry::StockCutWallGeometry(QQuick3DObject *parent)
+    : QQuick3DGeometry(parent)
+{
+    rebuild();
+}
+
+void StockCutWallGeometry::setBoundList(const QVariantList &list)
+{
+    if (list == bound_list_)
+        return;
+    bound_list_ = list;
+    has_bounds_ = parseBounds(list, &bounds_);
+    rebuild();
+    emit changed();
+}
+
+void StockCutWallGeometry::setCellMm(double value)
+{
+    if (value == cell_mm_)
+        return;
+    cell_mm_ = value;
+    rebuild();
+    emit changed();
+}
+
+void StockCutWallGeometry::setCountX(int value)
+{
+    if (value == count_x_)
+        return;
+    count_x_ = value;
+    rebuild();
+    emit changed();
+}
+
+void StockCutWallGeometry::setCountY(int value)
+{
+    if (value == count_y_)
+        return;
+    count_y_ = value;
+    rebuild();
+    emit changed();
+}
+
+void StockCutWallGeometry::setCutMm(double value)
+{
+    if (value == cut_mm_)
+        return;
+    cut_mm_ = value;
+    rebuild();
+    emit changed();
+}
+
+void StockCutWallGeometry::setDepthData(const QByteArray &data)
+{
+    if (data == depth_data_)
+        return;
+    depth_data_ = data;
+    rebuild();
+    emit changed();
+}
+
+void StockCutWallGeometry::rebuild()
+{
+    clear();
+    setPrimitiveType(QQuick3DGeometry::PrimitiveType::Triangles);
+    vertex_count_ = 0;
+    triangle_count_ = 0;
+    segment_count_ = 0;
+    const std::vector<float> depth = floatsFromBytes(depth_data_, count_x_, count_y_);
+    if (!has_bounds_ || depth.empty() || !(cell_mm_ > 0.0) || !(cut_mm_ > 0.0)) {
+        setBounds(QVector3D(0, 0, 0), QVector3D(0, 0, 0));
+        update();
+        return;
+    }
+
+    const gv::StockWallMesh mesh = gv::stockCutWall(bounds_, cell_mm_, depth,
+                                                    count_x_, count_y_, cut_mm_);
+    vertex_count_ = int(mesh.vertices.size() / 4);
+    triangle_count_ = mesh.triangleCount();
+    segment_count_ = triangle_count_ / 2;
+    if (vertex_count_ == 0 || triangle_count_ == 0) {
+        setBounds(QVector3D(0, 0, 0), QVector3D(0, 0, 0));
+        update();
+        return;
+    }
+
+    setVertexData(asBytes(mesh.vertices));
+    setIndexData(asBytes(mesh.indices));
+    setStride(4 * 4);                      // позиция 3f + глубина дна 1f (ядро)
+    addAttribute(QQuick3DGeometry::Attribute::PositionSemantic, 0, F32);
+    addAttribute(QQuick3DGeometry::Attribute::IndexSemantic, 0,
+                 QQuick3DGeometry::Attribute::U32Type);
+    // Габарит по всему ходу высоты: стенка идёт от верха заготовки вниз, и
+    // отсечение по одной вершине соврало бы.
+    setBounds(QVector3D(float(bounds_.xMinMm), float(bounds_.yMinMm), float(bounds_.zMinMm)),
+              QVector3D(float(bounds_.xMaxMm), float(bounds_.yMaxMm), float(bounds_.zMaxMm)));
+    update();
+}
+
+// ---------------------------------------------------------------------------
+// StockCutContourGeometry
+// ---------------------------------------------------------------------------
+StockCutContourGeometry::StockCutContourGeometry(QQuick3DObject *parent)
+    : QQuick3DGeometry(parent)
+{
+    rebuild();
+}
+
+void StockCutContourGeometry::setBoundList(const QVariantList &list)
+{
+    if (list == bound_list_)
+        return;
+    bound_list_ = list;
+    has_bounds_ = parseBounds(list, &bounds_);
+    rebuild();
+    emit changed();
+}
+
+void StockCutContourGeometry::setCellMm(double value)
+{
+    if (value == cell_mm_)
+        return;
+    cell_mm_ = value;
+    rebuild();
+    emit changed();
+}
+
+void StockCutContourGeometry::setCountX(int value)
+{
+    if (value == count_x_)
+        return;
+    count_x_ = value;
+    rebuild();
+    emit changed();
+}
+
+void StockCutContourGeometry::setCountY(int value)
+{
+    if (value == count_y_)
+        return;
+    count_y_ = value;
+    rebuild();
+    emit changed();
+}
+
+void StockCutContourGeometry::setCutMm(double value)
+{
+    if (value == cut_mm_)
+        return;
+    cut_mm_ = value;
+    rebuild();
+    emit changed();
+}
+
+void StockCutContourGeometry::setDepthData(const QByteArray &data)
+{
+    if (data == depth_data_)
+        return;
+    depth_data_ = data;
+    rebuild();
+    emit changed();
+}
+
+void StockCutContourGeometry::rebuild()
+{
+    clear();
+    setPrimitiveType(QQuick3DGeometry::PrimitiveType::Lines);
+    vertex_count_ = 0;
+    segment_count_ = 0;
+    const std::vector<float> depth = floatsFromBytes(depth_data_, count_x_, count_y_);
+    if (!has_bounds_ || depth.empty() || !(cell_mm_ > 0.0) || !(cut_mm_ > 0.0)) {
+        setBounds(QVector3D(0, 0, 0), QVector3D(0, 0, 0));
+        update();
+        return;
+    }
+
+    const std::vector<gv::StockContourSegment> contour = gv::stockCutContour(
+            bounds_, cell_mm_, depth, count_x_, count_y_, cut_mm_);
+    segment_count_ = int(contour.size());
+    if (contour.empty()) {
+        setBounds(QVector3D(0, 0, 0), QVector3D(0, 0, 0));
+        update();
+        return;
+    }
+
+    // Контур лежит на плоскости нетронутого верха: две вершины на отрезок, порядок
+    // тот же, что у отрезков ядра (PrimitiveType::Lines индексов не требует).
+    const float zTop = float(bounds_.zMaxMm);
+    std::vector<float> vertices;
+    vertices.reserve(contour.size() * 6);
+    for (const gv::StockContourSegment &segment : contour) {
+        vertices.push_back(float(segment.x0Mm));
+        vertices.push_back(float(segment.y0Mm));
+        vertices.push_back(zTop);
+        vertices.push_back(float(segment.x1Mm));
+        vertices.push_back(float(segment.y1Mm));
+        vertices.push_back(zTop);
+    }
+    vertex_count_ = int(vertices.size() / 3);
+
+    setVertexData(asBytes(vertices));
+    setStride(3 * 4);                      // позиция 3f
+    addAttribute(QQuick3DGeometry::Attribute::PositionSemantic, 0, F32);
+    setBounds(QVector3D(float(bounds_.xMinMm), float(bounds_.yMinMm), float(bounds_.zMaxMm)),
+              QVector3D(float(bounds_.xMaxMm), float(bounds_.yMaxMm), float(bounds_.zMaxMm)));
     update();
 }
 

@@ -301,30 +301,31 @@ void applyCleanViewEnv(QQuickItem *root_item)
 }
 
 // CNC_STOCK_VIEW: вид остатка заготовки до старта - та же ручка, что клавиша R
-// (GcodeViewer3D.qml, stockView). Три вида: exact (точный по узлам поля),
-// smooth (гладкий: дроблённый меш, высота билинейная - вид по умолчанию) и
+// (GcodeViewer3D.qml, stockView). Четыре вида: exact (точный по узлам поля),
+// smooth (гладкий: дроблённый меш, высота билинейная - вид по умолчанию),
 // rounded (скруглённый: глубина узла - среднее по окрестности, прежний тумблер
-// CNC_STOCK_ROUND). CNC_STOCK_ROUND=1 остаётся как сокращение для rounded:
-// переменная была в контракте запуска, и её поведение сохранено. Непонятная
-// строка - отказ с причиной в stderr: молча показать не тот вид нельзя, кадры
-// сравнивают по видам.
+// CNC_STOCK_ROUND) и contour (точный контур: к верху добавляются стенка по
+// контуру marching squares и сам контур полилинией). CNC_STOCK_ROUND=1 остаётся
+// как сокращение для rounded: переменная была в контракте запуска, и её поведение
+// сохранено. Непонятная строка - отказ с причиной в stderr: молча показать не тот
+// вид нельзя, кадры сравнивают по видам.
 void applyStockViewEnv(QQuickItem *root_item)
 {
-    const char *names[] = { "exact", "smooth", "rounded" };
+    const char *names[] = { "exact", "smooth", "rounded", "contour" };
     if (qEnvironmentVariableIsSet("CNC_STOCK_ROUND")) {
         root_item->setProperty("stockView", 2);
     }
     const QString text = qEnvironmentVariable("CNC_STOCK_VIEW").trimmed().toLower();
     if (text.isEmpty())
         return;
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 4; ++i) {
         if (text == QLatin1String(names[i])) {
             root_item->setProperty("stockView", i);
             return;
         }
     }
     warn(QStringLiteral("gcodeviewer: CNC_STOCK_VIEW: вид не разобран: %1 "
-                        "(ожидается exact, smooth или rounded)")
+                        "(ожидается exact, smooth, rounded или contour)")
                  .arg(text));
 }
 
@@ -339,13 +340,16 @@ struct StockColorEnv {
 // CNC_STOCK_RAW и CNC_STOCK_CUT ставят цвета палитры по "#RRGGBB" (или
 // "#AARRGGBB") - те же две ручки, что пресеты вьювера и клавиша C
 // (GcodeViewer3D.qml, stockPresets): переменная задаёт цвет пары до старта,
-// пресет остаётся тем, что был. Непонятная строка - отказ с причиной в stderr:
-// молча красить слиток в чёрный нельзя, по его цвету читают, где металл снят.
+// пресет остаётся тем, что был. CNC_STOCK_CONTOUR - цвет точного контура реза
+// (вид contour): он вне палитры, потому что линия меры, а не материал. Непонятная
+// строка - отказ с причиной в stderr: молча красить слиток в чёрный нельзя, по
+// его цвету читают, где металл снят.
 void applyStockColorEnv(QQuickItem *root_item)
 {
     const StockColorEnv vars[] = {
         { "CNC_STOCK_RAW", "stockRawColor" },
         { "CNC_STOCK_CUT", "stockCutColor" },
+        { "CNC_STOCK_CONTOUR", "stockContourColor" },
     };
     for (const StockColorEnv &var : vars) {
         const QString text = qEnvironmentVariable(var.variable);

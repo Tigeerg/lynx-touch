@@ -16,7 +16,7 @@ import MockBackend 1.0
  *   скрыта), K - кожа детали (тело без рёбер), G - линии УП, B - прежняя коробка
  *   вместо поверхности съёма, V - заготовка полупрозрачной;
  *   C - палитра остатка материала (пресеты), R - вид остатка по кругу
- *   (точный -> гладкий -> скруглённый);
+ *   (точный -> гладкий -> скруглённый -> точный контур);
  *   L - длина, T - этапы, PgUp/PgDn - кадры этапов;
  *   E - рёбра, D - касательные, Q - качество, F - fps.
  * Вид детали - один переключатель на три положения, и прозрачная кожа на нём же
@@ -26,9 +26,10 @@ import MockBackend 1.0
  * (cpp/viewer/main.cpp): CNC_STOCK_BOX, CNC_NO_TOOLPATH, CNC_NO_PART_SKIN,
  * CNC_STOCK_GHOST (заготовка полупрозрачной, умолчание; =0 или false - сплошная),
  * CNC_PART_MODE (solid/transparent/hidden - тот же один переключатель вида детали),
- * вид остатка - CNC_STOCK_VIEW (exact/smooth/rounded, умолчание smooth) и
+ * вид остатка - CNC_STOCK_VIEW (exact/smooth/rounded/contour, умолчание smooth) и
  * прежнее сокращение CNC_STOCK_ROUND=1 для rounded, а цвета палитры -
- * CNC_STOCK_RAW и CNC_STOCK_CUT (по "#RRGGBB").
+ * CNC_STOCK_RAW и CNC_STOCK_CUT (по "#RRGGBB"), цвет точного контура реза -
+ * CNC_STOCK_CONTOUR.
  */
 Item {
     id: root
@@ -426,6 +427,29 @@ Item {
         gapTopMm: root.shellGapTopMm
         gapBottomMm: root.shellGapBottomMm
     }
+    // Точные слои реза (PLAN-STOCK.md, 3.1): стенка по точному контуру (marching
+    // squares по полю) и сам контур полилинией. Считаются по тому же полю, что
+    // идёт текстурой на верх: depthData - байты path.stockDepth. Пока вид не
+    // выбран (root.stockCutExact ложь), данные пусты и геометрия не строится -
+    // живой тик не платит за контур, когда его не видно.
+    StockCutWallGeometry {
+        id: stockCutWall
+        boundList: path ? path.stockBounds : []
+        cellMm: path ? path.stockCellMm : 0.5
+        countX: path ? path.stockCountX : 0
+        countY: path ? path.stockCountY : 0
+        cutMm: 0.05
+        depthData: (root.stockCutExact && path) ? path.stockDepth : ""
+    }
+    StockCutContourGeometry {
+        id: stockCutContour
+        boundList: path ? path.stockBounds : []
+        cellMm: path ? path.stockCellMm : 0.5
+        countX: path ? path.stockCountX : 0
+        countY: path ? path.stockCountY : 0
+        cutMm: 0.05
+        depthData: (root.stockCutExact && path) ? path.stockDepth : ""
+    }
 
     // Project a 3D point to View3D screen coordinates (manual perspective)
     function projectToScreen(p) {
@@ -736,6 +760,59 @@ Item {
                     cullMode: Material.FrontFaceCulling
                     vertexShader: "stockshell.vert"
                     fragmentShader: "stockshell.frag"
+                }
+            }
+
+            // Точная стенка реза (PLAN-STOCK.md, 3.1): вертикальные квады по
+            // контуру marching squares, а не ступени узлов поля. Верх на
+            // плоскости нетронутого верха, низ - на дне реза в точке контура,
+            // поэтому стык верх/стенка/дно идёт по одному контуру, без щели.
+            // Буфер собирает ядро (core/stock_sim, stockCutWall), геометрия -
+            // qmlbackend/gv_stockgeom. Видна в виде «точный контур» (клавиша R,
+            // CNC_STOCK_VIEW=contour): листая вид на живом кадре, ровную стенку
+            // сравнивают со ступенчатой у точного вида.
+            Model {
+                visible: root.showStockVisible && root.stockFieldDrawn
+                         && root.stockCutExact
+                geometry: stockCutWall
+                materials: CustomMaterial {
+                    shadingMode: CustomMaterial.Unshaded
+                    property color stockCutColor: root.stockCutColor
+                    property real stockTone: root.stockTone
+                    property real stockAlpha: root.stockGhost ? root.stockGhostAlpha : 1.0
+                    // Тот же сдвиг глубины к глазу, что у верха поля: стенка
+                    // стоит в плоскости нетронутого верха и спорит с ним за
+                    // совпавший пиксель.
+                    property real depthOffset: root.stockDepthOffset
+                    sourceBlend: root.stockGhost ? CustomMaterial.SrcAlpha : CustomMaterial.NoBlend
+                    destinationBlend: root.stockGhost ? CustomMaterial.OneMinusSrcAlpha
+                                                       : CustomMaterial.NoBlend
+                    depthDrawMode: root.stockGhost ? Material.AlwaysDepthDraw
+                                                   : Material.OpaqueOnlyDepthDraw
+                    cullMode: Material.NoCulling
+                    vertexShader: "stockcutwall.vert"
+                    fragmentShader: "stockcutwall.frag"
+                }
+            }
+
+            // Точный контур реза полилинией: та же граница, что у стенки, но
+            // нарисованная линией на плоскости нетронутого верха. Прямая сверка:
+            // он показывает, где граница реза на самом деле, а ступенчатый верх
+            // поля - где её рисует узел. Цвет - свой (stockContourColor): линия
+            // меры, а не материал, и обязана читаться на обоих тонах палитры.
+            Model {
+                visible: root.showStockVisible && root.stockFieldDrawn
+                         && root.stockCutExact
+                geometry: stockCutContour
+                materials: CustomMaterial {
+                    shadingMode: CustomMaterial.Unshaded
+                    property color contourColor: root.stockContourColor
+                    // Сдвиг чуть сильнее, чем у верха поля (stockDepthOffset):
+                    // контур лежит в плоскости нетронутого верха, и равный сдвиг
+                    // оставил бы совпавший пиксель на спор растеризатору.
+                    property real depthOffset: root.stockContourOffset
+                    vertexShader: "stockcutcontour.vert"
+                    fragmentShader: "stockcutcontour.frag"
                 }
             }
         }
@@ -1210,7 +1287,8 @@ Item {
     readonly property real stockGhostAlpha: 0.90
     // Вид остатка заготовки: 0 - точный по узлам поля, 1 - гладкий (меш
     // дроблённый, высота билинейная), 2 - скруглённый (глубина узла - среднее по
-    // окрестности). Один переключатель на все три: клавиша R листает по кругу,
+    // окрестности), 3 - точный контур (к верху добавляются точные слои реза).
+    // Один переключатель на все четыре: клавиша R листает по кругу,
     // CNC_STOCK_VIEW ставит вид до старта, а CNC_STOCK_ROUND=1 остаётся
     // сокращением для третьего (прежняя ручка скругления).
     // По умолчанию гладкий: им сняты обе жалобы на рваность - полоса вдоль
@@ -1228,7 +1306,15 @@ Item {
     // (замер: 60501 узел поля и 120000 треугольников против 241001 вершины и
     // 480000 треугольников; поле, его текстура и сверки не меняются).
     readonly property int stockSubdiv: root.stockView === 1 ? 2 : 1
-    readonly property var stockViewNames: ["точный", "гладкий", "скруглённый"]
+    // Вид «точный контур» (четвёртый в списке): к верхнему полю добавляются точные
+    // слои реза - вертикальная стенка по контуру marching squares и сам контур
+    // полилинией (qmlbackend/gv_stockgeom, core/stock_sim). Это прямая сверка:
+    // контур и стенка построены по ПОРОГУ поля, а не по ступеням узлов, и листая
+    // вид (R) на живом кадре, ровную границу сравнивают со ступенчатой у точного
+    // вида. Меш верха в этом виде - точный (subdiv 1): сравнивать надо с тем же
+    // полем, что рисует ступени.
+    readonly property bool stockCutExact: root.stockView === 3
+    readonly property var stockViewNames: ["точный", "гладкий", "скруглённый", "точный контур"]
     readonly property string stockViewName: root.stockViewNames[root.stockView]
     function cycleStockView() { root.stockView = (root.stockView + 1) % root.stockViewNames.length }
     readonly property bool stockFieldDrawn: !root.stockPlainBox && !root.qualitySafe
@@ -1259,6 +1345,12 @@ Item {
     // решает спор, - обводка детали под сдвинутый остаток не уходит (её ленты
     // сдвинуты сильнее, edgePolyOffset 6e-5).
     readonly property real stockDepthOffset: -3e-5
+    // Сдвиг глубины точного контура реза: тот же знак (к глазу), вдвое больше -
+    // контур лежит в плоскости нетронутого верха, а равный сдвиг оставлял бы
+    // совпавший пиксель на спор растеризатору. Двойка - не замер, а заведомый запас
+    // на шум: сдвиг экранную позицию не меняет (только clip z), а контур - линия
+    // поверх поля, и его задача - читаться.
+    readonly property real stockContourOffset: -6e-5
 
     // ---- Палитра остатка материала: два цвета и пресеты для подбора контраста ----
     // Поле отвечает на один вопрос - "где уже снято": нетронутый верх одним
@@ -1281,6 +1373,12 @@ Item {
     ]
     property color stockRawColor: stockPresets[stockPreset].raw
     property color stockCutColor: stockPresets[stockPreset].cut
+    // Цвет точного контура реза (вид «точный контур», клавиша R): линия меры, а
+    // не материал, поэтому он один на все пресеты и не входит в палитру - обязан
+    // читаться и на нетронутом верху, и на снятом металле. Тёмный тон выбран как
+    // у рёбер B-Rep: контур читается нарисованной границей, а не ещё одним тоном
+    // металла. Ставится до старта переменной CNC_STOCK_CONTOUR (cpp/viewer/main.cpp).
+    property color stockContourColor: "#101418"
 
     // ---- Лампа слитка: своя светлота вместо света сцены ----
     // Свет сцены настроен под кожу детали (грани почти вертикальные), и на

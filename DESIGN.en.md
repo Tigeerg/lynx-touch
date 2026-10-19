@@ -470,21 +470,32 @@ says.
   the smooth view differs from the former vertex rule on 1628 pixels out of 614 400 (0.27 %), the difference
   sits on the walls; a two-cell rise gets its own 1.0 mm/mm slope instead of the former 0.5
   (`stocksurface_shade_frag`), and there is no one-cell band at the edge (`stocksurface_fine`, 2489 checks,
-  deviation 5.3e-15). The cut boundary is a line by the signed distance from the field to the cut threshold
-  (`vDepth - cutMm`) in the same fragment: the pixel distance comes from the screen derivative, the half-tone
-  is half a pixel on each side. Measured (Test_model, the exact contour view, toolpath and skin off, camera
-  yaw 35 pitch -32): 1.27 pixels of line per boundary crossing against 2.20 for the former marching-squares
-  polyline, 198 line pixels against 570 in the pocket-boundary window. The exact cut layers are the wall along
-  the marching-squares contour (`stockCutWall`) and the boundary itself as a polyline (`stockCutContour`); the
-  line colour is `CNC_STOCK_CONTOUR`, its thickness (1.1 px) is `stockContourHalfPx`.
+  deviation 5.3e-15).
+- The exact cut boundary is a representation OF ITS OWN, independent of the field node (the plan, stage 1.5).
+  The core computes it from the moves (`core/stock_sim`, `stockCutBoundary`): `marching squares` over the signs
+  of the field nodes picks the candidate edges, and the crossing position on an edge is refined by bisecting the
+  segment over the EXACT analytic move depth (`sweepPointDepth` — the same formula as a field node). The sign at
+  a node is exact (the field depth at a node is exact), so a node only picks the edge, not the boundary position.
+  The wall (`stockCutWallFromSegments`) and the polyline (`StockCutContourGeometry`) are built from it, and for
+  the colour and the line the core hands out the signed distance to the boundary at the field nodes
+  (`stockCutSignedDistance`, negative where cut): the zero level between nodes is linear, so the edge runs as a
+  straight line rather than in node steps. The surface fragment takes that value in the exact contour view
+  (`cutExactBoundary`, `stocksurface.frag`); in the other views the colour and the line are as before, by
+  `vDepth - cutMm`. The line colour is `CNC_STOCK_CONTOUR`, its thickness (1.1 px) is `stockContourHalfPx`.
+  Boundary error in mm against the analytic case (`stock_sim_probe`, cases `boundary_wall` and `boundary_ball`):
+  the former field threshold — 0.475 mm (wall) and 0.223 mm (ball) at a 0.5 node, and 0.190 / 0.044 at 0.2; a
+  finer field (0.1 mm) — 0.095 / 0.0073; the exact boundary — 1.5e-8 / 6.7e-9 mm, and the drawn signed distance —
+  0.011 / 0.002 mm. The price is named (Test_model): a 0.5 node — 2356 segments, 160 ms and 37 KiB, the signed
+  distance 236 KiB (the same as the field); a 0.2 node — 5824 segments, 302 ms and 91 KiB, 1.44 MiB. A live tick
+  recomputes only the cells whose nodes changed (the `StockBoundaryCache` state): 1.1-2.4 ms per step of
+  0.1-0.5 % of the path length.
 - The limits of the layered surface are named, not hidden. The cut wall is a seam `cutMm` tall (0.05 mm; about
   0.1 pixel on a 1024x600 frame at a 341 mm distance) on the plane of the untouched top, so the boundary line
-  reads it, not the wall itself. The pocket wall of the field top is still a height map: a vertical cutter wall is quantised by the node (in a
-  cell one node is untouched and its neighbour is at the full depth), so the threshold boundary runs in node
-  steps — measured over the field on 160 columns along the edge: 146 joins with no shift, 13 shifted by one
-  pixel (0.4 mm) and 2 by two. Smoothing that by drawing would smooth the real boundary too; it is cured by a
-  finer node (stages 1.3-1.4: an adaptive mesh and tiles), not by the shader. The contour sagitta is a linear
-  interpolation inside a cell, not an arc.
+  reads it, not the wall itself. The field top between nodes is still a height map (bilinear), while the colour
+  and the line boundary follow the exact representation: the former caveat "node steps are cured by a finer node"
+  is closed by a representation of its own, not by subdividing the field. The sagitta of the exact polyline is a
+  chord between two sub-cell crossings (0.010 mm at a 0.5 node and radius 3), not an arc; the field node still
+  decides the metal colour away from the boundary.
 - The top of the stock wall is trimmed by the field (`stockshell.frag`): the wall stands on the bounds and
   otherwise would not know that the cutter removed metal across the edge (measured: 102 cut perimeter nodes out
   of 1000, up to 1.00 mm). The trim runs in the fragment shader and takes the same bilinear reconstruction of
@@ -561,13 +572,18 @@ says.
   marching-squares contour ends against the analytic boundary of a ball (0.2227 mm against a half-cell tolerance
   of 0.25) and the wall whose top is on the plane of the untouched top and whose bottom is on the cut floor;
   (16) `stocksurface_shade_frag` — the slope in the fragment: a two-cell rise gets its own 1.0 mm/mm, while the
-  former rule across 2 * NORMAL_SPAN cells gave 0.5. The tolerance is derived from the node size, not tuned
-  until green; the digest cases compare bitwise.
+  former rule across 2 * NORMAL_SPAN cells gave 0.5; (17) `boundary_wall` and `boundary_ball` — the exact-boundary
+  error in mm against the analytic case (1.5e-8 and 6.7e-9 mm against a 1e-3 tolerance) at the 0.5 and 0.2 nodes,
+  with the same numbers for the former field threshold and a finer field printed alongside; (18) `boundary_drawn` —
+  the zero level of the signed distance (what is seen) within 0.05 mm; (19) `boundary_incremental` — the boundary
+  with state matches the full build segment for segment after the field grows. The tolerance is derived from the
+  node size, not tuned until green; the digest cases compare bitwise.
 - `stock_bind_probe` checks the same in the controller: the texture and the field match; during a tick (state
   `computing`) the field stays the last complete one; after a rewind and a move forward the digest equals the
   full field; cancelling a tick publishes not a new field but the last complete one, cancelling the first pass
   publishes nothing; `TYPE=LOLLIPOP` gives the state `refused` with no field; the cut-layer geometries are built
-  from the field (20 contour segments on a synthetic half-plane, a 40-triangle wall).
+  from the exact boundary (20 segments of a synthetic boundary, a 40-triangle wall; the field is needed only for
+  the wall floor).
 - `front_stock_probe` holds the cut chronicle (`core/stock_front`): the field at moment t is a threshold on the
   time label and matches the walk from the start (digest); the cost of a rewind against a rebuild (Test_model:
   0.1442 ms against 81.920 ms, 568x); the determinism of two runs; the share of nodes cut more than once

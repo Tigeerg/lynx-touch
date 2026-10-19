@@ -292,6 +292,39 @@ struct StockSurfaceMesh {
 StockSurfaceMesh stockSurfaceMesh(const StockBounds& bounds, double cellMm,
                                   int countX, int countY, int subdiv = 1);
 
+// Отрезок точного контура реза, машинные мм: граница, где глубина поля
+// линейно пересекает порог cutMm (PLAN-STOCK.md, 3.1). Положение перехода -
+// под-ячейковое, поэтому стенка кармана ложится ровной линией, а не ступенями
+// узлов.
+struct StockContourSegment {
+    double x0Mm = 0.0;
+    double y0Mm = 0.0;
+    double x1Mm = 0.0;
+    double y1Mm = 0.0;
+};
+
+// Контур реза (marching squares) по полю глубин. Седло разрешается знаком
+// среднего по клетке; порядок рёбер фиксирован (низ, право, верх, лево) -
+// контур детерминирован.
+std::vector<StockContourSegment> stockCutContour(const StockBounds& bounds, double cellMm,
+                                                 const std::vector<float>& depthMm,
+                                                 int countX, int countY, double cutMm);
+
+// Вертикальная стенка по контуру: верх на плоскости нетронутого верха (zMaxMm),
+// низ - на высоте дна реза в точке контура (билинейно по узлам клетки). Верх
+// сходится с верхом поля, низ - с дном, щели нет. Вершина - 4 float (позиция 3f
+// + глубина дна для цвета), два треугольника на отрезок контура.
+struct StockWallMesh {
+    std::vector<float> vertices;
+    std::vector<std::uint32_t> indices;
+
+    int triangleCount() const { return int(indices.size() / 3); }
+};
+
+StockWallMesh stockCutWall(const StockBounds& bounds, double cellMm,
+                           const std::vector<float>& depthMm, int countX, int countY,
+                           double cutMm);
+
 // Стенки и дно коробки заготовки: пять прямоугольников, верхней грани нет -
 // её рисует поле. Позиции - машинные мм, коробка крупнее габарита на зазоры:
 // ими разводят совпадающие грани заготовки и детали (прежние доли пикселя),

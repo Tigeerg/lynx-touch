@@ -1081,6 +1081,67 @@ int main(int argc, char** argv)
                    geometryOk && wallCells > 0);
     }
 
+    // 7в. Точный контур реза и стенка по нему (PLAN-STOCK.md, 3.1). Marching
+    // squares даёт границу под-ячейково: сверка endpoints со шаром, глубина
+    // которого пересекает порог cutMm на радиусе s05. Стенка обязана: держать
+    // верх на плоскости нетронутого верха, низ - на дне реза (то есть ровно на
+    // cutMm ниже верха), и давать два треугольника на отрезок - стык верх,
+    // стенка и дно идёт по одному контуру, без щели.
+    {
+        const double cell = 0.5;
+        const double r = 3.0;
+        const double tipZ = -1.0;
+        const double cutMm = 0.05;
+        gv::StockBounds bounds;
+        bounds.xMinMm = -5.0;
+        bounds.xMaxMm = 5.0;
+        bounds.yMinMm = -5.0;
+        bounds.yMaxMm = 5.0;
+        bounds.zMinMm = -5.0;
+        bounds.zMaxMm = 0.0;
+        gv::StockField field;
+        field.reset(bounds, cell);
+        const gv::StockCutter cutter = gv::stockCutter(makeTool(ToolSpec{"BALL", 6.0}));
+        field.sweepExact(cutter, {0.0, 0.0, tipZ}, {0.0, 0.0, tipZ});
+
+        // Аналитическая граница среза шара по порогу: глубина
+        // zMax - (tipZ + r - sqrt(r^2 - s^2)) равна cutMm на радиусе s05.
+        const double chord = cutMm + r + tipZ - bounds.zMaxMm;
+        const double s05 = std::sqrt(std::max(0.0, r * r - chord * chord));
+
+        const std::vector<gv::StockContourSegment> contour = gv::stockCutContour(
+                bounds, cell, field.depthMm(), field.countX(), field.countY(), cutMm);
+        const gv::StockWallMesh wall = gv::stockCutWall(
+                bounds, cell, field.depthMm(), field.countX(), field.countY(), cutMm);
+
+        int checked = 0;
+        double maxDev = 0.0;
+        for (const gv::StockContourSegment& segment : contour) {
+            const std::array<std::array<double, 2>, 2> ends{{
+                {segment.x0Mm, segment.y0Mm}, {segment.x1Mm, segment.y1Mm}}};
+            for (const std::array<double, 2>& p : ends) {
+                maxDev = std::max(maxDev, std::fabs(std::hypot(p[0], p[1]) - s05));
+                ++checked;
+            }
+        }
+        bool wallOk = wall.triangleCount() == 2 * int(contour.size())
+                && int(wall.vertices.size()) == 4 * 4 * int(contour.size())
+                && !contour.empty();
+        for (int v = 0; v + 3 < int(wall.vertices.size()); v += 4) {
+            const double z = wall.vertices[v + 2];
+            const double depth = wall.vertices[v + 3];
+            const bool onTop = std::fabs(z - bounds.zMaxMm) < 1e-9;
+            const bool onFloor = std::fabs(z - (bounds.zMaxMm - depth)) < 1e-9;
+            wallOk = wallOk && (onTop || onFloor) && std::fabs(depth - cutMm) < 1e-6;
+        }
+        std::printf("note stocksurface_exact segments=%d s05_mm=%.4f wall_tris=%d "
+                    "wall_verts=%d max_dev_mm=%.4f tol_mm=%.4f\n",
+                    int(contour.size()), s05, wall.triangleCount(),
+                    int(wall.vertices.size() / 4), maxDev, cell * 0.5);
+        reportCase("stocksurface_exact", checked, maxDev, cell * 0.5,
+                   wallOk && !contour.empty());
+    }
+
     // 8. Оболочка коробки: пять прямоугольников без верхней грани. Проверяется
     // форма, а не буфер: вершин 30, каждая - угол габарита, увеличенного на
     // зазоры; у каждого треугольника одна координата постоянна (грани

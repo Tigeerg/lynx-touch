@@ -5,12 +5,12 @@
  * платформенный плагин Windows: QKeyEvent с nativeScanCode, nativeVirtualKey и
  * текстом, посчитанными по раскладке (MapVirtualKeyEx/ToUnicodeEx). Признак
  * срабатывания - не журнал, а свойства вьювера: каждая горячая клавиша обязана
- * переключить своё (P - пуск, S - заготовка, M - деталь, K - кожа детали без
+ * переключить своё (P - пуск, S - заготовка, M - вид детали, K - кожа детали без
  * рёбер, G - линии УП, L - весь код, T - этапы, E - рёбра, D - касательные,
  * X - рентген, F - fps, B - коробка вместо поля съёма, C - палитра слитка,
- * R - вид остатка заготовки: точный -> гладкий -> скруглённый; у R проверяется и
- * круг положений: сколько положений, столько нажатий обязаны вернуть вид к
- * исходному, и промежуточные - отличаться).
+ * V - заготовка полупрозрачной, R - вид остатка заготовки: точный -> гладкий ->
+ * скруглённый; у R и M проверяется и круг положений: сколько положений, столько
+ * нажатий обязаны вернуть вид к исходному, и промежуточные - отличаться).
  *
  * Чем это отличается от живой пробы с SendInput (tools/keyprobe.ps1): живая проба
  * требует переднего окна в незапертой сессии, а перевод скан-кода в VK и символ
@@ -145,7 +145,7 @@ struct ProbeKey
 const ProbeKey KEYS[] = {
     { "P", 0x19, "playing" },
     { "S", 0x1F, "showStockVisible" },
-    { "M", 0x32, "showPartVisible" },
+    { "M", 0x32, "partMode" },
     { "K", 0x25, "showPartSkin" },
     { "G", 0x22, "showToolpath" },
     { "L", 0x26, "showAllCode" },
@@ -156,6 +156,7 @@ const ProbeKey KEYS[] = {
     { "F", 0x21, "showFps" },
     { "B", 0x30, "stockPlainBox" },
     { "C", 0x2E, "stockPreset" },
+    { "V", 0x2F, "stockGhost" },
     { "R", 0x13, "stockView" },
 };
 
@@ -329,13 +330,20 @@ int run(const QString &program, const QStringList &layouts)
             }
 
             // Клавиша с числом положений больше двух (R - вид остатка заготовки:
-            // точный, гладкий, скруглённый) проверяется ещё и кругом: столько
-            // нажатий, сколько положений, обязаны вернуть свойство к исходному
-            // значению, а промежуточные - отличаться. Иначе «сработала» значило бы
-            // только «что-то изменилось», и залипшее положение прошло бы проверку.
-            if (property == QByteArray("stockView")) {
+            // точный, гладкий, скруглённый; M - вид детали: сплошная, прозрачная,
+            // скрыта) проверяется ещё и кругом: столько нажатий, сколько
+            // положений, обязаны вернуть свойство к исходному значению, а
+            // промежуточные - отличаться. Иначе «сработала» значило бы только
+            // «что-то изменилось», и залипшее положение прошло бы проверку.
+            // Список имён положений - свойство самого вьювера, а не второй
+            // счётчик здесь: stockViewNames и partModeNames.
+            const QByteArray positionsProperty =
+                    (property == QByteArray("stockView")) ? QByteArray("stockViewNames")
+                  : (property == QByteArray("partMode")) ? QByteArray("partModeNames")
+                                                          : QByteArray();
+            if (!positionsProperty.isEmpty()) {
                 const int start = root->property(property.constData()).toInt();
-                const int positions = root->property("stockViewNames").toList().size();
+                const int positions = root->property(positionsProperty.constData()).toList().size();
                 for (int step = 1; step <= positions; ++step) {
                     const int from = root->property(property.constData()).toInt();
                     press(view, resolved, Qt::NoModifier);

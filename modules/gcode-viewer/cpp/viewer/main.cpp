@@ -69,6 +69,9 @@
 #include <QThread>
 #include <QTimer>
 #include <QUrl>
+#include <QVector3D>
+
+#include <algorithm>
 
 #include "core/quality.h"   // gv::presetFromEnv: уровень CNC_QUALITY тем же чтением, что ядро
 
@@ -253,6 +256,95 @@ void applyStockColorEnv(QQuickItem *root_item)
     }
 }
 
+// CNC_STOCK_GHOST: заготовка полупрозрачной до старта - та же ручка, что клавиша
+// V (GcodeViewer3D.qml, stockGhost). Переменная без значения включает вид: так же
+// включаются CNC_STOCK_BOX и CNC_NO_TOOLPATH.
+void applyStockGhostEnv(QQuickItem *root_item)
+{
+    root_item->setProperty("stockGhost", qEnvironmentVariableIsSet("CNC_STOCK_GHOST"));
+}
+
+// CNC_PART_MODE: вид детали до старта - та же ручка, что клавиша M
+// (GcodeViewer3D.qml, partMode). solid - сплошная кожа (умолчание), transparent -
+// прозрачная, hidden - деталь скрыта целиком. Непонятная строка - отказ с
+// причиной в stderr: молча показать не тот вид нельзя, кадры сравнивают по видам.
+void applyPartModeEnv(QQuickItem *root_item)
+{
+    const QString text = qEnvironmentVariable("CNC_PART_MODE").trimmed().toLower();
+    if (text.isEmpty())
+        return;
+    const char *names[] = { "solid", "transparent", "hidden" };
+    for (int i = 0; i < 3; ++i) {
+        if (text == QLatin1String(names[i])) {
+            root_item->setProperty("partMode", i);
+            return;
+        }
+    }
+    warn(QStringLiteral("gcodeviewer: CNC_PART_MODE: вид не разобран: %1 "
+                        "(ожидается solid, transparent или hidden)")
+                 .arg(text));
+}
+
+// CNC_FRAME_CAMERA: камера съёмки кадра явными числами - "yaw,pitch,dist" плюс
+// необязательные "panX,panY". Ими снимают кадр одного и того же вида с другой
+// точки; прогон без переменной берёт углы вьювера и дистанцию по габариту
+// траектории (те же числа, что ставит вьювер). Разбор строгий: неполная или
+// нечисловая строка - отказ с причиной в stderr, а не кадр с другим масштабом
+// (кадры сравнивают между собой, и молчаливая подмена здесь дороже отказа).
+// Возвращает ложь, если строка была задана, но не разобрана.
+bool applyFrameCameraEnv(QQuickItem *root_item)
+{
+    const QString text = qEnvironmentVariable("CNC_FRAME_CAMERA").trimmed();
+    if (text.isEmpty())
+        return true;
+    const QStringList parts = text.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    if (parts.size() < 3 || parts.size() > 5) {
+        warn(QStringLiteral("gcodeviewer: CNC_FRAME_CAMERA: не разобрана: %1 "
+                            "(ожидается yaw,pitch,dist[,panX,panY])").arg(text));
+        return false;
+    }
+    double values[5] = { 0.0, 0.0, 0.0, 0.0, 0.0 };
+    const char *names[] = { "yaw", "pitch", "dist", "panX", "panY" };
+    for (int i = 0; i < parts.size(); ++i) {
+        bool ok = false;
+        values[i] = parts.at(i).trimmed().toDouble(&ok);
+        if (!ok) {
+            warn(QStringLiteral("gcodeviewer: CNC_FRAME_CAMERA: %1 не число: %2")
+                     .arg(QString::fromLatin1(names[i]), parts.at(i)));
+            return false;
+        }
+    }
+    for (int i = 0; i < parts.size(); ++i)
+        root_item->setProperty(names[i], values[i]);
+    return true;
+}
+
+// Камера съёмки кадра: углы, дистанция и панорама ставятся здесь, а не тем, что
+// успел сделать вьювер к моменту снятия. Привязка дистанции к габариту
+// траектории висит в QML на сигнале pathChanged (GcodeViewer3D.qml:
+// dist = max(90, radius * 3 + 60)), поэтому кадр, снятый до этого сигнала и
+// после него, показывает разный масштаб - замер 0.53.0: габарит инструмента
+// уезжал в шесть разных положений из шести прогонов. Здесь те же числа ставятся
+// один раз, уже после загрузки УП и готовности поля: углы читаются у вьювера
+// (их не двигает ничто, кроме мыши, а у съёмки мыши нет), дистанция берётся той
+// же формулой, что у вьювера, а панорама обнуляется. Затем CNC_FRAME_CAMERA
+// перекрывает поставленное - она задана нарочно, и перекрывать её нечем. Силуэт
+// инструмента и оправки пересчитывается последним: он строится по глазу камеры,
+// и кадр, снятый до пересчёта, показал бы силуэт прежней точки.
+// Ложь возврата - CNC_FRAME_CAMERA задана, но не разобрана: кадр тогда снимать
+// нельзя, масштаб был бы не тот, что просили.
+bool applyFrameCamera(QQuickItem *root_item, QObject *backend)
+{
+    const double radius = backend != nullptr ? backend->property("radius").toDouble() : 0.0;
+    root_item->setProperty("panX", 0.0);
+    root_item->setProperty("panY", 0.0);
+    root_item->setProperty("dist", std::max(90.0, radius * 3.0 + 60.0));
+    if (!applyFrameCameraEnv(root_item))
+        return false;
+    QMetaObject::invokeMethod(root_item, "refreshTangents");
+    return true;
+}
+
 // Дым-прогон (--smoke): загрузить QML вьювера без экрана и доложить разбор.
 // Проверка неглубокая: "вьювер вообще стартует", геометрия не меряется. Размер
 // корня берётся в том же окне 1024x600, что у обычного запуска.
@@ -324,14 +416,17 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
 
     // Те же свойства сцены, что у обычного запуска: уровень качества, коробка
     // вместо поля съёма (CNC_STOCK_BOX), переключатели чистого вида
-    // (CNC_NO_TOOLPATH, CNC_NO_PART_SKIN), вид остатка (CNC_STOCK_VIEW,
-    // CNC_STOCK_ROUND) и цвета палитры слитка (CNC_STOCK_RAW, CNC_STOCK_CUT).
-    // Иначе кадр показывал бы не то, что видит оператор.
+    // (CNC_NO_TOOLPATH, CNC_NO_PART_SKIN, CNC_STOCK_GHOST, CNC_PART_MODE), вид
+    // остатка (CNC_STOCK_VIEW, CNC_STOCK_ROUND) и цвета палитры слитка
+    // (CNC_STOCK_RAW, CNC_STOCK_CUT). Иначе кадр показывал бы не то, что видит
+    // оператор.
     root_item->setProperty("quality", QString::fromLatin1(gv::presetFromEnv().level));
     root_item->setProperty("stockPlainBox", qEnvironmentVariableIsSet("CNC_STOCK_BOX"));
     applyCleanViewEnv(root_item);
     applyStockViewEnv(root_item);
     applyStockColorEnv(root_item);
+    applyStockGhostEnv(root_item);
+    applyPartModeEnv(root_item);
 
     view.show();
     if (!program.isEmpty()) {
@@ -371,6 +466,24 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
                 .arg(wait.elapsed())
                 .arg(backend->property("stockHasField").toBool() ? QStringLiteral("yes")
                                                                  : QStringLiteral("no")));
+    }
+
+    // Камера кадра - детерминированная (разбор в applyFrameCamera): двумя
+    // прогонами одной команды сверяют не только картинку, но и эти числа.
+    if (!applyFrameCamera(root_item, backend))
+        return 2;
+    {
+        const QVector3D pivot = root_item->property("pivot").value<QVector3D>();
+        say(QStringLiteral("gcodeviewer: camera yaw=%1 pitch=%2 dist=%3 pan=(%4,%5) "
+                           "pivot=(%6,%7,%8)")
+                .arg(root_item->property("yaw").toDouble(), 0, 'f', 3)
+                .arg(root_item->property("pitch").toDouble(), 0, 'f', 3)
+                .arg(root_item->property("dist").toDouble(), 0, 'f', 3)
+                .arg(root_item->property("panX").toDouble(), 0, 'f', 3)
+                .arg(root_item->property("panY").toDouble(), 0, 'f', 3)
+                .arg(pivot.x(), 0, 'f', 3)
+                .arg(pivot.y(), 0, 'f', 3)
+                .arg(pivot.z(), 0, 'f', 3));
     }
 
     // Ждём нарисованные кадры: grabWindow до первого кадра отдаёт пустую картинку.
@@ -579,6 +692,10 @@ int main(int argc, char *argv[])
     // CNC_STOCK_RAW/CNC_STOCK_CUT: цвета палитры слитка до старта (те же две
     // ручки, что пресеты и клавиша C).
     applyStockColorEnv(root_item);
+
+    // Заготовка полупрозрачной (V) и вид детали (M) до старта.
+    applyStockGhostEnv(root_item);
+    applyPartModeEnv(root_item);
 
     if (program.isEmpty()) {
         say(QStringLiteral("gcodeviewer: УП не задана: вьювер пуст "

@@ -34,6 +34,11 @@
 // клетки и граница цвета расходилась с ребром на полклетки (полосы-зубцы на
 // каждой ступени). Выборка текстуры отсюда ушла совсем: она стоила обращения на
 // фрагмент, а значение то же, что у вершины.
+//
+// Плотность (stockAlpha) - свойство материала: 1.0 у сплошного верха, 0.35 у
+// полупрозрачного (клавиша V, CNC_STOCK_GHOST). Смешивать поверхность с фоном
+// имеет смысл только у полупрозрачного материала: у сплошного источника смешения
+// нет, и альфа там не читается вовсе.
 VARYING float vDepth;
 VARYING float vShade;
 
@@ -47,5 +52,5 @@ vec3 linearToSrgb(vec3 c)
 void MAIN()
 {
     vec3 color = (vDepth > cutMm ? stockCutColor.rgb : stockRawColor.rgb) * vShade;
-    FRAGCOLOR = vec4(linearToSrgb(color), 1.0);
+    FRAGCOLOR = vec4(linearToSrgb(color), stockAlpha);
 }

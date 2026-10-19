@@ -21,7 +21,12 @@
 // stocksurface_fine - рисование гладкого вида: дроблённую сетку (подузел на
 // сетке узла, texcoord - его доля клетки), билинейную высоту подузла и правило
 // уступа (на плоской клетке у кромки нормаль плоская, на клетке-стенке - наклон
-// стенки). Поле во всех трёх случаях одно и то же: рисование его не трогает.
+// стенки). Случай stockshell_trim проверяет обрезку верха стенки по полю
+// (правило stockshell.frag): на кромке габарита есть и снятые, и нетронутые узлы,
+// углы кромки нетронуты, и обрезка опускает верх стенки ровно на глубину поля.
+// Случай holder_rings - кольца обводки тела вращения (profileRingPoints):
+// высоты колец оправки и отсутствие колец на звеньях дуг шара и скругления.
+// Поле во всех случаях одно и то же: рисование его не трогает.
 //
 // 2. Замер. Время одного прохода длиной 50 мм и время всего Test_model.ngc
 // (все ходы, включая быстрые, инструмент этапа, габарит из UI_STOCK) при узле
@@ -130,6 +135,7 @@ struct ToolSpec {
     double taperDeg = 0.0;
     double fluteMm = 10.0;
     double bodyMm = 20.0;
+    double cornerMm = 0.0;             // радиус скругления нижнего угла
 };
 
 gv::ToolInfo makeTool(const ToolSpec& spec)
@@ -144,6 +150,7 @@ gv::ToolInfo makeTool(const ToolSpec& spec)
     info.body_length = spec.bodyMm;
     info.overall_length = spec.bodyMm;
     info.shank_diameter = spec.diameterMm;
+    info.corner_radius = spec.cornerMm;
     return info;
 }
 
@@ -874,6 +881,108 @@ int main(int argc, char** argv)
                    shapeOk && bottomFaces == 2 && topFaces == 0);
     }
 
+    // 8б. Обрезка верха стенки по полю: правило stockshell.frag. Стенка стоит на
+    // габарите, её верх - на верху заготовки, а узел поля на кромке опускается
+    // там, где инструмент снял металл через кромку (поле режется и за габаритом
+    // пути). Сверяется, что (1) на кромке есть и снятые, и нетронутые узлы, (2)
+    // правило обрезки опускает верх стенки ровно на глубину поля плюс зазор
+    // верха, (3) углы кромки при этом остаются нетронутыми - то есть линейная
+    // интерполяция между углами (обрезка вершиной) верх стенки в середине реза не
+    // опустила бы, и обрезка обязана быть попиксельной.
+    {
+        const double cell = 0.5;
+        const double gapTop = 0.5;                 // как shellGapTopMm в QML
+        gv::StockBounds bounds;
+        bounds.xMinMm = -10.0;
+        bounds.xMaxMm = 10.0;
+        bounds.yMinMm = -10.0;
+        bounds.yMaxMm = 10.0;
+        bounds.zMinMm = -10.0;
+        bounds.zMaxMm = 0.0;
+        gv::StockField field;
+        field.reset(bounds, cell);
+        const gv::StockCutter cutter = gv::stockCutter(makeTool(ToolSpec{"FLAT", 6.0}));
+        // Рез вдоль кромки y = yMax: фреза D6 идёт по самой стенке, глубина 2 мм.
+        field.sweep(cutter, {-5.0, bounds.yMaxMm, -2.0}, {5.0, bounds.yMaxMm, -2.0});
+
+        const int iyEdge = field.countY() - 1;     // узел на кромке yMax
+        const int ixMid = int((0.0 - bounds.xMinMm) / cell + 0.5);
+        int cutNodes = 0;
+        int untouchedNodes = 0;
+        double maxDepth = 0.0;
+        for (int ix = 0; ix < field.countX(); ++ix) {
+            const double depth = bounds.zMaxMm - field.heightMm(ix, iyEdge);
+            if (depth > 0.05) {
+                ++cutNodes;
+                maxDepth = std::max(maxDepth, depth);
+            } else {
+                ++untouchedNodes;
+            }
+        }
+        const double cornerLeft = bounds.zMaxMm - field.heightMm(0, iyEdge);
+        const double cornerRight = bounds.zMaxMm - field.heightMm(field.countX() - 1, iyEdge);
+        const double midDepth = bounds.zMaxMm - field.heightMm(ixMid, iyEdge);
+        // Правило шейдера: верх стенки = верх заготовки минус глубина поля. У
+        // нетронутого узла это ровно верх (щели нет), у снятого стенка уходит
+        // вниз на глубину, а необрезанная стояла бы выше на зазор плюс глубину.
+        const double trimGapMm = gapTop + midDepth;
+        const bool ok = cutNodes > 0 && untouchedNodes > 0
+                && cornerLeft == 0.0 && cornerRight == 0.0
+                && midDepth >= 1.5
+                && (cornerLeft + cornerRight) / 2.0 < 0.5 * midDepth;
+        std::printf("note stockshell_trim edge_nodes=%d cut=%d untouched=%d "
+                    "max_depth_mm=%.2f mid_depth_mm=%.2f corners=(%.2f,%.2f) "
+                    "trim_gap_mm=%.2f\n",
+                    field.countX(), cutNodes, untouchedNodes, maxDepth, midDepth,
+                    cornerLeft, cornerRight, trimGapMm);
+        reportCase("stockshell_trim", field.countX(), 0.0, 0.0, ok);
+    }
+
+    // 8в. Кольца обводки оправки и резца: порог перепада profileRingPoints.
+    // Кольцо рисуется на настоящем перепаде профиля, но не на звене дуги - иначе
+    // каркас тела вращения превращается в клетку. Порог обязан лежать между
+    // шагом дуги и самой пологой фаской: проверяются оба края - кольца оправки с
+    // высотами, кольца на дугах шара и скругления (их быть не должно).
+    {
+        const std::vector<gv::ProfilePoint> holder = gv::holderSolidProfile();
+        const std::vector<gv::ProfilePoint> holderRings = gv::profileRingPoints(holder);
+        const double expectY[] = {0.0, 3.0, 16.0, 20.0, 22.0, 24.0, 28.0, 72.0};
+        const int expectCount = int(sizeof(expectY) / sizeof(expectY[0]));
+        bool heightsOk = int(holderRings.size()) == expectCount;
+        double maxDev = 0.0;
+        for (int i = 0; i < int(holderRings.size()); ++i) {
+            const double y = holderRings[std::size_t(i)].height_mm;
+            if (i < expectCount) {
+                maxDev = std::max(maxDev, std::fabs(y - expectY[i]));
+                heightsOk = heightsOk && std::fabs(y - expectY[i]) < 1e-9;
+            }
+        }
+
+        // Дуга шара: 12 отрезков на 90 градусов, 7.5 на звено. Кольца на дуге -
+        // клетка, поэтому на ней их быть не должно; у полюса дуги кольца нет и
+        // по другой причине: хорда там почти вертикальна (3.8 градуса до
+        // цилиндра), а не 90. Настоящее ребро у шара одно - шейка.
+        const std::vector<gv::ProfilePoint> ball = gv::toolProfile(makeTool(ToolSpec{"BALL", 6.0}));
+        const std::vector<gv::ProfilePoint> ballRings = gv::profileRingPoints(ball);
+        // Дуга скругления нижнего угла: 8 отрезков на 90, 11.25 на звено - самый
+        // близкий к порогу шаг, им порог и проверяется снизу: порог ниже 11.25
+        // дал бы восемь колец на дуге, и число колец это покажет.
+        const std::vector<gv::ProfilePoint> bull =
+                gv::toolProfile(makeTool(ToolSpec{"FLAT", 6.0, 0.0, 10.0, 20.0, 1.0}));
+        const std::vector<gv::ProfilePoint> bullRings = gv::profileRingPoints(bull);
+
+        std::printf("note holder_rings count=%d", int(holderRings.size()));
+        for (const gv::ProfilePoint& p : holderRings) {
+            std::printf(" (%.2f,%.2f)", p.radius_mm, p.height_mm);
+        }
+        std::printf(" ball=%d bull=%d\n", int(ballRings.size()), int(bullRings.size()));
+
+        const bool ok = heightsOk
+                && ballRings.size() == 1
+                && bullRings.size() == 1;
+        reportCase("holder_rings", expectCount + 2, maxDev, 1e-9, ok);
+    }
+
     // 9. Поднутрение: карта высот его не выражает, и обход обязан отказаться, а
     // не нарисовать срез, которого на станке не будет. Проверяются оба входа:
     // готовый профиль (лоллипоп: радиус растёт, падает и снова растёт - такую
@@ -1076,6 +1185,44 @@ int main(int argc, char** argv)
             const double cell = 0.5;
             const gv::StockRunResult full = gv::simulateStock(data, bounds, cell, initial);
             const std::uint64_t digestFull = fieldDigest(full.field.depthMm());
+
+            // Что поле говорит на кромке габарита: сколько узлов периметра снято,
+            // насколько глубоко и остались ли нетронутые. Это те числа, с
+            // которыми на кадре спорит верх стенки: снятый узел кромки - верх
+            // стенки ниже верхнего габарита, и без обрезки там читается щель.
+            if (!full.field.empty()) {
+                const gv::StockField& f = full.field;
+                int edgeCut = 0;
+                int edgeTotal = 0;
+                double edgeMax = 0.0;
+                double edgeX = 0.0;
+                double edgeY = 0.0;
+                const auto noteEdge = [&](int ix, int iy) {
+                    ++edgeTotal;
+                    const double depth = f.bounds().zMaxMm - f.heightMm(ix, iy);
+                    if (depth > 0.05) {
+                        ++edgeCut;
+                        if (depth > edgeMax) {
+                            edgeMax = depth;
+                            edgeX = f.nodeXMm(ix);
+                            edgeY = f.nodeYMm(iy);
+                        }
+                    }
+                };
+                for (int ix = 0; ix < f.countX(); ++ix) {
+                    noteEdge(ix, 0);
+                    noteEdge(ix, f.countY() - 1);
+                }
+                for (int iy = 1; iy + 1 < f.countY(); ++iy) {
+                    noteEdge(0, iy);
+                    noteEdge(f.countX() - 1, iy);
+                }
+                std::printf("note stock_edge nodes=%d cut=%d max_depth_mm=%.2f at=(%.1f,%.1f) "
+                            "bounds_x=%.1f..%.1f y=%.1f..%.1f\n",
+                            edgeTotal, edgeCut, edgeMax, edgeX, edgeY,
+                            f.bounds().xMinMm, f.bounds().xMaxMm,
+                            f.bounds().yMinMm, f.bounds().yMaxMm);
+            }
 
             // Скорость исходящего сегмента под курсором: тот же выбор сегмента,
             // что у path.speedAt в QML (верхняя граница по накопленной длине).

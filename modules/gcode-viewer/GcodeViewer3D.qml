@@ -12,14 +12,17 @@ import MockBackend 1.0
  *
  * Раскладка клавиш (обработчик - Keys.onPressed ниже, кнопки - в панели внизу):
  *   Пробел/P - пуск/пауза, Esc - в начало, вверх/вниз - скорость;
- *   S - заготовка (габарит), M - деталь целиком, K - кожа детали (тело без
- *   рёбер), G - линии УП, B - прежняя коробка вместо поверхности съёма;
+ *   S - заготовка (габарит), M - вид детали по кругу (сплошная -> прозрачная ->
+ *   скрыта), K - кожа детали (тело без рёбер), G - линии УП, B - прежняя коробка
+ *   вместо поверхности съёма, V - заготовка полупрозрачной;
  *   C - палитра остатка материала (пресеты), R - вид остатка по кругу
  *   (точный -> гладкий -> скруглённый);
  *   L - длина, T - этапы, PgUp/PgDn - кадры этапов;
  *   E - рёбра, D - касательные, X - рентген, Q - качество, F - fps.
  * Те же переключатели чистого вида доступны до старта переменными окружения
  * (cpp/viewer/main.cpp): CNC_STOCK_BOX, CNC_NO_TOOLPATH, CNC_NO_PART_SKIN,
+ * CNC_STOCK_GHOST (заготовка полупрозрачной), CNC_PART_MODE
+ * (solid/transparent/hidden),
  * вид остатка - CNC_STOCK_VIEW (exact/smooth/rounded, умолчание smooth) и
  * прежнее сокращение CNC_STOCK_ROUND=1 для rounded, а цвета палитры -
  * CNC_STOCK_RAW и CNC_STOCK_CUT (по "#RRGGBB").
@@ -31,7 +34,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.53.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.54.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -344,6 +347,13 @@ Item {
     readonly property real shellGapSideMm: 1.5 * root.outlineMmPerPx
     readonly property real shellGapTopMm: 1.0 * root.outlineMmPerPx
     readonly property real shellGapBottomMm: 1.0 * root.outlineMmPerPx
+    // Габарит поля в машинных мм [xmin, xmax, ymin, ymax, zmin, zmax] для
+    // материалов остатка (fieldMin/fieldTopMm/fieldCount у стенок). Пустой список
+    // (поля ещё нет) даёт нули, а не undefined: на undefined QML отвечает
+    // предупреждением, а прогон обязан быть без "[QML warning]". Один источник и
+    // на верх поля, и на стенки.
+    readonly property var stockFieldBounds: (path && path.stockBounds.length >= 6)
+        ? path.stockBounds : [0, 0, 0, 0, 0, 0]
     readonly property vector3d shellCenter: path
         ? Qt.vector3d((path.stockBounds[0] + path.stockBounds[1]) / 2,
                       (path.stockBounds[2] + path.stockBounds[3]) / 2,
@@ -554,6 +564,16 @@ Item {
             // смазала бы стенку реза на полклетки. Гладкий вид интерполирует
             // поле сам, четырьмя nearest-выборками (stocksurface.vert): своей
             // интерполяции фильтр драйвера не касается.
+            // Полупрозрачный вид (клавиша V, CNC_STOCK_GHOST) - тот же материал с
+            // плотностью stockAlpha и со смешением: снятый металл читается сквозь
+            // стенку, а сама стенка не бросает тень на то, что за ней. Пишет
+            // глубину и при смешении (AlwaysDepthDraw): без записи дальние грани
+            // и справочная кожа шли бы поверх слитка, и вместо полупрозрачной
+            // заготовки была бы мешанина скрытых граней - та самая жалоба, которую
+            // вылечила обратная сторона отсечения у сплошной оболочки.
+            // Смешение - состояние растеризатора, а не код шейдера, поэтому вид
+            // переключается свойствами материала (у alphaMode кожи так не выходит:
+            // он вшит в шейдер, и там режимы разведены двумя моделями).
             Model {
                 geometry: stockSurface
                 materials: CustomMaterial {
@@ -571,6 +591,7 @@ Item {
                     property color stockRawColor: root.stockRawColor
                     property color stockCutColor: root.stockCutColor
                     property real cutMm: 0.05
+                    property real stockAlpha: root.stockGhost ? root.stockGhostAlpha : 1.0
                     // Вид остатка: свойство узла (клавиша R, CNC_STOCK_VIEW,
                     // CNC_STOCK_ROUND). Разбор видов и их цена - в
                     // stocksurface.vert.
@@ -585,9 +606,11 @@ Item {
                             mipFilter: Texture.None
                         }
                     }
-                    sourceBlend: CustomMaterial.NoBlend
-                    destinationBlend: CustomMaterial.NoBlend
-                    depthDrawMode: Material.OpaqueOnlyDepthDraw
+                    sourceBlend: root.stockGhost ? CustomMaterial.SrcAlpha : CustomMaterial.NoBlend
+                    destinationBlend: root.stockGhost ? CustomMaterial.OneMinusSrcAlpha
+                                                       : CustomMaterial.NoBlend
+                    depthDrawMode: root.stockGhost ? Material.AlwaysDepthDraw
+                                                   : Material.OpaqueOnlyDepthDraw
                     cullMode: Material.NoCulling
                     vertexShader: "stocksurface.vert"
                     fragmentShader: "stocksurface.frag"
@@ -623,6 +646,13 @@ Item {
             // нельзя. Прежде оболочка шла совсем без света (у материала не было
             // нормали) и все стенки были залиты одним #B79A55 - отсюда и жалоба
             // на странный цвет боковых граней.
+            // Верх стенки обрезается по полю высот (stockshell.frag): стенка
+            // стоит на габарите и не знала бы, что инструмент снял металл через
+            // кромку. Поле и его габарит приходят сюда теми же числами, что у
+            // верха: габарит (fieldMin - низ угла, fieldTopMm - верх заготовки),
+            // шаг (fieldCellMm), узлы (fieldCount) и сама текстура (stockField).
+            // Полупрозрачный вид (V, CNC_STOCK_GHOST) - как у верха поля
+            // (комментарий там): та же плотность и та же запись глубины.
             // Инструмент внутри виден и так: резец, оправка и линии УП идут
             // «всегда вперёд» (depthBias -50000) и рисуются поверх слитка.
             Model {
@@ -632,14 +662,32 @@ Item {
                     property color stockRawColor: root.stockRawColor
                     property vector3d stockLamp: root.stockLamp
                     property real stockTone: root.stockTone
+                    property real stockAlpha: root.stockGhost ? root.stockGhostAlpha : 1.0
+                    property vector3d fieldMin: Qt.vector3d(root.stockFieldBounds[0],
+                                                            root.stockFieldBounds[2],
+                                                            root.stockFieldBounds[4])
+                    property real fieldTopMm: root.stockFieldBounds[5]
+                    property real fieldCellMm: path ? path.stockCellMm : 0.5
+                    property vector2d fieldCount: Qt.vector2d(path ? path.stockCountX : 0,
+                                                             path ? path.stockCountY : 0)
+                    property TextureInput stockField: TextureInput {
+                        texture: Texture {
+                            textureData: path ? path.stockField : null
+                            minFilter: Texture.Nearest
+                            magFilter: Texture.Nearest
+                            mipFilter: Texture.None
+                        }
+                    }
                     // Границы стенок в машинных мм (габарит плюс зазоры): те же
                     // числа, из которых собрана геометрия оболочки, стоят рядом
                     // с ней - у узла остатка материала.
                     property vector3d shellCenter: root.shellCenter
                     property vector3d shellHalf: root.shellHalf
-                    sourceBlend: CustomMaterial.NoBlend
-                    destinationBlend: CustomMaterial.NoBlend
-                    depthDrawMode: Material.OpaqueOnlyDepthDraw
+                    sourceBlend: root.stockGhost ? CustomMaterial.SrcAlpha : CustomMaterial.NoBlend
+                    destinationBlend: root.stockGhost ? CustomMaterial.OneMinusSrcAlpha
+                                                       : CustomMaterial.NoBlend
+                    depthDrawMode: root.stockGhost ? Material.AlwaysDepthDraw
+                                                   : Material.OpaqueOnlyDepthDraw
                     cullMode: Material.FrontFaceCulling
                     vertexShader: "stockshell.vert"
                     fragmentShader: "stockshell.frag"
@@ -711,6 +759,7 @@ Item {
             // каркас детали.
             Model {
                 visible: !root.xrayOn && !root.partSkinGhost && root.showPartSkin
+                         && root.partMode === 0
                 geometry: path ? path.partGeometry : null
                 materials: [
                     PrincipledMaterial {
@@ -723,15 +772,18 @@ Item {
                     }
                 ]
             }
-            // Рентген (X включён) и справочная кожа симуляции (partSkinGhost):
-            // кожа полупрозрачная и глубину не пишет - сквозь неё видны снятый
-            // металл (в симуляции) и скрытые кромки с артефактами отрисовки
-            // (в рентгене). Плотность разная: рентген - диагностика, справочная
-            // кожа лишь намечает эталон. Замер по кадру 1024x600 (Test_model,
-            // медный съём без кожи #CA5614): при 0.22 он читается как #C37E53 -
-            // серый налёт съедал цвет, при 0.15 как #C57241.
+            // Рентген (X включён), справочная кожа симуляции (partSkinGhost) и
+            // прозрачная деталь (partMode 1): кожа полупрозрачная и глубину не
+            // пишет - сквозь неё видны снятый металл (в симуляции), скрытые кромки
+            // с артефактами отрисовки (в рентгене) и то, что за деталью (в
+            // прозрачной). Плотность - свойство partSkinOpacity: рентген и
+            // прозрачная плотнее справочной кожи, которая лишь намечает эталон.
+            // Замер по кадру 1024x600 (Test_model, медный съём без кожи #CA5614):
+            // при 0.22 он читается как #C37E53 - серый налёт съедал цвет, при 0.15
+            // как #C57241.
             Model {
-                visible: root.showPartSkin && (root.xrayOn || root.partSkinGhost)
+                visible: root.showPartSkin
+                         && (root.xrayOn || root.partSkinGhost || root.partMode === 1)
                 geometry: path ? path.partGeometry : null
                 materials: [
                     PrincipledMaterial {
@@ -741,7 +793,7 @@ Item {
                         specularAmount: 0.2
                         cullMode: Material.NoCulling
                         alphaMode: PrincipledMaterial.Blend
-                        opacity: root.xrayOn ? 0.35 : 0.15
+                        opacity: root.partSkinOpacity
                     }
                 ]
             }
@@ -1093,6 +1145,16 @@ Item {
     // Коробка - пока поля нет (первый проход), после отказа (инструмент картой
     // не выражается) и по клавише B / CNC_STOCK_BOX=1 для сравнения.
     property bool stockPlainBox: false       // коробка вместо поля (B, CNC_STOCK_BOX)
+    // Заготовка полупрозрачной: клавиша V, CNC_STOCK_GHOST до старта (те же две
+    // ручки, что у прочих видов). По умолчанию выключено - и это не вкус: у
+    // слитка по цвету читают, где металл снят (палитра пресетов), а смешение
+    // размывает и снятый, и нетронутый металл с фоном - полупрозрачность нужна,
+    // чтобы посмотреть внутрь (деталь, инструмент, карман), а не чтобы работать.
+    // Плотность одна на верх поля и на стенки: слиток читается одним телом.
+    // Сравнение с коробкой (B, CNC_STOCK_BOX) не путать: там материал уходил в
+    // коробку без поля, здесь - тот же снятый металл, но сквозь него видно.
+    property bool stockGhost: false
+    readonly property real stockGhostAlpha: 0.35
     // Вид остатка заготовки: 0 - точный по узлам поля, 1 - гладкий (меш
     // дроблённый, высота билинейная), 2 - скруглённый (глубина узла - среднее по
     // окрестности). Один переключатель на все три: клавиша R листает по кругу,
@@ -1166,7 +1228,22 @@ Item {
     }
     function cycleStockPreset() { root.applyStockPreset(root.stockPreset + 1) }
 
-    property bool showPartVisible: true      // show the part model (STL)
+    // ---- Деталь: сплошная -> прозрачная -> скрытая (клавиша M) ----
+    // Вид детали: 0 - сплошная кожа, 1 - прозрачная кожа, 2 - деталь скрыта
+    // целиком (и кожа, и рёбра, и касательные). Один переключатель на три
+    // положения: клавиша M листает по кругу, CNC_PART_MODE ставит вид до старта
+    // (cpp/viewer/main.cpp).
+    // По умолчанию сплошная - и это не вкус: деталь - эталон, по которому
+    // читают снятый металл, а прозрачная кожа смешивает его цвет с ней и глубину
+    // реза по картинке уже не измерить (замер плотности - ниже, у модели кожи).
+    // Ровно поэтому же по умолчанию сплошная и заготовка.
+    property int partMode: 0
+    readonly property var partModeNames: ["сплошная", "прозрачная", "скрыта"]
+    readonly property string partModeName: root.partModeNames[root.partMode]
+    function cyclePartMode() { root.partMode = (root.partMode + 1) % root.partModeNames.length }
+    // Прежний тумблер видимости детали: производное от вида, а не отдельное
+    // свойство - иначе два источника одного состояния могли бы разойтись.
+    readonly property bool showPartVisible: root.partMode < 2
     // Кожа детали отдельно от рёбер: клавиша K (CNC_NO_PART_SKIN) снимает тело
     // детали, оставляя справочный каркас - на снятом металле видно только его.
     property bool showPartSkin: true
@@ -1179,7 +1256,12 @@ Item {
     // серый и карман не виден, со справочной медный съём читается как #C57241.
     // Это следствие вида, а не ещё один тумблер: без поля (коробка, safe) деталь
     // снова предмет.
-    readonly property bool partSkinGhost: root.stockFieldDrawn
+    readonly property bool partSkinGhost: root.stockFieldDrawn && root.partMode === 0
+    // Плотность кожи-призрака: справочная кожа симуляции лишь намечает эталон
+    // (0.15), а прозрачность, включённую оператором, видно сразу (0.35) - иначе
+    // разницы с рентгеном и справочной не читалось бы, и нажатие выглядело
+    // молчащим. Рентген - та же плотность, что у прозрачной.
+    readonly property real partSkinOpacity: (root.xrayOn || root.partMode === 1) ? 0.35 : 0.15
     property bool showAllCode: true          // true = whole code at once, false = limit draw distance
     property bool xray: false             // сплошная кожа по умолчанию:
                                           // рентген-режим (X) - полноэкранный
@@ -1245,12 +1327,14 @@ Item {
     }
 
     // ---- Playback: Space = play/pause, Esc = reset to start ----
-    // ---- Hotkeys: S stock, M part model, K part skin (тело детали без рёбер),
+    // ---- Hotkeys: S stock, M part model (сплошная -> прозрачная -> скрыта),
+    // ----          K part skin (тело детали без рёбер),
     // ----          G toolpath lines (линии УП), L limit length, T stages,
     // ----          PgUp/PgDn switch stage, P play, E edges, D tangents,
     // ----          X xray, F fps, Q - цикл качества (med -> low -> high -> safe),
     // ----          B - прежняя коробка заготовки вместо поверхности съёма,
-    // ----          C - палитра слитка, R - вид остатка (точный/гладкий/скруглённый).
+    // ----          C - палитра слитка, R - вид остатка (точный/гладкий/скруглённый),
+    // ----          V - заготовка полупрозрачной (CNC_STOCK_GHOST).
     // Раскладка не должна гасить горячие клавиши: на русской раскладке Qt сообщает
     // для физической X код Key_Ch, а не Key_X, и буквенные ветки ниже не работают.
     // Буквы сверяются по nativeScanCode - скан-коду физической клавиши, он от
@@ -1295,7 +1379,8 @@ Item {
             + " mods=" + ev.modifiers + " focus=" + root.activeFocus)
     }
     function keyLogState() {
-        console.log("[key] state stock=" + root.showStockVisible + " part=" + root.showPartVisible
+        console.log("[key] state stock=" + root.showStockVisible + " ghost=" + root.stockGhost
+            + " part=" + root.showPartVisible + " partMode=" + root.partModeName
             + " skin=" + root.showPartSkin + " path=" + root.showToolpath
             + " all=" + root.showAllCode + " stages=" + root.stageMode
             + " edges=" + root.showBrepEdges + " tangents=" + root.showTangentLines
@@ -1327,7 +1412,14 @@ Item {
             root.showStockVisible = !root.showStockVisible
             event.accepted = true
         } else if (root.keyIs(event, 0x32, Qt.Key_M)) {
-            root.showPartVisible = !root.showPartVisible
+            // Вид детали по кругу: сплошная -> прозрачная -> скрыта. Тот же
+            // переключатель, что CNC_PART_MODE во входе (viewer/main.cpp).
+            root.cyclePartMode()
+            event.accepted = true
+        } else if (root.keyIs(event, 0x2F, Qt.Key_V)) {
+            // Заготовка полупрозрачной: тот же переключатель, что CNC_STOCK_GHOST
+            // во входе (viewer/main.cpp).
+            root.stockGhost = !root.stockGhost
             event.accepted = true
         } else if (root.keyIs(event, 0x25, Qt.Key_K)) {
             // Кожа детали отдельно от рёбер: снятое тело оставляет на снятом
@@ -1419,7 +1511,7 @@ Item {
               + "   \u00D7" + root.speed.toFixed(1)
               + "   ·   C палитра: " + root.stockPresets[root.stockPreset].name
               + "   ·   Пробел — пуск/пауза   ·   Esc — в начало   ·   \u2191/\u2193 — скорость"
-              + "   ·   S заготовка · M деталь · K кожа · G линии УП · L длина · T этапы · PgUp/PgDn кадры"
+              + "   ·   S заготовка · M деталь: " + root.partModeName + " · K кожа · G линии УП · L длина · T этапы · PgUp/PgDn кадры"
               + " · Q качество: " + root.quality
               + "   ·   E рёбра: " + (root.showBrepEdges ? "вкл" : "выкл")
               + " · D касательные: " + (root.showTangentLines ? "вкл" : "выкл")
@@ -1428,6 +1520,8 @@ Item {
               + " · G линии УП: " + (root.showToolpath ? "вкл" : "выкл")
               + " · K кожа детали: " + (root.showPartSkin ? "вкл" : "выкл")
               + " · B коробка: " + (root.stockPlainBox ? "вкл" : "выкл")
+              + " · M деталь: " + root.partModeName
+              + " · V заготовка насквозь: " + (root.stockGhost ? "вкл" : "выкл")
               + " · R вид остатка: " + root.stockViewName
         color: "#535C66"
         font.pixelSize: 12
@@ -1462,11 +1556,15 @@ Item {
                 onClicked: root.showStockVisible = !root.showStockVisible
             }
 
-            // "Модель детали" toggle
+            // "Модель детали" (клавиша M): вид детали по кругу - сплошная,
+            // прозрачная, скрыта. Кнопка называет текущий вид, а не действие:
+            // состояний три, и по надписи "Модель детали" не понять, какое
+            // следующее.
             ViewButton {
-                checked: root.showPartVisible
-                text: "Модель детали"
-                onClicked: root.showPartVisible = !root.showPartVisible
+                checked: root.partMode !== 2
+                text: root.partMode === 0 ? "Модель детали"
+                      : (root.partMode === 1 ? "Модель прозрачна" : "Модель скрыта")
+                onClicked: root.cyclePartMode()
             }
 
             // "Кожа детали" toggle (клавиша K): тело детали без рёбер - чистый

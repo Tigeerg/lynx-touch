@@ -38,7 +38,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.58.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.61.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -429,9 +429,13 @@ Item {
     }
     // Точные слои реза (PLAN-STOCK.md, 3.1): стенка по точному контуру (marching
     // squares по полю) и сам контур полилинией. Считаются по тому же полю, что
-    // идёт текстурой на верх: depthData - байты path.stockDepth. Пока вид не
-    // выбран (root.stockCutExact ложь), данные пусты и геометрия не строится -
-    // живой тик не платит за контур, когда его не видно.
+    // идёт текстурой на верх: depthData - байты path.stockDepth. Данные подаются
+    // там, где слой нужен: стенка - виду «точный контур», полилиния - точному виду
+    // (там она сверяет границу со ступенями узлов) и виду «точный контур» (там её
+    // строит проверка слоя, keyprobe: отрезков контура столько же, сколько у
+    // стенки, - один порог одного поля). Рисуется полилиния только у точного вида:
+    // у вида «точный контур» границу рисует шейдер поверхности по знаковому
+    // расстоянию поля (stocksurface.frag), и вторая линия там спорила бы с ней.
     StockCutWallGeometry {
         id: stockCutWall
         boundList: path ? path.stockBounds : []
@@ -448,7 +452,8 @@ Item {
         countX: path ? path.stockCountX : 0
         countY: path ? path.stockCountY : 0
         cutMm: 0.05
-        depthData: (root.stockCutExact && path) ? path.stockDepth : ""
+        depthData: ((root.stockCutExact || root.stockContourPolyline) && path)
+                   ? path.stockDepth : ""
     }
 
     // Project a 3D point to View3D screen coordinates (manual perspective)
@@ -654,8 +659,14 @@ Item {
                     property real stockAlpha: root.stockGhost ? root.stockGhostAlpha : 1.0
                     // Вид остатка: свойство узла (клавиша R, CNC_STOCK_VIEW,
                     // CNC_STOCK_ROUND). Разбор видов и их цена - в
-                    // stocksurface.vert.
-                    property int stockView: root.stockView
+                    // stocksurface.vert; вид «точный контур» рисует верх гладким
+                    // (stockShadeView), а границу реза добавляет линией.
+                    property int stockView: root.stockShadeView
+                    // Граница реза (вид «точный контур»): полутолщина в пикселях и
+                    // цвет. 0 - линии нет. Толщина в пикселях, а не в мм: линия
+                    // меры не должна толстеть и пропадать при зуме.
+                    property real contourHalfPx: root.stockCutExact ? root.stockContourHalfPx : 0.0
+                    property color contourColor: root.stockContourColor
                     property vector3d stockLamp: root.stockLamp
                     property real stockTone: root.stockTone
                     property TextureInput stockField: TextureInput {
@@ -738,7 +749,7 @@ Item {
                                                              path ? path.stockCountY : 0)
                     // Вид остатка: обрезка верха стенки берёт глубину той же
                     // выборкой, что и нарисованный верх (stockshell.frag).
-                    property int stockView: root.stockView
+                    property int stockView: root.stockShadeView
                     property TextureInput stockField: TextureInput {
                         texture: Texture {
                             textureData: path ? path.stockField : null
@@ -770,7 +781,10 @@ Item {
             // Буфер собирает ядро (core/stock_sim, stockCutWall), геометрия -
             // qmlbackend/gv_stockgeom. Видна в виде «точный контур» (клавиша R,
             // CNC_STOCK_VIEW=contour): листая вид на живом кадре, ровную стенку
-            // сравнивают со ступенчатой у точного вида.
+            // сравнивают со ступенчатой у точного вида. Сам верх в этом виде
+            // гладкий (stockShadeView), а граница реза на нём нарисована линией
+            // по знаковому расстоянию поля (stocksurface.frag) - стенка лишь
+            // называет ту же границу высотой.
             Model {
                 visible: root.showStockVisible && root.stockFieldDrawn
                          && root.stockCutExact
@@ -796,13 +810,16 @@ Item {
             }
 
             // Точный контур реза полилинией: та же граница, что у стенки, но
-            // нарисованная линией на плоскости нетронутого верха. Прямая сверка:
-            // он показывает, где граница реза на самом деле, а ступенчатый верх
-            // поля - где её рисует узел. Цвет - свой (stockContourColor): линия
-            // меры, а не материал, и обязана читаться на обоих тонах палитры.
+            // нарисованная линией на плоскости нетронутого верха. Здесь она -
+            // сверка точного вида: узел рисует ступенями, а полилиния показывает,
+            // где граница реза на самом деле. Граница вида «точный контур»
+            // нарисована иначе - по знаковому расстоянию поля во фрагменте
+            // (stocksurface.frag), поэтому полилиния отдана точному виду, где
+            // сравнивать есть с чем. Цвет - свой (stockContourColor): линия меры,
+            // а не материал, и обязана читаться на обоих тонах палитры.
             Model {
                 visible: root.showStockVisible && root.stockFieldDrawn
-                         && root.stockCutExact
+                         && root.stockContourPolyline
                 geometry: stockCutContour
                 materials: CustomMaterial {
                     shadingMode: CustomMaterial.Unshaded
@@ -1287,7 +1304,7 @@ Item {
     readonly property real stockGhostAlpha: 0.90
     // Вид остатка заготовки: 0 - точный по узлам поля, 1 - гладкий (меш
     // дроблённый, высота билинейная), 2 - скруглённый (глубина узла - среднее по
-    // окрестности), 3 - точный контур (к верху добавляются точные слои реза).
+    // окрестности), 3 - точный контур (гладкий верх и точные слои реза по границе).
     // Один переключатель на все четыре: клавиша R листает по кругу,
     // CNC_STOCK_VIEW ставит вид до старта, а CNC_STOCK_ROUND=1 остаётся
     // сокращением для третьего (прежняя ручка скругления).
@@ -1296,24 +1313,31 @@ Item {
     // полоса в клетку на верху у кромки и грани меша; у скруглённого кромка реза
     // уезжает вглубь до узла (0.5 мм) и мелкое окно теряет до половины глубины;
     // у гладкого нарисованная поверхность расходится с полем до четверти
-    // кручения клетки, кромка реза скругляется на полклетки, а меш крупнее в
-    // subdiv^2 раз. Разбор - в stocksurface.vert.
+    // кручения клетки, а меш крупнее в subdiv^2 раз. Разбор - в stocksurface.vert.
     property int stockView: 1
-    // Дробление клетки поля в рисуемом меше: только у гладкого вида. 2 - потому
-    // что полосы и мозаика живут на масштабе клетки, и вдвое мелкой клетки
-    // хватает: вершина встаёт и в середине клетки, где и решается спор о стороне
-    // уступа (stocksurface.vert). Цена - вчетверо больше вершин и треугольников
-    // (замер: 60501 узел поля и 120000 треугольников против 241001 вершины и
-    // 480000 треугольников; поле, его текстура и сверки не меняются).
-    readonly property int stockSubdiv: root.stockView === 1 ? 2 : 1
-    // Вид «точный контур» (четвёртый в списке): к верхнему полю добавляются точные
-    // слои реза - вертикальная стенка по контуру marching squares и сам контур
-    // полилинией (qmlbackend/gv_stockgeom, core/stock_sim). Это прямая сверка:
-    // контур и стенка построены по ПОРОГУ поля, а не по ступеням узлов, и листая
-    // вид (R) на живом кадре, ровную границу сравнивают со ступенчатой у точного
-    // вида. Меш верха в этом виде - точный (subdiv 1): сравнивать надо с тем же
-    // полем, что рисует ступени.
+    // Вид выборки для ШЕЙДЕРА у вида «точный контур»: он рисует гладкий верх
+    // (1), а точную границу добавляет линией по знаковому расстоянию поля. Иначе
+    // ступени меша спорили бы с той самой границей, ради которой вид и заведён.
+    readonly property int stockShadeView: root.stockView === 3 ? 1 : root.stockView
+    // Дробление клетки поля в рисуемом меше: 1 только у точного вида - он и есть
+    // показ ступеней узла, там дробить нечего. Остальные виды гладкие: вершина
+    // встаёт и в середине клетки, иначе билинейной высоте негде проявиться
+    // (stocksurface.vert). Цена - вчетверо больше вершин и треугольников (замер:
+    // 60501 узел поля и 120000 треугольников против 241001 вершины и 480000
+    // треугольников; поле, его текстура и сверки не меняются).
+    readonly property int stockSubdiv: root.stockView === 0 ? 1 : 2
+    // Вид «точный контур» (четвёртый в списке): гладкий верх плюс точные слои
+    // реза - вертикальная стенка по контуру marching squares
+    // (qmlbackend/gv_stockgeom, core/stock_sim) и линия границы по знаковому
+    // расстоянию поля (stocksurface.frag). Верх здесь гладкий нарочно: граница
+    // реза считается по порогу поля, а не по ступеням узлов, и ступенчатый верх
+    // спорил бы с ней на экране. Листая вид (R), ровную границу сравнивают со
+    // ступенчатой у точного вида.
     readonly property bool stockCutExact: root.stockView === 3
+    // Полилиния контура (marching squares) у точного вида: ступени узлов там есть
+    // с чем сверить, у видов с гладким верхом - нет, там граница нарисована
+    // линией по знаковому расстоянию поля (stocksurface.frag).
+    readonly property bool stockContourPolyline: root.stockView === 0
     readonly property var stockViewNames: ["точный", "гладкий", "скруглённый", "точный контур"]
     readonly property string stockViewName: root.stockViewNames[root.stockView]
     function cycleStockView() { root.stockView = (root.stockView + 1) % root.stockViewNames.length }
@@ -1349,8 +1373,17 @@ Item {
     // контур лежит в плоскости нетронутого верха, а равный сдвиг оставлял бы
     // совпавший пиксель на спор растеризатору. Двойка - не замер, а заведомый запас
     // на шум: сдвиг экранную позицию не меняет (только clip z), а контур - линия
-    // поверх поля, и его задача - читаться.
+    // поверх поля, и его задача - читаться. Нужен только полилинии точного вида
+    // (StockCutContourGeometry): граница вида «точный контур» идёт во фрагменте
+    // поверхности, а там сдвиг не нужен - она лежит на самой поверхности.
     readonly property real stockContourOffset: -6e-5
+    // Полутолщина границы реза вида «точный контур», пиксели (stocksurface.frag).
+    // 1.1 - линия в две с лишним полосы: перепад глубины на стенке фрезы умещается
+    // в пиксель, поэтому центр линии редко попадает между пикселями, и при 0.7
+    // ближайший пиксель получал полтона (замер 0.61.0: L=70 при металле 123, то
+    // есть 0.5 линии). Толщина в пикселях, а не в мм: граница - мера, и при зуме
+    // она не должна толстеть или пропадать.
+    readonly property real stockContourHalfPx: 1.1
 
     // ---- Палитра остатка материала: два цвета и пресеты для подбора контраста ----
     // Поле отвечает на один вопрос - "где уже снято": нетронутый верх одним

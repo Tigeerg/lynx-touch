@@ -1006,10 +1006,11 @@ int main(int argc, char** argv)
             }
         }
 
-        // Наклон по X в подузле, как его считает шейдер: разности соседних узлов
-        // ловят уступ, на клетке со уступом наклон - собственный градиент клетки,
-        // иначе - центральная разность через 2 * NORMAL_SPAN клетки. Здесь
-        // повторена только ось X и только те точки, где ответ различает правила.
+        // Наклон по X в подузле, как его считает ШЕЙДЕР: разности соседей на
+        // клетку ловят уступ, на клетке со уступом наклон - собственный градиент
+        // клетки, иначе - центральная разность через клетку (2 * cell - плечо;
+        // список соседей и правило повторяет stocksurface.frag). Здесь повторена
+        // только ось X и только те точки, где ответ различает правила.
         const auto shaderSlopeX = [&nodeDepth, nx, ny, cell](double u, double v) {
             const double stepMm = cell;                   // STEP_CELLS = 1
             const double du = 1.0 / double(nx);
@@ -1027,23 +1028,24 @@ int main(int argc, char** argv)
                 return a * (1.0 - fy) + b * fy;
             };
             const double depth = sample(u, v);
-            const double r1 = sample(u + du, v);
-            const double l1 = sample(u - du, v);
-            const double r2 = sample(u + 2.0 * du, v);
-            const double l2 = sample(u - 2.0 * du, v);
-            const double span = 4.0 * cell;               // 2 * NORMAL_SPAN клетки
-            const bool jr = std::max(std::fabs(r1 - depth), std::fabs(r2 - r1)) > stepMm;
-            const bool jl = std::max(std::fabs(depth - l1), std::fabs(l1 - l2)) > stepMm;
-            if (!jr && !jl)
-                return (r2 - l2) / span;
+            const double r = sample(u + du, v);
+            const double l = sample(u - du, v);
+            // Аналитический градиент клетки точки и правило axisSlope шейдера:
+            // уступ (склон внутри клетки) берёт градиент своей клетки, ровный
+            // участок - разность соседей на клетку (плечо 2 * cell).
             const double p = u * double(nx) - 0.5;
             const double q = v * double(ny) - 0.5;
+            const double fx = p - std::floor(p);
             const double fy = q - std::floor(q);
             const int ix = int(std::floor(p));
             const int iy = int(std::floor(q));
-            const double g = (nodeDepth(ix + 1, iy) - nodeDepth(ix, iy)) * (1.0 - fy)
-                           + (nodeDepth(ix + 1, iy + 1) - nodeDepth(ix, iy + 1)) * fy;
-            return g / cell;
+            const double g = ((nodeDepth(ix + 1, iy) - nodeDepth(ix, iy)) * (1.0 - fy)
+                            + (nodeDepth(ix + 1, iy + 1) - nodeDepth(ix, iy + 1)) * fy) / cell;
+            const bool jr = std::fabs(r - depth) > stepMm;
+            const bool jl = std::fabs(depth - l) > stepMm;
+            if (jr || jl)
+                return g;
+            return (r - l) / (2.0 * cell);
         };
 
         // Клетка со уступом по X: справа на много клеток глубже, слева плоско.
@@ -1079,6 +1081,113 @@ int main(int argc, char** argv)
         reportCase("stocksurface_fine", checked + bilinearChecked + wallCells,
                    std::max(maxDev, std::max(bilinearDev, ruleDev)), 1e-6,
                    geometryOk && wallCells > 0);
+    }
+
+    // 7г. Наклон, который считает ФРАГМЕНТ (PLAN-STOCK.md, этап 1.1): пункт и
+    // уступ живут в stocksurface.frag, там же снят компромисс NORMAL_SPAN -
+    // разность идёт на клетку (плечо 2 * cell), а не через 2 * NORMAL_SPAN (4
+    // клетки, 2 мм при узле 0.5 мм). Мера - подъём в две клетки: поле 0 -> 0.5 ->
+    // 1.0 мм глубины, свой наклон 1.0 мм/мм. Прежняя разность через 4 клетки
+    // брала только концы подъёма и давала 0.5 - половину; разность на клетку
+    // берёт ровно 0 и 1.0, то есть весь подъём. Случай красный до правки.
+    {
+        const double cell = 0.5;
+        gv::StockBounds bounds;
+        bounds.xMinMm = 0.0;
+        bounds.xMaxMm = 10.0;
+        bounds.yMinMm = 0.0;
+        bounds.yMaxMm = 10.0;
+        bounds.zMinMm = -10.0;
+        bounds.zMaxMm = 0.0;
+        gv::StockField field;
+        field.reset(bounds, cell);
+        for (int iy = 0; iy < field.countY(); ++iy) {
+            for (int ix = 0; ix < field.countX(); ++ix) {
+                const double depth = (ix <= 10) ? 0.0 : (ix == 11 ? 0.5 : 1.0);
+                field.setHeightMm(ix, iy, bounds.zMaxMm - depth);
+            }
+        }
+
+        const int nx = field.countX();
+        const int ny = field.countY();
+        const std::vector<float>& depth = field.depthMm();
+        const auto nodeDepth = [&depth, nx, ny](int ix, int iy) {
+            ix = std::max(0, std::min(nx - 1, ix));
+            iy = std::max(0, std::min(ny - 1, iy));
+            return double(depth[std::size_t(iy) * std::size_t(nx) + std::size_t(ix)]);
+        };
+        const auto sample = [&nodeDepth, nx, ny](double u, double v) {
+            const double p = u * double(nx) - 0.5;
+            const double q = v * double(ny) - 0.5;
+            const double bx = std::floor(p);
+            const double by = std::floor(q);
+            const double fx = p - bx;
+            const double fy = q - by;
+            const int ix = int(bx);
+            const int iy = int(by);
+            const double a = nodeDepth(ix, iy) * (1.0 - fx) + nodeDepth(ix + 1, iy) * fx;
+            const double b = nodeDepth(ix, iy + 1) * (1.0 - fx) + nodeDepth(ix + 1, iy + 1) * fx;
+            return a * (1.0 - fy) + b * fy;
+        };
+        const auto shaderSlopeX = [&nodeDepth, nx, ny, cell](double u, double v) {
+            const double stepMm = cell;                   // STEP_CELLS = 1
+            const double du = 1.0 / double(nx);
+            const auto at = [&nodeDepth, nx, ny](double uu, double vv) {
+                const double p = uu * double(nx) - 0.5;
+                const double q = vv * double(ny) - 0.5;
+                const double bx = std::floor(p);
+                const double by = std::floor(q);
+                const double fx = p - bx;
+                const double fy = q - by;
+                const int ix = int(bx);
+                const int iy = int(by);
+                const double a = nodeDepth(ix, iy) * (1.0 - fx) + nodeDepth(ix + 1, iy) * fx;
+                const double b = nodeDepth(ix, iy + 1) * (1.0 - fx) + nodeDepth(ix + 1, iy + 1) * fx;
+                return a * (1.0 - fy) + b * fy;
+            };
+            const double depth0 = at(u, v);
+            const double r = at(u + du, v);
+            const double l = at(u - du, v);
+            const double p = u * double(nx) - 0.5;
+            const double q = v * double(ny) - 0.5;
+            const double fx = p - std::floor(p);
+            const double fy = q - std::floor(q);
+            const int ix = int(std::floor(p));
+            const int iy = int(std::floor(q));
+            const double g = ((nodeDepth(ix + 1, iy) - nodeDepth(ix, iy)) * (1.0 - fy)
+                            + (nodeDepth(ix + 1, iy + 1) - nodeDepth(ix, iy + 1)) * fy) / cell;
+            const bool jr = std::fabs(r - depth0) > stepMm;
+            const bool jl = std::fabs(depth0 - l) > stepMm;
+            if (jr || jl)
+                return g;
+            return (r - l) / (2.0 * cell);
+        };
+        // Прежнее правило (плечо 4 клетки) - только для числа в примечании.
+        const auto oldSpanSlopeX = [&sample, nx, cell](double u, double v) {
+            const double du = 1.0 / double(nx);
+            return (sample(u + 2.0 * du, v) - sample(u - 2.0 * du, v)) / (4.0 * cell);
+        };
+
+        // Середина подъёма: узел 11 (глубина 0.5 мм), середина ряда по Y.
+        const double u = 11.5 / double(nx);
+        const double v = 0.5;
+        const double want = 1.0 / (2.0 * cell);           // 1.0 мм на 1.0 мм
+        const double got = shaderSlopeX(u, v);
+        const double oldGot = oldSpanSlopeX(u, v);
+        // Точки внутри подъёма: узел 11 каждого ряда, кроме крайних.
+        int checked = 0;
+        double maxDev = 0.0;
+        for (int iy = 1; iy + 1 < ny; ++iy) {
+            const double vv = (double(iy) + 0.5) / double(ny);
+            maxDev = std::max(maxDev, std::fabs(shaderSlopeX(u, vv) - want));
+            ++checked;
+        }
+        std::printf("note stocksurface_shade_frag u=%.4f slope=%.4f want=%.4f "
+                    "old_span_slope=%.4f cell_mm=%.2f\n",
+                    u, got, want, oldGot, cell);
+        reportCase("stocksurface_shade_frag", checked, std::max(maxDev, 0.0), 1e-12,
+                   checked > 0 && std::fabs(got - want) <= 1e-12
+                       && std::fabs(oldGot - want) > 0.4);
     }
 
     // 7в. Точный контур реза и стенка по нему (PLAN-STOCK.md, 3.1). Marching

@@ -1,6 +1,6 @@
 {
   "product": "CNC Панель оператора",
-  "version": "0.16.1",
+  "version": "0.17.0",
   "versioning": "semver",
   "description": "Панель оператора ЧПУ: React-интерфейс, Qt-порт, 3D-вьювер УП и тестовые данные/постпроцессор.",
   "projects": [

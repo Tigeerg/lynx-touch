@@ -1,7 +1,7 @@
 # Руководство по версионированию и внесению изменений
 
 Этот документ — «гид»: как вносить изменения и вести версии в проекте
-**CNC Панель оператора**. Текущая версия — **0.16.1**.
+**CNC Панель оператора**. Текущая версия — **0.17.0**.
 
 ## 1. Проекты
 
@@ -30,7 +30,7 @@
 Версия каждого проекта — в `projects.json` (`projects[].version`) и, где есть,
 в манифесте проекта (`package.json`, `modules/gcode-viewer/VERSION`).
 
-Текущее состояние: **продукт 0.16.1**; `react-interface` — **0.12.0**,
+Текущее состояние: **продукт 0.17.0**; `react-interface` — **0.12.0**,
 `gcode-viewer` — **0.58.0**, `qt-interface` — **0.5.5**, `cad-testdata` — **0.5.1**.
 
 ## 3. Где живут версии
@@ -68,6 +68,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-viewer.ps1
 set PATH=<Qt6>\bin;<OCCT>\bin;<repo>\build\edges;<repo>\build\edges\CNC\Edges;<repo>\build\cpp;<repo>\build\qmlbackend;%PATH%
 set QT_QPA_PLATFORM=offscreen
 build\edges\gcode_probe.exe --manifest modules\gcode-viewer\oracle_manifest.json
+build\edges\version_probe.exe              # VERSION, projects.json, viewerVersion в QML
 build\edges\geometry_probe.exe --manifest modules\gcode-viewer\oracle_manifest.json
 build\edges\step_probe.exe --manifest modules\gcode-viewer\oracle_manifest.json
 build\edges\stl_probe.exe --manifest modules\gcode-viewer\oracle_manifest.json

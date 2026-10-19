@@ -22,6 +22,14 @@ namespace {
 // на окружностях, и разность меньше 1e-9 - это та же окружность.
 constexpr double RADIUS_EPS_MM = 1e-9;
 
+// Пи как в tooling.cpp: углы профиля считаются в градусах.
+constexpr double PI = 3.14159265358979323846;
+
+// Шагов золотого сечения на дугу в точном минимуме: 60 сужают отрезок поиска
+// в 1e-12, чего хватает при требовании 1e-6 мм (stock_sim_probe,
+// inclined_ball_quadrature). Число фиксировано - минимум детерминирован.
+constexpr int ARC_SEARCH_STEPS = 60;
+
 // Миллисекунды монотонных часов: цена прохода меряется здесь, а не слоем Qt.
 double msSince(std::chrono::steady_clock::time_point t0)
 {
@@ -29,6 +37,233 @@ double msSince(std::chrono::steady_clock::time_point t0)
 }
 
 } // namespace
+
+namespace {
+
+// Нижняя огибающая профиля до вылета: пары (r, h) от острия, пока радиус растёт.
+// Убывание радиуса - шейка или хвостовик, они огибающую не понижают; рост радиуса
+// после убывания - поднутрение. Общий вход радиальной таблицы и аналитического
+// профиля: обе обязаны описывать одну форму.
+struct Envelope {
+    std::vector<double> radiusMm;
+    std::vector<double> heightMm;
+    bool undercut = false;
+};
+
+Envelope lowerEnvelope(const std::vector<ProfilePoint>& profile, double exposedMm)
+{
+    Envelope out;
+    if (profile.size() < 2) {
+        return out;
+    }
+    const double topMm = exposedMm > 0.0 ? exposedMm : std::numeric_limits<double>::infinity();
+    double maxRadius = 0.0;
+    bool shrinking = false;
+    out.radiusMm.push_back(0.0);
+    out.heightMm.push_back(profile.front().height_mm);
+    for (std::size_t i = 1; i < profile.size(); ++i) {
+        const ProfilePoint& p = profile[i];
+        if (p.height_mm > topMm + RADIUS_EPS_MM) {
+            continue;
+        }
+        if (p.radius_mm > maxRadius + RADIUS_EPS_MM) {
+            if (shrinking) {
+                out.undercut = true;
+            }
+            out.radiusMm.push_back(p.radius_mm);
+            out.heightMm.push_back(p.height_mm);
+            maxRadius = p.radius_mm;
+        } else if (p.radius_mm < maxRadius - RADIUS_EPS_MM) {
+            shrinking = true;
+        }
+    }
+    return out;
+}
+
+// Участок-отрезок по двум точкам (r, h), мм. r1 <= r0 - участок пуст.
+StockProfilePiece linePiece(double r0, double h0, double r1, double h1)
+{
+    StockProfilePiece p;
+    p.kind = StockProfilePiece::Kind::Line;
+    p.r0Mm = r0;
+    p.r1Mm = r1;
+    p.h0Mm = h0;
+    p.h1Mm = h1;
+    return p;
+}
+
+// Участок-дуга: h(r) = centerH - sqrt(arcR^2 - (r - centerR)^2), нижняя половина.
+StockProfilePiece arcPiece(double r0, double r1, double centerR, double centerH, double arcR)
+{
+    StockProfilePiece p;
+    p.kind = StockProfilePiece::Kind::Arc;
+    p.r0Mm = r0;
+    p.r1Mm = r1;
+    p.centerRMm = centerR;
+    p.centerHMm = centerH;
+    p.arcRadiusMm = arcR;
+    return p;
+}
+
+// Радиус, где h участка доходит до cutMm, мм: рез выше вылета материал не
+// снимает, и участок обрезается там же, где обрезалась таблица.
+double pieceRadiusAtHeight(const StockProfilePiece& p, double cutMm)
+{
+    if (!std::isfinite(cutMm)) {
+        return p.r1Mm;
+    }
+    if (p.kind == StockProfilePiece::Kind::Line) {
+        const double span = p.r1Mm - p.r0Mm;
+        if (span <= 0.0) {
+            return p.r1Mm;
+        }
+        const double b = (p.h1Mm - p.h0Mm) / span;
+        if (b <= 0.0) {
+            return p.r1Mm;
+        }
+        return p.r0Mm + (cutMm - p.h0Mm) / b;
+    }
+    const double dq = p.centerHMm - cutMm;
+    const double inside = p.arcRadiusMm * p.arcRadiusMm - dq * dq;
+    if (inside <= 0.0) {
+        return p.r1Mm;
+    }
+    return p.centerRMm + std::sqrt(inside);
+}
+
+} // namespace
+
+double StockProfilePiece::heightAt(double radiusMm) const
+{
+    if (kind == Kind::Line) {
+        const double span = r1Mm - r0Mm;
+        if (span <= 0.0) {
+            return h0Mm;
+        }
+        const double t = (radiusMm - r0Mm) / span;
+        return h0Mm + (h1Mm - h0Mm) * t;
+    }
+    const double dr = radiusMm - centerRMm;
+    const double inside = arcRadiusMm * arcRadiusMm - dr * dr;
+    if (inside <= 0.0) {
+        return centerHMm;              // вершина дуги: край участка
+    }
+    return centerHMm - std::sqrt(inside);
+}
+
+double StockProfilePiece::slopeAt(double radiusMm) const
+{
+    if (kind == Kind::Line) {
+        const double span = r1Mm - r0Mm;
+        return span <= 0.0 ? 0.0 : (h1Mm - h0Mm) / span;
+    }
+    const double dr = radiusMm - centerRMm;
+    const double inside = arcRadiusMm * arcRadiusMm - dr * dr;
+    if (inside <= 1e-18) {
+        return std::numeric_limits<double>::infinity();
+    }
+    return dr / std::sqrt(inside);
+}
+
+double StockProfile::heightAt(double radiusAtMm) const
+{
+    if (pieces.empty() || radiusAtMm < 0.0 || radiusAtMm > maxRadiusMm + RADIUS_EPS_MM) {
+        return std::numeric_limits<double>::infinity();
+    }
+    if (radiusAtMm <= pieces.front().r0Mm) {
+        return pieces.front().h0Mm;
+    }
+    for (const StockProfilePiece& piece : pieces) {
+        if (radiusAtMm <= piece.r1Mm + RADIUS_EPS_MM) {
+            return piece.heightAt(radiusAtMm);
+        }
+    }
+    return pieces.back().heightAt(pieces.back().r1Mm);
+}
+
+StockProfile stockProfileFromPoints(const std::vector<ProfilePoint>& profile, double exposedMm)
+{
+    StockProfile out;
+    const Envelope env = lowerEnvelope(profile, exposedMm);
+    if (env.radiusMm.size() < 2) {
+        return out;
+    }
+    for (std::size_t i = 0; i + 1 < env.radiusMm.size(); ++i) {
+        out.pieces.push_back(linePiece(env.radiusMm[i], env.heightMm[i],
+                                       env.radiusMm[i + 1], env.heightMm[i + 1]));
+    }
+    out.maxRadiusMm = env.radiusMm.back();
+    return out;
+}
+
+StockProfile stockProfileFromTool(const ToolInfo& info)
+{
+    StockProfile out;
+    const double r = info.diameter / 2.0;
+    if (!info.present || !(r > 0.0)) {
+        return out;
+    }
+    std::string typ = info.type;
+    const double cr = info.corner_radius;
+    const double taper = info.taper_deg;
+    const double tipa = info.tip_angle_deg;
+    const double tipd = info.tip_diameter;
+    if (typ == "FLAT" && taper > 0.0 && cr <= 0.0) {
+        typ = "DRILL";
+    }
+    const double exposed = toolExposedLength(info);
+    const double cutMm = exposed > 0.0 ? exposed : std::numeric_limits<double>::infinity();
+
+    // Участки режущей части до вылета. Формы повторяют toolProfile, но дуги
+    // остаются дугами: у шара - истинная сфера, у скругления угла - истинный тор.
+    std::vector<StockProfilePiece> pieces;
+    if (typ == "BALL") {
+        pieces.push_back(arcPiece(0.0, r, 0.0, r, r));
+    } else if (typ == "DRILL" || typ == "TAP" || typ == "CHAMFER" || typ == "TAPER") {
+        const double ang = (typ == "DRILL" || typ == "TAP")
+                ? (taper > 0.0 ? taper : (tipa > 0.0 ? tipa : 118.0))
+                : (taper > 0.0 ? taper : 45.0);
+        const double divisor = (typ == "DRILL" || typ == "TAP") ? 2.0 : 1.0;
+        const double tr = std::tan((std::max(1.0, std::min(89.0, ang)) / divisor) * (PI / 180.0));
+        const double r0 = tipd > 0.0 ? std::min(tipd / 2.0, r) : 0.0;
+        const double tipH = tr > 1e-9 ? (r - r0) / tr : r;
+        if (r0 > 0.0) {
+            pieces.push_back(linePiece(0.0, 0.0, r0, 0.0));
+        }
+        pieces.push_back(linePiece(r0, 0.0, r, tipH));
+    } else if (cr > 0.0 && cr < r) {          // радиусная концевая: скругление угла
+        pieces.push_back(linePiece(0.0, 0.0, r - cr, 0.0));
+        pieces.push_back(arcPiece(r - cr, r, r - cr, cr, cr));
+    } else {                                   // FLAT и прочие прямые формы
+        pieces.push_back(linePiece(0.0, 0.0, r, 0.0));
+    }
+
+    // Обрезка по вылету: участок кончается там, где его высота доходит до вылета.
+    for (const StockProfilePiece& piece : pieces) {
+        StockProfilePiece p = piece;
+        if (std::isfinite(cutMm)) {
+            p.r1Mm = std::min(p.r1Mm, pieceRadiusAtHeight(piece, cutMm));
+            if (p.kind == StockProfilePiece::Kind::Line) {
+                p.h1Mm = piece.heightAt(p.r1Mm);
+            }
+        }
+        if (p.r1Mm > p.r0Mm + RADIUS_EPS_MM) {
+            out.pieces.push_back(p);
+        }
+    }
+    if (out.pieces.empty()) {
+        return out;                        // вся режущая часть выше вылета
+    }
+    // Огибающая начинается на оси острия: если первый участок не от нуля, он
+    // терял бы материал на оси.
+    if (out.pieces.front().r0Mm > RADIUS_EPS_MM) {
+        out.pieces.insert(out.pieces.begin(),
+                          linePiece(0.0, out.pieces.front().h0Mm,
+                                    out.pieces.front().r0Mm, out.pieces.front().h0Mm));
+    }
+    out.maxRadiusMm = out.pieces.back().r1Mm;
+    return out;
+}
 
 double StockCutter::heightAt(double radiusAtMm) const
 {
@@ -58,38 +293,19 @@ StockCutter stockCutterFromProfile(const std::vector<ProfilePoint>& profile,
 {
     StockCutter cutter;
     cutter.exposedMm = exposedMm;
-    if (profile.size() < 2) {
-        return cutter;
-    }
-    // Выше вылета профиль не режет. Нулевой вылет - вылет неизвестен, режет всё.
-    const double topMm = exposedMm > 0.0 ? exposedMm : std::numeric_limits<double>::infinity();
-
-    // Нижняя огибающая: идём от острия, пока радиус растёт. Убывание радиуса -
-    // шейка или хвостовик, они огибающую не понижают. Рост радиуса после
-    // убывания - поднутрение (лоллипоп): картой оно не выражается, флаг для
-    // вызывающего.
-    // toolProfile начинает профиль на оси: точка (0, 0).
-    double maxRadius = 0.0;
-    bool shrinking = false;
-    cutter.radiusMm.push_back(0.0);
-    cutter.heightMm.push_back(profile.front().height_mm);
-    for (std::size_t i = 1; i < profile.size(); ++i) {
-        const ProfilePoint& p = profile[i];
-        if (p.height_mm > topMm + RADIUS_EPS_MM) {
-            continue;
-        }
-        if (p.radius_mm > maxRadius + RADIUS_EPS_MM) {
-            if (shrinking) {
-                cutter.undercut = true;
-            }
-            cutter.radiusMm.push_back(p.radius_mm);
-            cutter.heightMm.push_back(p.height_mm);
-            maxRadius = p.radius_mm;
-        } else if (p.radius_mm < maxRadius - RADIUS_EPS_MM) {
-            shrinking = true;
-        }
-    }
-    cutter.maxRadiusMm = maxRadius;
+    // Нижняя огибающая профиля: идём от острия, пока радиус растёт. Убывание
+    // радиуса - шейка или хвостовик, они огибающую не понижают. Рост радиуса
+    // после убывания - поднутрение (лоллипоп): картой оно не выражается, флаг
+    // для вызывающего.
+    const Envelope env = lowerEnvelope(profile, exposedMm);
+    cutter.radiusMm = env.radiusMm;
+    cutter.heightMm = env.heightMm;
+    cutter.undercut = env.undercut;
+    cutter.maxRadiusMm = env.radiusMm.empty() ? 0.0 : env.radiusMm.back();
+    // Аналитическая огибающая по тем же узлам: каждый интервал - отрезок. Ею
+    // считается точный съём; форма та же, что у таблицы, - сверка случая
+    // flat_sweep держит обе.
+    cutter.profile = stockProfileFromPoints(profile, exposedMm);
     return cutter;
 }
 
@@ -100,6 +316,13 @@ StockCutter stockCutter(const ToolInfo& info)
     }
     StockCutter cutter = stockCutterFromProfile(toolProfile(info), toolExposedLength(info));
     cutter.number = info.number;
+    // Примитивы вместо хорд: у шара - истинная сфера, у скругления угла -
+    // истинный тор, у фаски - отрезок. Таблица остаётся эталоном формы.
+    const StockProfile analytic = stockProfileFromTool(info);
+    if (!analytic.empty()) {
+        cutter.profile = analytic;
+        cutter.maxRadiusMm = analytic.maxRadiusMm;
+    }
     // Форма с поднутрением по определению шире кверху. toolProfile строит её
     // веткой FLAT/BULL/LOLLIPOP/DOVETAIL/PROBE как прямую фрезу, то есть форма
     // уже потеряна, - поэтому отказ идёт по типу, а не по профилю.
@@ -242,6 +465,283 @@ void StockField::sweep(const StockCutter& cutter,
     for (int k = 0; k <= steps; ++k) {
         const double t = double(k) / double(steps);
         plunge(cutter, aMm[0] + dx * t, aMm[1] + dy * t, aMm[2] + dz * t);
+    }
+}
+
+namespace {
+
+// Точка минимума f(t) = z(t) + h(r(t)) на участке-дуге со смещённым центром
+// (скругление нижнего угла): замкнутой формы нет, поэтому защищённый Ньютон с
+// фиксированным числом шагов - ответ детерминирован, отрезок сужается вдвое при
+// каждом выходе шага за скобку. Выпуклость f гарантирует единственный минимум.
+double shiftedArcCritical(const StockProfilePiece& piece, double l2, double d2,
+                          double tStar, double dz, double lo, double hi)
+{
+    // Производные f по t: g' = dz + h'(r) * dr/dt, dr/dt = l2 * u / r.
+    const auto slope = [&](double t) {
+        const double u = t - tStar;
+        const double r = std::sqrt(l2 * u * u + d2);
+        if (!(r > 1e-12)) {
+            return dz;
+        }
+        return dz + piece.slopeAt(r) * (l2 * u / r);
+    };
+    const auto curvature = [&](double t) {
+        const double u = t - tStar;
+        const double r2 = l2 * u * u + d2;
+        const double r = std::sqrt(r2);
+        if (!(r > 1e-9)) {
+            return 0.0;
+        }
+        const double q = r - piece.centerRMm;
+        const double phi2 = piece.arcRadiusMm * piece.arcRadiusMm - q * q;
+        if (!(phi2 > 1e-18)) {
+            return 0.0;
+        }
+        const double phi = std::sqrt(phi2);
+        const double a = l2 * u / r;                      // dr/dt
+        const double b = q / phi;                         // h'(r)
+        const double da = l2 * d2 / (r2 * r);             // d(dr/dt)/dt
+        const double db = piece.arcRadiusMm * piece.arcRadiusMm * a / (phi2 * phi);
+        return da * b + a * db;
+    };
+    double a = lo;
+    double b = hi;
+    double t = std::min(hi, std::max(lo, tStar));
+    for (int i = 0; i < 40; ++i) {
+        const double g = slope(t);
+        if (g > 0.0) {
+            b = t;
+        } else {
+            a = t;
+        }
+        const double g2 = curvature(t);
+        double step = g2 > 1e-18 ? -g / g2 : 0.0;
+        double next = t + step;
+        if (!(next > a && next < b)) {
+            next = 0.5 * (a + b);
+        }
+        if (std::fabs(next - t) < 1e-14) {
+            t = next;
+            break;
+        }
+        t = next;
+    }
+    return t;
+}
+
+} // namespace
+
+void StockField::sweepExact(const StockCutter& cutter,
+                            const std::array<double, 3>& aMm,
+                            const std::array<double, 3>& bMm)
+{
+    const StockProfile& prof = cutter.profile;
+    if (empty() || prof.empty()) {
+        return;
+    }
+    const double radius = prof.maxRadiusMm;
+    if (!(radius > 0.0)) {
+        return;
+    }
+    const double ax = aMm[0];
+    const double ay = aMm[1];
+    const double az = aMm[2];
+    const double dx = bMm[0] - ax;
+    const double dy = bMm[1] - ay;
+    const double dz = bMm[2] - az;
+
+    // Ход целиком выше заготовки: h >= 0, значит верх материала не понижается.
+    if (std::min(az, bMm[2]) >= bounds_.zMaxMm) {
+        return;
+    }
+
+    const double l2 = dx * dx + dy * dy;
+    const double topMm = bounds_.zMaxMm;
+    const double thicknessMm = bounds_.zMaxMm - bounds_.zMinMm;
+
+    if (!(l2 > 0.0)) {
+        // Ход по вертикали: расстояние до узла не меняется, режет низ хода.
+        const int ix0 = std::max(0, int(std::ceil((ax - radius - bounds_.xMinMm) / cellMm_)));
+        const int ix1 = std::min(nx_ - 1, int(std::floor((ax + radius - bounds_.xMinMm) / cellMm_)));
+        const int iy0 = std::max(0, int(std::ceil((ay - radius - bounds_.yMinMm) / cellMm_)));
+        const int iy1 = std::min(ny_ - 1, int(std::floor((ay + radius - bounds_.yMinMm) / cellMm_)));
+        const double tipZ = std::min(az, bMm[2]);
+        for (int iy = iy0; iy <= iy1; ++iy) {
+            const double ny = nodeYMm(iy) - ay;
+            for (int ix = ix0; ix <= ix1; ++ix) {
+                const double nx = nodeXMm(ix) - ax;
+                const double r = std::sqrt(nx * nx + ny * ny);
+                if (r > radius) {
+                    continue;
+                }
+                double depth = topMm - (tipZ + prof.heightAt(r));
+                if (!(depth > 0.0)) {
+                    continue;
+                }
+                depth = std::min(depth, thicknessMm);
+                float& cell = depth_[std::size_t(iy) * std::size_t(nx_) + std::size_t(ix)];
+                if (float(depth) > cell) {
+                    cell = float(depth);
+                }
+            }
+        }
+        return;
+    }
+
+    // Капсула хода: отрезок плюс диск радиуса. Вне её bbox узлов нет.
+    const int ix0 = std::max(0, int(std::ceil(
+            (std::min(ax, bMm[0]) - radius - bounds_.xMinMm) / cellMm_)));
+    const int ix1 = std::min(nx_ - 1, int(std::floor(
+            (std::max(ax, bMm[0]) + radius - bounds_.xMinMm) / cellMm_)));
+    const int iy0 = std::max(0, int(std::ceil(
+            (std::min(ay, bMm[1]) - radius - bounds_.yMinMm) / cellMm_)));
+    const int iy1 = std::min(ny_ - 1, int(std::floor(
+            (std::max(ay, bMm[1]) + radius - bounds_.yMinMm) / cellMm_)));
+    if (ix0 > ix1 || iy0 > iy1) {
+        return;
+    }
+
+    const double rootL2 = std::sqrt(l2);
+    const double rootL2dz = std::sqrt(l2 + dz * dz);   // для дуги шара: один раз на ход
+    for (int iy = iy0; iy <= iy1; ++iy) {
+        const double py = nodeYMm(iy) - ay;
+        const std::size_t row = std::size_t(iy) * std::size_t(nx_);
+        for (int ix = ix0; ix <= ix1; ++ix) {
+            const double px = nodeXMm(ix) - ax;
+            // Проекция узла на прямую хода: tStar; d2 - квадрат расстояния до
+            // прямой. Через них r(t)^2 = l2 * (t - tStar)^2 + d2.
+            const double tStar = (px * dx + py * dy) / l2;
+            const double d2 = std::max(0.0, px * px + py * py - l2 * tStar * tStar);
+            const double d = std::sqrt(d2);
+            // Минимум H(P) по участкам. На каждом участке f(t) выпукла, поэтому
+            // минимум стоит в критической точке, зажатой в под-интервал радиуса,
+            // либо на его конце. h считается прямо по участку: обращение к общей
+            // огибающей на каждого кандидата повторяло бы обход участков.
+            const auto pieceHeight = [](const StockProfilePiece& piece, double r) {
+                if (piece.kind == StockProfilePiece::Kind::Line) {
+                    const double spanR = piece.r1Mm - piece.r0Mm;
+                    return spanR > 0.0
+                            ? piece.h0Mm + (piece.h1Mm - piece.h0Mm) * (r - piece.r0Mm) / spanR
+                            : piece.h0Mm;
+                }
+                const double q = r - piece.centerRMm;
+                const double inside = piece.arcRadiusMm * piece.arcRadiusMm - q * q;
+                return inside > 0.0 ? piece.centerHMm - std::sqrt(inside) : piece.centerHMm;
+            };
+            const auto heightAtT = [&](const StockProfilePiece& piece, double t) {
+                const double u = t - tStar;
+                return az + dz * t + pieceHeight(piece, std::sqrt(l2 * u * u + d2));
+            };
+            double best = std::numeric_limits<double>::infinity();
+
+            // Один участок - почти все инструменты (плоская, шар, фаска, сверло):
+            // под-интервал радиуса один, и минимум берётся за одно обращение к h.
+            if (prof.pieces.size() == 1) {
+                const StockProfilePiece& piece = prof.pieces.front();
+                const double r1sq = piece.r1Mm * piece.r1Mm;
+                if (r1sq + 1e-9 < d2) {
+                    continue;                  // узел дальше инструмента: не режет
+                }
+                const double w = r1sq > d2 ? std::sqrt((r1sq - d2) / l2) : 0.0;
+                const double lo = std::max(0.0, tStar - w);
+                const double hi = std::min(1.0, tStar + w);
+                if (!(hi >= lo)) {
+                    continue;
+                }
+                if (piece.kind == StockProfilePiece::Kind::Line) {
+                    const double spanR = piece.r1Mm - piece.r0Mm;
+                    const double slope = spanR > 0.0 ? (piece.h1Mm - piece.h0Mm) / spanR : 0.0;
+                    if (!(slope > 0.0)) {
+                        // Плоское острие: h постоянна на всём резе, минимум z на
+                        // конце под-интервала - ни sqrt, ни обращения к профилю.
+                        best = std::min(az + dz * lo, az + dz * hi) + piece.h0Mm;
+                    } else {
+                        double u = 0.0;
+                        const double denom = slope * slope * l2 - dz * dz;
+                        if (denom > 0.0 && d > 0.0) {
+                            u = -dz * d / (rootL2 * std::sqrt(denom));
+                        }
+                        const double t = std::min(hi, std::max(lo, tStar + u));
+                        best = heightAtT(piece, t);
+                    }
+                } else if (std::fabs(piece.centerRMm) <= RADIUS_EPS_MM
+                           && piece.r0Mm <= RADIUS_EPS_MM) {
+                    // Дуга с центром на оси - истинная сфера: минимум замкнут.
+                    double u = 0.0;
+                    const double inside = piece.arcRadiusMm * piece.arcRadiusMm - d2;
+                    if (inside > 0.0) {
+                        u = -dz * std::sqrt(inside) / (rootL2 * rootL2dz);
+                    }
+                    const double t = std::min(hi, std::max(lo, tStar + u));
+                    best = heightAtT(piece, t);
+                } else {
+                    const double t = shiftedArcCritical(piece, l2, d2, tStar, dz, lo, hi);
+                    best = heightAtT(piece, t);
+                }
+            } else {
+                for (const StockProfilePiece& piece : prof.pieces) {
+                    const double r0sq = piece.r0Mm * piece.r0Mm;
+                    const double r1sq = piece.r1Mm * piece.r1Mm;
+                    if (r1sq + 1e-9 < d2) {
+                        continue;              // узел дальше участка: он не режет
+                    }
+                    const double w0 = r0sq > d2 ? std::sqrt((r0sq - d2) / l2) : 0.0;
+                    const double w1 = r1sq > d2 ? std::sqrt((r1sq - d2) / l2) : 0.0;
+                    // Критическая точка участка (u = t - tStar) - один раз на узел.
+                    double uCritical = std::numeric_limits<double>::infinity();
+                    bool shiftedArc = false;
+                    if (piece.kind == StockProfilePiece::Kind::Line) {
+                        const double spanR = piece.r1Mm - piece.r0Mm;
+                        const double slope = spanR > 0.0 ? (piece.h1Mm - piece.h0Mm) / spanR : 0.0;
+                        if (slope > 0.0 && slope * slope * l2 > dz * dz && d > 0.0) {
+                            uCritical = -dz * d / (rootL2 * std::sqrt(slope * slope * l2 - dz * dz));
+                        }
+                    } else if (std::fabs(piece.centerRMm) <= RADIUS_EPS_MM
+                               && piece.r0Mm <= RADIUS_EPS_MM) {
+                        const double inside = piece.arcRadiusMm * piece.arcRadiusMm - d2;
+                        if (inside > 0.0) {
+                            uCritical = -dz * std::sqrt(inside)
+                                    / (rootL2 * rootL2dz);
+                        }
+                    } else {
+                        shiftedArc = true;     // скругление угла: Ньютон на интервале
+                    }
+                    // Под-интервалы, где r(t) лежит в [r0, r1]: tStar + [w0, w1] и
+                    // tStar - [w1, w0].
+                    for (int side = 0; side < 2; ++side) {
+                        const double lo = std::max(0.0, tStar + (side == 0 ? w0 : -w1));
+                        const double hi = std::min(1.0, tStar + (side == 0 ? w1 : -w0));
+                        if (!(hi >= lo)) {
+                            continue;
+                        }
+                        best = std::min(best, heightAtT(piece, lo));
+                        if (hi > lo) {
+                            best = std::min(best, heightAtT(piece, hi));
+                        }
+                        if (std::isfinite(uCritical)) {
+                            const double t = std::min(hi, std::max(lo, tStar + uCritical));
+                            best = std::min(best, heightAtT(piece, t));
+                        } else if (shiftedArc) {
+                            const double t = shiftedArcCritical(piece, l2, d2, tStar, dz, lo, hi);
+                            best = std::min(best, heightAtT(piece, t));
+                        }
+                    }
+                }
+            }
+            if (!std::isfinite(best)) {
+                continue;
+            }
+            double depth = topMm - best;
+            if (!(depth > 0.0)) {
+                continue;
+            }
+            depth = std::min(depth, thicknessMm);
+            float& cell = depth_[row + std::size_t(ix)];
+            if (float(depth) > cell) {
+                cell = float(depth);
+            }
+        }
     }
 }
 
@@ -430,7 +930,7 @@ bool StockWalk::advanceTo(double targetMm, const std::function<bool(double)>& ca
                                       data_->pts[i * 3 + 1]};
         const StockCutter& cutter = cutters_[std::min(stage_, cutters_.size() - 1)];
         if (cutter.maxRadiusMm > 0.0) {
-            field_.sweep(cutter, a, b);
+            field_.sweepExact(cutter, a, b);
         }
         const double dx = b[0] - a[0];
         const double dy = b[1] - a[1];

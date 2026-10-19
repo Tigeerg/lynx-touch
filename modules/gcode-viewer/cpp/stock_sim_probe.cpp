@@ -28,6 +28,13 @@
 // высоты колец оправки и отсутствие колец на звеньях дуг шара и скругления.
 // Поле во всех случаях одно и то же: рисование его не трогает.
 //
+// 1б. Точный съём (PLAN-STOCK.md, 3.2). Те же формы, но огибающая считается
+// замкнуто по капсуле хода, а не выборкой положений: случаи flat_sweep_exact,
+// ball_plunge_exact, cone_plunge_exact и near_miss_exact держат точность против
+// аналитики, inclined_ball_quadrature - против квадратуры по t высокой точности.
+// Прежние случаи (flat_sweep, ball_plunge, cone_plunge, near_miss_step) остаются
+// сверкой старой выборки по таблице: их числа не трогаются.
+//
 // 2. Замер. Время одного прохода длиной 50 мм и время всего Test_model.ngc
 // (все ходы, включая быстрые, инструмент этапа, габарит из UI_STOCK) при узле
 // 0.5 и 0.2 мм - это предложения пресетов из DESIGN.md. Печатаются строки
@@ -297,6 +304,44 @@ ProgramTiming runProgram(const std::vector<Move>& moves,
     return out;
 }
 
+// Тот же проход точным съёмом: цена поля после этапа 2 (PLAN-STOCK.md, 3.2).
+// Позиций нет - каждый узел капсулы трогается один раз на ход, поэтому число
+// обращений равно числу ходов, а не сумме положений шага.
+ProgramTiming runProgramExact(const std::vector<Move>& moves,
+                              const std::vector<gv::StockCutter>& cutters,
+                              const gv::StockBounds& bounds,
+                              double cellMm)
+{
+    ProgramTiming out;
+    for (const Move& move : moves) {
+        const double dx = move.bMm[0] - move.aMm[0];
+        const double dy = move.bMm[1] - move.aMm[1];
+        const double dz = move.bMm[2] - move.aMm[2];
+        out.lengthMm += std::sqrt(dx * dx + dy * dy + dz * dz);
+    }
+    out.moves = int(moves.size());
+    out.positions = moves.size();          // одно обращение к ходу, не к положению
+
+    gv::StockField field;
+    Clock::time_point t0 = Clock::now();
+    field.reset(bounds, cellMm);
+    out.resetMs = msSince(t0);
+    out.countX = field.countX();
+    out.countY = field.countY();
+
+    t0 = Clock::now();
+    for (const Move& move : moves) {
+        const gv::StockCutter& cutter = cutters[std::size_t(move.cutter)];
+        if (cutter.maxRadiusMm <= 0.0) {
+            continue;
+        }
+        field.sweepExact(cutter, move.aMm, move.bMm);
+    }
+    out.sweepMs = msSince(t0);
+    g_sink += field.depthMm().size();
+    return out;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -488,6 +533,235 @@ int main(int argc, char** argv)
         maxDev = std::max(maxDev, std::fabs(outsideHeight));
         const bool outsideOk = std::fabs(outsideHeight) < 1e-6;
         reportCase("near_miss_step", 2, maxDev, 1e-5, fullCellWouldMiss && outsideOk);
+    }
+
+    // 5б. Точный съём (PLAN-STOCK.md, 3.2): огибающая хода по капсуле, без шага
+    // cell / 2. Случай плоской фрезы: рез постоянен по всей площади капсулы,
+    // включая полосу шириной до cell / 4 у стенки следа, которую выборка по
+    // положениям вынужденно исключала (случай flat_sweep выше). Сверка - со всей
+    // площадью сразу, без исключений, и с прежней выборкой: она обязана оставить
+    // нетронутые узлы внутри радиуса - это и есть её цена.
+    {
+        const double cell = 0.5;
+        const double r = 0.5;
+        const double tipZ = -0.2;
+        gv::StockBounds bounds;
+        bounds.xMinMm = -3.0;
+        bounds.xMaxMm = 7.0;
+        bounds.yMinMm = -3.0;
+        bounds.yMaxMm = 7.0;
+        bounds.zMinMm = -5.0;
+        bounds.zMaxMm = 0.0;
+        const gv::StockCutter cutter = gv::stockCutter(makeTool(ToolSpec{"FLAT", 1.0}));
+
+        gv::StockField exact;
+        exact.reset(bounds, cell);
+        exact.sweepExact(cutter, {-1.0, 0.6, tipZ}, {5.0, 4.6, tipZ});
+
+        gv::StockField sampled;
+        sampled.reset(bounds, cell);
+        sampled.sweep(cutter, {-1.0, 0.6, tipZ}, {5.0, 4.6, tipZ});
+
+        int checked = 0;
+        int stripNodes = 0;
+        int deeper = 0;
+        double maxDev = 0.0;
+        double stripMaxMm = 0.0;
+        for (int iy = 0; iy < exact.countY(); ++iy) {
+            for (int ix = 0; ix < exact.countX(); ++ix) {
+                const double x = exact.nodeXMm(ix);
+                const double y = exact.nodeYMm(iy);
+                const double d = segmentDistanceMm(x, y, -1.0, 0.6, 5.0, 4.6);
+                const double analytic = (d <= r) ? tipZ : 0.0;
+                const double height = exact.heightMm(ix, iy);
+                if (height < analytic - 1e-6) {
+                    ++deeper;
+                }
+                if (std::fabs(d - r) > 1e-9) {
+                    maxDev = std::max(maxDev, std::fabs(height - analytic));
+                    ++checked;
+                }
+                // Узел внутри радиуса, но не пойманный выборкой по положениям.
+                if (d <= r - 1e-6 && sampled.heightMm(ix, iy) > analytic + 1e-6) {
+                    ++stripNodes;
+                    stripMaxMm = std::max(stripMaxMm, d);
+                }
+            }
+        }
+        std::printf("note flat_sweep_exact nodes=%dx%d strip_nodes=%d strip_edge_mm=%.4f "
+                    "tool_r_mm=%.1f cell_mm=%.1f\n",
+                    exact.countX(), exact.countY(), stripNodes, stripMaxMm, r, cell);
+        reportCase("flat_sweep_exact", checked, maxDev, 1e-6, deeper == 0 && stripNodes > 0);
+    }
+
+    // 5в. Истинная сфера: аналитическая огибающая шара (stockProfileFromTool)
+    // вместо 12 хорд таблицы. Рез D6 сверяется с точной формулой сферы, допуск -
+    // машинный: сагитта хорд (случай ball_plunge, 6.4e-3 мм) уходит целиком.
+    {
+        const double cell = 0.5;
+        const double r = 3.0;
+        const double tipZ = -1.0;
+        gv::StockBounds bounds;
+        bounds.xMinMm = -5.0;
+        bounds.xMaxMm = 5.0;
+        bounds.yMinMm = -5.0;
+        bounds.yMaxMm = 5.0;
+        bounds.zMinMm = -10.0;
+        bounds.zMaxMm = 0.0;
+        gv::StockField field;
+        field.reset(bounds, cell);
+        const gv::StockCutter cutter = gv::stockCutter(makeTool(ToolSpec{"BALL", 6.0}));
+        field.sweepExact(cutter, {0.0, 0.0, tipZ}, {0.0, 0.0, tipZ});
+
+        int checked = 0;
+        double maxDev = 0.0;
+        for (int iy = 0; iy < field.countY(); ++iy) {
+            for (int ix = 0; ix < field.countX(); ++ix) {
+                const double s = std::hypot(field.nodeXMm(ix), field.nodeYMm(iy));
+                maxDev = std::max(maxDev, std::fabs(field.heightMm(ix, iy)
+                                                    - ballHeightMm(s, r, tipZ)));
+                ++checked;
+            }
+        }
+        reportCase("ball_plunge_exact", checked, maxDev, 1e-6);
+    }
+
+    // 5г. Конус точным съёмом: участок-отрезок огибающей, минимум берётся
+    // замкнутой формой. Случай держит аналитический профиль фаски.
+    {
+        const double cell = 0.5;
+        const double tipZ = -1.0;
+        gv::StockBounds bounds;
+        bounds.xMinMm = -5.0;
+        bounds.xMaxMm = 5.0;
+        bounds.yMinMm = -5.0;
+        bounds.yMaxMm = 5.0;
+        bounds.zMinMm = -10.0;
+        bounds.zMaxMm = 0.0;
+        gv::StockField field;
+        field.reset(bounds, cell);
+        const gv::StockCutter cutter = gv::stockCutter(makeTool(ToolSpec{"CHAMFER", 6.0, 45.0}));
+        field.sweepExact(cutter, {0.0, 0.0, tipZ}, {0.0, 0.0, tipZ});
+
+        int checked = 0;
+        double maxDev = 0.0;
+        bool deeper = false;
+        for (int iy = 0; iy < field.countY(); ++iy) {
+            for (int ix = 0; ix < field.countX(); ++ix) {
+                const double s = std::hypot(field.nodeXMm(ix), field.nodeYMm(iy));
+                const double analytic = coneHeightMm(s, tipZ);
+                const double height = field.heightMm(ix, iy);
+                if (height < analytic - 1e-6) {
+                    deeper = true;
+                }
+                maxDev = std::max(maxDev, std::fabs(height - analytic));
+                ++checked;
+            }
+        }
+        reportCase("cone_plunge_exact", checked, maxDev, 1e-6, !deeper);
+    }
+
+    // 5д. Точный край вместо "поймали шагом": узел, стоящий от линии реза ближе
+    // радиуса, снят независимо от узла сетки и шага; узел дальше радиуса не
+    // тронут. Сверка - с квадратурой по t высокой точности: минимум
+    // z(t) + h(r(t)) ищется перебором 2001 точек и уточняется золотым сечением,
+    // то есть независимо от замкнутой формы ядра (PLAN-STOCK.md, 3.2).
+    {
+        const double r = 3.0;                       // шар D6: истинная сфера
+        const std::array<double, 3> a{-2.0, 0.0, -1.0};
+        const std::array<double, 3> b{2.0, 1.0, -2.0};   // наклонный ход
+        gv::StockBounds bounds;
+        bounds.xMinMm = -6.0;
+        bounds.xMaxMm = 6.0;
+        bounds.yMinMm = -6.0;
+        bounds.yMaxMm = 6.0;
+        bounds.zMinMm = -10.0;
+        bounds.zMaxMm = 0.0;
+        const gv::StockCutter cutter = gv::stockCutter(makeTool(ToolSpec{"BALL", 6.0}));
+        gv::StockField field;
+        field.reset(bounds, 0.5);
+        field.sweepExact(cutter, a, b);
+
+        // Квадратура по t: r(t) - расстояние до точки отрезка в XY, z(t) линейна.
+        const auto quadrature = [&](double x, double y) {
+            double best = std::numeric_limits<double>::infinity();
+            const int samples = 2001;
+            int bestIndex = 0;
+            for (int i = 0; i <= samples; ++i) {
+                const double t = double(i) / double(samples);
+                const double px = a[0] + (b[0] - a[0]) * t;
+                const double py = a[1] + (b[1] - a[1]) * t;
+                const double pz = a[2] + (b[2] - a[2]) * t;
+                const double s = std::hypot(x - px, y - py);
+                if (s >= r) {
+                    continue;                       // вне инструмента здесь не режет
+                }
+                const double h = pz + r - std::sqrt(r * r - s * s);
+                if (h < best) {
+                    best = h;
+                    bestIndex = i;
+                }
+            }
+            if (!std::isfinite(best)) {
+                return bounds.zMaxMm;               // нетронутый верх
+            }
+            double lo = std::max(0.0, double(bestIndex - 1) / double(samples));
+            double hi = std::min(1.0, double(bestIndex + 1) / double(samples));
+            const double invPhi = 0.618033988749894848;
+            double u = hi - (hi - lo) * invPhi;
+            double v = lo + (hi - lo) * invPhi;
+            const auto at = [&](double t) {
+                const double px = a[0] + (b[0] - a[0]) * t;
+                const double py = a[1] + (b[1] - a[1]) * t;
+                const double pz = a[2] + (b[2] - a[2]) * t;
+                const double s = std::hypot(x - px, y - py);
+                return pz + r - std::sqrt(std::max(1e-18, r * r - s * s));
+            };
+            double fu = at(u);
+            double fv = at(v);
+            for (int i = 0; i < 200; ++i) {
+                if (fu < fv) {
+                    hi = v;
+                    v = u;
+                    fv = fu;
+                    u = hi - (hi - lo) * invPhi;
+                    fu = at(u);
+                } else {
+                    lo = u;
+                    u = v;
+                    fu = fv;
+                    v = lo + (hi - lo) * invPhi;
+                    fv = at(v);
+                }
+            }
+            return std::min(bounds.zMaxMm, std::min(fu, fv));
+        };
+
+        int checked = 0;
+        double maxDev = 0.0;
+        double worstX = 0.0;
+        double worstY = 0.0;
+        double worstWant = 0.0;
+        double worstGot = 0.0;
+        for (int iy = 0; iy < field.countY(); ++iy) {
+            for (int ix = 0; ix < field.countX(); ++ix) {
+                const double x = field.nodeXMm(ix);
+                const double y = field.nodeYMm(iy);
+                const double want = quadrature(x, y);
+                const double got = field.heightMm(ix, iy);
+                if (std::fabs(got - want) > maxDev) {
+                    maxDev = std::fabs(got - want);
+                    worstX = x;
+                    worstY = y;
+                    worstWant = want;
+                    worstGot = got;
+                }
+                ++checked;
+            }
+        }
+        std::printf("note inclined_ball worst=(%.2f,%.2f) got=%.6f want=%.6f\n",
+                    worstX, worstY, worstGot, worstWant);
+        reportCase("inclined_ball_quadrature", checked, maxDev, 1e-6);
     }
 
     // 6. Привязка поля к траектории. Короткая программа разбирается тем же
@@ -1227,6 +1501,22 @@ int main(int argc, char** argv)
                         (long long)timing.countX * timing.countY * 4, timing.moves,
                         timing.positions, timing.lengthMm, timing.resetMs,
                         timing.sweepMs, timing.resetMs + timing.sweepMs);
+
+            // Точный съём той же программы: цена и память поля после этапа 2.
+            const ProgramTiming exact = runProgramExact(moves, cutters, bounds, cell);
+            std::snprintf(name, sizeof(name), "stock_sim_reset_exact_%s", suffix);
+            printPhase(name, exact.resetMs);
+            std::snprintf(name, sizeof(name), "stock_sim_sweep_exact_%s", suffix);
+            printPhase(name, exact.sweepMs);
+            std::printf("program_exact cell_mm=%.1f nodes=%dx%d field_bytes=%lld "
+                        "moves=%lld length_mm=%.1f reset_ms=%.3f sweep_ms=%.3f total_ms=%.3f "
+                        "speedup=%.1fx positions_old=%lld\n",
+                        cell, exact.countX, exact.countY,
+                        (long long)exact.countX * exact.countY * 4, exact.positions,
+                        exact.lengthMm, exact.resetMs, exact.sweepMs,
+                        exact.resetMs + exact.sweepMs,
+                        timing.sweepMs > 0.0 ? timing.sweepMs / std::max(1e-9, exact.sweepMs) : 0.0,
+                        timing.positions);
         }
 
         // ---- живой обход: тики 10 Гц, перемотка, дайджест -------------------

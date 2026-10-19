@@ -37,12 +37,62 @@
 
 namespace gv {
 
+// Участок режущего профиля по радиусу: отрезок в плоскости (r, h) или дуга
+// h(r) = centerHMm - sqrt(arcRadiusMm^2 - (r - centerRMm)^2), взятая нижней
+// половиной. Так записаны примитивы инструмента: шар (центр (0, R), радиус R),
+// скругление нижнего угла (центр (r - cr, cr), радиус cr), фаска и конус
+// (отрезок). Радиус - параметр, h - высота над остриём, мм.
+struct StockProfilePiece {
+    enum class Kind { Line, Arc };
+    Kind kind = Kind::Line;
+    double r0Mm = 0.0;                 // начало участка по радиусу
+    double r1Mm = 0.0;                 // конец участка по радиусу, r1 > r0
+    double h0Mm = 0.0;                 // Line: высота на r0
+    double h1Mm = 0.0;                 // Line: высота на r1
+    double centerRMm = 0.0;            // Arc: центр дуги по радиусу
+    double centerHMm = 0.0;            // Arc: центр дуги по высоте
+    double arcRadiusMm = 0.0;          // Arc: радиус дуги, мм
+
+    // h(r) на участке, мм. Значение вне [r0Mm, r1Mm] не определено.
+    double heightAt(double radiusMm) const;
+    // dh/dr на участке, мм на мм: у отрезка - наклон, у дуги - касательная.
+    double slopeAt(double radiusMm) const;
+};
+
+// Нижняя огибающая режущей части аналитическими примитивами: то, чем считается
+// точный съём (StockField::sweepExact). Участки идут по возрастанию радиуса,
+// h непрерывна и не убывает. Пустой профиль - инструмент не режет.
+//
+// Таблица radiusMm/heightMm у StockCutter остаётся эталоном и входом старой
+// выборки по положениям; точный съём читает отсюда: у шара тут истинная сфера,
+// а не 12 хорд (stock_sim_probe, случаи ball_plunge_exact и
+// inclined_ball_quadrature).
+struct StockProfile {
+    std::vector<StockProfilePiece> pieces;
+    double maxRadiusMm = 0.0;          // последний радиус огибающей, мм
+
+    bool empty() const { return pieces.empty(); }
+    // h(r), мм; +infinity вне maxRadiusMm.
+    double heightAt(double radiusAtMm) const;
+};
+
+// Аналитическая огибающая по метаданным UI_TOOL: примитивы вместо хорд.
+// Вылет обрезает участки так же, как обрезает таблицу (stockCutterFromProfile).
+StockProfile stockProfileFromTool(const ToolInfo& info);
+
+// Аналитическая огибающая по готовому профилю (r, y), мм: каждый интервал -
+// отрезок. Так точный съём воспроизводит таблицу, если примитивы неизвестны
+// (проверка строит профиль сама, не через UI_TOOL).
+StockProfile stockProfileFromPoints(const std::vector<ProfilePoint>& profile,
+                                    double exposedMm);
+
 // Профиль резания радиальной таблицей h(r), мм: на расстоянии r от оси острие
 // режет на высоте tipZ + h(r), всё выше в этой колонке снимается. Таблица -
 // нижняя огибающая профиля до вылета, считается один раз на инструмент этапа.
 struct StockCutter {
     std::vector<double> radiusMm;      // узлы таблицы по возрастанию
     std::vector<double> heightMm;      // высота над остриём в узле
+    StockProfile profile;              // аналитическая огибающая: точный съём
     double maxRadiusMm = 0.0;          // шире не режет
     double exposedMm = 0.0;            // вылет инструмента, мм
     int number = 0;                    // номер UI_TOOL: им называется отказ
@@ -112,6 +162,15 @@ public:
     void sweep(const StockCutter& cutter,
                const std::array<double, 3>& aMm,
                const std::array<double, 3>& bMm);
+
+    // Точный съём вдоль отрезка A -> B (PLAN-STOCK.md, 3.2): H(P) = минимум по t
+    // из [0, 1] от (z(t) + h(r(t))), h - аналитическая огибающая cutter.profile,
+    // r(t) - расстояние от узла до точки отрезка в XY. Обходится ровно капсула
+    // (bbox отрезка плюс maxRadiusMm), каждый узел - один раз на ход: нет ни
+    // повторного обхода узла, ни ошибки дискретизации шага cell / 2.
+    void sweepExact(const StockCutter& cutter,
+                    const std::array<double, 3>& aMm,
+                    const std::array<double, 3>& bMm);
 
     // Глубины для текстуры: countX * countY float32, глубина от zMaxMm вниз.
     const std::vector<float>& depthMm() const { return depth_; }

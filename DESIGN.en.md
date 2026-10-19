@@ -477,9 +477,9 @@ says.
   polyline, 198 line pixels against 570 in the pocket-boundary window. The exact cut layers are the wall along
   the marching-squares contour (`stockCutWall`) and the boundary itself as a polyline (`stockCutContour`); the
   line colour is `CNC_STOCK_CONTOUR`, its thickness (1.1 px) is `stockContourHalfPx`.
-- The limits of the layered surface are named, not hidden. The cut wall is a seam `cutMm` tall (0.05 mm, a
-  twelfth of a pixel) on the plane of the untouched top, so the boundary line reads it, not the wall itself.
-  The pocket wall of the field top is still a height map: a vertical cutter wall is quantised by the node (in a
+- The limits of the layered surface are named, not hidden. The cut wall is a seam `cutMm` tall (0.05 mm; about
+  0.1 pixel on a 1024x600 frame at a 341 mm distance) on the plane of the untouched top, so the boundary line
+  reads it, not the wall itself. The pocket wall of the field top is still a height map: a vertical cutter wall is quantised by the node (in a
   cell one node is untouched and its neighbour is at the full depth), so the threshold boundary runs in node
   steps — measured over the field on 160 columns along the edge: 146 joins with no shift, 13 shifted by one
   pixel (0.4 mm) and 2 by two. Smoothing that by drawing would smooth the real boundary too; it is cured by a

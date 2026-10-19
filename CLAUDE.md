@@ -10,8 +10,8 @@
   `lib/cnc/`). Логика станка — чистый TypeScript, рендер — компоненты.
 * **`qt-interface`** — перенос интерфейса на QML (`apps/qt-interface/main.qml`, `preview.qml` — данные,
   правятся руками).
-* **`gcode-viewer`** — 3D-вьювер УП: QML + C++ (`GcodeViewer3D.qml`, `cpp/`,
-  `toolpath.vert`/`toolpath.frag`). Питоновского слоя в репозитории нет.
+* **`gcode-viewer`** — 3D-вьювер УП: QML + C++ (`GcodeViewer3D.qml`, `cpp/`, шейдеры
+  `toolpath.*`, `stepledges.*`, `stocksurface.*`, `stockshell.*`). Питоновского слоя в репозитории нет.
 * **`cad-testdata`** — тестовые УП/модели и постпроцессор (`data/cad-testdata/`).
 
 `qt-interface` (`apps/qt-interface`) и `gcode-viewer` (`modules/gcode-viewer`) — **разные проекты**: правка
@@ -86,8 +86,11 @@
 * Каждый фикс приносит проверку того же слоя, где жил дефект. Проверка красна до фикса; зелёная до фикса —
   слепая. Красной проверке не рады: список «известных красных» ведётся как отсутствие списка.
 * `gcode-viewer`: пробник рядом с кодом (`cpp/*_probe.cpp`, `cpp/viewer/*probe.cpp`); сверка с эталоном —
-  ключом `--manifest modules/gcode-viewer/oracle_manifest.json`, аналитика — случаями внутри пробника.
-  Сборка — `scripts/build-viewer.ps1`.
+  ключом `--manifest modules/gcode-viewer/oracle_manifest.json`, аналитика — случаями внутри пробника
+  (`stock_sim_probe` — поле съёма и его рисование, `stock_bind_probe` — привязка поля к траектории,
+  `keyprobe` — горячие клавиши на двух раскладках). `version_probe` сверяет `VERSION`, поле проекта в
+  `projects.json` и `viewerVersion` в QML. Точка входа — `gcodeviewer` (ключи `--smoke`, `--frame
+  <файл.png>`, `-h`/`--help`). Сборка — `scripts/build-viewer.ps1`.
 * `react-interface`: тест слоя рядом с логикой (`lib/cnc/*.test.ts`, `pnpm test`), `pnpm typecheck` (`strict` в
   `tsconfig.json`) и `pnpm build`; плюс прогон `pnpm dev` на затронутом экране: действие, строка сообщений,
   поведение после ESTOP/RESET.

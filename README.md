@@ -3,7 +3,7 @@
 Панель оператора ЧПУ. Состоит из четырёх проектов: React-интерфейс, Qt-порт
 интерфейса, 3D-вьювер управляющих программ и тестовые данные/постпроцессор.
 
-**Версия продукта:** `0.16.1` (см. [`VERSION`](VERSION)).
+**Версия продукта:** `0.17.0` (см. [`VERSION`](VERSION)).
 Версии проектов и правила ведения — в [`projects.json`](projects.json) и
 [`VERSIONING.md`](VERSIONING.md).
 
@@ -35,7 +35,8 @@
 - `cpp/` — точка входа вьювера, QML-модуль контроллера `MockBackend`, ядро (парсер
   G-кода, геометрии, STEP/STL, инструмент/оправка, этапы, скорости 1:1, анализ
   столкновений, проверка инструмента, поле съёма) и пробники
-- `toolpath.vert` / `toolpath.frag` — шейдеры линий
+- шейдеры: `toolpath.*` (линии УП), `stepledges.*` (ленточная обводка), `stocksurface.*`
+  (верх поля съёма), `stockshell.*` (стенки и дно заготовки)
 - `oracle_manifest.json` — эталон дайджестов массивов: пробники сверяются с ним
   ключом `--manifest` (`VERSIONING.md`, раздел 5)
 - Запуск: `build\viewer\gcodeviewer.exe "data\cad-testdata\Test_model.ngc"`
@@ -51,7 +52,8 @@
 fallback), инструмент по данным УП (`UI_TOOL`), оправка ER20, режимы
 «весь код / ограничить длину», этапы-операции (`UI_OP`), воспроизведение 1:1
 с подачей, анализ столкновений «оправка vs заготовка», проверка соответствия
-инструмента УП и таблицы стойки.
+инструмента УП и таблицы стойки, съём материала заготовки (поле высот; стекло по
+умолчанию, виды точный/гладкий/скруглённый, палитра пресетов).
 
 #### Сборка и запуск вьювера (C++)
 
@@ -81,19 +83,31 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
 недостающее: `vcvars64.bat` (`CNC_VCVARS`), `cmake.exe` (`CNC_CMAKE`) или `ninja.exe`
 (`CNC_NINJA`).
 
-Запуск: `build\viewer\gcodeviewer.exe [--smoke] [путь к УП]`. Qt обязан быть в `PATH`
-до старта процесса (exe линкуется с `Qt6Core.dll`), каталог плагина и DLL OCCT точка
-входа добавляет себе сама:
+Запуск: Qt обязан быть в `PATH` до старта процесса (exe линкуется с `Qt6Core.dll`),
+каталог плагина и DLL OCCT точка входа добавляет себе сама:
 
 ```powershell
 $env:PATH = "C:\Qt\6.12.0\msvc2022_64\bin;$env:PATH"
 build\viewer\gcodeviewer.exe data\cad-testdata\Test_model.ngc
 ```
 
-Живое окно печатает `loaded g-code from: … segments: N` и ни одной строки
-`[QML warning]`. Offscreen (`$env:QT_QPA_PLATFORM = "offscreen"`) печатает
-`offscreen mode - loaded OK.`; `--smoke` — короткая проверка старта: грузит QML вьювера
-и печатает `RESULT: OK (parse-level)`.
+Ключи: `build\viewer\gcodeviewer.exe [--smoke] [--frame <файл.png>] [путь к УП]`
+(`-h`/`--help` печатает строку запуска). Живое окно печатает `loaded g-code from: …
+segments: N` и ни одной строки `[QML warning]`. Offscreen
+(`$env:QT_QPA_PLATFORM = "offscreen"`) печатает `offscreen mode - loaded OK.`; `--smoke`
+— короткая проверка старта: грузит QML вьювера и печатает `RESULT: OK (parse-level)`.
+
+`--frame <файл.png>` снимает кадр `QQuickWindow::grabWindow()` в PNG (для приёмки) и
+печатает размер и число пикселей не-фона. Сцену Quick3D рисует живая платформа:
+`QT_QPA_PLATFORM=offscreen` кадр тоже записывает и выходит с кодом 0, но 3D в нём нет
+(в кадре только элементы интерфейса). Камера съёмки воспроизводима: углы берутся у
+вьювера, дистанция считается его же формулой, панорама обнуляется, а
+`CNC_FRAME_CAMERA="yaw,pitch,dist[,panX,panY]"` перекрывает их явными числами
+(неполная или нечисловая строка — отказ, код 2). Живое окно у вьювера одно: exe
+консольной подсистемы заводит ещё окно консоли, и перед показом точка входа отпускает
+консоль, заведённую для самого процесса (консоль родителя-терминала не трогает);
+число вьюверов и окон печатает сама (`вьюверов создано 1, окон верхнего уровня 6
+(видимых 1)`).
 
 Linux: сборка тем же CMake, без MSVC. Практичный путь — окружение conda-forge из
 [`environment.yml`](environment.yml); всё одним шагом (окружение + сборка, он же
@@ -136,9 +150,48 @@ QT_QPA_PLATFORM=offscreen ./build/viewer/gcodeviewer --smoke
 Проверки вьювера: сторож `pnpm guard` (`tools/check.ps1`) зовёт сборку, проверяет
 наличие пробников, гоняет `gcodeviewer.exe` offscreen и `keyprobe.exe`; пробники C++
 сверяют себя с эталоном `modules/gcode-viewer/oracle_manifest.json` (ключ `--manifest`)
-без интерпретатора. Список прогонов — `tools/checks.txt`, полный порядок проверок —
-`VERSIONING.md`, раздел 5. Кадр для приёмки снимает `gcodeviewer.exe --frame
-frame.png <УП>`: сцену Quick3D рисует живая платформа, offscreen отдаёт кадр без 3D.
+без интерпретатора. Шесть пробников манифеста — `gcode_probe`, `geometry_probe`,
+`step_probe`, `stl_probe`, `silhouette_probe`, `tangents_probe` (`--manifest
+modules\gcode-viewer\oracle_manifest.json`); рядом — `version_probe` (сверяет
+`VERSION`, `projects.json` и `viewerVersion` в QML), `stock_sim_probe` (аналитика поля
+съёма и его рисования), `stock_bind_probe` (привязка поля к траектории), `keyprobe`
+(горячие клавиши на ru/en), `--smoke` и offscreen-прогон. Список прогонов —
+`tools/checks.txt`, полный порядок проверок — `VERSIONING.md`, раздел 5. Кадр для
+приёмки снимает `gcodeviewer.exe --frame frame.png <УП>`: сцену Quick3D рисует живая
+платформа, offscreen отдаёт кадр без 3D.
+
+#### Клавиши и переменные окружения
+
+Клавиши (обработчик — `Keys.onPressed` в `GcodeViewer3D.qml`, кнопки — в панели внизу;
+буквы работают и на русской раскладке — сверяются по скан-коду):
+
+- `Пробел`/`P` — пуск/пауза, `Esc` — в начало, `вверх`/`вниз` — скорость;
+- `S` — габарит заготовки, `M` — вид детали (сплошная -> прозрачная -> скрыта),
+  `K` — кожа детали (тело без рёбер), `G` — линии УП;
+- `V` — заготовка стеклом, `B` — прежняя коробка вместо поверхности съёма,
+  `C` — палитра остатка, `R` — вид остатка (точный -> гладкий -> скруглённый);
+- `L` — весь код / ограничить длину, `T` — этапы, `PgUp`/`PgDn` — кадры этапов;
+- `E` — рёбра B-rep, `D` — касательные, `Q` — уровень качества, `F` — счётчик FPS.
+
+Переменные окружения до старта (те же ручки, что клавиши; читает
+`cpp/viewer/main.cpp` и `cpp/core/quality.h`):
+
+- `CNC_QUALITY` — уровень `low`/`med`/`high`/`safe` (пусто или неизвестно — `med`);
+- `CNC_STOCK_VIEW=exact|smooth|rounded` — вид остатка (умолчание `smooth`);
+  `CNC_STOCK_ROUND=1` — прежнее сокращение для `rounded`;
+- `CNC_STOCK_GHOST` — стекло включено по умолчанию, значение `0`/`false`/`off`/`no`
+  снимает его (сплошная заготовка);
+- `CNC_STOCK_BOX`, `CNC_NO_TOOLPATH`, `CNC_NO_PART_SKIN` — прежняя коробка, снять линии
+  УП, снять кожу детали; `CNC_PART_MODE=solid|transparent|hidden` — вид детали;
+- `CNC_STOCK_RAW`/`CNC_STOCK_CUT=#RRGGBB` — цвета палитры остатка;
+- `CNC_STOCK_CELL` — шаг сетки поля съёма в мм (перекрывает пресет);
+- `CNC_FRAME_CAMERA="yaw,pitch,dist[,panX,panY]"` — камера кадра;
+- `CNC_VIEWER_QML` — подменить файл вьювера; `CNC_CPP_QML_DIR` — каталог плагина
+  `MockBackend`; `CNC_OCC_DIR`/`CONDA_PREFIX` — каталог DLL OCCT;
+- `CNC_KEY_DEBUG` — печать нажатий и состояния переключателей (диагностика клавиатуры).
+  Ядро читает ещё набор допусков: `CNC_DECIMATE_TOL`, `CNC_ARC_DECIMATE_TOL`,
+  `CNC_COLLISION_STEP`, `CNC_HOLDER_NUT_D`/`_NUT_H`/`_BODY_D`/`_BODY_H`, `CNC_SILHOUETTE`,
+  `CNC_OFS_MX`/`_MY`/`_MZ`.
 
 ### 4. Тестовые УП/модели и постпроцессор — `cad-testdata` (`0.5.1`)
 - `data/cad-testdata/Test_model.ngc`, `data/cad-testdata/Test_model.STL` — тестовые УП и модель

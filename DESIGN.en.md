@@ -169,14 +169,15 @@ faces). The holder is a coarse ER20 model (nut plus body) from `gv::holderProfil
 Architecture:
 - the Python layer is gone entirely: the former `mock_backend` facade and the modules it split the monolith into
   are no longer in the repository; the C++ layer is built from the same split (`PORT-CPP.md` §7).
-- `GcodeViewer3D.qml` (about 1000 lines) holds JS camera, projection and stage logic; it belongs in backend
+- `GcodeViewer3D.qml` (about 1900 lines) holds JS camera, projection and stage logic; it belongs in backend
   slots.
 
 Code against the CLAUDE.md rules:
 - module-boundary structures are no longer tuples/dicts: they live in `cpp/core/gv_types.h`; a dict
   (QVariantMap) remains only where QML reads it (`toolInfo`, `stages`, `collisions`, `toolCheck`) — a contract,
   not debt;
-- the display toggles (`showPartVisible`, `xray`, `showBrepEdges`, ...) are a run of booleans, not a mode;
+- the display toggles (`showStockVisible`, `showBrepEdges`, `stockGhost`, ...) are a run of booleans, not a
+  mode; the part view and the stock view are modes of their own (`partMode`, `stockView`);
 - many magic numbers without a name or unit;
 - development-history comments (the rules forbid them);
 - mixed comment languages (Russian and English).
@@ -184,8 +185,9 @@ Code against the CLAUDE.md rules:
 Checks:
 - probes compare array digests against the reference (`--manifest`) rather than private functions: the
   fragility of the former Python tests is gone, but the probe prints no "why" on a mismatch;
-- `refreshTangents` is wrapped in an outer `try/except Exception: pass` — an unrelated per-frame error
-  stays invisible; the C++ path failures report themselves;
+- `refreshTangents` computes the silhouette inside `try`/`catch (std::exception)` and prints a refusal through
+  `warnDeferred` (the former `try/except Exception: pass` is gone); it publishes the segments outside `try` — a
+  failure of `setSegments` itself is not treated as a silhouette failure;
 - the live frame checks that counted pixels (solid skin and ribbon width) are removed with the Python layer:
   the pixel count was a Python-era check, while the geometry is proven by the analytic cases (`stocksurface`,
   `stockshell`, `stock_bind`). The acceptance picture is taken by `gcodeviewer --frame`.
@@ -214,7 +216,8 @@ Outline on the STL branch:
 Performance on weak hardware (Intel Atom + Nvidia Ion):
 - `MSAA High` on the whole frame is the main cost; the ribbons already have distance-field AA and do not need
   MSAA;
-- `xray: true` by default makes the skin transparent (full-screen overdraw);
+- the glass stock (`stockGhost`, the default) blends across the whole stock area, and a transparent part
+  (`partMode=1`) adds a full-screen overdraw on top of that;
 - a PBR skin under three `DirectionalLight`s is heavy over a large area;
 - the ION driver is the legacy OpenGL 3.3 branch, there is no Vulkan, and D3D11 may not come up; a hardware
   GL context is required, not a software rasterizer;
@@ -273,7 +276,7 @@ CAD-style visualisation (Qt Quick 3D + OCCT):
   by crease angle that keeps sharp corners, seam filtering over adjacent faces, hardware Z-fighting removal
   by a projective `depthBias`, analytic surfaces of revolution and the `C360`/`ARC` mask;
 - not done: an X-ray with hidden lines (a Z test in the fragment shader against `DEPTH_TEXTURE`, recolouring
-  the hidden edges pale) — only `xray` with a translucent skin exists today;
+  the hidden edges pale) — only a transparent skin exists today (`partMode=1`, the former X-ray view);
 - deliberately deferred: `GCPnts_TangentialDeflection` edge discretisation for perfect arcs — it is
   `GCPnts_UniformDeflection` now so the result matches the Python reference bit for bit; revisit once the
   reference is no longer mandatory.
@@ -284,8 +287,8 @@ Performance and hardware adaptivity:
   and of the B-rep edge polylines (0.2/0.05/0.02 mm, 0.5 at `safe`), edge coalescing, silhouette weld and
   thresholds, normal crease angle, outline feature angle and Douglas-Peucker simplification tolerance, cone
   minimum slant and probe azimuths, silhouette arc angle and minimum span, DROP axial overlap; silhouette refresh
-  step (every frame / every 4th frame), grid density 20/24 against 40/48, at `safe` an outline ribbon of 1 px
-  against 2 and a deeper offset, a DPR clamp (logical pixels at `low`/`safe`) and `xray` disabled there;
+  step (every frame / every 4th frame), grid density 20/24 against 40/48, at `safe` an outline ribbon of 0.8 px
+  against 1.5 and a deeper offset, a DPR clamp (logical pixels at `low`/`safe`);
 - `med` repeats the numbers that were in force before the presets, so an empty environment changes nothing:
   `bench_probe` reports the same geometry (verts 136194, faces 45398, candidates 57842, edge_segs 2426,
   tan_fams 124) and the reference checks stay green. The `low`/`high`/`safe` values are proposals; only the
@@ -350,8 +353,12 @@ material in the column); the cut is a `min` over the node along the path.
 tolerances, and is read together with the level (`CNC_QUALITY`, the `quality` property). At `med` there is no
 earlier number to repeat here — it is a proposal, and it is named as a proposal, not as a measurement.
 
-- Proposal per level: `safe` does not draw the field (the software rasterizer level, like `xray` and MSAA
-  above in this section), `low` 0.5 mm, `med` 0.5 mm, `high` 0.2 mm.
+- Proposal per level: `safe` does not draw the field (the software rasterizer level, like MSAA above in this
+  section), `low` 0.5 mm, `med` 0.5 mm, `high` 0.2 mm, `safe` 1.0 mm.
+- The `safe` node is measured even though the field is not drawn on it (the weak-machine level): on
+  Test_model, i5-13420H — 39.5 ms (repeat 35.2), a 151x101 grid, a 61 004 B field; for comparison the 0.5 mm
+  node takes 191.2 ms and a 301x201 grid, the 0.2 mm one 2488.4 ms and 751x501. `CNC_STOCK_CELL` overrides
+  the preset step without changing the level.
 - On top there is a grid cap: the node is not finer than `max(X extent, Y extent) / N`, where N = 256 for
   `low`, 512 for `med`, 1024 for `high`. The cap only coarsens: on 200x200 it gives 0.78 / 0.5 / 0.2 mm (the
   proposed 0.5 mm of `low` does not fit into 256, those of `med` and `high` do), and on a large stock the node
@@ -385,9 +392,49 @@ field bytes.
   `collisionToken`, the result returns to the GUI thread through `QMetaObject::invokeMethod`, a stale one is
   dropped. The GUI never waits: the field may lag the tool — that is the price of the background, and it has to
   be measured.
-- The field is monotone along the path and accumulates from 0 to the travelled distance. A rewind does not undo
-  it: the field is rebuilt from zero by the same background path, and while it is being computed the last
-  complete field is shown, never a mixture.
+- Live publication: while the program plays, the field reflects the cut up to the current `pathDist` — the same
+  counter QML plays with. The tick runs every 100 ms (a `Timer` in QML; it does not run outside playback, and
+  a stop and a rewind are caught up in one call). The field is monotone, so the tick continues the walk from
+  the last whole move instead of recomputing; backwards along the path (`target < cursor`) the walk resets the
+  field and starts over. Measured (Test_model, 0.5 mm node, i5-13420H): a full pass 0.43-0.44 s, the mean tick
+  0.0074-0.0078 ms over 53 915 ticks of the whole program at 1:1 (the longest 0.5-1.0 ms), a half-path rewind
+  200-232 ms; at a 0.2 mm node the full pass is 4.9-5.1 s, and the catching-up tick after a quarter-path
+  rewind in the controller 3.97-4.13 s (that is not 10 Hz but the cost of a full prefix recompute).
+- Integrity before freshness: the published field is replaced only whole and only when the walk has reached its
+  target. While a tick or a rewind is being computed, the screen keeps the last complete field
+  (`stockHasField`, state `computing`), so the scene neither empties nor shows a mixture. The first pass of a
+  program has no earlier field — the stock box is shown. A cancelled pass publishes nothing and keeps the same
+  last complete field. Changing the program drops the field: it belongs to the former path, stock and tools.
+- Undercut: `StockCutter::undercut` — a profile wider at the top, plus the `UI_TOOL` types `LOLLIPOP`,
+  `DOVETAIL`, `T_SLOT`/`TSLOT`, which `toolProfile` builds as a straight cutter (the shape is already lost).
+  The program as a whole is not expressible by the map: there is no field at all (not an empty one), the state
+  is `refused`, the reason goes to the refusal line (`reportRefusal`: qCWarning and stderr), and the box is
+  shown. One such stage makes the whole field a lie, not just its own patch.
+- Depth rule: the coincident pixel is won by the removal surface, not by the part skin. For a finished program
+  the cut surface is the skin, and at the contact points they lie in one plane; in the simulation the cut
+  surface is the result and the skin (STEP/STL) is reference geometry. The tie is decided by one shift of the
+  DEPTH ONLY in the vertex shader (`stockDepthOffset`, `clip.z += offset * clip.w`): one handle for the field
+  top (`stocksurface.vert`) and for the walls and bottom (`stockshell.vert`), because the stock bounds equal
+  the part bounds — not only the pocket bottom coincides with the skin but the outer stock walls with the part
+  faces. The vertex positions do not move, so the bounds and the cut depth do not lie. The value is -3e-5 NDC;
+  measured (a 1024x600 frame, Test_model, solid skin, toolpath lines off, camera yaw 35 pitch -32, stock area
+  66 126 px; the pixels of the tie are where the skin is visible but would not be without it): 1e-6 - 803,
+  1e-5 - 365, 3e-5 - 7, 1e-4 - 7. The spread of the tie is not float32 noise but geometry: the cut wall in the
+  field is slanted by half a cell (0.5 mm at a 0.5 mm node) while the part wall is vertical. Caveat: the offset
+  is constant in NDC, so in millimetres it depends on the distance — 3e-5 is 1.0 mm at 341 mm (1 % of the
+  100x160x30 stock) and 2.7 mm at 900 mm; 1e-4 would give 3.4 mm at 341 with no gain in the tie (the same
+  7 px). The offset does not change the screen position, only clip z.
+- The solid part skin is the default, and its look depends only on the part mode (`partMode`: solid ->
+  transparent -> hidden): neither the stock nor the field affects it. The former rule "the skin turns into a
+  ghost while the field is on screen" is cancelled — it made the part transparent without being asked, and the
+  cut metal reads anyway. Measured (a 1024x600 frame, Test_model, toolpath lines off): at a 1e-6 shift the
+  copper cut is 11 967 pixels with the solid skin against 12 323 with no skin at all (3 %), and with the
+  opposite shift sign 4 578 remain — the skin would win the coincident pixel, hence the shift sign is minus.
+  The price of the transparent skin is named: Blend-overdraw, a more expensive frame than the solid one on a
+  weak GPU.
+- Field memory: 242 004 B at a 0.5 mm node (the Test_model stock 150x100 mm, a 301x201 grid) and 1 505 004 B
+  at 0.2 mm (751x501); the peak is three buffers: the core field, the `QByteArray` for the texture and the GPU
+  copy.
 - Nothing goes to the disk cache: the key would have to grow the stock, the node size and the profiles, and the
   gain is unproven — the recompute cost is measured by the same probe.
 
@@ -401,19 +448,58 @@ says.
   right there — the CPU computes no normals at all. This is the documented Qt Quick 3D height-map technique.
 - The grid is built once per load (position 3f + texcoord 2f, the same 20 B stride as `ToolpathGeometry`), and
   only the texture changes. The update replaces the whole buffer (there is no partial upload in
-  `QQuick3DTextureData`), so the cadence is ours: the field is published as a band accumulates, not every
-  frame (proposal: about 10 times per second), otherwise megabytes per frame go over the bus.
-- The stock stops being `#Cube`: the field draws the top face, the side walls and the bottom become a plain
-  geometry of their own (about ten triangles) with the old micro-offset against z-fighting. The box top and
-  the untouched field nodes lie in the same plane, and the "1.5 px" offset is not allowed for the field: it
-  would lie about the geometry. Two models and two materials, because `alphaMode` cannot be switched at run
-  time: the walls stay translucent and `NeverDepthDraw` as today, the cut surface is opaque and writes depth.
+  `QQuick3DTextureData`), so the cadence is ours: while the program plays the field is published every 100 ms
+  — 242 KiB per tick at a 0.5 mm node and 1.44 MiB at 0.2 mm on the 150x100 stock, otherwise megabytes per
+  frame would go over the bus.
+- The stock view is one switch with three positions (`stockView`): exact (one vertex per field node, as
+  computed), smooth (the default: the mesh is subdivided, the height is bilinear) and rounded (the node depth
+  is the average over the neighbourhood). The `R` key cycles them, `CNC_STOCK_VIEW` sets the view before the
+  start, the former `CNC_STOCK_ROUND=1` remains a shortcut for `rounded`. Subdivision is the smooth view only:
+  `stockSubdiv = 2`, so a vertex also lands in the middle of a cell, where the side of the step is decided.
+  The price is named outright: the drawing diverges from the field by up to a quarter of the cell twist, the
+  cut edge shifts by up to half a cell (0.25 mm at a 0.5 mm node), and the mesh is four times heavier —
+  241 001 vertices and 480 000 triangles against 60 501 and 120 000. The field, its bytes and its digests do
+  not change (the `stocksurface` case compares the buffer at `subdiv = 1` bit for bit).
+- The top of the stock wall is trimmed by the field (`stockshell.frag`): the wall stands on the bounds and
+  otherwise would not know that the cutter removed metal across the edge (measured: 102 cut perimeter nodes out
+  of 1000, up to 1.00 mm). The trim runs in the fragment shader and takes the same bilinear reconstruction of
+  the field as the drawn top (the wall is one rectangle per face, and lowering only the corners would give a
+  straight line between the corners). The shell buffer and its comparison (`stockshell`) are untouched; the
+  gap at the edge is closed: the walls stood 1.5 px OUTSIDE the field bounds (`shellGapSideMm`), a gap of
+  0.64 mm at dist=220 and 0.98 mm at dist=341, now `shellGapSideMm = 0` — the top and the wall meet in one
+  edge.
+- The stock stops being `#Cube`: the field draws the top face, the side walls and the bottom become a geometry
+  of their own from five rectangles without the top face (the core `core/stock_sim`, `stockShellVertices`)
+  with the old micro-offset against z-fighting. The box top and the untouched field nodes lie in the same
+  plane, and the "1.5 px" offset is not allowed for the field: it would lie about the geometry. The walls are
+  a solid body (opaque, writing depth) with their own normal from the vertex position (`stockshell.vert`) and
+  a reversed cull side (`FrontFaceCulling`): the winding of the buffer is compared by the `stockshell` case,
+  and with the usual cull side the NEAR faces were culled — measured 13 990 pixels over the wall; return
+  `BackFaceCulling` if the winding is ever fixed in the core. Two materials, not one: the field top has its
+  own palette and its own edge trim, the walls have the normal and the stock lamp.
+- The stock is glass by default (`stockGhost`, density `stockGhostAlpha` 0.90): the pocket, the part and the
+  tool are visible through the billet, and the cut metal reads by colour. These are the same two materials
+  with the blending switched at run time (Blend and the depth write `AlwaysDepthDraw`), not a second model:
+  without the depth write the far faces and the reference skin would go over the billet. The density 0.90 is
+  the share of the material colour in a pixel: measured on a 1024x600 frame (Test_model, skin and lines off) —
+  the copper cut `#BD5215` under the glass reads as `#DA7A44`, the untouched ochre `#BEA05C` as `#D3B87C`,
+  while at 0.62 the same points almost dissolved into the background (`#FFCFAA` and `#F2DFB5`). The price is
+  named outright: under the glass the cut and the untouched metal differ less than in the solid view, and the
+  cut depth is harder to measure from the picture. The solid view is the same `V` key and
+  `CNC_STOCK_GHOST=0` before the start.
 - There is one switch: `showStockVisible` (the S key, the "Габарит заготовки" button) shows both the box and
   the field. There is no separate flag: a pile of toggles is already named as debt (§12). The outline and
   silhouette ribbons are untouched — they already run the depth test.
-- An opaque cut surface hides the path under the material; that is the point of the simulation, but it changes
-  the familiar picture (today the box is deliberately `NeverDepthDraw`). The decision is made by a prototype
-  and a screenshot in `img/`, not by default.
+- The toolpath tail no longer fades: the fade band (`fadeBandT`) belongs to the "limit length" mode, and when
+  the whole code is shown there is nothing to fade. The former `fadeStartT = 0.9` dimmed the last 10 % of the
+  path even with a whole visible window, and on the billet that read as pale bands over the pocket (the tail —
+  drilling — lies there densely); now `fadeStartT` is 1.0 while the window is whole. The palette and the hint
+  were right, and the "blue pocket" is the toolpath lines, which run "always forward" (taken off by the `G`
+  key, `CNC_NO_TOOLPATH`).
+- The cut surface writes depth and therefore hides the path under the material; in the solid view that is the
+  point of the simulation, but the familiar picture changes (the box is deliberately `NeverDepthDraw`). The
+  default is glass, and the path is visible through it; taking the glass off (`V`, `CNC_STOCK_GHOST=0`) is the
+  view for reading the cut depth from the picture.
 
 **What the simulation must not do.**
 
@@ -433,22 +519,38 @@ says.
 - These stay green: `gcode_probe --manifest` (the path and the prepared arrays), `step_probe --manifest` (the
   normals), `geometry_probe --manifest` (the six geometry buffers, their `stride` is frozen), the offscreen
   `loaded OK` and `RESULT: OK`. The seventh geometry is not part of the six-way comparison set.
-- The check of the same layer is `stock_sim_probe` (analysis of the field, not a sha256). Cases: (1) a flat
-  cutter over a flat top — a constant depth wherever the tool passed; (2) a ball cutter — a round valley (a true
-  sphere); (3) a cone — a conical valley; (4) a cut above the stock — the field does not change; (5) a column
-  caught only by a half-node step; (6) `stock_bind` — the field bound to the toolpath and reproducible bytes;
-  (7) `stocksurface` — the top mesh of the field against the analysis of a flat plunge; (8) `stockshell` — the
-  box shell without the top face. The tolerance is derived from the node size, not tuned until green.
+- The check of the same layer is `stock_sim_probe` (analysis of the field and of its drawing, not a sha256).
+  Cases: (1) a flat cutter over a flat top — a constant depth wherever the tool passed; (2) a ball cutter — a
+  round valley (a true sphere); (3) a cone — a conical valley; (4) a cut above the stock — the field does not
+  change; (5) a column caught only by a half-node step; (6) `stock_bind` — the field bound to the toolpath and
+  reproducible bytes; (7) `stocksurface` — the top mesh of the field against the analysis of a flat plunge (the
+  buffer at `subdiv = 1` bit for bit); (8) `stocksurface_fine` — the subdivision of the smooth view (2489
+  checks, deviation 5.3e-15); (9) `stockshell` — the box shell without the top face; (10) `stockshell_trim` —
+  the trim of the wall top by the field (33 cut nodes out of 41, the corners untouched); (11)
+  `stockshell_trim_interp` — the bilinear reconstruction of the edge (the nearest node deviates by 1.00 mm, the
+  bilinear sample by 0); (12) `holder_rings` — the holder rings with a 12° threshold (7 rings and a dip at
+  44 mm before the fix, 8 rings after); (13) `stock_undercut` — a synthetic undercut profile and the `LOLLIPOP`
+  type: the walk refuses, the field is not created (0 nodes, the stage and the tool number are named);
+  (14) `stock_live` — the field accumulated by 10 Hz ticks matches the full pass bit for bit by digest, and the
+  field after a rewind matches the pass from the start. The tolerance is derived from the node size, not tuned
+  until green; the digest cases compare bitwise.
+- `stock_bind_probe` checks the same in the controller: the texture and the field match; during a tick (state
+  `computing`) the field stays the last complete one; after a rewind and a move forward the digest equals the
+  full field; cancelling a tick publishes not a new field but the last complete one, cancelling the first pass
+  publishes nothing; `TYPE=LOLLIPOP` gives the state `refused` with no field.
 - Measurements: `bench_probe` — the phases next to `collision_scan`; the cost of the field — the `phase
-  stock_sim_*` lines of `stock_sim_probe` itself (0.5 and 0.2 mm nodes); the frame with and without the field —
-  the `frame` lines of `bench_probe`, on weak hardware mandatory. The live numbers to watch: the collision scan
-  2.1 ms at a 1 mm step (i5-10400F), the NC parse 174 ms and `ngc_parse` 69.7 ms (i5-13420H), the cold load
-  about 690 ms, the mesh silhouette 0.0791-0.0868 ms, the skin 45398 triangles (`med`).
-- Proposals, not measurements: the 0.5/0.5/0.2 mm nodes, the caps 256/512/1024, the step = node/2, the R32F
-  format, the cadence about 10 Hz, `safe` not drawing at all, refusing the lollipop and the dovetail, the 628
-  KiB and 3.82 MiB of memory, the cap triangles 130 000/522 000/2 093 000. The number of surface pixels is
-  printed by `--frame` (`non-background pixels`) — once the surface is drawn that number will move, and the move
-  is recorded deliberately rather than silently re-approved.
+  stock_sim_*` and `phase stock_live_*` lines of `stock_sim_probe` itself (0.5 and 0.2 mm nodes); the frame with
+  and without the field — the `frame` lines of `bench_probe`, on weak hardware mandatory. The live numbers to
+  watch: the collision scan 2.1 ms at a 1 mm step (i5-10400F), the NC parse 174 ms and `ngc_parse` 69.7 ms
+  (i5-13420H), the cold load about 690 ms, the mesh silhouette 0.0791-0.0868 ms, the skin 45398 triangles
+  (`med`), the full field pass 430 ms at a 0.5 node and 4.89 s at 0.2, the mean tick 0.0074 ms, a half-path
+  rewind 200 ms.
+- Measured: the 0.5 mm node (192.5 ms, 301x201), the 0.2 mm one (2288.6 ms, 751x501) and the `safe` 1.0 mm
+  one (39.5 ms, 151x101) on Test_model. Proposals, not measurements: the caps 256/512/1024, the step = node/2,
+  the R32F format, `safe` not drawing the field at all, the 628 KiB and 3.82 MiB of memory, the cap triangles
+  130 000/522 000/2 093 000. The number of surface pixels is printed by `--frame` (`non-background pixels`) —
+  once the surface was drawn that number moved, and the move is recorded deliberately rather than silently
+  re-approved.
 - Not taken before a prototype: whether the ION samples an R32F texture in the vertex stage on the OpenGL 3.3
   branch; what a whole-texture `update()` costs on a narrow bus; what an opaque surface does to path visibility
   (a screenshot); whether to draw the whole grid or only the touched rectangle (the latter is cheaper in

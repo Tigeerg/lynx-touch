@@ -7,13 +7,16 @@
  * срабатывания - не журнал, а свойства вьювера: каждая горячая клавиша обязана
  * переключить своё (P - пуск, S - заготовка, M - вид детали, K - кожа детали без
  * рёбер, G - линии УП, L - весь код, T - этапы, E - рёбра, D - касательные,
- * X - рентген, F - fps, B - коробка вместо поля съёма, C - палитра слитка,
+ * F - fps, B - коробка вместо поля съёма, C - палитра слитка,
  * V - заготовка полупрозрачной, R - вид остатка заготовки: точный -> гладкий ->
  * скруглённый; у R и M проверяется и круг положений: сколько положений, столько
  * нажатий обязаны вернуть вид к исходному, и промежуточные - отличаться).
- * После клавиш проверяются две связи вида, а не переключателя: призрак кожи
- * детали гаснет вместе со скрытым габаритом заготовки (S), а боковой зазор
- * стенок заготовки равен нулю - стенка стоит на габарите поля (shellGapSideMm).
+ * Клавиши X у вьювера больше нет: прежний рентген сведён в M (прозрачная кожа),
+ * и проба стережёт, что X вид детали не трогает.
+ * Затем проверяется связь вида, а не переключателя: вид детали зависит только от
+ * partMode - ни заготовка, ни поле съёма, ни уровень качества его не меняют
+ * (сплошная кожа обязана остаться непрозрачной), а боковой зазор стенок заготовки
+ * равен нулю - стенка стоит на габарите поля (shellGapSideMm).
  *
  * Чем это отличается от живой пробы с SendInput (tools/keyprobe.ps1): живая проба
  * требует переднего окна в незапертой сессии, а перевод скан-кода в VK и символ
@@ -158,7 +161,6 @@ const ProbeKey KEYS[] = {
     { "T", 0x14, "stageMode" },
     { "E", 0x12, "showBrepEdges" },
     { "D", 0x20, "showTangentLines" },
-    { "X", 0x2D, "xray" },
     { "F", 0x21, "showFps" },
     { "B", 0x30, "stockPlainBox" },
     { "C", 0x2E, "stockPreset" },
@@ -387,13 +389,16 @@ int run(const QString &program, const QStringList &layouts)
         quietFailed = 0;
     }
 
-    // Связь видов заготовки и детали - не отдельный тумблер. Призрак кожи детали
-    // (partSkinGhost) держится на готовом поле съёма, но обязан гаснуть и тогда,
-    // когда габарит заготовки спрятали (клавиша S): прятать нечего, и вид кожи
-    // снова решает partMode, а не наличие поля в данных. Заявил оператор: при
-    // скрытом габарите деталь оставалась полупрозрачной. Проба ставит виды
-    // вручную, дожидается поля и сверяет связь нажатием S - проверка красна до
-    // правки, где призрак не смотрел на видимость заготовки.
+    // Вид детали - один переключатель и только он. Проба ставит сплошную деталь
+    // и перебирает виды заготовки, поле и уровень качества, сверяя плотность
+    // кожи: сплошная обязана остаться непрозрачной (partSkinOpacity 1.0) и
+    // рисоваться сплошной моделью (partSkinSolid) при любом из них. До правки
+    // проверка красна: кожа уходила в призрак (0.15) при готовом поле и
+    // возвращалась в сплошную по клавише S, то есть вид детали решала заготовка,
+    // а не вид (заявил оператор: «деталь прозрачная в любом виде»).
+    // Отдельно проверяются два положения того же переключателя (прозрачная,
+    // скрыта) и то, что прежняя клавиша рентгена X больше вид детали не трогает:
+    // два переключателя одного вида слились в один (partMode).
     if (backend != nullptr) {
         QString state = backend->property("stockSimState").toString();
         QElapsedTimer wait;
@@ -406,36 +411,90 @@ int run(const QString &program, const QStringList &layouts)
             state = backend->property("stockSimState").toString();
         }
         const bool hasField = backend->property("stockHasField").toBool();
+        say(QStringLiteral("keyprobe: вид детали - поле съёма %1 (%2)")
+                .arg(hasField ? QStringLiteral("готово") : QStringLiteral("не готово"), state));
+
+        // Один случай проверки: что сверялось, что вышло и сошлось ли.
+        auto checkLook = [&total, &fired](const QString &name, const QString &got, bool ok) {
+            ++total;
+            if (ok)
+                ++fired;
+            else
+                warn(QStringLiteral("keyprobe: FAIL %1: %2").arg(name, got));
+            say(QStringLiteral("keyprobe: [вид] %1: %2 - %3").arg(name, got)
+                    .arg(ok ? QStringLiteral("верно") : QStringLiteral("НЕ верно")));
+        };
+        const auto solidLook = [&root]() {
+            return QStringLiteral("плотность кожи %1, сплошная модель %2")
+                    .arg(root->property("partSkinOpacity").toDouble())
+                    .arg(root->property("partSkinSolid").toBool() ? QStringLiteral("видна")
+                                                                  : QStringLiteral("не видна"));
+        };
+        const auto solidOk = [&root]() {
+            return root->property("partSkinOpacity").toDouble() == 1.0
+                    && root->property("partSkinSolid").toBool();
+        };
+
+        // Сплошная деталь при готовом поле и видимой заготовке - тот самый
+        // случай, в котором кожа прежде уходила в призрак.
         root->setProperty("partMode", 0);
+        root->setProperty("showPartSkin", true);
         root->setProperty("showStockVisible", true);
-        const bool ghostShown = root->property("partSkinGhost").toBool();
+        root->setProperty("stockPlainBox", false);
+        root->setProperty("quality", QStringLiteral("med"));
+        checkLook(QStringLiteral("сплошная при готовом поле"), solidLook(), solidOk());
+
+        // Клавиша S прячет габарит (и поле съёма вместе с ним): вид детали от
+        // этого не меняется - это путь заявителя, а не только свойство.
         const LayoutKey sKey = resolveKey(0x1F, QStringLiteral("00000409"));   // S
         press(view, sKey, Qt::NoModifier);
         const bool stockHidden = !root->property("showStockVisible").toBool();
-        const bool ghostHidden = root->property("partSkinGhost").toBool();
-        const int partModeAfter = root->property("partMode").toInt();
+        checkLook(QStringLiteral("сплошная при скрытом габарите (S)"), solidLook(),
+                  stockHidden && solidOk());
         press(view, sKey, Qt::NoModifier);           // вернуть габарит на место
-        // Поле готово -> призрак при видимой заготовке; габарит спрятан -> призрака
-        // нет, а вид детали не тронут (partMode 0). Без готового поля первую
-        // половину связи не с чем сверять, и проба это называет, а не молчит.
-        if (hasField) {
-            ++total;
-            if (ghostShown)
-                ++fired;
-            else
-                warn(QStringLiteral("keyprobe: FAIL кожа детали не призрак при видимой заготовке "
-                                    "и готовом поле"));
-            ++total;
-            if (stockHidden && !ghostHidden && partModeAfter == 0)
-                ++fired;
-            else
-                warn(QStringLiteral("keyprobe: FAIL со скрытым габаритом кожа детали не вернулась "
-                                    "в сплошную (stock=%1 ghost=%2 partMode=%3)")
-                         .arg(stockHidden).arg(ghostHidden).arg(partModeAfter));
-        } else {
-            say(QStringLiteral("keyprobe: поле съёма не готово (%1) - связь заготовки и кожи "
-                               "не проверена").arg(state));
-        }
+
+        // Ни коробка вместо поля, ни уровень safe вид детали не трогают: у
+        // правила один вход - partMode.
+        root->setProperty("stockPlainBox", true);
+        checkLook(QStringLiteral("сплошная при коробке вместо поля"), solidLook(), solidOk());
+        root->setProperty("stockPlainBox", false);
+        root->setProperty("quality", QStringLiteral("safe"));
+        checkLook(QStringLiteral("сплошная на уровне safe"), solidLook(), solidOk());
+        root->setProperty("quality", QStringLiteral("med"));
+
+        // Два других положения того же переключателя.
+        root->setProperty("partMode", 1);
+        const double clearAlpha = root->property("partSkinOpacity").toDouble();
+        checkLook(QStringLiteral("прозрачная деталь"),
+                  QStringLiteral("плотность кожи %1, сплошная модель %2, прозрачная %3")
+                          .arg(clearAlpha)
+                          .arg(root->property("partSkinSolid").toBool() ? QStringLiteral("видна")
+                                                                       : QStringLiteral("не видна"))
+                          .arg(root->property("partSkinClear").toBool() ? QStringLiteral("видна")
+                                                                        : QStringLiteral("не видна")),
+                  clearAlpha > 0.0 && clearAlpha < 1.0
+                          && !root->property("partSkinSolid").toBool()
+                          && root->property("partSkinClear").toBool());
+        root->setProperty("partMode", 2);
+        checkLook(QStringLiteral("скрытая деталь"),
+                  QStringLiteral("узел детали %1")
+                          .arg(root->property("showPartVisible").toBool() ? QStringLiteral("виден")
+                                                                         : QStringLiteral("скрыт")),
+                  !root->property("showPartVisible").toBool());
+
+        // Прежняя клавиша рентгена X: вида детали больше не трогает (нажатие
+        // молчит), иначе один вид решали бы две клавиши - та самая путаница.
+        root->setProperty("partMode", 0);
+        const double before = root->property("partSkinOpacity").toDouble();
+        const int modeBefore = root->property("partMode").toInt();
+        const LayoutKey xKey = resolveKey(0x2D, QStringLiteral("00000409"));   // X
+        press(view, xKey, Qt::NoModifier);
+        checkLook(QStringLiteral("прежняя клавиша X вида не трогает"),
+                  QStringLiteral("плотность кожи %1, вид %2")
+                          .arg(root->property("partSkinOpacity").toDouble())
+                          .arg(root->property("partMode").toInt()),
+                  root->property("partSkinOpacity").toDouble() == before
+                          && root->property("partMode").toInt() == modeBefore);
 
         // Стенка заготовки стоит на габарите поля: боковой зазор - ноль
         // (GcodeViewer3D.qml, shellGapSideMm). Положительный зазор сдвигал стенку

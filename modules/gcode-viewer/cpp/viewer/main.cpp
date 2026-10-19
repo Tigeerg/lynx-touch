@@ -19,6 +19,10 @@
  * (QT_QPA_PLATFORM=offscreen) загрузка синхронная и без цикла событий - по ней
  * сверяют число сегментов; в живом окне - load_gcode_async и печать по
  * сигналам контракта (toolpathLoaded, loadFinished).
+ * * перед показом окна отпускает консоль, заведённую для самого процесса
+ * (detachOwnConsole): её окно - второе окно верхнего уровня у вьювера, и оно
+ * отбирает передний план. Число созданных вьюверов и окон процесса печатается
+ * (reportWindows), поэтому «окно одно» - проверка, а не обещание.
  *
  * Ключ --smoke - короткая проверка старта: грузит QML вьювера offscreen и
  * печатает число корневых объектов, тип и размер корня, затем RESULT: OK
@@ -109,6 +113,108 @@ void reportQmlWarnings(const QList<QQmlError> &errors)
 {
     for (const QQmlError &error : errors)
         warn(QStringLiteral("[QML warning] ") + error.toString());
+}
+
+// Вьюверов у точки входа три ветки (дым-прогон, съёмка кадра, живой запуск), и
+// в каждой окно одно: корень GcodeViewer3D.qml - Item, поэтому окно заводит
+// QQuickView, а сам файл вьювера не правится. Окно - наследник QQuickView со
+// счётчиком: число вьюверов печатается на старте (reportWindows), поэтому
+// вторая ветка с окном была бы видна числом, а не на глаз.
+int &createdViews()
+{
+    static int created = 0;
+    return created;
+}
+
+class ViewerWindow : public QQuickView
+{
+public:
+    ViewerWindow() { ++createdViews(); }
+};
+
+// Окна верхнего уровня процесса: сколько всего и сколько видимых. Меряется
+// перечислением окон этого процесса (EnumWindows с отбором по pid), а не
+// пересказом. Видимое окно у вьювера одно; остальные (замер: шесть всего) -
+// служебные окна Qt и ввода (рамка _q_titlebar, наблюдатели темы и экрана,
+// MSCTFIME UI, IME). До правки (0.55.0, запуск с новой консолью) их выходило
+// семь, а видимых два: окно вьювера (класс Qt6120QWindowIcon) и окно консоли
+// (ConsoleWindowClass), которое система заводит приложению консольной
+// подсистемы. Консоль забирала передний план, и нажатия пробы клавиш по
+// SendInput до окна вьювера не доходили (tools/keyprobe.ps1, «SendInput ... до
+// окна вьювера не доходил»).
+struct WindowCount
+{
+    int total = 0;
+    int visible = 0;
+};
+
+#ifdef Q_OS_WIN
+BOOL CALLBACK countProcessWindows(HWND hwnd, LPARAM param)
+{
+    DWORD owner = 0;
+    GetWindowThreadProcessId(hwnd, &owner);
+    if (owner != GetCurrentProcessId())
+        return TRUE;
+    WindowCount *count = reinterpret_cast<WindowCount *>(param);
+    ++count->total;
+    if (IsWindowVisible(hwnd))
+        ++count->visible;
+    return TRUE;
+}
+#endif
+
+WindowCount processWindows()
+{
+    WindowCount count;
+#ifdef Q_OS_WIN
+    EnumWindows(&countProcessWindows, reinterpret_cast<LPARAM>(&count));
+#endif
+    return count;
+}
+
+// Консоль, заведённая ДЛЯ самого процесса, отпускается: её окно и есть второе
+// окно верхнего уровня, оно же отбирает передний план у вьювера (замер до
+// правки: два видимых окна, см. WindowCount). Консоль родителя (терминала,
+// откуда вьювер запустили) не трогают: её окно завёл не вьювер, и именно в неё
+// печатается ход загрузки. Перенаправление (конвейер, файл) консолью не
+// является, поэтому отпускание консоли вывода не лишает. Цена названа прямо:
+// при запуске двойным щелчком окно консоли успевает появиться и гаснет в первые
+// миллисекунды - сам вьювер его не показывает.
+void detachOwnConsole()
+{
+#ifdef Q_OS_WIN
+    DWORD attached[4] = { 0, 0, 0, 0 };
+    // Список процессов консоли: один (наш) - консоль заведена для процесса,
+    // больше - консоль общая с родителем.
+    if (GetConsoleProcessList(attached, 4) != 1)
+        return;
+    FreeConsole();
+#endif
+}
+
+// Число вьюверов и окон верхнего уровня: печатается на старте живого окна и
+// съёмки кадра, чтобы «окно одно» было проверкой. В offscreen-прогоне окно не
+// показывается, и эта строка не печатается - окна там нет вовсе.
+void reportWindows(const QString &branch)
+{
+#ifdef Q_OS_WIN
+    const WindowCount windows = processWindows();
+    say(QStringLiteral("gcodeviewer: %1: вьюверов создано %2, окон верхнего уровня "
+                       "у процесса %3 (видимых %4)")
+            .arg(branch).arg(createdViews()).arg(windows.total).arg(windows.visible));
+#else
+    say(QStringLiteral("gcodeviewer: %1: вьюверов создано %2")
+            .arg(branch).arg(createdViews()));
+#endif
+}
+
+// Показ окна вьювера: сначала отпускается своя консоль (разбор - у
+// detachOwnConsole), потом окно показывается, потом печатается число окон.
+void showViewerWindow(ViewerWindow &view, const QString &branch)
+{
+    detachOwnConsole();
+    view.show();
+    reportWindows(branch);
 }
 
 // Корень репозитория: exe лежит в <репо>/build/viewer (цель gcodeviewer), значит
@@ -272,9 +378,12 @@ void applyStockGhostEnv(QQuickItem *root_item)
 }
 
 // CNC_PART_MODE: вид детали до старта - та же ручка, что клавиша M
-// (GcodeViewer3D.qml, partMode). solid - сплошная кожа (умолчание), transparent -
-// прозрачная, hidden - деталь скрыта целиком. Непонятная строка - отказ с
-// причиной в stderr: молча показать не тот вид нельзя, кадры сравнивают по видам.
+// (GcodeViewer3D.qml, partMode), и единственная: solid - сплошная кожа
+// (умолчание), transparent - прозрачная, hidden - деталь скрыта целиком.
+// Прозрачная кожа и есть прежний рентген-вид (клавиши X у вьювера больше нет):
+// два переключателя одного вида не оставляли понять, какой вид сейчас и чем он
+// отличается от соседнего. Непонятная строка - отказ с причиной в stderr: молча
+// показать не тот вид нельзя, кадры сравнивают по видам.
 void applyPartModeEnv(QQuickItem *root_item)
 {
     const QString text = qEnvironmentVariable("CNC_PART_MODE").trimmed().toLower();
@@ -358,7 +467,7 @@ bool applyFrameCamera(QQuickItem *root_item, QObject *backend)
 int runSmoke(const QString &viewer_qml, const QString &backend_import)
 {
     QList<QQmlError> collected;
-    QQuickView view;
+    ViewerWindow view;
     view.setResizeMode(QQuickView::SizeRootObjectToView);
     view.resize(1024, 600);
     view.engine()->addImportPath(backend_import);
@@ -398,7 +507,7 @@ int runSmoke(const QString &viewer_qml, const QString &backend_import)
 int runFrame(const QString &viewer_qml, const QString &backend_import,
              const QString &program, const QString &frame_path)
 {
-    QQuickView view;
+    ViewerWindow view;
     view.setResizeMode(QQuickView::SizeRootObjectToView);
     view.resize(1024, 600);
     view.engine()->addImportPath(backend_import);
@@ -435,7 +544,7 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
     applyStockGhostEnv(root_item);
     applyPartModeEnv(root_item);
 
-    view.show();
+    showViewerWindow(view, QStringLiteral("--frame"));
     if (!program.isEmpty()) {
         if (!QFileInfo::exists(program)) {
             warn(QStringLiteral("gcodeviewer: FAIL файл УП не найден: %1").arg(program));
@@ -652,7 +761,7 @@ int main(int argc, char *argv[])
     if (frame)
         return runFrame(viewer_qml, backend_import, program, frame_path);
 
-    QQuickView view;
+    ViewerWindow view;
     view.setResizeMode(QQuickView::SizeRootObjectToView);
     view.resize(1024, 600);              // тот же размер окна, что у съёмки кадра
     view.engine()->addImportPath(backend_import);
@@ -707,7 +816,7 @@ int main(int argc, char *argv[])
     if (program.isEmpty()) {
         say(QStringLiteral("gcodeviewer: УП не задана: вьювер пуст "
                            "(аргумент - путь к файлу УП)"));
-        view.show();
+        showViewerWindow(view, QStringLiteral("живое окно"));
         return app.exec();
     }
     if (!QFileInfo::exists(program)) {
@@ -732,7 +841,7 @@ int main(int argc, char *argv[])
     root_item->setProperty("loading", true);
     auto *reporter = new LoadReporter(program, root_item, backend, &app);
     Q_UNUSED(reporter);
-    view.show();
+    showViewerWindow(view, QStringLiteral("живое окно"));
     QMetaObject::invokeMethod(backend, "load_gcode_async", Q_ARG(QString, program));
     return app.exec();
 }

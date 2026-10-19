@@ -64,6 +64,28 @@ std::vector<float> floatsFromBytes(const QByteArray &bytes, int countX, int coun
     return out;
 }
 
+// Точная граница из байтов: 4 float32 на отрезок (x0, y0, x1, y1), машинные мм.
+// Пусто или размер не кратен четырём - границы нет, рисовать нечего.
+std::vector<gv::StockContourSegment> segmentsFromBytes(const QByteArray &bytes)
+{
+    std::vector<gv::StockContourSegment> out;
+    const qsizetype stride = 4 * qsizetype(sizeof(float));
+    if (bytes.isEmpty() || bytes.size() % stride != 0)
+        return out;
+    const int count = int(bytes.size() / stride);
+    const float *values = reinterpret_cast<const float *>(bytes.constData());
+    out.reserve(std::size_t(count));
+    for (int i = 0; i < count; ++i) {
+        gv::StockContourSegment segment;
+        segment.x0Mm = double(values[i * 4 + 0]);
+        segment.y0Mm = double(values[i * 4 + 1]);
+        segment.x1Mm = double(values[i * 4 + 2]);
+        segment.y1Mm = double(values[i * 4 + 3]);
+        out.push_back(segment);
+    }
+    return out;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -330,6 +352,15 @@ void StockCutWallGeometry::setDepthData(const QByteArray &data)
     emit changed();
 }
 
+void StockCutWallGeometry::setBoundaryData(const QByteArray &data)
+{
+    if (data == boundary_data_)
+        return;
+    boundary_data_ = data;
+    rebuild();
+    emit changed();
+}
+
 void StockCutWallGeometry::rebuild()
 {
     clear();
@@ -338,14 +369,15 @@ void StockCutWallGeometry::rebuild()
     triangle_count_ = 0;
     segment_count_ = 0;
     const std::vector<float> depth = floatsFromBytes(depth_data_, count_x_, count_y_);
-    if (!has_bounds_ || depth.empty() || !(cell_mm_ > 0.0) || !(cut_mm_ > 0.0)) {
+    const std::vector<gv::StockContourSegment> segments = segmentsFromBytes(boundary_data_);
+    if (!has_bounds_ || depth.empty() || segments.empty() || !(cell_mm_ > 0.0)) {
         setBounds(QVector3D(0, 0, 0), QVector3D(0, 0, 0));
         update();
         return;
     }
 
-    const gv::StockWallMesh mesh = gv::stockCutWall(bounds_, cell_mm_, depth,
-                                                    count_x_, count_y_, cut_mm_);
+    const gv::StockWallMesh mesh = gv::stockCutWallFromSegments(bounds_, cell_mm_, depth,
+                                                               count_x_, count_y_, segments);
     vertex_count_ = int(mesh.vertices.size() / 4);
     triangle_count_ = mesh.triangleCount();
     segment_count_ = triangle_count_ / 2;
@@ -387,47 +419,11 @@ void StockCutContourGeometry::setBoundList(const QVariantList &list)
     emit changed();
 }
 
-void StockCutContourGeometry::setCellMm(double value)
+void StockCutContourGeometry::setBoundaryData(const QByteArray &data)
 {
-    if (value == cell_mm_)
+    if (data == boundary_data_)
         return;
-    cell_mm_ = value;
-    rebuild();
-    emit changed();
-}
-
-void StockCutContourGeometry::setCountX(int value)
-{
-    if (value == count_x_)
-        return;
-    count_x_ = value;
-    rebuild();
-    emit changed();
-}
-
-void StockCutContourGeometry::setCountY(int value)
-{
-    if (value == count_y_)
-        return;
-    count_y_ = value;
-    rebuild();
-    emit changed();
-}
-
-void StockCutContourGeometry::setCutMm(double value)
-{
-    if (value == cut_mm_)
-        return;
-    cut_mm_ = value;
-    rebuild();
-    emit changed();
-}
-
-void StockCutContourGeometry::setDepthData(const QByteArray &data)
-{
-    if (data == depth_data_)
-        return;
-    depth_data_ = data;
+    boundary_data_ = data;
     rebuild();
     emit changed();
 }
@@ -438,21 +434,13 @@ void StockCutContourGeometry::rebuild()
     setPrimitiveType(QQuick3DGeometry::PrimitiveType::Lines);
     vertex_count_ = 0;
     segment_count_ = 0;
-    const std::vector<float> depth = floatsFromBytes(depth_data_, count_x_, count_y_);
-    if (!has_bounds_ || depth.empty() || !(cell_mm_ > 0.0) || !(cut_mm_ > 0.0)) {
+    const std::vector<gv::StockContourSegment> contour = segmentsFromBytes(boundary_data_);
+    if (!has_bounds_ || contour.empty()) {
         setBounds(QVector3D(0, 0, 0), QVector3D(0, 0, 0));
         update();
         return;
     }
-
-    const std::vector<gv::StockContourSegment> contour = gv::stockCutContour(
-            bounds_, cell_mm_, depth, count_x_, count_y_, cut_mm_);
     segment_count_ = int(contour.size());
-    if (contour.empty()) {
-        setBounds(QVector3D(0, 0, 0), QVector3D(0, 0, 0));
-        update();
-        return;
-    }
 
     // Контур лежит на плоскости нетронутого верха: две вершины на отрезок, порядок
     // тот же, что у отрезков ядра (PrimitiveType::Lines индексов не требует).

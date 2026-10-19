@@ -139,6 +139,26 @@ float fieldSample(vec2 uv, vec2 texel)
     return mix(mix(d00, d10, f.x), mix(d01, d11, f.x), f.y);
 }
 
+// Знаковое расстояние до ТОЧНОЙ границы реза в точке, мм: та же билинейная
+// выборка по четырём узлам, что у fieldSample, но по второй текстуре
+// (stockCutField, ядро stockCutSignedDistance). Нулевой уровень между узлами
+// линеен, поэтому цвет и линия идут по границе, а не по ступеням узла поля.
+float cutSample(vec2 uv, vec2 texel)
+{
+    vec2 lo = texel * 0.5;
+    vec2 hi = vec2(1.0) - lo;
+    vec2 p = uv / texel - 0.5;
+    vec2 base = floor(p);
+    vec2 f = p - base;
+    vec2 c0 = clamp((base + 0.5) * texel, lo, hi);
+    vec2 c1 = clamp((base + 1.5) * texel, lo, hi);
+    float d00 = texture(stockCutField, vec2(c0.x, c0.y)).r;
+    float d10 = texture(stockCutField, vec2(c1.x, c0.y)).r;
+    float d01 = texture(stockCutField, vec2(c0.x, c1.y)).r;
+    float d11 = texture(stockCutField, vec2(c1.x, c1.y)).r;
+    return mix(mix(d00, d10, f.x), mix(d01, d11, f.x), f.y);
+}
+
 // Наклон по одной оси, мм на мм. depth - высота точки, g - аналитический
 // градиент клетки точки (gradCell ниже), r/l - соседи на клетку. Разность на
 // клетку (плечо 2 * cell) видит участок в одну клетку - прежние 2 * NORMAL_SPAN
@@ -194,14 +214,19 @@ void MAIN()
     // уходит вверх сцены): здесь верх - это +Z.
     vec3 normal = normalize(vec3(slopeX, slopeY, 1.0));
     float shade = stockTone + (1.0 - stockTone) * max(0.0, dot(normal, normalize(stockLamp)));
-    vec3 color = (vDepth > cutMm ? stockCutColor.rgb : stockRawColor.rgb) * shade;
+    // Граница реза. У вида «точный контур» (cutExactBoundary) и цвет, и линия
+    // берутся из знакового расстояния до ТОЧНОЙ границы реза (ядро
+    // stockCutSignedDistance): оно независимо от узла поля, поэтому кромка не
+    // ступенится. У остальных видов - прежнее: глубина узла против порога.
+    float signedMm = cutExactBoundary ? cutSample(vFieldUv, texel) : (vDepth - cutMm);
+    bool cut = cutExactBoundary ? (signedMm < 0.0) : (vDepth > cutMm);
+    vec3 color = (cut ? stockCutColor.rgb : stockRawColor.rgb) * shade;
 
     // Граница реза: нулевой уровень знакового расстояния по экранной производной.
-    // Расстояние берётся от того же vDepth, по которому выбран цвет, поэтому линия
+    // Расстояние берётся от той же величины, по которой выбран цвет, поэтому линия
     // стоит ровно на границе цвета, а не рядом с ней.
     if (contourHalfPx > 0.0)
     {
-        float signedMm = vDepth - cutMm;
         float slopeMmPerPx = max(length(vec2(dFdx(signedMm), dFdy(signedMm))), 1e-9);
         float distPx = abs(signedMm) / slopeMmPerPx;
         // Полутон - доля пикселя: у ровной площадки fwidth(distance) около 1. Без

@@ -367,6 +367,47 @@ std::shared_ptr<ModelData> readModelData(const QString &path, QString *used_path
     }
 }
 
+// Порог съёма, мм: граница реза - где глубина поля пересекает его. То же число,
+// что у цвета поверхности (stocksurface.frag, свойство cutMm в QML).
+constexpr double STOCK_CUT_MM = 0.05;
+
+// Точная граница реза и знаковое расстояние до неё (PLAN-STOCK.md, 1.5):
+// отдельное от поля представление. Считается на рабочем потоке и кладётся в
+// готовый payload; поле, его байты и его сверки не трогаются.
+void fillStockBoundary(const gv::PathData &data, const gv::StockBounds &bounds,
+                       const std::vector<gv::StockCutter> &cutters,
+                       gv::StockBoundaryCache *cache, const gv::StockField &field,
+                       StockPassPayload *payload)
+{
+    const std::vector<float> &depth = field.depthMm();
+    const gv::StockBoundaryResult boundary = gv::stockCutBoundary(
+        data, bounds, field.cellMm(), cutters, depth, field.countX(), field.countY(),
+        STOCK_CUT_MM, cache);
+    std::vector<float> segments;
+    segments.reserve(boundary.segments.size() * 4);
+    for (const gv::StockContourSegment &segment : boundary.segments) {
+        segments.push_back(float(segment.x0Mm));
+        segments.push_back(float(segment.y0Mm));
+        segments.push_back(float(segment.x1Mm));
+        segments.push_back(float(segment.y1Mm));
+    }
+    payload->boundary = segments.empty()
+        ? QByteArray()
+        : QByteArray(reinterpret_cast<const char *>(segments.data()),
+                     qsizetype(segments.size() * sizeof(float)));
+    // Радиус плато знакового расстояния - три клетки поля: нулевой уровень между
+    // узлами линеен, поэтому цвет и линия идут по границе, а не по узлу, а за
+    // плато (дальше трёх клеток) градиент нулевой и линии нет.
+    const std::vector<float> signed_distance = gv::stockCutSignedDistance(
+        bounds, field.cellMm(), depth, field.countX(), field.countY(),
+        boundary.segments, STOCK_CUT_MM, field.cellMm() * 3.0);
+    payload->cut_dist = signed_distance.empty()
+        ? QByteArray()
+        : QByteArray(reinterpret_cast<const char *>(signed_distance.data()),
+                     qsizetype(signed_distance.size() * sizeof(float)));
+    payload->boundary_ms = boundary.buildMs;
+}
+
 } // namespace
 
 GcodeToolpath::GcodeToolpath(QObject *parent)
@@ -396,10 +437,17 @@ GcodeToolpath::GcodeToolpath(QObject *parent)
     stock_field_->setFormat(QQuick3DTextureData::R32F);
     stock_field_->setSize(QSize(1, 1));
     stock_field_->setTextureData(QByteArray(4, '\0'));
+    // Знаковое расстояние до точной границы реза: та же текстура 1x1 до первого
+    // готового поля (ядро, stockCutSignedDistance).
+    stock_cut_field_ = new QQuick3DTextureData();
+    stock_cut_field_->setFormat(QQuick3DTextureData::R32F);
+    stock_cut_field_->setSize(QSize(1, 1));
+    stock_cut_field_->setTextureData(QByteArray(4, '\0'));
     const QVector<QObject *> owned = {
         rapid_, feed_, mesh_, edges_, hlr_edges_, hlr_tangents_, tool_geo_,
         tool_outline_geo_, holder_geo_, holder_outline_geo_, tool_rings_geo_,
         holder_rings_geo_, tool_profile_edges_, holder_profile_edges_, stock_field_,
+        stock_cut_field_,
     };
     for (QObject *object : owned)
         QQmlEngine::setObjectOwnership(object, QQmlEngine::CppOwnership);
@@ -595,16 +643,23 @@ void GcodeToolpath::analyzeCollisions()
 void GcodeToolpath::clearStockField()
 {
     stock_depth_.clear();
+    stock_boundary_.clear();
     stock_bounds_list_.clear();
     stock_count_x_ = 0;
     stock_count_y_ = 0;
     stock_has_field_ = false;
+    stock_boundary_ms_ = 0.0;
     // Текстура снова 1x1: прошлые байты не держат память GPU, а QML не остаётся
     // с текстурой чужого размера, когда поля нет.
     if (stock_field_ != nullptr) {
         stock_field_->setSize(QSize(1, 1));
         stock_field_->setTextureData(QByteArray(4, '\0'));
         stock_field_->update();
+    }
+    if (stock_cut_field_ != nullptr) {
+        stock_cut_field_->setSize(QSize(1, 1));
+        stock_cut_field_->setTextureData(QByteArray(4, '\0'));
+        stock_cut_field_->update();
     }
 }
 
@@ -666,6 +721,8 @@ void GcodeToolpath::startStockSim()
         [this, generation, token, data, bounds, cell, initial] {
             auto session = std::make_shared<StockSession>();
             session->data = data;
+            session->bounds = bounds;
+            session->cutters = gv::stockCutterPlan(*data, initial);
             auto payload = std::make_shared<StockPassPayload>();
             const double total = data->total;
             payload->total_mm = total;
@@ -673,8 +730,7 @@ void GcodeToolpath::startStockSim()
             double last_progress = 0.0;
             const double report_step = std::max(1e-6, total / 100.0);
             try {
-                if (!session->walk.start(*data, bounds, cell,
-                                         gv::stockCutterPlan(*data, initial))) {
+                if (!session->walk.start(*data, bounds, cell, session->cutters)) {
                     payload->refused = session->walk.refusedStage() >= 0;
                     payload->refused_stage = session->walk.refusedStage();
                     payload->refused_tool = session->walk.refusedTool();
@@ -740,6 +796,11 @@ void GcodeToolpath::startStockSim()
                 payload->count_y = field.countY();
                 payload->has_field = !payload->depth.isEmpty();
                 payload->target_mm = total;
+                // Точная граница реза - на рабочем потоке, вместе с копией поля.
+                if (payload->has_field) {
+                    fillStockBoundary(*session->data, session->bounds, session->cutters,
+                                      &session->boundary_cache, field, payload.get());
+                }
                 // Сброс поля плюс обход: та же цена, что simulateStock отдаёт
                 // двумя числами.
                 payload->time_ms = session->walk.lastResetMs()
@@ -828,6 +889,12 @@ void GcodeToolpath::startStockTick()
                 payload->count_x = field.countX();
                 payload->count_y = field.countY();
                 payload->has_field = !payload->depth.isEmpty();
+                // Точная граница реза: тем же вызовом, что у полного прохода -
+                // один источник у обоих путей (полный проход и тик).
+                if (payload->has_field) {
+                    fillStockBoundary(*session->data, session->bounds, session->cutters,
+                                      &session->boundary_cache, field, payload.get());
+                }
             }
             QMetaObject::invokeMethod(this, [this, token, generation, payload, cancel_ms] {
                 if (token->generation.load() != generation) {
@@ -903,11 +970,13 @@ void GcodeToolpath::applyStockPass(const StockPassPayload &payload)
     // Поле подменяется только здесь и только целым: пока тик или перемотка
     // считались, на экране было прежнее поле, а не смесь.
     stock_depth_ = payload.depth;
+    stock_boundary_ = payload.boundary;
     stock_bounds_list_ = payload.bounds;
     stock_cell_mm_ = payload.cell_mm;
     stock_count_x_ = payload.count_x;
     stock_count_y_ = payload.count_y;
     stock_has_field_ = true;
+    stock_boundary_ms_ = payload.boundary_ms;
     // Та же копия поля идёт текстурой в вершинный шейдер: размер - число узлов,
     // порядок строк тот же (строка буфера лежит на V = 0), поэтому texcoord узла
     // - центр его текселя. Обновление - целым буфером: частичной загрузки у
@@ -917,6 +986,15 @@ void GcodeToolpath::applyStockPass(const StockPassPayload &payload)
         stock_field_->setFormat(QQuick3DTextureData::R32F);
         stock_field_->setTextureData(stock_depth_);
         stock_field_->update();
+    }
+    // Знаковое расстояние до точной границы - тем же размером и порядком, что
+    // поле: фрагмент поверхности берёт цвет и линию границы из него
+    // (stocksurface.frag), а не из глубины узла.
+    if (stock_cut_field_ != nullptr && !payload.cut_dist.isEmpty()) {
+        stock_cut_field_->setSize(QSize(stock_count_x_, stock_count_y_));
+        stock_cut_field_->setFormat(QQuick3DTextureData::R32F);
+        stock_cut_field_->setTextureData(payload.cut_dist);
+        stock_cut_field_->update();
     }
     stock_sim_progress_ = payload.total_mm > 0.0
         ? std::max(0.0, std::min(1.0, payload.target_mm / payload.total_mm))

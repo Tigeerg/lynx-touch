@@ -427,15 +427,17 @@ Item {
         gapTopMm: root.shellGapTopMm
         gapBottomMm: root.shellGapBottomMm
     }
-    // Точные слои реза (PLAN-STOCK.md, 3.1): стенка по точному контуру (marching
-    // squares по полю) и сам контур полилинией. Считаются по тому же полю, что
-    // идёт текстурой на верх: depthData - байты path.stockDepth. Данные подаются
-    // там, где слой нужен: стенка - виду «точный контур», полилиния - точному виду
-    // (там она сверяет границу со ступенями узлов) и виду «точный контур» (там её
-    // строит проверка слоя, keyprobe: отрезков контура столько же, сколько у
-    // стенки, - один порог одного поля). Рисуется полилиния только у точного вида:
-    // у вида «точный контур» границу рисует шейдер поверхности по знаковому
-    // расстоянию поля (stocksurface.frag), и вторая линия там спорила бы с ней.
+    // Точные слои реза (PLAN-STOCK.md, 3.1/1.5): стенка по ТОЧНОЙ границе реза и
+    // сама граница полилинией. Границу считает ядро по ходам (stockCutBoundary),
+    // независимо от поля: она приходит готовыми отрезками (path.stockBoundary), а
+    // поле лишь даёт низ стенке (path.stockDepth, глубина дна в точке контура).
+    // Данные подаются там, где слой нужен: стенка - виду «точный контур»,
+    // полилиния - точному виду (там она сверяет границу со ступенями узлов) и
+    // виду «точный контур» (там её строит проверка слоя, keyprobe: отрезков
+    // границы столько же, сколько у стенки). Рисуется полилиния только у точного
+    // вида: у вида «точный контур» границу рисует шейдер поверхности по знаковому
+    // расстоянию до точной границы (stocksurface.frag), и вторая линия там
+    // спорила бы с ней.
     StockCutWallGeometry {
         id: stockCutWall
         boundList: path ? path.stockBounds : []
@@ -443,17 +445,14 @@ Item {
         countX: path ? path.stockCountX : 0
         countY: path ? path.stockCountY : 0
         cutMm: 0.05
+        boundaryData: (root.stockCutExact && path) ? path.stockBoundary : ""
         depthData: (root.stockCutExact && path) ? path.stockDepth : ""
     }
     StockCutContourGeometry {
         id: stockCutContour
         boundList: path ? path.stockBounds : []
-        cellMm: path ? path.stockCellMm : 0.5
-        countX: path ? path.stockCountX : 0
-        countY: path ? path.stockCountY : 0
-        cutMm: 0.05
-        depthData: ((root.stockCutExact || root.stockContourPolyline) && path)
-                   ? path.stockDepth : ""
+        boundaryData: ((root.stockCutExact || root.stockContourPolyline) && path)
+                      ? path.stockBoundary : ""
     }
 
     // Project a 3D point to View3D screen coordinates (manual perspective)
@@ -677,6 +676,20 @@ Item {
                             mipFilter: Texture.None
                         }
                     }
+                    // Знаковое расстояние до ТОЧНОЙ границы реза (ядро,
+                    // stockCutSignedDistance), того же размера, что поле: им
+                    // фрагмент рисует цвет и линию границы у вида «точный контур»
+                    // (cutExactBoundary), а не глубиной узла поля - поэтому
+                    // граница идёт ровной линией, а не ступенями узла.
+                    property TextureInput stockCutField: TextureInput {
+                        texture: Texture {
+                            textureData: path ? path.stockCutField : null
+                            minFilter: Texture.Nearest
+                            magFilter: Texture.Nearest
+                            mipFilter: Texture.None
+                        }
+                    }
+                    property bool cutExactBoundary: root.stockCutExact
                     sourceBlend: root.stockGhost ? CustomMaterial.SrcAlpha : CustomMaterial.NoBlend
                     destinationBlend: root.stockGhost ? CustomMaterial.OneMinusSrcAlpha
                                                        : CustomMaterial.NoBlend

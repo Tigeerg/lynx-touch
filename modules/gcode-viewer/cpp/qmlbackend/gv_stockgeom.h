@@ -134,19 +134,12 @@ private:
     int vertex_count_ = 0;
 };
 
-// Стенка точного контура реза (PLAN-STOCK.md, 3.1): вертикальные квады по границе,
-// где глубина поля линейно пересекает порог cutMm. Контур считает marching squares
-// (core/stock_sim, stockCutContour), поэтому стенка кармана - ровная линия
-// под-ячейковой точности, а не ступени узлов поля; верх стоит на плоскости
-// нетронутого верха (zMaxMm), низ - на дне реза в точке контура, поэтому стык
-// верх/стенка/дно идёт по одному контуру, без щели.
-//
-// Буфер - тот же, что отдаёт ядро (stockCutWall): 16 Б на вершину (позиция 3f +
-// глубина дна 1f), индексы U32, два треугольника на отрезок контура. Четвёртое
-// число оставлено как у ядра (им сверяется буфер), но шейдеру оно не нужно:
-// стенка целиком снятый металл, её цвет - от порога съёма (свойство cutMm).
-// Поле приходит байтами поля глубин (QByteArray float32, порядок depthMm), а не
-// текстурой: контур - это геометрия, и считать его надо там же, где он строится.
+// Стенка точного контура реза (PLAN-STOCK.md, 3.1/1.5): вертикальные квады по
+// ТОЧНОЙ границе реза (core/stock_sim, stockCutBoundary), а не по marching
+// squares поля. Граница приходит готовой полилинией (boundaryData), низ квада
+// берётся по глубине поля в точке контура (depthData, билинейно), верх стоит на
+// плоскости нетронутого верха - стык верх/стенка/дно идёт по одному контуру.
+// Поле и его байты не трогаются: точную границу считает ядро по ходам.
 class StockCutWallGeometry : public QQuick3DGeometry
 {
     Q_OBJECT
@@ -157,6 +150,7 @@ class StockCutWallGeometry : public QQuick3DGeometry
     Q_PROPERTY(int countY READ countY WRITE setCountY NOTIFY changed)
     Q_PROPERTY(double cutMm READ cutMm WRITE setCutMm NOTIFY changed)
     Q_PROPERTY(QByteArray depthData READ depthData WRITE setDepthData NOTIFY changed)
+    Q_PROPERTY(QByteArray boundaryData READ boundaryData WRITE setBoundaryData NOTIFY changed)
     Q_PROPERTY(int vertexCount READ vertexCount NOTIFY changed)
     Q_PROPERTY(int triangleCount READ triangleCount NOTIFY changed)
     Q_PROPERTY(int segmentCount READ segmentCount NOTIFY changed)
@@ -172,14 +166,18 @@ public:
     void setCountX(int value);
     int countY() const { return count_y_; }
     void setCountY(int value);
-    // Порог съёма, мм: граница реза - где глубина поля пересекает его. То же
-    // число, что у цвета поверхности (stocksurface.frag, свойство cutMm в QML).
+    // Порог съёма, мм: им ядро отделяет тронутый узел поля от нетронутого
+    // (знак границы). То же число, что у цвета поверхности (stocksurface.frag).
     double cutMm() const { return cut_mm_; }
     void setCutMm(double value);
-    // Поле глубин байтами: countX * countY float32 в порядке depthMm (та же
-    // копия, что идёт текстурой в stockField). Пусто - поля нет, стенки нет.
+    // Поле глубин байтами: countX * countY float32 в порядке depthMm. Нужно
+    // только низу квада (глубина дна в точке контура). Пусто - стенки нет.
     QByteArray depthData() const { return depth_data_; }
     void setDepthData(const QByteArray &data);
+    // Точная граница байтами: 4 float32 на отрезок (x0, y0, x1, y1), машинные
+    // мм. Это представление границы (ядро, stockCutBoundary); пусто - стенки нет.
+    QByteArray boundaryData() const { return boundary_data_; }
+    void setBoundaryData(const QByteArray &data);
 
     int vertexCount() const { return vertex_count_; }
     int triangleCount() const { return triangle_count_; }
@@ -201,26 +199,23 @@ private:
     int count_y_ = 0;
     double cut_mm_ = 0.05;
     QByteArray depth_data_;
+    QByteArray boundary_data_;
     int vertex_count_ = 0;
     int triangle_count_ = 0;
     int segment_count_ = 0;
 };
 
-// Точный контур реза отрезками линий: та же граница, что у стенки, но нарисованная
-// как полилиния на плоскости нетронутого верха (zMaxMm). Нужен для прямой сверки
-// со ступенчатой границей поля: он показывает, где граница реза на самом деле.
-// Буфер - 12 Б на вершину (позиция 3f), две вершины на отрезок контура,
-// PrimitiveType::Lines.
+// Точный контур реза отрезками линий: точная граница (ядро, stockCutBoundary)
+// как полилиния на плоскости нетронутого верха (zMaxMm). Граница приходит
+// готовыми отрезками (boundaryData), а не считается по полю: она независима от
+// узла, и её рисуют поверх ступеней точного вида для сверки. Буфер - 12 Б на
+// вершину (позиция 3f), две вершины на отрезок, PrimitiveType::Lines.
 class StockCutContourGeometry : public QQuick3DGeometry
 {
     Q_OBJECT
     QML_ELEMENT
     Q_PROPERTY(QVariantList boundList READ boundList WRITE setBoundList NOTIFY changed)
-    Q_PROPERTY(double cellMm READ cellMm WRITE setCellMm NOTIFY changed)
-    Q_PROPERTY(int countX READ countX WRITE setCountX NOTIFY changed)
-    Q_PROPERTY(int countY READ countY WRITE setCountY NOTIFY changed)
-    Q_PROPERTY(double cutMm READ cutMm WRITE setCutMm NOTIFY changed)
-    Q_PROPERTY(QByteArray depthData READ depthData WRITE setDepthData NOTIFY changed)
+    Q_PROPERTY(QByteArray boundaryData READ boundaryData WRITE setBoundaryData NOTIFY changed)
     Q_PROPERTY(int vertexCount READ vertexCount NOTIFY changed)
     Q_PROPERTY(int segmentCount READ segmentCount NOTIFY changed)
 
@@ -229,16 +224,8 @@ public:
 
     QVariantList boundList() const { return bound_list_; }
     void setBoundList(const QVariantList &list);
-    double cellMm() const { return cell_mm_; }
-    void setCellMm(double value);
-    int countX() const { return count_x_; }
-    void setCountX(int value);
-    int countY() const { return count_y_; }
-    void setCountY(int value);
-    double cutMm() const { return cut_mm_; }
-    void setCutMm(double value);
-    QByteArray depthData() const { return depth_data_; }
-    void setDepthData(const QByteArray &data);
+    QByteArray boundaryData() const { return boundary_data_; }
+    void setBoundaryData(const QByteArray &data);
 
     int vertexCount() const { return vertex_count_; }
     int segmentCount() const { return segment_count_; }
@@ -254,11 +241,7 @@ private:
     QVariantList bound_list_;
     gv::StockBounds bounds_;
     bool has_bounds_ = false;
-    double cell_mm_ = 0.5;
-    int count_x_ = 0;
-    int count_y_ = 0;
-    double cut_mm_ = 0.05;
-    QByteArray depth_data_;
+    QByteArray boundary_data_;
     int vertex_count_ = 0;
     int segment_count_ = 0;
 };

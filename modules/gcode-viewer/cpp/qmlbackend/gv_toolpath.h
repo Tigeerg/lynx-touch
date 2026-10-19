@@ -127,6 +127,13 @@ struct StockRunToken {
 struct StockSession {
     std::shared_ptr<const gv::PathData> data;
     gv::StockWalk walk;
+    // Инструменты этапов и габарит - те же, с которыми обход начат: по ним
+    // считается точная граница реза (gv::stockCutBoundary), независимая от поля.
+    std::vector<gv::StockCutter> cutters;
+    gv::StockBounds bounds;
+    // Состояние точной границы: раскладка ходов и отрезки по клеткам. Живёт
+    // между тиками, поэтому тик платит только за изменившиеся клетки.
+    gv::StockBoundaryCache boundary_cache;
 };
 
 // Готовое поле с рабочего потока. Байты копируются на рабочем потоке (весь
@@ -135,6 +142,12 @@ struct StockSession {
 // обход с курсором на конце программы, с него продолжаются живые тики.
 struct StockPassPayload {
     QByteArray depth;                  // R32F, count_x * count_y float32
+    // Точная граница реза (PLAN-STOCK.md, 1.5): отрезки полилинии, 4 float32 на
+    // отрезок (x0, y0, x1, y1), машинные мм. Отдельное от поля представление.
+    QByteArray boundary;
+    // Знаковое расстояние до точной границы в узлах поля, R32F: отрицательно
+    // там, где снято. Им рисуется цвет и линия границы (stocksurface.frag).
+    QByteArray cut_dist;
     QVariantList bounds;               // [xmin, xmax, ymin, ymax, zmin, zmax], мм
     double cell_mm = 0.5;
     int count_x = 0;
@@ -142,6 +155,7 @@ struct StockPassPayload {
     double target_mm = 0.0;            // длина пути, съём до которой в поле
     double total_mm = 0.0;
     double time_ms = 0.0;              // обход; у полного прохода ещё и сброс поля
+    double boundary_ms = 0.0;          // цена точной границы и её расстояния
     bool has_field = false;
     bool cancelled = false;            // тик прерван токеном: не публикуется
     bool refused = false;              // инструмент картой не выражается
@@ -184,12 +198,15 @@ class GcodeToolpath : public QObject
     // тексель; она живёт от создания контроллера, поэтому Texture в QML не
     // остаётся без данных и движок не жалуется.
     Q_PROPERTY(QByteArray stockDepth READ stockDepth NOTIFY stockSimChanged)
+    Q_PROPERTY(QByteArray stockBoundary READ stockBoundary NOTIFY stockSimChanged)
     Q_PROPERTY(QVariantList stockBounds READ stockBounds NOTIFY stockSimChanged)
     Q_PROPERTY(double stockCellMm READ stockCellMm NOTIFY stockSimChanged)
     Q_PROPERTY(int stockCountX READ stockCountX NOTIFY stockSimChanged)
     Q_PROPERTY(int stockCountY READ stockCountY NOTIFY stockSimChanged)
     Q_PROPERTY(bool stockHasField READ stockHasField NOTIFY stockSimChanged)
     Q_PROPERTY(QQuick3DTextureData *stockField READ stockField NOTIFY stockSimChanged)
+    Q_PROPERTY(QQuick3DTextureData *stockCutField READ stockCutField NOTIFY stockSimChanged)
+    Q_PROPERTY(double stockBoundaryMs READ stockBoundaryMs NOTIFY stockSimChanged)
     Q_PROPERTY(QString stockSimState READ stockSimState NOTIFY stockSimStateChanged)
     Q_PROPERTY(double stockSimProgress READ stockSimProgress NOTIFY stockSimProgressChanged)
     Q_PROPERTY(double stockSimTimeMs READ stockSimTimeMs NOTIFY stockSimChanged)
@@ -249,8 +266,11 @@ public:
     bool hasStock() const { return has_stock_; }
     double holderGauge() const { return holder_gauge_; }
     QByteArray stockDepth() const { return stock_depth_; }
+    QByteArray stockBoundary() const { return stock_boundary_; }
     QVariantList stockBounds() const { return stock_bounds_list_; }
     QQuick3DTextureData *stockField() const { return stock_field_; }
+    QQuick3DTextureData *stockCutField() const { return stock_cut_field_; }
+    double stockBoundaryMs() const { return stock_boundary_ms_; }
     double stockCellMm() const { return stock_cell_mm_; }
     int stockCountX() const { return stock_count_x_; }
     int stockCountY() const { return stock_count_y_; }
@@ -501,11 +521,18 @@ private:
 
     // Симуляция съёма: поле уже посчитано, но ещё не нарисовано (шаг 3).
     QByteArray stock_depth_;              // float32 R32F, countX * countY
+    // Точная граница реза и знаковое расстояние до неё: отдельное от поля
+    // представление (ядро, stockCutBoundary и stockCutSignedDistance).
+    QByteArray stock_boundary_;           // float32, 4 на отрезок
     QVariantList stock_bounds_list_;      // [xmin, xmax, ymin, ymax, zmin, zmax]
     // То же поле текстурой для вершинного шейдера: R32F, строка буфера - строка
     // текстуры. Объект создаётся один раз (1x1): поле публикуется обновлением
     // данных, а не созданием текстуры.
     QQuick3DTextureData *stock_field_ = nullptr;
+    // Знаковое расстояние до точной границы текстурой R32F того же размера, что
+    // поле: им фрагмент рисует цвет и линию границы (stocksurface.frag).
+    QQuick3DTextureData *stock_cut_field_ = nullptr;
+    double stock_boundary_ms_ = 0.0;      // цена точной границы (ядро), мс
     double stock_cell_mm_ = 0.5;
     int stock_count_x_ = 0;
     int stock_count_y_ = 0;

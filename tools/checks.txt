@@ -32,6 +32,7 @@ stl_probe --manifest|probe|build/edges/stl_probe --manifest modules/gcode-viewer
 silhouette_probe --manifest|probe|build/edges/silhouette_probe --manifest modules/gcode-viewer/oracle_manifest.json
 tangents_probe --manifest|probe|build/edges/tangents_probe --manifest modules/gcode-viewer/oracle_manifest.json
 stock_sim_probe (аналитика поля съёма)|probe|build/edges/stock_sim_probe
+front_stock_probe (хроника реза)|probe|build/edges/front_stock_probe
 stepledges_probe (рёбра STEP)|probe|build/edges/stepledges_probe data/cad-testdata/Test_model.STEP
 gcodeviewer --smoke|plugin|build/viewer/gcodeviewer --smoke
 gcodeviewer offscreen|plugin|build/viewer/gcodeviewer data/cad-testdata/Test_model.ngc

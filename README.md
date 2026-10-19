@@ -154,7 +154,8 @@ QT_QPA_PLATFORM=offscreen ./build/viewer/gcodeviewer --smoke
 `step_probe`, `stl_probe`, `silhouette_probe`, `tangents_probe` (`--manifest
 modules\gcode-viewer\oracle_manifest.json`); рядом — `version_probe` (сверяет
 `VERSION`, `projects.json` и `viewerVersion` в QML), `stock_sim_probe` (аналитика поля
-съёма и его рисования), `stock_bind_probe` (привязка поля к траектории), `keyprobe`
+съёма и его рисования), `front_stock_probe` (хроника реза: поле на момент t и его граница),
+`stock_bind_probe` (привязка поля к траектории), `keyprobe`
 (горячие клавиши на ru/en), `--smoke` и offscreen-прогон. Список прогонов —
 `tools/checks.txt`, полный порядок проверок — `VERSIONING.md`, раздел 5. Кадр для
 приёмки снимает `gcodeviewer.exe --frame frame.png <УП>`: сцену Quick3D рисует живая
@@ -169,7 +170,8 @@ modules\gcode-viewer\oracle_manifest.json`); рядом — `version_probe` (с�
 - `S` — габарит заготовки, `M` — вид детали (сплошная -> прозрачная -> скрыта),
   `K` — кожа детали (тело без рёбер), `G` — линии УП;
 - `V` — заготовка стеклом, `B` — прежняя коробка вместо поверхности съёма,
-  `C` — палитра остатка, `R` — вид остатка (точный -> гладкий -> скруглённый);
+  `C` — палитра остатка, `R` — вид остатка (точный -> гладкий -> скруглённый ->
+  точный контур);
 - `L` — весь код / ограничить длину, `T` — этапы, `PgUp`/`PgDn` — кадры этапов;
 - `E` — рёбра B-rep, `D` — касательные, `Q` — уровень качества, `F` — счётчик FPS.
 
@@ -177,8 +179,9 @@ modules\gcode-viewer\oracle_manifest.json`); рядом — `version_probe` (с�
 `cpp/viewer/main.cpp` и `cpp/core/quality.h`):
 
 - `CNC_QUALITY` — уровень `low`/`med`/`high`/`safe` (пусто или неизвестно — `med`);
-- `CNC_STOCK_VIEW=exact|smooth|rounded` — вид остатка (умолчание `smooth`);
-  `CNC_STOCK_ROUND=1` — прежнее сокращение для `rounded`;
+- `CNC_STOCK_VIEW=exact|smooth|rounded|contour` — вид остатка (умолчание `smooth`);
+  `CNC_STOCK_ROUND=1` — прежнее сокращение для `rounded`; `CNC_STOCK_CONTOUR=#RRGGBB` —
+  цвет границы реза вида «точный контур»;
 - `CNC_STOCK_GHOST` — стекло включено по умолчанию, значение `0`/`false`/`off`/`no`
   снимает его (сплошная заготовка);
 - `CNC_STOCK_BOX`, `CNC_NO_TOOLPATH`, `CNC_NO_PART_SKIN` — прежняя коробка, снять линии

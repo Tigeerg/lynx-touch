@@ -444,22 +444,47 @@ says.
 - Data: `QQuick3DTextureData` (R32F, `setSize`/`setFormat`/`setTextureData`/`update`) as a controller property
   next to the geometries; in QML `Texture { textureData: path.stockField }` plus a `TextureInput` in a
   `CustomMaterial` (a property of type `TextureInput` becomes a `sampler2D` of the same name); the vertex
-  shader reads the height with `texture(stockField, UV0)` and derives the normal from the neighbouring texels
-  right there — the CPU computes no normals at all. This is the documented Qt Quick 3D height-map technique.
+  shader reads the height with `texture(stockField, UV0)` and lowers the vertex, while the normal and the
+  shading are computed in the FRAGMENT from the same bilinear reconstruction of the field — the CPU computes
+  no normals at all. This is the documented Qt Quick 3D height-map technique.
 - The grid is built once per load (position 3f + texcoord 2f, the same 20 B stride as `ToolpathGeometry`), and
   only the texture changes. The update replaces the whole buffer (there is no partial upload in
   `QQuick3DTextureData`), so the cadence is ours: while the program plays the field is published every 100 ms
   — 242 KiB per tick at a 0.5 mm node and 1.44 MiB at 0.2 mm on the 150x100 stock, otherwise megabytes per
   frame would go over the bus.
-- The stock view is one switch with three positions (`stockView`): exact (one vertex per field node, as
-  computed), smooth (the default: the mesh is subdivided, the height is bilinear) and rounded (the node depth
-  is the average over the neighbourhood). The `R` key cycles them, `CNC_STOCK_VIEW` sets the view before the
-  start, the former `CNC_STOCK_ROUND=1` remains a shortcut for `rounded`. Subdivision is the smooth view only:
-  `stockSubdiv = 2`, so a vertex also lands in the middle of a cell, where the side of the step is decided.
-  The price is named outright: the drawing diverges from the field by up to a quarter of the cell twist, the
-  cut edge shifts by up to half a cell (0.25 mm at a 0.5 mm node), and the mesh is four times heavier —
-  241 001 vertices and 480 000 triangles against 60 501 and 120 000. The field, its bytes and its digests do
-  not change (the `stocksurface` case compares the buffer at `subdiv = 1` bit for bit).
+- The stock view is one switch with four positions (`stockView`): exact (one vertex per field node, as
+  computed), smooth (the default: the mesh is subdivided, the height is bilinear), rounded (the node depth
+  is the average over the neighbourhood) and exact contour (a smooth top plus the exact cut layers). The `R`
+  key cycles them, `CNC_STOCK_VIEW` sets the view before the start, the former `CNC_STOCK_ROUND=1` remains a
+  shortcut for `rounded`. Every view except the exact one is subdivided: `stockSubdiv = 2`, so a vertex also
+  lands in the middle of a cell, where the side of the step is decided; the exact view is not subdivided — it
+  is the very display of the node steps. The price is named outright: the drawing diverges from the field by
+  up to a quarter of the cell twist, the cut edge shifts by up to half a cell (0.25 mm at a 0.5 mm node), and
+  the mesh is four times heavier — 241 001 vertices and 480 000 triangles against 60 501 and 120 000. The
+  field, its bytes and its digests do not change (the `stocksurface` case compares the buffer at `subdiv = 1`
+  bit for bit).
+- The layered surface (the plan, stages 1.1 and 1.5). The field top is a continuous bilinear height: the normal
+  and the shading are computed in the fragment from the four nodes of the cell (a difference of neighbours one
+  cell apart; a step inside a cell takes the analytic gradient of its own cell), and the `NORMAL_SPAN`
+  compromise — a difference across 2 cells, by which the vertex rule caught a pocket wall — is gone. Measured:
+  the smooth view differs from the former vertex rule on 1628 pixels out of 614 400 (0.27 %), the difference
+  sits on the walls; a two-cell rise gets its own 1.0 mm/mm slope instead of the former 0.5
+  (`stocksurface_shade_frag`), and there is no one-cell band at the edge (`stocksurface_fine`, 2489 checks,
+  deviation 5.3e-15). The cut boundary is a line by the signed distance from the field to the cut threshold
+  (`vDepth - cutMm`) in the same fragment: the pixel distance comes from the screen derivative, the half-tone
+  is half a pixel on each side. Measured (Test_model, the exact contour view, toolpath and skin off, camera
+  yaw 35 pitch -32): 1.27 pixels of line per boundary crossing against 2.20 for the former marching-squares
+  polyline, 198 line pixels against 570 in the pocket-boundary window. The exact cut layers are the wall along
+  the marching-squares contour (`stockCutWall`) and the boundary itself as a polyline (`stockCutContour`); the
+  line colour is `CNC_STOCK_CONTOUR`, its thickness (1.1 px) is `stockContourHalfPx`.
+- The limits of the layered surface are named, not hidden. The cut wall is a seam `cutMm` tall (0.05 mm, a
+  twelfth of a pixel) on the plane of the untouched top, so the boundary line reads it, not the wall itself.
+  The pocket wall of the field top is still a height map: a vertical cutter wall is quantised by the node (in a
+  cell one node is untouched and its neighbour is at the full depth), so the threshold boundary runs in node
+  steps — measured over the field on 160 columns along the edge: 146 joins with no shift, 13 shifted by one
+  pixel (0.4 mm) and 2 by two. Smoothing that by drawing would smooth the real boundary too; it is cured by a
+  finer node (stages 1.3-1.4: an adaptive mesh and tiles), not by the shader. The contour sagitta is a linear
+  interpolation inside a cell, not an arc.
 - The top of the stock wall is trimmed by the field (`stockshell.frag`): the wall stands on the bounds and
   otherwise would not know that the cutter removed metal across the edge (measured: 102 cut perimeter nodes out
   of 1000, up to 1.00 mm). The trim runs in the fragment shader and takes the same bilinear reconstruction of
@@ -532,12 +557,22 @@ says.
   44 mm before the fix, 8 rings after); (13) `stock_undercut` — a synthetic undercut profile and the `LOLLIPOP`
   type: the walk refuses, the field is not created (0 nodes, the stage and the tool number are named);
   (14) `stock_live` — the field accumulated by 10 Hz ticks matches the full pass bit for bit by digest, and the
-  field after a rewind matches the pass from the start. The tolerance is derived from the node size, not tuned
+  field after a rewind matches the pass from the start; (15) `stocksurface_exact` — the exact cut layers: the
+  marching-squares contour ends against the analytic boundary of a ball (0.2227 mm against a half-cell tolerance
+  of 0.25) and the wall whose top is on the plane of the untouched top and whose bottom is on the cut floor;
+  (16) `stocksurface_shade_frag` — the slope in the fragment: a two-cell rise gets its own 1.0 mm/mm, while the
+  former rule across 2 * NORMAL_SPAN cells gave 0.5. The tolerance is derived from the node size, not tuned
   until green; the digest cases compare bitwise.
 - `stock_bind_probe` checks the same in the controller: the texture and the field match; during a tick (state
   `computing`) the field stays the last complete one; after a rewind and a move forward the digest equals the
   full field; cancelling a tick publishes not a new field but the last complete one, cancelling the first pass
-  publishes nothing; `TYPE=LOLLIPOP` gives the state `refused` with no field.
+  publishes nothing; `TYPE=LOLLIPOP` gives the state `refused` with no field; the cut-layer geometries are built
+  from the field (20 contour segments on a synthetic half-plane, a 40-triangle wall).
+- `front_stock_probe` holds the cut chronicle (`core/stock_front`): the field at moment t is a threshold on the
+  time label and matches the walk from the start (digest); the cost of a rewind against a rebuild (Test_model:
+  0.1442 ms against 81.920 ms, 568x); the determinism of two runs; the share of nodes cut more than once
+  (38 825 cut nodes, 34 054 repeated — 87.7 %), the boundary of "the field at moment t is exact", named as a
+  number. Exact playback needs a contribution journal (the plan, stage 2.4).
 - Measurements: `bench_probe` — the phases next to `collision_scan`; the cost of the field — the `phase
   stock_sim_*` and `phase stock_live_*` lines of `stock_sim_probe` itself (0.5 and 0.2 mm nodes); the frame with
   and without the field — the `frame` lines of `bench_probe`, on weak hardware mandatory. The live numbers to
@@ -560,7 +595,7 @@ says.
 ## 14. Checks and tests
 
 Before committing — the full list is in VERSIONING.md, section 5 (the build `scripts/build-viewer.ps1`, the six
-probes with `--manifest`, `version_probe`, `stock_sim_probe`, `stock_bind_probe`, `--smoke`, the offscreen run,
+probes with `--manifest`, `version_probe`, `stock_sim_probe`, `front_stock_probe`, `stock_bind_probe`, `--smoke`, the offscreen run,
 `keyprobe`, `--frame`).
 
 Performance — `bench_probe` (cold-load phases and frames) and `stock_sim_probe` (the cost of the stock field).

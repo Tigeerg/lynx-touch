@@ -6,18 +6,21 @@ C++.
 
 ## Состав
 - `GcodeViewer3D.qml` — компонент вьювера (сцена, камера, материалы, панель режимов); корень — `Item`;
-- `cpp/qmlbackend/` — QML-модуль `MockBackend` 1.0: тип `GcodeToolpath`, геометрии Qt Quick 3D, две
-  геометрии рисования остатка (`gv_stockgeom`: верх поля высот и оболочка коробки без верхней грани);
+- `cpp/qmlbackend/` — QML-модуль `MockBackend` 1.0: тип `GcodeToolpath`, геометрии Qt Quick 3D,
+  четыре геометрии рисования остатка (`gv_stockgeom`: верх поля высот, оболочка коробки без верхней
+  грани, стенка реза по точному контуру и сама граница полилинией);
 - `cpp/core/`, `cpp/occt/` — чистое ядро (парсер УП, теги `UI_*`, нормали, STL, обводка, силуэт,
   касательные, инструмент, коллизии, поле съёма `stock_sim`) и слой STEP на OCCT;
 - `cpp/viewer/` — точка входа `gcodeviewer` и пробники живых путей (`keyprobe`, `stock_bind_probe`);
 - `cpp/*.cpp` — пробники сверки с эталоном `oracle_manifest.json` (ключ `--manifest`): `gcode_probe`,
   `version_probe`, `geometry_probe`, `step_probe`, `stl_probe`, `silhouette_probe`, `tangents_probe`,
-  `stock_sim_probe`, `bench_probe`, `stepledges_probe`;
+  `stock_sim_probe`, `front_stock_probe`, `bench_probe`, `stepledges_probe`;
 - шейдеры: `toolpath.vert`/`.frag` — материал траектории; `stepledges.vert`/`.frag` — ленточная обводка
   (рёбра B-rep, силуэт, рёбра инструмента и оправки); `stocksurface.vert`/`.frag` — верх поля съёма
-  (дробление, выборка поля, палитра, лампа слитка); `stockshell.vert`/`.frag` — стенки и дно заготовки
-  (нормаль из положения вершины, обрезка верха стенки по полю);
+  (дробление, выборка поля, палитра, лампа слитка; нормаль и граница реза по знаковому расстоянию — во
+  фрагменте); `stockshell.vert`/`.frag` — стенки и дно заготовки (нормаль из положения вершины, обрезка
+  верха стенки по полю); `stockcutwall.vert`/`.frag` — стенка точного контура реза, `stockcutcontour.vert`/
+  `.frag` — полилиния контура у точного вида;
 - `preview_3d.qml` — обёртка `Window` 1024x600 вокруг `GcodeViewer3D` (данные, правится руками).
 
 ## Запуск (автономно)
@@ -34,14 +37,16 @@ OCCT точка входа добавляет себе сама. offscreen-пр�
 ## Клавиши
 `Пробел`/`P` — пуск/пауза, `Esc` — в начало, `вверх`/`вниз` — скорость; `S` — габарит заготовки,
 `M` — вид детали (сплошная -> прозрачная -> скрыта), `K` — кожа детали, `G` — линии УП; `V` — стекло,
-`B` — коробка вместо поля, `C` — палитра остатка, `R` — вид остатка (точный -> гладкий -> скруглённый);
+`B` — коробка вместо поля, `C` — палитра остатка, `R` — вид остатка (точный -> гладкий -> скруглённый ->
+точный контур);
 `L` — весь код / ограничить длину, `T` — этапы, `PgUp`/`PgDn` — кадры этапов; `E` — рёбра, `D` —
 касательные, `Q` — качество, `F` — FPS. Буквы сверяются по физическому скан-коду, поэтому работают и на
 русской раскладке (`keyprobe` гоняет обе).
 
 ## Переменные окружения до старта
-`CNC_QUALITY` (low/med/high/safe); `CNC_STOCK_VIEW` (exact/smooth/rounded, умолчание smooth),
-`CNC_STOCK_ROUND=1` (сокращение rounded), `CNC_STOCK_GHOST` (стекло — умолчание; 0/false/off/no снимает),
+`CNC_QUALITY` (low/med/high/safe); `CNC_STOCK_VIEW` (exact/smooth/rounded/contour, умолчание smooth),
+`CNC_STOCK_ROUND=1` (сокращение rounded), `CNC_STOCK_CONTOUR` (цвет границы реза вида «точный контур»,
+`#RRGGBB`), `CNC_STOCK_GHOST` (стекло — умолчание; 0/false/off/no снимает),
 `CNC_STOCK_BOX`, `CNC_NO_TOOLPATH`, `CNC_NO_PART_SKIN`, `CNC_PART_MODE` (solid/transparent/hidden),
 `CNC_STOCK_RAW`/`CNC_STOCK_CUT` (`#RRGGBB`), `CNC_STOCK_CELL` (шаг сетки поля, мм),
 `CNC_FRAME_CAMERA` (`yaw,pitch,dist[,panX,panY]`); `CNC_VIEWER_QML`, `CNC_CPP_QML_DIR`, `CNC_OCC_DIR`,
@@ -51,8 +56,8 @@ OCCT точка входа добавляет себе сама. offscreen-пр�
 ## Проверки
 Шесть пробников манифеста (`gcode_probe`, `geometry_probe`, `step_probe`, `stl_probe`,
 `silhouette_probe`, `tangents_probe`) — ключом `--manifest modules/gcode-viewer/oracle_manifest.json`;
-`version_probe`, `stock_sim_probe`, `stock_bind_probe`, `keyprobe`, `--smoke`, offscreen-прогон,
-`--frame`. Полный порядок — `VERSIONING.md`, раздел 5.
+`version_probe`, `stock_sim_probe`, `front_stock_probe`, `stock_bind_probe`, `keyprobe`, `--smoke`,
+offscreen-прогон, `--frame`. Полный порядок — `VERSIONING.md`, раздел 5.
 
 ## Встраивание в Qt-дизайн
 1. Добавить каталог `build/qmlbackend` в import-пути QML (`QQmlEngine::addImportPath`), а каталог модуля

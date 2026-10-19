@@ -20,6 +20,11 @@
 // выражает, поэтому состояние refused, поле пусто (stockHasField ложь, узлов 0),
 // а причина - строкой отказа в stderr.
 //
+// Точные слои реза (PLAN-STOCK.md, 3.1). Геометрии рисования стенки и контура
+// (qmlbackend/gv_stockgeom, StockCutWallGeometry и StockCutContourGeometry)
+// строятся на синтетическом поле-полуплоскости и сверяются с ожиданием: контур -
+// 20 отрезков, стенка - 40 треугольников и 80 вершин, контур - 40 вершин.
+//
 // Запуск (Qt в PATH; платформа offscreen ставится сама):
 // build\viewer\stock_bind_probe.exe [путь к файлу УП]
 // Код возврата: 0 - все проверки прошли, 1 - нет.
@@ -38,6 +43,8 @@
 #include <QTextStream>
 #include <QThread>
 #include <QUrl>
+#include <QVariantList>
+#include <QVariantMap>
 
 #include <functional>
 #include <cstdint>
@@ -478,6 +485,68 @@ int main(int argc, char *argv[])
                 .arg(nodes));
         if (!refused || !depth.isEmpty() || hasField || nodes != 0) {
             ++failures;
+        }
+    }
+
+    // Точные слои реза (PLAN-STOCK.md, 3.1): новые геометрии qmlbackend/gv_stockgeom
+    // (StockCutWallGeometry, StockCutContourGeometry) обязаны строить стенку и
+    // контур по полю глубин. Проверка детерминированная: синтетическое поле -
+    // полуплоскость (глубина 1 мм при x >= 5), поэтому контур - одна вертикальная
+    // линия через 20 клеток строк, то есть ровно 20 отрезков. Стенка - 20 квадов
+    // (40 треугольников, 80 вершин), контур - 40 вершин. Числа сверяются с
+    // ожиданием, а не с «больше нуля»: так проверка красна, если геометрия
+    // потеряет поле или перепутает формат. Габарит обеих - габарит поля.
+    {
+        const int nx = 21;
+        const int ny = 21;
+        const double cell = 0.5;
+        const double cutMm = 0.05;
+        QByteArray depth(nx * ny * int(sizeof(float)), '\0');
+        float *values = reinterpret_cast<float *>(depth.data());
+        for (int iy = 0; iy < ny; ++iy) {
+            for (int ix = 0; ix < nx; ++ix)
+                values[iy * nx + ix] = (ix >= 10) ? 1.0f : 0.0f;   // x >= 5 мм
+        }
+        const QVariantList bounds{0.0, 10.0, 0.0, 10.0, -5.0, 0.0};
+        auto makeGeometry = [&](const QString &type, QString *detail) {
+            QQmlComponent component(&engine);
+            component.setData(QStringLiteral("import MockBackend 1.0\n%1 {}\n").arg(type).toUtf8(),
+                              QUrl(QStringLiteral("qrc:/stock_cut_geometry.qml")));
+            QObject *object = component.create();
+            if (object == nullptr) {
+                *detail = component.errorString();
+            } else {
+                object->setProperty("boundList", bounds);
+                object->setProperty("cellMm", cell);
+                object->setProperty("countX", nx);
+                object->setProperty("countY", ny);
+                object->setProperty("cutMm", cutMm);
+                object->setProperty("depthData", depth);
+            }
+            return object;
+        };
+        QString error;
+        QObject *wall = makeGeometry(QStringLiteral("StockCutWallGeometry"), &error);
+        QObject *contour = makeGeometry(QStringLiteral("StockCutContourGeometry"), &error);
+        const int wallSegments = wall ? wall->property("segmentCount").toInt() : -1;
+        const int contourSegments = contour ? contour->property("segmentCount").toInt() : -1;
+        const int wallTris = wall ? wall->property("triangleCount").toInt() : -1;
+        const int wallVerts = wall ? wall->property("vertexCount").toInt() : -1;
+        const int contourVerts = contour ? contour->property("vertexCount").toInt() : -1;
+        const bool boundOk = wall != nullptr
+                && wall->property("boundList").toList() == bounds;
+        const bool ok = wall != nullptr && contour != nullptr
+                && wallSegments == ny - 1 && contourSegments == ny - 1
+                && wallTris == 2 * (ny - 1) && wallVerts == 4 * (ny - 1)
+                && contourVerts == 2 * (ny - 1) && boundOk;
+        say(QStringLiteral("stock_bind: cut layers segments wall=%1 contour=%2 "
+                           "tris=%3 verts=%4/%5 bounds=%6 ok=%7")
+                .arg(wallSegments).arg(contourSegments).arg(wallTris)
+                .arg(wallVerts).arg(contourVerts).arg(boundOk ? 1 : 0).arg(ok ? 1 : 0));
+        if (!ok) {
+            ++failures;
+            if (!error.isEmpty())
+                warn(QStringLiteral("stock_bind: FAIL геометрии слоёв реза: %1").arg(error));
         }
     }
 

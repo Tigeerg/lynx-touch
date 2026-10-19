@@ -37,7 +37,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.56.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.57.0"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -60,9 +60,15 @@ Item {
                                                         : SceneEnvironment.MSAA
     readonly property int msaaQuality: root.quality === "high" ? SceneEnvironment.High
                                         : SceneEnvironment.Medium
-    // Обводка: safe тоньше (1 px против 2) и смещение глубже - дешевле на
+    // Обводка: safe тоньше (0.8 px против 1.5) и смещение глубже - дешевле на
     // программном растеризаторе; med/high/low держат сегодняшние числа.
-    readonly property real edgeLineWidthPx: root.qualitySafe ? 1.0 : 2.0
+    // Ширина снижена с 2.0/1.0 (замер: рёбра детали, касательные и рёбра
+    // инструмента с оправкой читаются 1.5 px, а на safe 0.8 px - лента с
+    // distance-field AA остаётся резкой). На safe картинка к тому же дороже
+    // читается толще: сцена там рисуется в логических пикселях (DPR 1,
+    // renderTextureWidth ниже) и растягивается на экран, поэтому одна и та же
+    // ширина ложится на больше физических пикселей и выглядит грубее.
+    readonly property real edgeLineWidthPx: root.qualitySafe ? 0.8 : 1.5
     readonly property real edgePolyOffset: root.qualitySafe ? 0.00006 : 0.00003
     readonly property real edgeDepthBias: root.qualitySafe ? -1500 : -1000
     // Шаг пересчёта силуэта: low/safe - каждый 4-й кадр, med/high - каждый.
@@ -100,7 +106,8 @@ Item {
     // The silhouette rim is drawn in world units, so its on-screen width would
     // change with zoom (too thin / invisible when zoomed out). We instead scale
     // the outline radially so the rim stays ~outlinePx pixels at any distance.
-    property real outlinePx: 1.0
+    // Ширина снижена с 1.0: контур детали, резца и оправки читается 0.8 px.
+    property real outlinePx: 0.8
     readonly property real outlineMmPerPx: (2.0 * root.dist * 0.5773503) / Math.max(240, view3d.height)
     function outlineScale(radius) {
         if (!radius || radius <= 0.001) return 1.0
@@ -683,6 +690,9 @@ Item {
                     property real fieldCellMm: path ? path.stockCellMm : 0.5
                     property vector2d fieldCount: Qt.vector2d(path ? path.stockCountX : 0,
                                                              path ? path.stockCountY : 0)
+                    // Вид остатка: обрезка верха стенки берёт глубину той же
+                    // выборкой, что и нарисованный верх (stockshell.frag).
+                    property int stockView: root.stockView
                     property TextureInput stockField: TextureInput {
                         texture: Texture {
                             textureData: path ? path.stockField : null
@@ -814,7 +824,7 @@ Item {
                 // -50000 (передний слой) давал ложный «рентген» детали.
                 // safe - глубже (quality): coarse-точность программного растра.
                 depthBias: root.edgeDepthBias
-                // Constant-width screen-space ribbons (2 px, distance-field AA):
+                // Constant-width screen-space ribbons (1.5 px, distance-field AA):
                 // crisp at any zoom (three.js LineMaterial style: alpha falls off
                 // across fwidth() borders, not by MSAA coverage), depth-tested.
                 materials: CustomMaterial {
@@ -839,7 +849,7 @@ Item {
                 // и сдваиваются со швами. Малый bias + cam-float держат их
                 // чёткими на видимых стенках; safe - глубже (quality).
                 depthBias: root.edgeDepthBias
-                // Constant-width screen-space ribbons (2 px, distance-field AA):
+                // Constant-width screen-space ribbons (1.5 px, distance-field AA):
                 // crisp at any zoom (three.js LineMaterial style: alpha falls off
                 // across fwidth() borders, not by MSAA coverage), depth-tested.
                 materials: CustomMaterial {
@@ -878,6 +888,11 @@ Item {
         // ---- G0 rapids (green); traversed part hidden during playback, far
         // part clipped and faded out when length limiting is on.
         // depthBias -50000: composite last, above the translucent part ----
+        // Ширины у линий УП нет: геометрия - аппаратные GL_LINES (cpp/qt/gv_geometry,
+        // PrimitiveType::Lines), то есть ровно 1 px, и ручки вроде lineWidthPx у
+        // них не завести, не переведя траекторию в ленты. Толще они читаются на
+        // low/safe: там сцена рисуется в логических пикселях (renderTextureWidth)
+        // и растягивается на экран, и один пиксель ложится на больше физических.
         Model {
             visible: root.showToolpath
             geometry: path ? path.rapidGeometry : null
@@ -1505,47 +1520,112 @@ Item {
             root.keyLogState()
     }
 
-    // Счётчик кадров: правый верхний угол, ниже строки подсказок. Строка
-    // подсказок длиннее окна (1024 px) и доходит до этого угла: на одной с ней
-    // высоте цифра сливается с её глифами, поэтому счётчик сдвинут под неё
-    // (topMargin 30 > отступ 10 плюс высота строки), а z держит его поверх.
+    // Счётчик кадров: правый верхний угол. Строки подсказок во всю ширину окна
+    // больше нет (подсказка - колонка в левом углу), поэтому счётчик вернулся на
+    // верхний отступ, а z держит его поверх сцены.
     Text {
         visible: root.showFps
         z: 1
         anchors.right: parent.right
         anchors.rightMargin: 10
         anchors.top: parent.top
-        anchors.topMargin: 30
+        anchors.topMargin: 10
         text: Math.round(root.fpsSmoothed) + " FPS"
         color: "#535C66"
         font.pixelSize: 12
         font.bold: true
     }
 
-    Text {
+    // ---- Подсказка горячих клавиш: компактная колонка в левом верхнем углу ----
+    // Прежде это была одна строка во всю ширину окна: она длиннее 1024 px, лезла
+    // через весь верх сцены и мешала смотреть слиток. Колонка занимает ~210x150 px
+    // в углу, где сцена пуста, и не задевает ни заготовку, ни счётчик кадров.
+    // Клавиши названы латиницей, как на клавиатуре: обработчик Keys сверяет буквы
+    // по физическому скан-коду, поэтому они работают и на русской раскладке
+    // (keyprobe гоняет обе). Состояния (деталь, палитра, скорость, процент и
+    // переключатели) стоят там же, в тех же словах, что у кнопок панели внизу.
+    Rectangle {
+        id: hintPanel
         anchors.left: parent.left
         anchors.top: parent.top
-        anchors.margins: 10
-        text: "v" + root.viewerVersion + "   ·   "
-              + (root.playing ? "\u25B6 " : "\u23F8 ")
-              + Math.round(root.moveLength > 0 ? 100 * root.pathDist / root.moveLength : 0) + "%"
-              + "   \u00D7" + root.speed.toFixed(1)
-              + "   ·   C палитра: " + root.stockPresets[root.stockPreset].name
-              + "   ·   Деталь: " + root.partModeName
-              + "   ·   Пробел — пуск/пауза   ·   Esc — в начало   ·   \u2191/\u2193 — скорость"
-              + "   ·   S заготовка · M деталь · K кожа · G линии УП · L длина · T этапы · PgUp/PgDn кадры"
-              + " · Q качество: " + root.quality
-              + "   ·   E рёбра: " + (root.showBrepEdges ? "вкл" : "выкл")
-              + " · D касательные: " + (root.showTangentLines ? "вкл" : "выкл")
-              + " · F fps: " + (root.showFps ? "вкл" : "выкл")
-              + " · G линии УП: " + (root.showToolpath ? "вкл" : "выкл")
-              + " · K кожа детали: " + (root.showPartSkin ? "вкл" : "выкл")
-              + " · B коробка: " + (root.stockPlainBox ? "вкл" : "выкл")
-              + " · V заготовка насквозь: " + (root.stockGhost ? "вкл" : "выкл")
-              + " · R вид остатка: " + root.stockViewName
-        color: "#535C66"
-        font.pixelSize: 12
-        font.bold: true
+        anchors.margins: 8
+        z: 1
+        width: hintCol.implicitWidth + 16
+        height: hintCol.implicitHeight + 12
+        radius: 6
+        // Фон полупрозрачный, а текст - нет: opacity на прямоугольнике погасил бы
+        // и глифы, и на белом фоне подсказка стала бы бледной.
+        color: Qt.rgba(0.96, 0.97, 0.98, 0.90)
+        border.color: "#D7DBE0"
+        border.width: 1
+
+        Column {
+            id: hintCol
+            x: 8
+            y: 6
+            spacing: 2
+            // Строки - по группам: сверху ход и состояние, ниже клавиши по одной.
+            // Глиф паузы (\u23F8) шрифт не рисует - в кадре на его месте пустой
+            // квадрат, поэтому ход назван словом, как у кнопки панели внизу.
+            Text {
+                text: "v" + root.viewerVersion + "   "
+                      + (root.playing ? "идёт" : "пауза") + " "
+                      + Math.round(root.moveLength > 0 ? 100 * root.pathDist / root.moveLength : 0) + "%"
+                      + "   \u00D7" + root.speed.toFixed(1)
+                color: "#3D454E"
+                font.pixelSize: 10
+                font.bold: true
+            }
+            Text {
+                text: "Пробел пуск/пауза · Esc в начало"
+                color: "#535C66"
+                font.pixelSize: 10
+            }
+            Text {
+                text: "\u2191/\u2193 скорость · Q качество: " + root.quality
+                color: "#535C66"
+                font.pixelSize: 10
+            }
+            Text {
+                text: "S заготовка · M деталь: " + root.partModeName
+                color: "#535C66"
+                font.pixelSize: 10
+            }
+            Text {
+                text: "K кожа: " + (root.showPartSkin ? "вкл" : "выкл")
+                      + " · G линии УП: " + (root.showToolpath ? "вкл" : "выкл")
+                color: "#535C66"
+                font.pixelSize: 10
+            }
+            Text {
+                text: "L длина · T этапы · PgUp/PgDn кадры"
+                color: "#535C66"
+                font.pixelSize: 10
+            }
+            Text {
+                text: "E рёбра: " + (root.showBrepEdges ? "вкл" : "выкл")
+                      + " · D касательные: " + (root.showTangentLines ? "вкл" : "выкл")
+                color: "#535C66"
+                font.pixelSize: 10
+            }
+            Text {
+                text: "F fps: " + (root.showFps ? "вкл" : "выкл")
+                      + " · B коробка: " + (root.stockPlainBox ? "вкл" : "выкл")
+                color: "#535C66"
+                font.pixelSize: 10
+            }
+            Text {
+                text: "V стекло: " + (root.stockGhost ? "вкл" : "выкл")
+                      + " · R вид: " + root.stockViewName
+                color: "#535C66"
+                font.pixelSize: 10
+            }
+            Text {
+                text: "C палитра: " + root.stockPresets[root.stockPreset].name
+                color: "#535C66"
+                font.pixelSize: 10
+            }
+        }
     }
 
     // ---- Mode / playback toolbar (bottom center, two rows) ----

@@ -938,6 +938,64 @@ int main(int argc, char** argv)
         reportCase("stockshell_trim", field.countX(), 0.0, 0.0, ok);
     }
 
+    // 8г. Обрезка верха стенки берёт глубину ТОЙ ЖЕ выборкой, что нарисованный
+    // верх (stockshell.frag, edgeDepth): билинейно по узлам клетки. Прежнее
+    // правило брало ближайший узел - ступеньку по узлам, - и на кромке со снятым
+    // металлом верх стенки расходился с кромкой нарисованного верха на половину
+    // перепада соседних узлов. Случай держит обе половины правила: у ближайшего
+    // узла расхождение есть, у билинейной выборки его нет.
+    {
+        const double cell = 0.5;
+        gv::StockBounds bounds;
+        bounds.xMinMm = -10.0;
+        bounds.xMaxMm = 10.0;
+        bounds.yMinMm = -10.0;
+        bounds.yMaxMm = 10.0;
+        bounds.zMinMm = -10.0;
+        bounds.zMaxMm = 0.0;
+        gv::StockField field;
+        field.reset(bounds, cell);
+        const gv::StockCutter cutter = gv::stockCutter(makeTool(ToolSpec{"FLAT", 6.0}));
+        // Кромка y = yMax снимается на разную глубину по x: у ближайшего узла
+        // обрезка идёт ступенькой, у билинейной выборки - линейно между узлами.
+        field.sweep(cutter, {-8.0, bounds.yMaxMm, -3.0}, {-1.0, bounds.yMaxMm, -3.0});
+        field.sweep(cutter, { 1.0, bounds.yMaxMm, -1.0}, { 8.0, bounds.yMaxMm, -1.0});
+
+        const int iyEdge = field.countY() - 1;
+        const int nx = field.countX();
+        // Правило шейдера (stockshell.frag, edgeDepth): глубина в точке кромки
+        // берётся билинейно по четырём узлам клетки - на габарите это прямая
+        // между соседними узлами кромки.
+        const auto trimDepth = [&](double xMm) {
+            const double hi = double(nx - 1);
+            const double q = std::min(std::max((xMm - bounds.xMinMm) / cell, 0.0), hi);
+            const int i0 = int(std::floor(q));
+            const int i1 = std::min(i0 + 1, nx - 1);
+            const double f = q - double(i0);
+            const double d0 = bounds.zMaxMm - field.heightMm(i0, iyEdge);
+            const double d1 = bounds.zMaxMm - field.heightMm(i1, iyEdge);
+            return d0 + (d1 - d0) * f;
+        };
+        // Край нарисованного верха на кромке - прямая между соседними узлами
+        // (core/stock_sim, stockSurfaceMesh: последний ряд прижат к габариту, а
+        // между узлами меш линеен).
+        double worstNearestMm = 0.0;
+        double worstBilinearMm = 0.0;
+        for (int ix = 0; ix + 1 < nx; ++ix) {
+            const double left = bounds.zMaxMm - field.heightMm(ix, iyEdge);
+            const double right = bounds.zMaxMm - field.heightMm(ix + 1, iyEdge);
+            const double drawn = 0.5 * (left + right);
+            const double xMid = bounds.xMinMm + (double(ix) + 0.5) * cell;
+            worstNearestMm = std::max(worstNearestMm, std::abs(left - drawn));
+            worstBilinearMm = std::max(worstBilinearMm, std::abs(trimDepth(xMid) - drawn));
+        }
+        const bool ok = worstNearestMm >= 0.25 && worstBilinearMm <= 1e-6;
+        std::printf("note stockshell_trim_interp nearest_dev_mm=%.2f "
+                    "bilinear_dev_mm=%.6f\n",
+                    worstNearestMm, worstBilinearMm);
+        reportCase("stockshell_trim_interp", nx - 1, worstBilinearMm, 1e-6, ok);
+    }
+
     // 8в. Кольца обводки оправки и резца: порог перепада profileRingPoints.
     // Кольцо рисуется на настоящем перепаде профиля, но не на звене дуги - иначе
     // каркас тела вращения превращается в клетку. Порог обязан лежать между

@@ -371,6 +371,16 @@ std::shared_ptr<ModelData> readModelData(const QString &path, QString *used_path
 // что у цвета поверхности (stocksurface.frag, свойство cutMm в QML).
 constexpr double STOCK_CUT_MM = 0.05;
 
+// Дробление сетки знакового расстояния для рисования (ядро,
+// stockCutChainDistance): мелкая сетка повторяет саму уточнённую цепочку реза, а
+// не хорду клетки поля, поэтому кромка цвета совпадает с кромкой геометрии. Два
+// звена на клетку: волна нулевого уровня падает вчетверо (замер - случай
+// cut_colour_edge пробника stock_sim_probe), а память и цена тика растут вчетверо
+// - числа там же. Плато - клетка: шире него сторона точки уже не при чём, а
+// окрестность звена мельче вдвое, поэтому и тик дешевле вдвое.
+constexpr int STOCK_CUT_REFINE = 2;
+constexpr double STOCK_CUT_PLATEAU_CELLS = 1.0;
+
 // Точная граница реза и знаковое расстояние до неё (PLAN-STOCK.md, 1.5):
 // отдельное от поля представление. Считается на рабочем потоке и кладётся в
 // готовый payload; поле, его байты и его сверки не трогаются.
@@ -395,16 +405,28 @@ void fillStockBoundary(const gv::PathData &data, const gv::StockBounds &bounds,
         ? QByteArray()
         : QByteArray(reinterpret_cast<const char *>(segments.data()),
                      qsizetype(segments.size() * sizeof(float)));
-    // Радиус плато знакового расстояния - три клетки поля: нулевой уровень между
-    // узлами линеен, поэтому цвет и линия идут по границе, а не по узлу, а за
-    // плато (дальше трёх клеток) градиент нулевой и линии нет.
+    // Знаковое расстояние до точной границы в узлах поля: сторона точки. Нужно
+    // только знаком - сторону узла мелкой сетки берёт из него stockCutChainDistance.
     const std::vector<float> signed_distance = gv::stockCutSignedDistance(
         bounds, field.cellMm(), depth, field.countX(), field.countY(),
         boundary.segments, STOCK_CUT_MM, field.cellMm() * 3.0);
-    payload->cut_dist = signed_distance.empty()
+    // Мелкая сетка знакового расстояния: ею фрагмент рисует цвет и линию границы
+    // (stocksurface.frag), поэтому нулевой уровень повторяет саму цепочку, а не
+    // хорду клетки. Поле, его байты и его сверки не трогаются.
+    const int envRefine = gv::qualityEnvStockCutRefine();
+    const int refine = envRefine > 0 ? envRefine : STOCK_CUT_REFINE;
+    int cut_nx = 0;
+    int cut_ny = 0;
+    const std::vector<float> chain_distance = gv::stockCutChainDistance(
+        bounds, field.cellMm(), signed_distance, field.countX(), field.countY(),
+        boundary.segments, field.cellMm() * STOCK_CUT_PLATEAU_CELLS, refine,
+        &cut_nx, &cut_ny);
+    payload->cut_dist = chain_distance.empty()
         ? QByteArray()
-        : QByteArray(reinterpret_cast<const char *>(signed_distance.data()),
-                     qsizetype(signed_distance.size() * sizeof(float)));
+        : QByteArray(reinterpret_cast<const char *>(chain_distance.data()),
+                     qsizetype(chain_distance.size() * sizeof(float)));
+    payload->cut_count_x = cut_nx;
+    payload->cut_count_y = cut_ny;
     payload->boundary_ms = boundary.buildMs;
 }
 
@@ -987,11 +1009,13 @@ void GcodeToolpath::applyStockPass(const StockPassPayload &payload)
         stock_field_->setTextureData(stock_depth_);
         stock_field_->update();
     }
-    // Знаковое расстояние до точной границы - тем же размером и порядком, что
-    // поле: фрагмент поверхности берёт цвет и линию границы из него
-    // (stocksurface.frag), а не из глубины узла.
-    if (stock_cut_field_ != nullptr && !payload.cut_dist.isEmpty()) {
-        stock_cut_field_->setSize(QSize(stock_count_x_, stock_count_y_));
+    // Знаковое расстояние до уточнённой цепочки - мелкой сеткой (в
+    // STOCK_CUT_REFINE раз чаще поля): фрагмент поверхности берёт цвет и линию
+    // границы из него (stocksurface.frag), а не из глубины узла, поэтому кромка
+    // цвета совпадает с кромкой геометрии. Порядок строк тот же, что у поля.
+    if (stock_cut_field_ != nullptr && !payload.cut_dist.isEmpty()
+            && payload.cut_count_x > 0 && payload.cut_count_y > 0) {
+        stock_cut_field_->setSize(QSize(payload.cut_count_x, payload.cut_count_y));
         stock_cut_field_->setFormat(QQuick3DTextureData::R32F);
         stock_cut_field_->setTextureData(payload.cut_dist);
         stock_cut_field_->update();

@@ -159,8 +159,10 @@ float fieldSample(vec2 uv, vec2 texel)
 
 // Знаковое расстояние до ТОЧНОЙ границы реза в точке, мм: та же билинейная
 // выборка по четырём узлам, что у fieldSample, но по второй текстуре
-// (stockCutField, ядро stockCutSignedDistance). Нулевой уровень между узлами
-// линеен, поэтому цвет и линия идут по границе, а не по ступеням узла поля.
+// (stockCutField, ядро stockCutChainDistance). Сетка её в stockCutRefine раз чаще
+// поля, поэтому нулевой уровень идёт по самой уточнённой цепочке, а не по хорде
+// клетки: билинейная хорда давала волну кромки цвета (случай cut_colour_edge
+// пробника stock_sim_probe). texel - шаг ЭТОЙ сетки, не поля.
 float cutSample(vec2 uv, vec2 texel)
 {
     vec2 lo = texel * 0.5;
@@ -194,6 +196,10 @@ float axisSlope(float depth, float g, float r, float l, float cell, bool jumpR, 
 void MAIN()
 {
     vec2 texel = 1.0 / vec2(textureSize(stockField, 0));
+    // Шаг мелкой сетки знакового расстояния - свой: она чаще поля в
+    // stockCutRefine раз. Выборка по ней (cutSample) обязана идти своим шагом,
+    // иначе билинейные узлы встали бы не там.
+    vec2 cutTexel = 1.0 / vec2(textureSize(stockCutField, 0));
     vec2 low = texel * 0.5;
     vec2 high = vec2(1.0) - low;
     float cell = max(cellMm, 1e-6);
@@ -240,7 +246,7 @@ void MAIN()
     // берутся из знакового расстояния до ТОЧНОЙ границы реза (ядро
     // stockCutSignedDistance): оно независимо от узла поля, поэтому кромка не
     // ступенится. У остальных видов - прежнее: глубина узла против порога.
-    float signedMm = cutExactBoundary ? cutSample(vFieldUv, texel) : (vDepth - cutMm);
+    float signedMm = cutExactBoundary ? cutSample(vFieldUv, cutTexel) : (vDepth - cutMm);
     bool cut = cutExactBoundary ? (signedMm < 0.0) : (vDepth > cutMm);
     vec3 color = (cut ? stockCutColor.rgb : stockRawColor.rgb) * shade;
 

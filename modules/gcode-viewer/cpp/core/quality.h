@@ -115,6 +115,16 @@ inline double qualityEnvStockCellMm()
     return value > 0.0 ? value : 0.0;
 }
 
+// Дробление сетки знакового расстояния для рисования из окружения
+// CNC_STOCK_CUT_REFINE: им меряют волну кромки цвета при другом дроблении, не
+// вводя нового уровня (как CNC_STOCK_CELL меряет узел поля). Пустое или
+// неразбираемое значение - 0, то есть значение по умолчанию (gv_toolpath).
+inline int qualityEnvStockCutRefine()
+{
+    const int value = int(qualityEnvMm("CNC_STOCK_CUT_REFINE", 0.0));
+    return value > 0 ? value : 0;
+}
+
 // Имя уровня без учёта регистра: у соседних флагов окружения (CNC_CPP,
 // CNC_SILHOUETTE) значение тоже читается без регистра.
 inline bool sameLevelName(const char *level, const char *name)

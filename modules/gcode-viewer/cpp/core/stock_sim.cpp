@@ -1464,6 +1464,85 @@ std::vector<float> stockCutSignedDistance(const StockBounds& bounds, double cell
     return out;
 }
 
+std::vector<float> stockCutChainDistance(const StockBounds& bounds, double cellMm,
+                                         const std::vector<float>& signedMm,
+                                         int countX, int countY,
+                                         const std::vector<StockContourSegment>& segments,
+                                         double plateauMm, int refine,
+                                         int* outCountX, int* outCountY)
+{
+    if (outCountX != nullptr) {
+        *outCountX = 0;
+    }
+    if (outCountY != nullptr) {
+        *outCountY = 0;
+    }
+    if (countX < 2 || countY < 2 || !(cellMm > 0.0) || !(plateauMm > 0.0)
+            || refine < 1 || signedMm.size() < std::size_t(countX) * std::size_t(countY)) {
+        return {};
+    }
+    const double h = cellMm / double(refine);
+    const int nfx = (countX - 1) * refine + 1;
+    const int nfy = (countY - 1) * refine + 1;
+    if (outCountX != nullptr) {
+        *outCountX = nfx;
+    }
+    if (outCountY != nullptr) {
+        *outCountY = nfy;
+    }
+    std::vector<float> out(std::size_t(nfx) * std::size_t(nfy), 0.0f);
+    // Сторона точки - билинейно из поля знакового расстояния: у поля нулевой
+    // уровень уже назван стороной цепочки, поэтому знак узла мелкой сетки
+    // согласован с цепочкой. Магнитуда пока - плато.
+    for (int jy = 0; jy < nfy; ++jy) {
+        const double py = bounds.yMinMm + double(jy) * h;
+        const double qy = (py - bounds.yMinMm) / cellMm;
+        const int iy0 = std::max(0, std::min(countY - 2, int(std::floor(qy))));
+        const double fy = std::max(0.0, std::min(1.0, qy - double(iy0)));
+        for (int jx = 0; jx < nfx; ++jx) {
+            const double px = bounds.xMinMm + double(jx) * h;
+            const double qx = (px - bounds.xMinMm) / cellMm;
+            const int ix0 = std::max(0, std::min(countX - 2, int(std::floor(qx))));
+            const double fx = std::max(0.0, std::min(1.0, qx - double(ix0)));
+            const auto at = [&](int ix, int iy) {
+                return double(signedMm[std::size_t(iy) * std::size_t(countX)
+                                       + std::size_t(ix)]);
+            };
+            const double a = at(ix0, iy0) * (1.0 - fx) + at(ix0 + 1, iy0) * fx;
+            const double b = at(ix0, iy0 + 1) * (1.0 - fx) + at(ix0 + 1, iy0 + 1) * fx;
+            const double s = a * (1.0 - fy) + b * fy;
+            out[std::size_t(jy) * std::size_t(nfx) + std::size_t(jx)] =
+                    float(s < 0.0 ? -plateauMm : plateauMm);
+        }
+    }
+    // Точное расстояние до цепочки в пределах плато: каждый узел окрестности
+    // звена берёт меньшую по модулю магнитуду со своим знаком.
+    const double rad = plateauMm;
+    for (const StockContourSegment& segment : segments) {
+        const double x0 = std::min(segment.x0Mm, segment.x1Mm) - rad;
+        const double x1 = std::max(segment.x0Mm, segment.x1Mm) + rad;
+        const double y0 = std::min(segment.y0Mm, segment.y1Mm) - rad;
+        const double y1 = std::max(segment.y0Mm, segment.y1Mm) + rad;
+        const int jx0 = std::max(0, int(std::ceil((x0 - bounds.xMinMm) / h)));
+        const int jx1 = std::min(nfx - 1, int(std::floor((x1 - bounds.xMinMm) / h)));
+        const int jy0 = std::max(0, int(std::ceil((y0 - bounds.yMinMm) / h)));
+        const int jy1 = std::min(nfy - 1, int(std::floor((y1 - bounds.yMinMm) / h)));
+        for (int jy = jy0; jy <= jy1; ++jy) {
+            const double py = bounds.yMinMm + double(jy) * h;
+            for (int jx = jx0; jx <= jx1; ++jx) {
+                const double px = bounds.xMinMm + double(jx) * h;
+                const double dist = pointSegmentDistanceMm(px, py, segment.x0Mm, segment.y0Mm,
+                                                           segment.x1Mm, segment.y1Mm);
+                const std::size_t idx = std::size_t(jy) * std::size_t(nfx) + std::size_t(jx);
+                if (dist < std::fabs(double(out[idx]))) {
+                    out[idx] = float(out[idx] < 0.0f ? -dist : dist);
+                }
+            }
+        }
+    }
+    return out;
+}
+
 StockWallMesh stockCutWallFromSegments(const StockBounds& bounds, double cellMm,
                                        const std::vector<float>& depthMm, int countX, int countY,
                                        const std::vector<StockContourSegment>& segments)

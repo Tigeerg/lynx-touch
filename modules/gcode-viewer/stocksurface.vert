@@ -208,8 +208,12 @@ float steppedDepth(vec2 uv, vec2 texel, out float snapped)
               && ((d01 > cutMm) == (d01 > mid)) && ((d11 > cutMm) == (d11 > mid));
     if (!split)
         return depth > mid ? deep : shallow;  // уступ без границы: ближний уровень
-    // Сторону точки называет знак точной границы: та же линейная выборка
-    // знакового расстояния, что у цвета и линии во фрагменте (cutSample).
+    // Сторону точки называет знак точной границы. Выборка - по четырём углам
+    // КЛЕТКИ поля (мелкая сетка stockCutField здесь только читается по этим
+    // углам), и она нужна лишь знаком: сдвиг texcoord граничной вершины (4 %
+    // клетки) перекрывает отличие мелкой сетки от углов, а позиция вершины стоит
+    // ровно на границе. Цвет и линия во фрагменте берут ту же сетку своим шагом
+    // (stocksurface.frag, cutSample).
     float s = mix(mix(texture(stockCutField, vec2(c0.x, c0.y)).r,
                       texture(stockCutField, vec2(c1.x, c0.y)).r, f.x),
                   mix(texture(stockCutField, vec2(c0.x, c1.y)).r,

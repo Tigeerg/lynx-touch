@@ -145,13 +145,18 @@ struct StockPassPayload {
     // Точная граница реза (PLAN-STOCK.md, 1.5): отрезки полилинии, 4 float32 на
     // отрезок (x0, y0, x1, y1), машинные мм. Отдельное от поля представление.
     QByteArray boundary;
-    // Знаковое расстояние до точной границы в узлах поля, R32F: отрицательно
-    // там, где снято. Им рисуется цвет и линия границы (stocksurface.frag).
+    // Знаковое расстояние до УТОЧНЁННОЙ цепочки реза на сетке, в stockCutRefine
+    // раз более частой, чем поле, R32F: отрицательно там, где снято. Им рисуется
+    // цвет и линия границы (stocksurface.frag), поэтому кромка цвета совпадает с
+    // кромкой геометрии. Размер - cut_count_x * cut_count_y (ядро,
+    // stockCutChainDistance).
     QByteArray cut_dist;
     QVariantList bounds;               // [xmin, xmax, ymin, ymax, zmin, zmax], мм
     double cell_mm = 0.5;
     int count_x = 0;
     int count_y = 0;
+    int cut_count_x = 0;               // узлов мелкой сетки знакового расстояния
+    int cut_count_y = 0;
     double target_mm = 0.0;            // длина пути, съём до которой в поле
     double total_mm = 0.0;
     double time_ms = 0.0;              // обход; у полного прохода ещё и сброс поля

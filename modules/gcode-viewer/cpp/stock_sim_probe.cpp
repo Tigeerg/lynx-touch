@@ -2195,8 +2195,14 @@ int main(int argc, char** argv)
                             name, cell, coarseStat.second, fine01, fine006, exactStat.second,
                             drawnStat.second, int(boundary.segments.size()), int(coarse.size()),
                             boundary.buildMs, boundary.evaluations);
+                // Число звеньев уточнённой границы: переход между рёбрами клетки
+                // раздроблен на BOUNDARY_SUBDIV_PER_CELL звеньев, поэтому прежнее
+                // равенство coarse.size() сменилось на произведение. Это следствие
+                // дробления, а не ослабление допуска: переходы (концы цепочек) те
+                // же, и они по-прежнему мерятся против аналитики.
                 shapesOk = shapesOk && !boundary.segments.empty()
-                        && boundary.segments.size() == coarse.size();
+                        && boundary.segments.size()
+                                == coarse.size() * std::size_t(gv::BOUNDARY_SUBDIV_PER_CELL);
                 exactChecked += coarseStat.first + exactStat.first;
                 drawnChecked += drawnStat.first;
                 drawnWorst = std::max(drawnWorst, drawnStat.second);
@@ -2213,6 +2219,155 @@ int main(int argc, char** argv)
         reportCase("boundary_wall", exactChecked, wallExactWorst, 1e-3, shapesOk);
         reportCase("boundary_ball", exactChecked, ballExactWorst, 1e-3, shapesOk);
         reportCase("boundary_drawn", drawnChecked, drawnWorst, 0.05, drawnChecked > 0);
+
+        // 7д. Цепочка границы идёт по УРОВНЮ реза, а не по хорде
+        // (stockCutBoundary, subdivPerCell): между переходами клетки кладутся
+        // подточки, спущенные на уровень вдоль нормали клетки. Меры: излом на
+        // вершине цепочки в градусах (было - по клетке), отклонение вершин от
+        // аналитической границы (уровень шара - круг s05) и от ПРЕЖНЕЙ цепочки
+        // (хорды), число подточек на клетку. Прежняя цепочка (subdivPerCell = 1)
+        // меряется здесь же: без неё случай слеп.
+        {
+            const double cell = 0.5;
+            const double cutMm = 0.05;
+            const double r = 3.0;
+            const double tipZ = -1.0;
+            gv::StockBounds bounds;
+            bounds.xMinMm = -5.0;
+            bounds.xMaxMm = 5.0;
+            bounds.yMinMm = -5.0;
+            bounds.yMaxMm = 5.0;
+            bounds.zMinMm = -5.0;
+            bounds.zMaxMm = 0.0;
+            const double chord = cutMm + r + tipZ - bounds.zMaxMm;
+            const double s05 = std::sqrt(std::max(0.0, r * r - chord * chord));
+
+            const std::string program =
+                "G21 G90\n"
+                "G0 X0 Y0 Z5\n"
+                "G1 Z-1 F100\n";
+            const gv::ParseResult parsed = gv::parseGcode(program);
+            const gv::PathData data = gv::prepareOrdered(parsed.ordered, parsed.stages);
+            const gv::ToolInfo tool = makeTool(ToolSpec{ "BALL", 6.0 });
+            const gv::StockRunResult run = gv::simulateStock(data, bounds, cell, tool);
+            const gv::StockField& field = run.field;
+            const int nx = field.countX();
+            const int ny = field.countY();
+            const std::vector<gv::StockCutter> cutters = gv::stockCutterPlan(data, tool);
+            const gv::StockBoundaryResult coarse = gv::stockCutBoundary(
+                data, bounds, cell, cutters, field.depthMm(), nx, ny, cutMm, nullptr, 24, 1);
+            const gv::StockBoundaryResult fine = gv::stockCutBoundary(
+                data, bounds, cell, cutters, field.depthMm(), nx, ny, cutMm);
+
+            // Излом на вершине цепочки: звенья склеиваются по общим концам
+            // (шаг CHAIN_JOIN_MM), у каждой внутренней вершины берётся угол между
+            // соседними звеньями. Цепочка клетки без дробления - хорда, и излом
+            // на её конце - это перелом на клетке; у дроблённой цепочки вершины
+            // стоят на самом уровне.
+            const auto turnStats = [](const std::vector<gv::StockContourSegment>& segs,
+                                      std::vector<double>& turns, int& vertices) {
+                constexpr double JOIN_MM = 1e-6;
+                std::vector<char> used(segs.size(), 0);
+                for (std::size_t s = 0; s < segs.size(); ++s) {
+                    if (used[s] != 0) {
+                        continue;
+                    }
+                    std::vector<std::array<double, 2>> pts{ { segs[s].x0Mm, segs[s].y0Mm },
+                                                            { segs[s].x1Mm, segs[s].y1Mm } };
+                    used[s] = 1;
+                    for (bool grew = true; grew;) {
+                        grew = false;
+                        for (std::size_t k = 0; k < segs.size(); ++k) {
+                            if (used[k] != 0) {
+                                continue;
+                            }
+                            const std::array<double, 2> ends[2] = {
+                                { segs[k].x0Mm, segs[k].y0Mm }, { segs[k].x1Mm, segs[k].y1Mm } };
+                            for (int e = 0; e < 2; ++e) {
+                                if (std::hypot(pts.back()[0] - ends[e][0],
+                                               pts.back()[1] - ends[e][1]) <= JOIN_MM) {
+                                    pts.push_back(ends[1 - e]);
+                                    used[k] = 1;
+                                    grew = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    for (std::size_t i = 1; i + 1 < pts.size(); ++i) {
+                        const double ax = pts[i][0] - pts[i - 1][0];
+                        const double ay = pts[i][1] - pts[i - 1][1];
+                        const double bx = pts[i + 1][0] - pts[i][0];
+                        const double by = pts[i + 1][1] - pts[i][1];
+                        const double la = std::hypot(ax, ay);
+                        const double lb = std::hypot(bx, by);
+                        if (la <= 0.0 || lb <= 0.0) {
+                            continue;
+                        }
+                        const double cosA = (ax * bx + ay * by) / (la * lb);
+                        turns.push_back(std::acos(std::max(-1.0, std::min(1.0, cosA)))
+                                        * 180.0 / PI);
+                        ++vertices;
+                    }
+                }
+            };
+            std::vector<double> turnsCoarse;
+            std::vector<double> turnsFine;
+            int vertCoarse = 0;
+            int vertFine = 0;
+            turnStats(coarse.segments, turnsCoarse, vertCoarse);
+            turnStats(fine.segments, turnsFine, vertFine);
+
+            // Отклонение вершин уточнённой цепочки от аналитической границы и от
+            // прежней цепочки (хорд): первое - точность уровня, второе - насколько
+            // уточнение сдвинуло линию.
+            double levelWorst = 0.0;
+            double chordWorst = 0.0;
+            for (const gv::StockContourSegment& s : fine.segments) {
+                const std::array<std::array<double, 2>, 2> ends{ {
+                    { s.x0Mm, s.y0Mm }, { s.x1Mm, s.y1Mm } } };
+                for (const std::array<double, 2>& p : ends) {
+                    levelWorst = std::max(levelWorst, std::fabs(std::hypot(p[0], p[1]) - s05));
+                    double best = std::numeric_limits<double>::max();
+                    for (const gv::StockContourSegment& c : coarse.segments) {
+                        best = std::min(best, segmentDistanceMm(p[0], p[1], c.x0Mm, c.y0Mm,
+                                                               c.x1Mm, c.y1Mm));
+                    }
+                    chordWorst = std::max(chordWorst, best);
+                }
+            }
+            // Точки на клетку: у дроблённой цепочки звеньев в subdiv раз больше,
+            // подточек на переход - subdiv - 1. unprojected - подточки, которым
+            // уровня рядом не нашлось: у гладкого среза их нет вовсе.
+            const double perCell = double(fine.segments.size())
+                    / double(coarse.segments.size());
+            std::printf("note boundary_refined cell_mm=%.2f subdiv=%d per_cell=%.2f "
+                        "turn_coarse_deg=%.3f turn_fine_deg=%.3f median_coarse_deg=%.3f "
+                        "median_fine_deg=%.3f checked_coarse=%d checked_fine=%d level_mm=%.2e "
+                        "chord_mm=%.2e unprojected=%d\n",
+                        cell, gv::BOUNDARY_SUBDIV_PER_CELL, perCell,
+                        turnsCoarse.empty() ? 0.0 : *std::max_element(turnsCoarse.begin(),
+                                                                      turnsCoarse.end()),
+                        turnsFine.empty() ? 0.0 : *std::max_element(turnsFine.begin(),
+                                                                    turnsFine.end()),
+                        median(turnsCoarse), median(turnsFine), vertCoarse, vertFine,
+                        levelWorst, chordWorst, fine.unprojected);
+            // Сверка: уточнённая цепочка стоит на уровне шара (не дальше 1e-6 мм,
+            // как и точная граница), излом вершины упал в разы (было - излом
+            // клетки), сдвиг от прежней цепочки - сагитта хорды (десятые доли
+            // клетки, а не миллиметры), звеньев на клетку ровно subdiv, а подточек,
+            // оставшихся на хорде, у гладкого среза нет.
+            reportCase("boundary_refined", vertFine, levelWorst, 1e-6,
+                       levelWorst <= 1e-6 && chordWorst <= 0.1 && fine.unprojected == 0
+                           && std::fabs(perCell - double(gv::BOUNDARY_SUBDIV_PER_CELL)) <= 1e-9
+                           && !turnsFine.empty() && !turnsCoarse.empty()
+                           && *std::max_element(turnsFine.begin(), turnsFine.end())
+                                  * 2.0
+                                  < *std::max_element(turnsCoarse.begin(), turnsCoarse.end())
+                           && *std::max_element(turnsFine.begin(), turnsFine.end()) < 5.0
+                           && *std::max_element(turnsCoarse.begin(), turnsCoarse.end()) > 8.0
+                           && vertFine > 0);
+        }
 
         // Инкрементальный тик: граница с состоянием (кэш) после подрастания поля
         // обязана совпасть с полной сборкой отрезок в отрезок, а цена - упасть.
@@ -2716,10 +2871,10 @@ int main(int argc, char** argv)
                           (cell < 0.35) ? "0_2" : "0_5");
             printPhase(name, boundaryMs);
             std::printf("note boundary_price cell=%.1f segments=%d evaluations=%lld "
-                        "boundary_ms=%.1f sd_ms=%.1f boundary_bytes=%lld sd_bytes=%lld\n",
+                        "unprojected=%d boundary_ms=%.1f sd_ms=%.1f boundary_bytes=%lld sd_bytes=%lld\n",
                         cell, int(boundary.segments.size()), boundary.evaluations,
-                        boundaryMs, sdMs, (long long)boundary.segments.size() * 16,
-                        (long long)sd.size() * 4);
+                        boundary.unprojected, boundaryMs, sdMs,
+                        (long long)boundary.segments.size() * 16, (long long)sd.size() * 4);
 
             // Сколько уступов поля Test_model отдано порогу уступа: перепад
             // соседних узлов до клетка - настоящий склон (усреднение верно),

@@ -486,9 +486,19 @@ says.
   and `steep_slope_drawn` — a 45 degree cone): the deviation of the drawing from the nearest level 0.4 / 2.0 mm
   -> 0, vertices between the levels 1 -> 0, the transition strip 0.5 -> 0.25 mm, the tilt from the vertical
   32.0 -> 17.4 degrees (at a 0.8 step; 7.1 -> 3.6 at 4.0), and on a slope the drawing stays bilinear (deviation
-  0). The step removed the slope but not the subdivision: the transition keeps one sub-cell (cell / `stockSubdiv`
-  = 0.25 mm), and the boundary line is not drawn on the transition face itself — the edge there is carried by the
-  vertical wall layer.
+  0). The step is now removed by GEOMETRY (the plan, stage 1.3): the drawn stock is cut along the same exact
+  boundary into two halves — the top of the untouched material and the floor of the cut (`stockLayerSurface`,
+  `StockCutLayerGeometry`) — their edges meet on the boundary, so the transition strip became 0.00 mm and the tilt
+  0.00 degrees (it was 0.25 mm and 17.4 with the stepping rule, 0.50 and 32.0 with the bilinear one), and the
+  vertical face between the halves is carried by the wall layer. The side of a boundary vertex is named by its
+  texcoord, shifted by 4 % of a cell into its own half (0.02 mm), and only where the rule steps: exactly on the
+  zero level of the signed distance the sign is a coin flip (the zero level lies 0.011 mm away from the polyline),
+  while the vertex position stays on the boundary; on a slope the texcoord does not move and the halves meet
+  vertex to vertex. The wall bottom is taken by the floor-half rule (`stockCutWallFromLayer`,
+  `stockLayerDepthMm`), so it lands on the floor edge instead of the bilinear field depth at the contour point
+  (0.32 against 0.8 at a 0.8 mm step). The layers are drawn by the views with a smooth top (smooth and exact
+  contour, `stockLayersDrawn`); the exact view (its subject is the node steps) and the rounded one keep the former
+  field mesh.
 - The exact cut boundary is a representation OF ITS OWN, independent of the field node (the plan, stage 1.5).
   The core computes it from the moves (`core/stock_sim`, `stockCutBoundary`): `marching squares` over the signs
   of the field nodes picks the candidate edges, and the crossing position on an edge is refined by bisecting the
@@ -507,9 +517,12 @@ says.
   distance 236 KiB (the same as the field); a 0.2 node — 5824 segments, 302 ms and 91 KiB, 1.44 MiB. A live tick
   recomputes only the cells whose nodes changed (the `StockBoundaryCache` state): 1.1-2.4 ms per step of
   0.1-0.5 % of the path length.
-- The limits of the layered surface are named, not hidden. The cut wall is a seam `cutMm` tall (0.05 mm; about
-  0.1 pixel on a 1024x600 frame at a 341 mm distance) on the plane of the untouched top, so the boundary line
-  reads it, not the wall itself. The field top between nodes is still a height map (bilinear), while the colour
+- The limits of the layered surface are named, not hidden. The vertical face between the top and the floor is
+  carried by the wall layer, and at a step it is as tall as the step (0.8 mm), not a seam: before, the wall put
+  its bottom on the bilinear field depth at the contour point (0.32 at a 0.8 mm step) and hung, not reaching the
+  floor. The edge is still read by the boundary line: on a slope the wall degenerates into a seam `cutMm` tall
+  (0.05 mm; about 0.1 pixel on a 1024x600 frame at a 341 mm distance). The field top between nodes is still a
+  height map (bilinear), while the colour
   and the line boundary follow the exact representation: the former caveat "node steps are cured by a finer node"
   is closed by a representation of its own, not by subdividing the field. The sagitta of the exact polyline is a
   chord between two sub-cell crossings (0.010 mm at a 0.5 node and radius 3), not an arc; the field node still

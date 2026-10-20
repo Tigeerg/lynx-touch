@@ -186,6 +186,18 @@ double segmentDistanceMm(double px, double py,
     return std::hypot(px - (ax + dx * t), py - (ay + dy * t));
 }
 
+// Расстояние от точки до набора отрезков границы, мм: им меряется, стоит ли
+// вершина кромки на полилинии границы реза.
+double contourDistanceMm(double px, double py,
+                         const std::vector<gv::StockContourSegment>& segments)
+{
+    double best = std::numeric_limits<double>::max();
+    for (const gv::StockContourSegment& s : segments) {
+        best = std::min(best, segmentDistanceMm(px, py, s.x0Mm, s.y0Mm, s.x1Mm, s.y1Mm));
+    }
+    return best;
+}
+
 // Дайджест поля (FNV-1a 64 по сырым float32): прогоны одного пути, инструмента
 // и узла обязаны дать одно и то же поле бит в бит. Порядок узлов - порядок
 // depthMm (строка по Y), он же порядок буфера R32F.
@@ -1594,21 +1606,130 @@ int main(int argc, char** argv)
             const bool rimInsideOld = lastDeepOld < yRim && yRim < firstShallowOld;
             const double tiltNew = std::atan2(bandNew, deepLevel - shallowLevel) * 180.0 / PI;
             const double tiltOld = std::atan2(bandOld, deepLevel - shallowLevel) * 180.0 / PI;
+            // Слоистая поверхность (3.1/1.3): те же две половины, разрезанные по
+            // ТОЧНОЙ границе реза (stockLayerSurface). Кромка обеих половин стоит
+            // НА границе, поэтому полоса перехода между уровнями - это расстояние
+            // между кромками, и оно ноль: наклонной грани у кромки нет вовсе.
+            // Высоты читаются зеркалом шейдера по ЕЁ texcoord (DrawnField::step) -
+            // им же проверяется сдвиг texcoord граничной вершины: без сдвига знак
+            // знакового расстояния на самой границе - монетка, и низ кромки встал
+            // бы на уровень верха.
+            const gv::StockLayerSurface layers = gv::stockLayerSurface(
+                    bounds, cell, field.depthMm(), nx, ny, cutMm, boundary.segments);
+            const gv::StockWallMesh layerWall = gv::stockCutWallFromLayer(
+                    bounds, cell, field.depthMm(), nx, ny, cutMm, boundary.segments);
+            double layerTopMin = 1e9;         // кромка верха в колонке у x = 0
+            double layerFloorMax = -1e9;      // кромка дна там же
+            double layerLevelDev = 0.0;       // высота против уровня своей половины
+            double layerSideDev = 0.0;        // зеркало шейдера против правила слоя
+            double layerEdgeDev = 0.0;        // кромка против полилинии границы
+            double layerWallDev = 0.0;        // низ стенки против кромки дна
+            int layerShifted = 0;             // граничных вершин со сдвинутым texcoord
+            int layerRamp = 0;                // треугольников с разными высотами
+            for (std::size_t i = 0; i < layers.vertices.size() / 5; ++i) {
+                const double x = double(layers.vertices[i * 5]);
+                const double y = double(layers.vertices[i * 5 + 1]);
+                const double u = double(layers.vertices[i * 5 + 3]);
+                const double v = double(layers.vertices[i * 5 + 4]);
+                if (std::fabs(x) > 0.05 || std::fabs(y - yRim) > windowMm) {
+                    continue;
+                }
+                const bool floor = i >= std::size_t(layers.topVertexCount);
+                const double drawnMm = drawn.step(u, v);
+                const gv::StockLayer layer =
+                        floor ? gv::StockLayer::Floor : gv::StockLayer::Top;
+                layerSideDev = std::max(layerSideDev,
+                                        std::fabs(drawnMm - gv::stockLayerDepthMm(
+                                                bounds, cell, field.depthMm(), nx, ny,
+                                                cutMm, x, y, layer)));
+                layerLevelDev = std::max(layerLevelDev,
+                                         std::fabs(drawnMm - (floor ? deepLevel : shallowLevel)));
+                if (std::fabs(drawn.signedAt(u, v)) <= 0.03) {
+                    layerEdgeDev = std::max(layerEdgeDev,
+                                            contourDistanceMm(x, y, boundary.segments));
+                }
+                const double uOfPos = ((x - bounds.xMinMm) / cell + 0.5) / double(nx);
+                const double vOfPos = ((y - bounds.yMinMm) / cell + 0.5) / double(ny);
+                if (std::fabs(u - uOfPos) > 1e-12 || std::fabs(v - vOfPos) > 1e-12) {
+                    ++layerShifted;
+                }
+                if (floor) {
+                    layerFloorMax = std::max(layerFloorMax, y);
+                } else {
+                    layerTopMin = std::min(layerTopMin, y);
+                }
+            }
+            // Треугольник в окне с РАЗНЫМИ высотами вершин - это и есть наклонная
+            // грань перехода: у половины с уступом все её вершины стоят на её
+            // уровне. Прежняя билинейная полоса давала по треугольнику на
+            // подклетку, ступенчатая - один на клетку.
+            for (std::size_t t = 0; t + 2 < layers.indices.size(); t += 3) {
+                double heights[3] = { 0.0, 0.0, 0.0 };
+                bool inWindow = true;
+                for (int k = 0; k < 3; ++k) {
+                    const std::size_t iv = std::size_t(layers.indices[t + std::size_t(k)]);
+                    const double x = double(layers.vertices[iv * 5]);
+                    const double y = double(layers.vertices[iv * 5 + 1]);
+                    if (std::fabs(x) > 0.05 || std::fabs(y - yRim) > windowMm) {
+                        inWindow = false;
+                        break;
+                    }
+                    heights[k] = drawn.step(double(layers.vertices[iv * 5 + 3]),
+                                            double(layers.vertices[iv * 5 + 4]));
+                }
+                if (!inWindow) {
+                    continue;
+                }
+                const double lo = std::min(heights[0], std::min(heights[1], heights[2]));
+                const double hi = std::max(heights[0], std::max(heights[1], heights[2]));
+                if (hi - lo > tol) {
+                    ++layerRamp;
+                }
+            }
+            // Низ стенки в окне обязан лечь на кромку дна (уровень дна): у уступа
+            // билинейная глубина в точке контура вдвое мельче кромки.
+            for (std::size_t i = 0; i < layerWall.vertices.size() / 4; ++i) {
+                const float* p = &layerWall.vertices[i * 4];
+                if (std::fabs(double(p[2]) - double(bounds.zMaxMm)) < 1e-9) {
+                    continue;                    // верх квада стенки
+                }
+                if (std::fabs(double(p[0])) > 0.05
+                        || std::fabs(double(p[1]) - yRim) > windowMm) {
+                    continue;
+                }
+                layerWallDev = std::max(layerWallDev, std::fabs(double(p[3]) - deepLevel));
+            }
+            const double layerBand = layerFloorMax - layerTopMin;
+            const double layerTilt =
+                    std::atan2(std::fabs(layerBand), deepLevel - shallowLevel) * 180.0 / PI;
             std::printf("note island_rim_drawn depth_mm=%.2f cell_mm=%.2f subdiv=%d rim_mm=%.2f "
                         "level_dev_new=%.2e level_dev_old=%.2e ramped_new=%d ramped_old=%d "
                         "band_new=%.2f band_old=%.2f tilt_new_deg=%.1f tilt_old_deg=%.1f "
-                        "plateau_new=%.1e plateau_old=%.1e wall_segments=%d\n",
+                        "plateau_new=%.1e plateau_old=%.1e wall_segments=%d "
+                        "layer_band=%.2f layer_tilt_deg=%.2f layer_level_mm=%.1e "
+                        "layer_side_mm=%.1e layer_edge_mm=%.1e layer_wall_mm=%.1e "
+                        "layer_ramp=%d layer_shifted=%d layer_floor_tri=%d\n",
                         depth, cell, subdiv, yRim, levelNew, levelOld, rampedNew, rampedOld,
                         bandNew, bandOld, tiltNew, tiltOld, plateauNew, plateauOld,
-                        int(boundary.segments.size()));
-            // Сверка: рисованный верх стоит на своём уровне (level_new = 0), ни
-            // один подузел кромки не остался между уровнями (ramped_new = 0),
-            // площадки острова и дна ровные, а подклетка перехода накрывает саму
-            // кромку. Прежнее правило обязано быть красным здесь - иначе случай
-            // слеп: у него полперепада высоты на подузле кромки.
-            reportCase("island_rim_drawn", drawnY, levelNew, tol,
-                       rampedNew == 0 && rimInsideNew && plateauNew <= tol
+                        int(boundary.segments.size()), layerBand, layerTilt, layerLevelDev,
+                        layerSideDev, layerEdgeDev, layerWallDev, layerRamp, layerShifted,
+                        layers.floorTriangles());
+            // Сверка: половины сходятся ровно на точной границе (полоса 0 и наклон
+            // 0), высота кромки стоит на уровне СВОЕЙ половины, зеркало шейдера
+            // совпадает с правилом слоя, texcoord граничной вершины назвал сторону
+            // (layer_shifted), низ стенки лёг на кромку дна, а наклонных
+            // треугольников у кромки не осталось. Прежние правила обязаны быть
+            // красными здесь же - иначе случай слеп: у билинейного рисованного
+            // подузла кромки полперепада (0.4 мм на уступе 0.8), у ступенчатого -
+            // полоса 0.25 мм и 17.4 градуса.
+            reportCase("island_rim_drawn", drawnY, layerBand, tol,
+                       layerTilt <= tol && layerLevelDev <= tol && layerSideDev <= 1e-6
+                           && layerEdgeDev <= 1e-6 && layerWallDev <= 1e-6
+                           && layerRamp == 0 && layerShifted > 0
+                           && layerTopMin <= yRim + tol && layerFloorMax >= yRim - tol
+                           && rampedNew == 0 && rimInsideNew && plateauNew <= tol
                            && std::fabs(bandNew - cell / double(subdiv)) <= tol
+                           && tiltNew > 1.0
                            && levelOld > 0.4 * (deepLevel - shallowLevel)
                            && rampedOld > 0 && tiltOld > tiltNew
                            && boundary.segments.size() > 0);
@@ -1695,6 +1816,172 @@ int main(int argc, char** argv)
                     cell, checked, maxDev, snapWouldBe, int(boundary.segments.size()));
         reportCase("steep_slope_drawn", checked, maxDev, 1e-9,
                    checked > 0 && snapWouldBe > 0.05 && boundary.segments.size() > 0);
+    }
+
+    // 7з. Слоистая поверхность (PLAN-STOCK.md, 3.1; этап 1.3 плана): верх
+    // нетронутого материала и дно реза, разрезанные по ТОЧНОЙ границе реза.
+    // Случай держит четыре вещи разом.
+    //   - Половины делят габарит без щели и нахлёста: сумма площадей их
+    //     треугольников равна площади заготовки (полилиния границы у половин
+    //     общая, поэтому равенство точное).
+    //   - Кромка половин стоит НА полилинии границы (не дальше 1e-9 мм), а сама
+    //     половина не заходит на чужую сторону дальше волоска (сдвиг texcoord
+    //     0.02 мм плюс ошибка нулевого уровня 0.011 мм - случай boundary_drawn).
+    //   - Высота вершины, прочитанная зеркалом шейдера по ЕЁ texcoord
+    //     (DrawnField::step), равна правилу её половины (stockLayerDepthMm): без
+    //     сдвига texcoord у граничной вершины знак расстояния - монетка, и низ
+    //     кромки встал бы на уровень верха.
+    //   - Низ стенки совпадает с кромкой дна: щели между стенкой и дном нет.
+    // Плюс склон ступенью не портится: там, где правило не ступает, рисованное
+    // совпадает с билинейным полем (то же держит steep_slope_drawn).
+    {
+        const double cell = 0.5;
+        const double cutMm = 0.05;
+        gv::StockBounds bounds;
+        bounds.xMinMm = -5.0;
+        bounds.xMaxMm = 5.0;
+        bounds.yMinMm = -5.0;
+        bounds.yMaxMm = 5.0;
+        bounds.zMinMm = -5.0;
+        bounds.zMaxMm = 0.0;
+        gv::StockField field;
+        field.reset(bounds, cell);
+        const gv::StockCutter cutter = gv::stockCutter(makeTool(ToolSpec{ "BALL", 6.0 }));
+        field.sweepExact(cutter, { 0.0, 0.0, -1.0 }, { 0.0, 0.0, -1.0 });
+        const int nx = field.countX();
+        const int ny = field.countY();
+        const std::vector<gv::StockContourSegment> contour =
+                gv::stockCutContour(bounds, cell, field.depthMm(), nx, ny, cutMm);
+        const std::vector<float> signedMm = gv::stockCutSignedDistance(
+                bounds, cell, field.depthMm(), nx, ny, contour, cutMm, cell * 3.0);
+        DrawnField drawn;
+        drawn.bounds = &bounds;
+        drawn.cellMm = cell;
+        drawn.countX = nx;
+        drawn.countY = ny;
+        drawn.depth = &field.depthMm();
+        drawn.signedMm = &signedMm;
+        drawn.cutMm = cutMm;
+
+        const gv::StockLayerSurface layers = gv::stockLayerSurface(
+                bounds, cell, field.depthMm(), nx, ny, cutMm, contour);
+        const gv::StockWallMesh wall = gv::stockCutWallFromLayer(
+                bounds, cell, field.depthMm(), nx, ny, cutMm, contour);
+
+        // Сумма площадей половин: треугольники - в машинных мм, площадь габарита
+        // известна точно.
+        double areaMm2 = 0.0;
+        for (std::size_t t = 0; t + 2 < layers.indices.size(); t += 3) {
+            const std::size_t i0 = std::size_t(layers.indices[t]) * 5;
+            const std::size_t i1 = std::size_t(layers.indices[t + 1]) * 5;
+            const std::size_t i2 = std::size_t(layers.indices[t + 2]) * 5;
+            const double ax = double(layers.vertices[i0]);
+            const double ay = double(layers.vertices[i0 + 1]);
+            const double bx = double(layers.vertices[i1]);
+            const double by = double(layers.vertices[i1 + 1]);
+            const double cx = double(layers.vertices[i2]);
+            const double cy = double(layers.vertices[i2 + 1]);
+            areaMm2 += 0.5 * std::fabs((bx - ax) * (cy - ay) - (by - ay) * (cx - ax));
+        }
+        const double wantAreaMm2 = (bounds.xMaxMm - bounds.xMinMm) * (bounds.yMaxMm - bounds.yMinMm);
+
+        // (б, в) Кромка, сторона и высота каждой вершины по её же texcoord.
+        const double hairMm = 0.05;              // десятая клетки: поле само гуляет
+        double edgeWorst = 0.0;                  // кромка на полилинии, мм
+        double sideWorst = 0.0;                  // заход на чужую сторону, мм: у
+                                                 // ступающей вершины его держит
+                                                 // зеркало шейдера (ruleWorst),
+                                                 // здесь - только мера гуляния
+                                                 // самого поля (см. hairMm)
+        double ruleWorst = 0.0;                  // зеркало шейдера против правила слоя
+        double fieldWorst = 0.0;                 // против билинейного поля (где не ступень)
+        int boundaryVertices = 0;
+        int shiftedVertices = 0;
+        for (std::size_t i = 0; i < layers.vertices.size() / 5; ++i) {
+            const double x = double(layers.vertices[i * 5]);
+            const double y = double(layers.vertices[i * 5 + 1]);
+            const double u = double(layers.vertices[i * 5 + 3]);
+            const double v = double(layers.vertices[i * 5 + 4]);
+            const bool floor = i >= std::size_t(layers.topVertexCount);
+            const double signedAt = drawn.signedAt(u, v);
+            const double drawnMm = drawn.step(u, v);
+            const double bilinearMm = drawn.bilinear(u, v);
+            const gv::StockLayer layer = floor ? gv::StockLayer::Floor : gv::StockLayer::Top;
+            const double wantMm = gv::stockLayerDepthMm(bounds, cell, field.depthMm(), nx, ny,
+                                                       cutMm, x, y, layer);
+            ruleWorst = std::max(ruleWorst, std::fabs(drawnMm - wantMm));
+            if (std::fabs(signedAt) <= 0.02) {
+                ++boundaryVertices;
+                edgeWorst = std::max(edgeWorst, contourDistanceMm(x, y, contour));
+                const double uOfPos = ((x - bounds.xMinMm) / cell + 0.5) / double(nx);
+                const double vOfPos = ((y - bounds.yMinMm) / cell + 0.5) / double(ny);
+                if (std::fabs(u - uOfPos) > 1e-12 || std::fabs(v - vOfPos) > 1e-12) {
+                    ++shiftedVertices;
+                }
+            }
+            // Сторона важна там, где правило ступает: у склона уровень от знака не
+            // зависит, и «заход» на чужую сторону там ничего не значит.
+            if (std::fabs(wantMm - bilinearMm) > 1e-9) {
+                sideWorst = std::max(sideWorst,
+                                     floor ? std::max(signedAt, 0.0) : std::max(-signedAt, 0.0));
+            } else {
+                fieldWorst = std::max(fieldWorst, std::fabs(drawnMm - bilinearMm));
+            }
+        }
+
+        // (г) Низ стенки на кромке дна: у каждой нижней вершины квада стенки
+        // (глубина - четвёртое число) обязана найтись вершина кромки дна с той же
+        // высотой - иначе между стенкой и дном щель во весь уступ.
+        double slitWorst = 0.0;
+        int wallBottoms = 0;
+        for (std::size_t i = 0; i < wall.vertices.size() / 4; ++i) {
+            const float* p = &wall.vertices[i * 4];
+            if (std::fabs(double(p[2]) - double(bounds.zMaxMm)) < 1e-9) {
+                continue;                        // верх квада стенки
+            }
+            const double wx = double(p[0]);
+            const double wy = double(p[1]);
+            const double wd = double(p[3]);
+            ++wallBottoms;
+            double best = std::numeric_limits<double>::max();
+            for (std::size_t k = std::size_t(layers.topVertexCount);
+                 k < layers.vertices.size() / 5; ++k) {
+                const double fx = double(layers.vertices[k * 5]);
+                const double fy = double(layers.vertices[k * 5 + 1]);
+                if (std::fabs(fx - wx) > 1e-9 || std::fabs(fy - wy) > 1e-9) {
+                    continue;
+                }
+                const double fu = double(layers.vertices[k * 5 + 3]);
+                const double fv = double(layers.vertices[k * 5 + 4]);
+                best = std::min(best, std::fabs(drawn.step(fu, fv) - wd));
+            }
+            slitWorst = std::max(slitWorst, best);
+        }
+
+        // (д) Пустая граница: нетронутая заготовка целиком уходит верху.
+        const gv::StockLayerSurface plainLayers = gv::stockLayerSurface(
+                bounds, cell, std::vector<float>(std::size_t(nx) * std::size_t(ny), 0.0f),
+                nx, ny, cutMm, {});
+        const int plainTriangles = (nx - 1) * (ny - 1) * 2;
+
+        std::printf("note layer_surface cell_mm=%.2f cut_mm=%.2f vertices=%zu top_vertices=%d "
+                    "top_tri=%d floor_tri=%d area_mm2=%.3f want_area_mm2=%.3f boundary_vertices=%d "
+                    "shifted=%d edge_mm=%.2e side_mm=%.2e rule_mm=%.2e field_mm=%.2e "
+                    "wall_bottoms=%d slit_mm=%.2e wall_segments=%zu plain_top_tri=%d plain_floor_tri=%d\n",
+                    cell, cutMm, layers.vertices.size() / 5, layers.topVertexCount,
+                    layers.topTriangles(), layers.floorTriangles(), areaMm2, wantAreaMm2,
+                    boundaryVertices, shiftedVertices, edgeWorst, sideWorst, ruleWorst, fieldWorst,
+                    wallBottoms, slitWorst, contour.size(), plainLayers.topTriangles(),
+                    plainLayers.floorTriangles());
+        reportCase("layer_surface", int(layers.vertices.size() / 5), slitWorst, 1e-6,
+                   std::fabs(areaMm2 - wantAreaMm2) <= 1e-6 * wantAreaMm2
+                       && layers.topTriangles() > 0 && layers.floorTriangles() > 0
+                       && boundaryVertices > 0 && shiftedVertices > 0
+                       && edgeWorst <= 1e-6 && sideWorst <= hairMm
+                       && ruleWorst <= 1e-6 && fieldWorst <= 1e-6
+                       && wallBottoms >= 4 && slitWorst <= 1e-6
+                       && plainLayers.topTriangles() == plainTriangles
+                       && plainLayers.floorTriangles() == 0);
     }
 
     // 7в. Точный контур реза и стенка по нему (PLAN-STOCK.md, 3.1). Marching

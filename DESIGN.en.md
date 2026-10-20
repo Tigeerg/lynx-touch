@@ -453,8 +453,9 @@ says.
   — 242 KiB per tick at a 0.5 mm node and 1.44 MiB at 0.2 mm on the 150x100 stock, otherwise megabytes per
   frame would go over the bus.
 - The stock view is one switch with four positions (`stockView`): exact (one vertex per field node, as
-  computed), smooth (the default: the mesh is subdivided, the height is bilinear), rounded (the node depth
-  is the average over the neighbourhood) and exact contour (a smooth top plus the exact cut layers). The `R`
+  computed), smooth (the default: the mesh is subdivided, the height is bilinear, and at a step it is the
+  level of the vertex's own side), rounded (the node depth is the average over the neighbourhood) and exact
+  contour (a smooth top plus the exact cut layers). The `R`
   key cycles them, `CNC_STOCK_VIEW` sets the view before the start, the former `CNC_STOCK_ROUND=1` remains a
   shortcut for `rounded`. Every view except the exact one is subdivided: `stockSubdiv = 2`, so a vertex also
   lands in the middle of a cell, where the side of the step is decided; the exact view is not subdivided — it
@@ -471,6 +472,23 @@ says.
   sits on the walls; a two-cell rise gets its own 1.0 mm/mm slope instead of the former 0.5
   (`stocksurface_shade_frag`), and there is no one-cell band at the edge (`stocksurface_fine`, 2489 checks,
   deviation 5.3e-15).
+- The field top STEPS at a step (`steppedDepth`, `stocksurface.vert`). The bilinear height laid a sloping strip
+  one field cell wide between the top and the bottom, so the edge of the REMAINING material (islands and benches
+  inside a pocket) read as a rampart tilted by `atan(cell / step)`: 32.0 degrees at a 0.8 mm step and a 0.5 mm
+  node, 7.1 at 4.0. In a cell with a step a vertex now takes the level of its own side: the levels are the
+  shallowest and the deepest node of the cell, the side is named by the sign of the signed distance to the EXACT
+  cut boundary (the same input the fragment uses for the colour and the line), and the vertical wall stays with
+  the wall layer (`stockCutWall`). Slopes are left alone: a step is told by a kink — every plateau reading BEYOND
+  the cell must land on one of the cell's levels (no farther than a quarter of the rise), and the two plateaus
+  must depart from each other (no less than 0.75 of the rise). On a slope the reading beyond the cell departs
+  from the level by the whole rise, and on a one-cell groove both plateaus sit on the same level — both stay
+  bilinear. Measured (`stock_sim_probe`, cases `island_rim_drawn` — a flat D10 pocket with a 5.4x6 mm island —
+  and `steep_slope_drawn` — a 45 degree cone): the deviation of the drawing from the nearest level 0.4 / 2.0 mm
+  -> 0, vertices between the levels 1 -> 0, the transition strip 0.5 -> 0.25 mm, the tilt from the vertical
+  32.0 -> 17.4 degrees (at a 0.8 step; 7.1 -> 3.6 at 4.0), and on a slope the drawing stays bilinear (deviation
+  0). The step removed the slope but not the subdivision: the transition keeps one sub-cell (cell / `stockSubdiv`
+  = 0.25 mm), and the boundary line is not drawn on the transition face itself — the edge there is carried by the
+  vertical wall layer.
 - The exact cut boundary is a representation OF ITS OWN, independent of the field node (the plan, stage 1.5).
   The core computes it from the moves (`core/stock_sim`, `stockCutBoundary`): `marching squares` over the signs
   of the field nodes picks the candidate edges, and the crossing position on an edge is refined by bisecting the

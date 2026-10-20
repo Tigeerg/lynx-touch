@@ -38,7 +38,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.62.0"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.58.1+alt.4"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -1393,7 +1393,7 @@ Item {
     // Полутолщина границы реза вида «точный контур», пиксели (stocksurface.frag).
     // 1.1 - линия в две с лишним полосы: перепад глубины на стенке фрезы умещается
     // в пиксель, поэтому центр линии редко попадает между пикселями, и при 0.7
-    // ближайший пиксель получал полтона (замер 0.61.0: L=70 при металле 123, то
+    // ближайший пиксель получал полтона (замер 0.58.1+alt.3: L=70 при металле 123, то
     // есть 0.5 линии). Толщина в пикселях, а не в мм: граница - мера, и при зуме
     // она не должна толстеть или пропадать.
     readonly property real stockContourHalfPx: 1.1

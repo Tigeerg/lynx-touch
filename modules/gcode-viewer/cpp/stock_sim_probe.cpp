@@ -1201,6 +1201,132 @@ int main(int argc, char** argv)
                        && std::fabs(oldGot - want) > 0.4);
     }
 
+    // 7д. Плоский карман концевой фрезой: дно плоское, стенка отвесная. Случай
+    // держит то, что видит оператор на кадре, - наклон, которым ШЕЙДЕР красит
+    // точку (stocksurface.frag: fieldSample, порог уступа STEP_CELLS, нормаль), -
+    // против поля съёма. Строится прямой ход концевой D10 на глубину d при узле
+    // 0.5 мм, стенка капсулы ложится ровно между двумя узлами: поле - чистая
+    // ступень 0 -> d, какую и оставляет плоская фреза. Мера - наклон по Y в трёх
+    // местах: на плоском дне (обязан быть нулём - дно параллельно верху
+    // заготовки), в клетке-стенке (обязан быть d/клетка - стенка отвесна
+    // настолько, насколько это даёт узел) и на нетронутом верху (ноль). Плюс
+    // сверка рисования с полем: билинейная реконструкция в узле обязана вернуть
+    // сам узел - ею шейдер опускает вершину.
+    //
+    // Случай красный до правки на мелком окне (d между 0.5 и 1.0 мм): порог
+    // уступа стоял в целую клетку и сравнивался с выборкой соседа НА КЛЕТКУ, а
+    // та стоит на середине соседней клетки и видит ПОЛОВИНУ перепада уступа.
+    // При d меньше двух клеток порог не срабатывал: дно у стенки получало
+    // наклон 0.4 мм/мм (22 градуса) вместо нуля, а стенка - половину своей
+    // крутизны (0.8 вместо 1.6). На кадре это и читается конусом: дно светлеет
+    // к лампе, стенка выходит наклонной.
+    //
+    // Совпадение с шейдером. Зеркало здесь повторяет stocksurface.frag, включая
+    // порог STEP_CELLS = 0.5; случаи выше (stocksurface_fine,
+    // stocksurface_shade_frag) держат старые числа и к порогу нечувствительны:
+    // там перепад уступа не меньше двух клеток, и оба порога отвечают одинаково.
+    {
+        const double cell = 0.5;
+        const double r = 5.0;                        // концевая D10
+        const double depths[2] = { 4.0, 0.8 };       // глубокий и мелкий уступ
+        for (double depth : depths) {
+            gv::StockBounds bounds;
+            bounds.xMinMm = -10.0;
+            bounds.xMaxMm = 10.0;
+            bounds.yMinMm = -5.0;
+            bounds.yMaxMm = 5.0;
+            bounds.zMinMm = -5.0;
+            bounds.zMaxMm = 0.0;
+            gv::StockField field;
+            field.reset(bounds, cell);
+            const gv::StockCutter cutter = gv::stockCutter(makeTool(ToolSpec{ "FLAT", 10.0 }));
+            // Ход вдоль X на y = 0.75: стенка капсулы (радиус 5) ложится на
+            // середину между узлами -4.5 и -4.0 - поле выходит ступенью.
+            field.sweepExact(cutter, { -8.0, 0.75, -depth }, { 8.0, 0.75, -depth });
+
+            const int nx = field.countX();
+            const int ny = field.countY();
+            const std::vector<float>& fieldDepth = field.depthMm();
+            const auto nodeDepth = [&fieldDepth, nx, ny](int ix, int iy) {
+                ix = std::max(0, std::min(nx - 1, ix));
+                iy = std::max(0, std::min(ny - 1, iy));
+                return double(fieldDepth[std::size_t(iy) * std::size_t(nx) + std::size_t(ix)]);
+            };
+            // fieldSample из stocksurface.vert/frag: билинейно по четырём узлам
+            // клетки точки, выборка прижата к центрам крайних текселей.
+            const auto sample = [&nodeDepth, nx, ny](double u, double v) {
+                const double p = u * double(nx) - 0.5;
+                const double q = v * double(ny) - 0.5;
+                const double bx = std::floor(p);
+                const double by = std::floor(q);
+                const double fx = p - bx;
+                const double fy = q - by;
+                const int ix = int(bx);
+                const int iy = int(by);
+                const double a = nodeDepth(ix, iy) * (1.0 - fx) + nodeDepth(ix + 1, iy) * fx;
+                const double b = nodeDepth(ix, iy + 1) * (1.0 - fx) + nodeDepth(ix + 1, iy + 1) * fx;
+                return a * (1.0 - fy) + b * fy;
+            };
+            // Наклон по Y, как его считает stocksurface.frag: соседи на клетку
+            // ловят уступ, на клетке со уступом берётся аналитический градиент
+            // самой клетки, иначе - центральная разность на две клетки.
+            const double stepMm = cell * 0.5;        // STEP_CELLS = 0.5, как в шейдере
+            const auto slopeY = [&nodeDepth, &sample, nx, ny, cell, stepMm](double u, double v) {
+                const double dv = 1.0 / double(ny);
+                const double here = sample(u, v);
+                const double yr = sample(u, v + dv);
+                const double yl = sample(u, v - dv);
+                const double p = u * double(nx) - 0.5;
+                const double q = v * double(ny) - 0.5;
+                const double fx = p - std::floor(p);
+                const double fy = q - std::floor(q);
+                const int ix = int(std::floor(p));
+                const int iy = int(std::floor(q));
+                const double g = ((nodeDepth(ix, iy + 1) - nodeDepth(ix, iy)) * (1.0 - fx)
+                                + (nodeDepth(ix + 1, iy + 1) - nodeDepth(ix + 1, iy)) * fx) / cell;
+                if (std::fabs(yr - here) > stepMm || std::fabs(here - yl) > stepMm)
+                    return g;
+                return (yr - yl) / (2.0 * cell);
+            };
+
+            // Точки: середина клетки нетронутого верха (узлы 0 и 1), клетки-стенки
+            // (узлы 1 и 2) и плоского дна у стенки (узлы 2 и 3); по X - середина
+            // клетки у x = 0, где капсула однородна по длине.
+            const double u = 20.0 / double(nx);
+            const double topSlope = slopeY(u, 1.0 / double(ny));
+            const double wallSlope = slopeY(u, 2.0 / double(ny));
+            const double floorSlope = slopeY(u, 3.0 / double(ny));
+            const double wallWant = depth / cell;
+            // Нормаль стенки в машинных осях: (0, wall, 1) - доля z и есть
+            // вертикальность: ноль - нормаль горизонтальна, стенка отвесна.
+            const double wallNormalZ =
+                cell / std::sqrt(cell * cell + depth * depth);
+
+            double drawnDev = 0.0;
+            int drawnChecked = 0;
+            for (int iy = 0; iy < ny; ++iy) {
+                for (int ix = 0; ix < nx; ++ix) {
+                    const double uu = (double(ix) + 0.5) / double(nx);
+                    const double vv = (double(iy) + 0.5) / double(ny);
+                    drawnDev = std::max(drawnDev, std::fabs(sample(uu, vv) - nodeDepth(ix, iy)));
+                    ++drawnChecked;
+                }
+            }
+            const double slopeDev = std::max(std::fabs(floorSlope),
+                                             std::max(std::fabs(topSlope),
+                                                      std::fabs(wallSlope - wallWant)));
+            std::printf("note flat_pocket_drawn depth_mm=%.2f cell_mm=%.2f floor_slope=%.3f "
+                        "wall_slope=%.4f wall_want=%.4f top_slope=%.3f wall_normal_z=%.3f "
+                        "wall_tilt_deg=%.1f wall_band_mm=%.2f drawn_dev_mm=%.2e nodes=%d\n",
+                        depth, cell, floorSlope, wallSlope, wallWant, topSlope, wallNormalZ,
+                        std::atan2(cell, depth) * 180.0 / PI, cell, drawnDev, drawnChecked);
+            reportCase("flat_pocket_drawn", drawnChecked, slopeDev, 1e-6,
+                       drawnDev <= 1e-5 && std::fabs(floorSlope) <= 1e-6
+                           && std::fabs(topSlope) <= 1e-6
+                           && std::fabs(wallSlope - wallWant) <= 1e-6);
+        }
+    }
+
     // 7в. Точный контур реза и стенка по нему (PLAN-STOCK.md, 3.1). Marching
     // squares даёт границу под-ячейково: сверка endpoints со шаром, глубина
     // которого пересекает порог cutMm на радиусе s05. Стенка обязана: держать
@@ -1937,6 +2063,65 @@ int main(int argc, char** argv)
                         cell, int(boundary.segments.size()), boundary.evaluations,
                         boundaryMs, sdMs, (long long)boundary.segments.size() * 16,
                         (long long)sd.size() * 4);
+
+            // Сколько уступов поля Test_model отдано порогу уступа: перепад
+            // соседних узлов до клетка - настоящий склон (усреднение верно),
+            // (клетка, 2 клетки] - окно, которое ловит только порог в полклетки
+            // (stocksurface.frag, STEP_CELLS: порог сравнивается с половинным
+            // перепадом), больше двух клеток - ловят оба порога. Число нужно,
+            // чтобы видеть цену ошибки: пока окно не ловилось, дно и верх у
+            // каждого такого уступа получали наклон полукрутизны стенки.
+            {
+                const int nx = run.field.countX();
+                const int ny = run.field.countY();
+                const std::vector<float>& d = run.field.depthMm();
+                long long window = 0;
+                long long both = 0;
+                long long slopes = 0;
+                long long windowSteps = 0;
+                const auto countPair = [&](double delta) {
+                    if (delta > 2.0 * cell) {
+                        ++both;
+                    } else if (delta > cell) {
+                        ++window;
+                    } else if (delta > 1e-6) {
+                        ++slopes;
+                    }
+                };
+                // Уступ в окне, стоящий один: соседи по обе стороны плоские -
+                // это и есть стенка, которую старый порог отдавал склону.
+                const auto countIsolatedX = [&](int ix, int iy, double delta) {
+                    if (delta <= cell || delta > 2.0 * cell) {
+                        return;
+                    }
+                    const double left = ix > 0
+                        ? std::fabs(double(d[std::size_t(iy) * nx + ix])
+                                    - double(d[std::size_t(iy) * nx + ix - 1])) : 0.0;
+                    const double right = ix + 2 < nx
+                        ? std::fabs(double(d[std::size_t(iy) * nx + ix + 2])
+                                    - double(d[std::size_t(iy) * nx + ix + 1])) : 0.0;
+                    if (left < 0.1 * cell && right < 0.1 * cell) {
+                        ++windowSteps;
+                    }
+                };
+                for (int iy = 0; iy < ny; ++iy) {
+                    for (int ix = 0; ix + 1 < nx; ++ix) {
+                        const double delta = std::fabs(double(d[std::size_t(iy) * nx + ix + 1])
+                                                       - double(d[std::size_t(iy) * nx + ix]));
+                        countPair(delta);
+                        countIsolatedX(ix, iy, delta);
+                    }
+                }
+                for (int iy = 0; iy + 1 < ny; ++iy) {
+                    for (int ix = 0; ix < nx; ++ix) {
+                        countPair(std::fabs(double(d[std::size_t(iy + 1) * nx + ix])
+                                            - double(d[std::size_t(iy) * nx + ix])));
+                    }
+                }
+                std::printf("note step_window cell_mm=%.1f step_le_cell=%lld step_cell_2cell=%lld "
+                            "step_over_2cell=%lld window_single_steps=%lld\n",
+                            cell, slopes, window, both, windowSteps);
+            }
         }
 
         // ---- живой обход: тики 10 Гц, перемотка, дайджест -------------------

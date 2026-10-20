@@ -38,7 +38,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.58.1+alt.5"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.58.1+mesh.1"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -445,8 +445,24 @@ Item {
         countX: path ? path.stockCountX : 0
         countY: path ? path.stockCountY : 0
         cutMm: 0.05
-        boundaryData: (root.stockCutExact && path) ? path.stockBoundary : ""
-        depthData: (root.stockCutExact && path) ? path.stockDepth : ""
+        boundaryData: (root.stockLayersDrawn && path) ? path.stockBoundary : ""
+        depthData: (root.stockLayersDrawn && path) ? path.stockDepth : ""
+    }
+    // Слоистая поверхность реза (PLAN-STOCK.md, 3.1; этап 1.3): верх нетронутого
+    // материала и дно реза, разрезанные ТОЧНОЙ границей реза (path.stockBoundary),
+    // а не порогом поля. Ею рисуются виды с гладким верхом (гладкий и точный
+    // контур): полосы перехода между уровнями нет вовсе, а отвесную грань между
+    // половинами несёт слой стенки (stockCutWall) на той же границе. Высота - тот
+    // же материал и тот же шейдер, что у прежнего верха поля: меняется только меш.
+    StockCutLayerGeometry {
+        id: stockCutLayer
+        boundList: path ? path.stockBounds : []
+        cellMm: path ? path.stockCellMm : 0.5
+        countX: path ? path.stockCountX : 0
+        countY: path ? path.stockCountY : 0
+        cutMm: 0.05
+        boundaryData: (root.stockLayersDrawn && path) ? path.stockBoundary : ""
+        depthData: (root.stockLayersDrawn && path) ? path.stockDepth : ""
     }
     StockCutContourGeometry {
         id: stockCutContour
@@ -641,7 +657,11 @@ Item {
             // переключается свойствами материала (у alphaMode кожи так не выходит:
             // он вшит в шейдер, и там режимы разведены двумя моделями).
             Model {
-                geometry: stockSurface
+                // Виды с гладким верхом (гладкий и точный контур) рисуются
+                // слоями реза: верх нетронутого материала и дно, разрезанные по
+                // ТОЧНОЙ границе (stockCutLayer). Прежний меш поля остаётся
+                // точному виду (его предмет - ступени узлов) и скруглённому.
+                geometry: root.stockLayersDrawn ? stockCutLayer : stockSurface
                 materials: CustomMaterial {
                     shadingMode: CustomMaterial.Unshaded
                     property real cellMm: path ? path.stockCellMm : 0.5
@@ -788,19 +808,19 @@ Item {
             }
 
             // Точная стенка реза (PLAN-STOCK.md, 3.1): вертикальные квады по
-            // контуру marching squares, а не ступени узлов поля. Верх на
-            // плоскости нетронутого верха, низ - на дне реза в точке контура,
-            // поэтому стык верх/стенка/дно идёт по одному контуру, без щели.
-            // Буфер собирает ядро (core/stock_sim, stockCutWall), геометрия -
-            // qmlbackend/gv_stockgeom. Видна в виде «точный контур» (клавиша R,
-            // CNC_STOCK_VIEW=contour): листая вид на живом кадре, ровную стенку
-            // сравнивают со ступенчатой у точного вида. Сам верх в этом виде
-            // гладкий (stockShadeView), а граница реза на нём нарисована линией
-            // по знаковому расстоянию поля (stocksurface.frag) - стенка лишь
-            // называет ту же границу высотой.
+            // ТОЧНОЙ границе реза, а не по ступеням узлов поля. Верх на
+            // плоскости нетронутого верха, низ - на кромке отрезанного дна
+            // (stockLayerDepthMm, у уступа - на уровне дна, а не на билинейной
+            // глубине поля), поэтому стык верх/стенка/дно идёт по одной границе,
+            // без щели. Буфер собирает ядро (core/stock_sim,
+            // stockCutWallFromLayer), геометрия - qmlbackend/gv_stockgeom.
+            // Видна там же, где рисуется слоистая поверхность: у гладкого вида и
+            // вида «точный контур» (stockLayersDrawn). Она и несёт ту отвесную
+            // грань, которой между верхом и дном больше нет - верх разрезан по
+            // границе.
             Model {
                 visible: root.showStockVisible && root.stockFieldDrawn
-                         && root.stockCutExact
+                         && root.stockLayersDrawn
                 geometry: stockCutWall
                 materials: CustomMaterial {
                     shadingMode: CustomMaterial.Unshaded
@@ -1332,21 +1352,32 @@ Item {
     // (1), а точную границу добавляет линией по знаковому расстоянию поля. Иначе
     // ступени меша спорили бы с той самой границей, ради которой вид и заведён.
     readonly property int stockShadeView: root.stockView === 3 ? 1 : root.stockView
-    // Дробление клетки поля в рисуемом меше: 1 только у точного вида - он и есть
-    // показ ступеней узла, там дробить нечего. Остальные виды гладкие: вершина
-    // встаёт и в середине клетки, иначе билинейной высоте негде проявиться
-    // (stocksurface.vert). Цена - вчетверо больше вершин и треугольников (замер:
-    // 60501 узел поля и 120000 треугольников против 241001 вершины и 480000
-    // треугольников; поле, его текстура и сверки не меняются).
+    // Дробление клетки поля в прежнем меше (StockSurfaceGeometry): 1 у точного
+    // вида - он и есть показ ступеней узла, там дробить нечего; 2 у скруглённого.
+    // Виды с гладким верхом меш берут у слоистой поверхности
+    // (StockCutLayerGeometry): там билинейная высота на подклетке - та же
+    // поверхность, а ступень уступа режет геометрия, поэтому дробление не нужно.
+    // Цена дробления - вчетверо больше вершин и треугольников (замер: 60501 узел
+    // поля и 120000 треугольников против 241001 вершины и 480000 треугольников;
+    // поле, его текстура и сверки не меняются).
     readonly property int stockSubdiv: root.stockView === 0 ? 1 : 2
     // Вид «точный контур» (четвёртый в списке): гладкий верх плюс точные слои
-    // реза - вертикальная стенка по контуру marching squares
-    // (qmlbackend/gv_stockgeom, core/stock_sim) и линия границы по знаковому
-    // расстоянию поля (stocksurface.frag). Верх здесь гладкий нарочно: граница
-    // реза считается по порогу поля, а не по ступеням узлов, и ступенчатый верх
-    // спорил бы с ней на экране. Листая вид (R), ровную границу сравнивают со
-    // ступенчатой у точного вида.
+    // реза - верх и дно, разрезанные по ТОЧНОЙ границе реза
+    // (StockCutLayerGeometry, core/stock_sim, stockLayerSurface), вертикальная
+    // стенка на той же границе (StockCutWallGeometry) и линия границы по
+    // знаковому расстоянию поля (stocksurface.frag). Верх здесь гладкий нарочно:
+    // граница реза считается по порогу поля, а не по ступеням узлов, и
+    // ступенчатый верх спорил бы с ней на экране. Листая вид (R), ровную границу
+    // сравнивают со ступенчатой у точного вида.
     readonly property bool stockCutExact: root.stockView === 3
+    // Слоистая поверхность реза (PLAN-STOCK.md, 3.1; этап 1.3): виды с гладким
+    // верхом - гладкий и точный контур (stockShadeView === 1) - рисуют верх
+    // нетронутого материала и дно, разрезанные по ТОЧНОЙ границе реза
+    // (StockCutLayerGeometry, ядро stockLayerSurface), а отвесную грань между
+    // ними несёт слой стенки на той же границе. Полосы перехода между уровнями
+    // нет вовсе: кромка острова отвесна, а не наклонена. Точный вид (его предмет -
+    // ступени узлов) и скруглённый остаются прежним мешем поля.
+    readonly property bool stockLayersDrawn: root.stockShadeView === 1
     // Полилиния контура (marching squares) у точного вида: ступени узлов там есть
     // с чем сверить, у видов с гладким верхом - нет, там граница нарисована
     // линией по знаковому расстоянию поля (stocksurface.frag).

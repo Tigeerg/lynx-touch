@@ -376,8 +376,9 @@ void StockCutWallGeometry::rebuild()
         return;
     }
 
-    const gv::StockWallMesh mesh = gv::stockCutWallFromSegments(bounds_, cell_mm_, depth,
-                                                               count_x_, count_y_, segments);
+    const gv::StockWallMesh mesh = gv::stockCutWallFromLayer(bounds_, cell_mm_, depth,
+                                                             count_x_, count_y_, cut_mm_,
+                                                             segments);
     vertex_count_ = int(mesh.vertices.size() / 4);
     triangle_count_ = mesh.triangleCount();
     segment_count_ = triangle_count_ / 2;
@@ -395,6 +396,124 @@ void StockCutWallGeometry::rebuild()
                  QQuick3DGeometry::Attribute::U32Type);
     // Габарит по всему ходу высоты: стенка идёт от верха заготовки вниз, и
     // отсечение по одной вершине соврало бы.
+    setBounds(QVector3D(float(bounds_.xMinMm), float(bounds_.yMinMm), float(bounds_.zMinMm)),
+              QVector3D(float(bounds_.xMaxMm), float(bounds_.yMaxMm), float(bounds_.zMaxMm)));
+    update();
+}
+
+// ---------------------------------------------------------------------------
+// StockCutLayerGeometry
+// ---------------------------------------------------------------------------
+StockCutLayerGeometry::StockCutLayerGeometry(QQuick3DObject *parent)
+    : QQuick3DGeometry(parent)
+{
+    rebuild();
+}
+
+void StockCutLayerGeometry::setBoundList(const QVariantList &list)
+{
+    if (list == bound_list_)
+        return;
+    bound_list_ = list;
+    has_bounds_ = parseBounds(list, &bounds_);
+    rebuild();
+    emit changed();
+}
+
+void StockCutLayerGeometry::setCellMm(double value)
+{
+    if (value == cell_mm_)
+        return;
+    cell_mm_ = value;
+    rebuild();
+    emit changed();
+}
+
+void StockCutLayerGeometry::setCountX(int value)
+{
+    if (value == count_x_)
+        return;
+    count_x_ = value;
+    rebuild();
+    emit changed();
+}
+
+void StockCutLayerGeometry::setCountY(int value)
+{
+    if (value == count_y_)
+        return;
+    count_y_ = value;
+    rebuild();
+    emit changed();
+}
+
+void StockCutLayerGeometry::setCutMm(double value)
+{
+    if (value == cut_mm_)
+        return;
+    cut_mm_ = value;
+    rebuild();
+    emit changed();
+}
+
+void StockCutLayerGeometry::setDepthData(const QByteArray &data)
+{
+    if (data == depth_data_)
+        return;
+    depth_data_ = data;
+    rebuild();
+    emit changed();
+}
+
+void StockCutLayerGeometry::setBoundaryData(const QByteArray &data)
+{
+    if (data == boundary_data_)
+        return;
+    boundary_data_ = data;
+    rebuild();
+    emit changed();
+}
+
+void StockCutLayerGeometry::rebuild()
+{
+    clear();
+    setPrimitiveType(QQuick3DGeometry::PrimitiveType::Triangles);
+    vertex_count_ = 0;
+    triangle_count_ = 0;
+    top_vertex_count_ = 0;
+    floor_triangle_count_ = 0;
+    boundary_vertices_ = 0;
+    const std::vector<float> depth = floatsFromBytes(depth_data_, count_x_, count_y_);
+    const std::vector<gv::StockContourSegment> segments = segmentsFromBytes(boundary_data_);
+    if (!has_bounds_ || depth.empty() || !(cell_mm_ > 0.0)) {
+        setBounds(QVector3D(0, 0, 0), QVector3D(0, 0, 0));
+        update();
+        return;
+    }
+
+    const gv::StockLayerSurface mesh = gv::stockLayerSurface(bounds_, cell_mm_, depth,
+                                                            count_x_, count_y_, cut_mm_,
+                                                            segments);
+    vertex_count_ = int(mesh.vertices.size() / 5);
+    triangle_count_ = mesh.triangleCount();
+    top_vertex_count_ = mesh.topVertexCount;
+    floor_triangle_count_ = mesh.floorTriangles();
+    boundary_vertices_ = mesh.boundaryVertices;
+    if (vertex_count_ == 0 || triangle_count_ == 0) {
+        setBounds(QVector3D(0, 0, 0), QVector3D(0, 0, 0));
+        update();
+        return;
+    }
+
+    setVertexData(asBytes(mesh.vertices));
+    setIndexData(asBytes(mesh.indices));
+    setStride(5 * 4);                      // позиция 3f + texcoord 2f
+    addAttribute(QQuick3DGeometry::Attribute::PositionSemantic, 0, F32);
+    addAttribute(QQuick3DGeometry::Attribute::TexCoord0Semantic, 3 * 4, F32);
+    addAttribute(QQuick3DGeometry::Attribute::IndexSemantic, 0,
+                 QQuick3DGeometry::Attribute::U32Type);
+    // Габарит по всему ходу высоты: вершина стоит на верху заготовки, а
+    // вершинный шейдер опускает её до дна - отсечение по одному верху соврало бы.
     setBounds(QVector3D(float(bounds_.xMinMm), float(bounds_.yMinMm), float(bounds_.zMinMm)),
               QVector3D(float(bounds_.xMaxMm), float(bounds_.yMaxMm), float(bounds_.zMaxMm)));
     update();

@@ -387,6 +387,76 @@ StockWallMesh stockCutWallFromSegments(const StockBounds& bounds, double cellMm,
                                        const std::vector<float>& depthMm, int countX, int countY,
                                        const std::vector<StockContourSegment>& segments);
 
+// Половина нарисованного остатка (PLAN-STOCK.md, 3.1/1.3). Верх - плоскость
+// нетронутого материала там, где глубины нет; дно - снятый металл.
+enum class StockLayer { Top, Floor };
+
+// Слоистая поверхность остатка: нарисованный остаток разрезан по ТОЧНОЙ границе
+// реза на две половины - верх и дно. Границей служит та же полилиния, что у
+// стенки (stockCutBoundary), поэтому половины сходятся ровно на ней: полоса
+// перехода между уровнями исчезает, а отвесную грань между ними несёт слой
+// стенки. Прежний верх (stockSurfaceMesh) держал переход ПРАВИЛОМ внутри клетки
+// (stocksurface.vert, steppedDepth): на уступе 0.8 мм при узле 0.5 мм полоса
+// перехода шириной в подклетку 0.25 мм давала наклон 17.4 градуса от отвеса
+// (случай island_rim_drawn пробника stock_sim_probe).
+//
+// Какая половина где: сторону называет знак глубины узлов поля (глубина выше
+// порога - дно). Клетка, через которую граница не проходит, уходит своей
+// половине двумя треугольниками; клетка с отрезками границы режется ими на
+// выпуклые куски (по треугольнику от центра клетки), и вершины схода ложатся
+// ровно на полилинию границы - поэтому полоса перехода нулевая.
+//
+// Сторона вершины, стоящей НА границе, в шейдере берётся знаком знакового
+// расстояния (stocksurface.vert, steppedDepth): ровно на нулевом уровне знак -
+// монетка, а нулевой уровень билинейной реконструкции лежит от полилинии на
+// 0.011 мм (случай boundary_drawn). Поэтому у вершины, где правило шейдера
+// СТУПАЕТ (у уступа - там знак и выбирает уровень), texcoord уводится на 4 %
+// клетки внутрь своей половины (0.02 мм при узле 0.5) - вдвое больше этой
+// ошибки; позиция остаётся ровно на границе, поэтому полоса перехода нулевая, а
+// не 0.02 мм. У склона правило билинейно и от знака не зависит: там texcoord не
+// двигается, и половины сходятся вершина в вершину.
+struct StockLayerSurface {
+    std::vector<float> vertices;      // 5 float на вершину: позиция 3f, texcoord 2f
+    std::vector<std::uint32_t> indices;
+    int topVertexCount = 0;           // первые topVertexCount вершин - верх
+    int topIndexCount = 0;            // первые topIndexCount индексов - верх
+    int boundaryVertices = 0;         // вершин, стоящих на точной границе
+    int shiftedUvVertices = 0;        // из них со сдвинутым texcoord (см. выше)
+
+    int triangleCount() const { return int(indices.size() / 3); }
+    int topTriangles() const { return topIndexCount / 3; }
+    int floorTriangles() const { return (int(indices.size()) - topIndexCount) / 3; }
+};
+
+// Слоистая поверхность по полю и точной границе, машинные мм. Пусто, если поля
+// нет; пустая граница допустима - тогда половина клетки называется знаком её
+// узлов. subdiv не нужен: билинейная высота на подклетке - та же поверхность, а
+// ступень уступа теперь режется геометрией, а не дроблением меша.
+StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
+                                    const std::vector<float>& depthMm, int countX, int countY,
+                                    double cutMm,
+                                    const std::vector<StockContourSegment>& segments);
+
+// Глубина нарисованной половины в точке, мм: зеркало правила шейдера
+// (stocksurface.vert, steppedDepth) с НАЗВАННОЙ стороной. У настоящего уступа
+// (клетка-кинк с обеими площадками) половина стоит на своём уровне - самый
+// мелкий узел клетки у верха, самый глубокий у дна; у склона и канавки в клетку
+// правило билинейно, поэтому склон ступенью не портится. Стенке это правило
+// нужно для низа: низ обязан лечь на кромку дна, иначе между стенкой и дном
+// остаётся щель высотой в уступ (у уступа 0.8 мм билинейная глубина в точке
+// контура - 0.32, а кромка дна - все 0.8).
+double stockLayerDepthMm(const StockBounds& bounds, double cellMm,
+                         const std::vector<float>& depthMm, int countX, int countY,
+                         double cutMm, double xMm, double yMm, StockLayer layer);
+
+// Стенка по точной границе с низом ПО СЛОЮ (stockLayerDepthMm, дно): тот же
+// буфер, что у stockCutWallFromSegments (4 float на вершину), но низ - кромка
+// отрезанного дна, а не билинейная глубина поля в точке контура.
+StockWallMesh stockCutWallFromLayer(const StockBounds& bounds, double cellMm,
+                                    const std::vector<float>& depthMm, int countX, int countY,
+                                    double cutMm,
+                                    const std::vector<StockContourSegment>& segments);
+
 // Стенки и дно коробки заготовки: пять прямоугольников, верхней грани нет -
 // её рисует поле. Позиции - машинные мм, коробка крупнее габарита на зазоры:
 // ими разводят совпадающие грани заготовки и детали (прежние доли пикселя),

@@ -510,53 +510,94 @@ int run(const QString &program, const QStringList &layouts)
             warn(QStringLiteral("keyprobe: FAIL боковой зазор стенок заготовки не ноль: %1 мм")
                      .arg(sideGap));
 
-        // Точные слои реза (PLAN-STOCK.md, 3.1). Вид «точный контур» (R до
-        // четвёртого положения) обязан включать точные слои (stockCutExact), а
-        // геометрии qmlbackend/gv_stockgeom - строить стенку и контур по
-        // опубликованному полю. Стенка и контур считаются из одного поля одним
-        // порогом, поэтому отрезков у них одно и то же число; формат буфера
+        // Точные слои реза (PLAN-STOCK.md, 3.1; этап 1.3). Виды с гладким верхом
+        // - гладкий (R до второго положения) и «точный контур» (четвёртое) -
+        // рисуют верх и дно остатка, РАЗРЕЗАННЫЕ по точной границе реза
+        // (StockCutLayerGeometry), а отвесную грань между ними несёт стенка
+        // (StockCutWallGeometry). Поэтому данные (path.stockBoundary,
+        // path.stockDepth) подаются этим двум геометриям в обоих видах, а не
+        // только виду «точный контур». Стенка и контур считаются из одного поля
+        // одним порогом, поэтому отрезков у них одно и то же число; формат буфера
         // стенки - четыре вершины и два треугольника на отрезок, контура - две
-        // вершины. Габарит обеих - габарит поля. Вне вида данные геометриям не
-        // подаются (depthData пусто), и слоёв нет: живой тик за них не платит.
-        root->setProperty("stockView", 3);
-        const bool cutExact = root->property("stockCutExact").toBool();
+        // вершины. Габарит всех трёх - габарит поля. У точного (ступени узлов) и
+        // скруглённого видов слоёв нет: их поверхность - прежний меш поля, и
+        // живой тик за слои там не платит (геометрии пусты).
         QObject *wallGeo = nullptr;
         QObject *contourGeo = nullptr;
+        QObject *layerGeo = nullptr;
         for (QObject *child : root->findChildren<QObject *>()) {
             const QByteArray type = child->metaObject()->className();
             if (type.endsWith(QByteArray("StockCutWallGeometry")))
                 wallGeo = child;
             else if (type.endsWith(QByteArray("StockCutContourGeometry")))
                 contourGeo = child;
+            else if (type.endsWith(QByteArray("StockCutLayerGeometry")))
+                layerGeo = child;
         }
         const auto intOf = [](QObject *object, const char *name) {
             return object != nullptr ? object->property(name).toInt() : -1;
         };
+        const bool boundOk = wallGeo != nullptr && contourGeo != nullptr && layerGeo != nullptr
+                && wallGeo->property("boundList").toList()
+                        == backend->property("stockBounds").toList()
+                && layerGeo->property("boundList").toList()
+                        == backend->property("stockBounds").toList();
+        root->setProperty("stockView", 3);
+        const bool cutExact = root->property("stockCutExact").toBool();
         const int wallSegments = intOf(wallGeo, "segmentCount");
         const int contourSegments = intOf(contourGeo, "segmentCount");
-        const bool boundOk = wallGeo != nullptr && contourGeo != nullptr
-                && wallGeo->property("boundList").toList()
-                        == backend->property("stockBounds").toList();
         checkLook(QStringLiteral("точный контур: слои реза по полю"),
                   QStringLiteral("вид %1, слои %2, отрезков стенка %3 контур %4, "
-                                 "треугольников %5, вершин %6/%7, габарит %8")
+                                 "треугольников %5, вершин %6/%7, слоистая поверхность "
+                                 "%8/%9, габарит %10")
                           .arg(root->property("stockViewName").toString())
                           .arg(cutExact ? QStringLiteral("включены") : QStringLiteral("выключены"))
                           .arg(wallSegments).arg(contourSegments)
                           .arg(intOf(wallGeo, "triangleCount"))
                           .arg(intOf(wallGeo, "vertexCount")).arg(intOf(contourGeo, "vertexCount"))
+                          .arg(intOf(layerGeo, "triangleCount"))
+                          .arg(intOf(layerGeo, "floorTriangleCount"))
                           .arg(boundOk ? QStringLiteral("тот") : QStringLiteral("чужой")),
                   cutExact && hasField && wallSegments > 0 && contourSegments == wallSegments
                           && intOf(wallGeo, "triangleCount") == 2 * wallSegments
                           && intOf(wallGeo, "vertexCount") == 4 * wallSegments
-                          && intOf(contourGeo, "vertexCount") == 2 * contourSegments && boundOk);
+                          && intOf(contourGeo, "vertexCount") == 2 * contourSegments && boundOk
+                          && intOf(layerGeo, "triangleCount") > 0
+                          && intOf(layerGeo, "topVertexCount") > 0
+                          && intOf(layerGeo, "floorTriangleCount") > 0
+                          && intOf(layerGeo, "topVertexCount")
+                                  < intOf(layerGeo, "vertexCount"));
         root->setProperty("stockView", 1);
-        checkLook(QStringLiteral("точный контур: вне вида слоёв нет"),
-                  QStringLiteral("вид %1, отрезков стенки %2")
+        checkLook(QStringLiteral("гладкий: слои реза и стенка по границе"),
+                  QStringLiteral("вид %1, отрезков стенки %2 контура %3, слоистая "
+                                 "поверхность треугольников %4")
                           .arg(root->property("stockViewName").toString())
-                          .arg(intOf(wallGeo, "segmentCount")),
+                          .arg(intOf(wallGeo, "segmentCount"))
+                          .arg(intOf(contourGeo, "segmentCount"))
+                          .arg(intOf(layerGeo, "triangleCount")),
                   !root->property("stockCutExact").toBool()
-                          && intOf(wallGeo, "segmentCount") == 0);
+                          && intOf(wallGeo, "segmentCount") > 0
+                          && intOf(layerGeo, "triangleCount") > 0
+                          && intOf(layerGeo, "floorTriangleCount") > 0
+                          && intOf(contourGeo, "segmentCount") == 0);
+        // Точный (0) и скруглённый (2) виды: слоёв нет вовсе. Полилиния контура
+        // подана только точному виду - его ступени узлов есть с чем сверить.
+        for (int view : { 0, 2 }) {
+            root->setProperty("stockView", view);
+            checkLook(QStringLiteral("слои только у видов с гладким верхом"),
+                      QStringLiteral("вид %1, отрезков стенки %2, слоистая поверхность "
+                                     "вершин %3 треугольников %4, отрезков контура %5")
+                              .arg(root->property("stockViewName").toString())
+                              .arg(intOf(wallGeo, "segmentCount"))
+                              .arg(intOf(layerGeo, "vertexCount"))
+                              .arg(intOf(layerGeo, "triangleCount"))
+                              .arg(intOf(contourGeo, "segmentCount")),
+                      !root->property("stockLayersDrawn").toBool()
+                              && intOf(wallGeo, "segmentCount") == 0
+                              && intOf(layerGeo, "vertexCount") == 0
+                              && intOf(layerGeo, "triangleCount") == 0
+                              && intOf(contourGeo, "segmentCount") == (view == 0 ? wallSegments : 0));
+        }
     }
 
     if (fired == total && total > 0) {

@@ -1332,6 +1332,482 @@ StockWallMesh stockCutWallFromSegments(const StockBounds& bounds, double cellMm,
     return mesh;
 }
 
+namespace {
+
+// Порог уступа в долях клетки: то же число, что STEP_CELLS в stocksurface.vert
+// (разбор выбора - там). Им правило шейдера отличает настоящий уступ от склона и
+// от канавки шириной в клетку.
+constexpr double kStepCells = 0.5;
+
+// Глубина по правилу шейдера (stocksurface.vert, steppedDepth) со стороной,
+// названной половиной: это высота, которой половина опускает свою вершину. У
+// настоящего уступа (клетка-кинк) половина стоит на своём уровне; у склона и
+// канавки правило билинейно. Копия правила в ядре нужна стенке: её низ обязан
+// лечь на кромку дна, а не на билинейную глубину поля в точке контура.
+double layerRuleDepth(const std::vector<float>& depthMm, int countX, int countY,
+                      const StockBounds& bounds, double cellMm, double cutMm,
+                      double xMm, double yMm, StockLayer layer)
+{
+    const auto at = [&](int ix, int iy) {
+        ix = std::max(0, std::min(countX - 1, ix));
+        iy = std::max(0, std::min(countY - 1, iy));
+        return double(depthMm[std::size_t(iy) * std::size_t(countX) + std::size_t(ix)]);
+    };
+    // Клетка точки: прижата к крайним узлам, как прижимает выборку текселя шейдер.
+    const double px = (xMm - bounds.xMinMm) / cellMm;
+    const double py = (yMm - bounds.yMinMm) / cellMm;
+    const int ix0 = std::max(0, std::min(countX - 2, int(std::floor(px))));
+    const int iy0 = std::max(0, std::min(countY - 2, int(std::floor(py))));
+    const double fx = std::max(0.0, std::min(1.0, px - double(ix0)));
+    const double fy = std::max(0.0, std::min(1.0, py - double(iy0)));
+    const double d00 = at(ix0, iy0);
+    const double d10 = at(ix0 + 1, iy0);
+    const double d01 = at(ix0, iy0 + 1);
+    const double d11 = at(ix0 + 1, iy0 + 1);
+    const double depth = (d00 * (1.0 - fx) + d10 * fx) * (1.0 - fy)
+                       + (d01 * (1.0 - fx) + d11 * fx) * fy;
+    const double shallow = std::min(std::min(d00, d10), std::min(d01, d11));
+    const double deep = std::max(std::max(d00, d10), std::max(d01, d11));
+    const double rise = deep - shallow;
+    if (rise <= cellMm * kStepCells) {
+        return depth;                        // размаха на уступ нет
+    }
+    // Главная ось уступа и площадки за клеткой по обе её стороны.
+    const bool alongX = std::fabs(d10 - d00) + std::fabs(d11 - d01)
+            >= std::fabs(d01 - d00) + std::fabs(d11 - d10);
+    const int ax = alongX ? 1 : 0;
+    const int ay = alongX ? 0 : 1;
+    const int sx = alongX ? 0 : 1;
+    const int sy = alongX ? 1 : 0;
+    const double aheadA = at(ix0 + 2 * ax, iy0 + 2 * ay);
+    const double aheadB = at(ix0 + 2 * ax + sx, iy0 + 2 * ay + sy);
+    const double behindA = at(ix0 - ax, iy0 - ay);
+    const double behindB = at(ix0 - ax + sx, iy0 - ay + sy);
+    const double tol = 0.25 * rise;
+    const auto atLevel = [&](double value) {
+        return std::min(std::fabs(value - shallow), std::fabs(value - deep)) <= tol;
+    };
+    bool kink = atLevel(aheadA) && atLevel(aheadB) && atLevel(behindA) && atLevel(behindB);
+    kink = kink && std::fabs(0.5 * (aheadA + aheadB) - 0.5 * (behindA + behindB))
+                        >= 0.75 * rise;
+    if (!kink) {
+        return depth;                        // склон или канавка в клетку
+    }
+    const double mid = 0.5 * (shallow + deep);
+    const bool split = ((d00 > cutMm) == (d00 > mid)) && ((d10 > cutMm) == (d10 > mid))
+            && ((d01 > cutMm) == (d01 > mid)) && ((d11 > cutMm) == (d11 > mid));
+    if (!split) {
+        return depth > mid ? deep : shallow; // уступ без границы: ближний уровень
+    }
+    return layer == StockLayer::Floor ? deep : shallow;
+}
+
+// Низ стенки на кромке дна в точке контура: у уступа - по СДВИНУТОЙ внутрь дна
+// точке (там правило ступает, и уровень выбирает сторона), у склона - по самой
+// точке контура (правило билинейно, и кромка дна там не сдвигается: сдвиг
+// увёл бы низ стенки от кромки на сдвиг, умноженный на наклон поля).
+double layerFloorBottomMm(const std::vector<float>& depthMm, int countX, int countY,
+                          const StockBounds& bounds, double cellMm, double cutMm,
+                          double xMm, double yMm, double nx, double ny, double nudgeMm)
+{
+    const double qx = xMm + nx * nudgeMm;
+    const double qy = yMm + ny * nudgeMm;
+    const double rule = layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm,
+                                       qx, qy, StockLayer::Floor);
+    const double bilinear = bilinearDepth(depthMm, countX, countY, qx, qy, bounds, cellMm);
+    if (std::fabs(rule - bilinear) > 1e-9) {
+        return rule;                          // правило ступает: кромка сдвинута
+    }
+    return layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm,
+                          xMm, yMm, StockLayer::Floor);
+}
+
+} // namespace
+
+double stockLayerDepthMm(const StockBounds& bounds, double cellMm,
+                         const std::vector<float>& depthMm, int countX, int countY,
+                         double cutMm, double xMm, double yMm, StockLayer layer)
+{
+    if (countX < 2 || countY < 2 || !(cellMm > 0.0)
+            || depthMm.size() < std::size_t(countX) * std::size_t(countY)) {
+        return 0.0;
+    }
+    return layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm, xMm, yMm, layer);
+}
+
+StockWallMesh stockCutWallFromLayer(const StockBounds& bounds, double cellMm,
+                                    const std::vector<float>& depthMm, int countX, int countY,
+                                    double cutMm,
+                                    const std::vector<StockContourSegment>& segments)
+{
+    StockWallMesh mesh;
+    if (segments.empty() || countX < 2 || countY < 2 || !(cellMm > 0.0)) {
+        return mesh;
+    }
+    // Тот же сдвиг внутрь дна, что у половины дна (stockLayerSurface): низ
+    // стенки обязан совпасть с её кромкой точка в точку, иначе щель.
+    const double nudgeMm = cellMm * 0.04;
+    const float zTop = float(bounds.zMaxMm);
+    mesh.vertices.reserve(segments.size() * 4 * 4);
+    mesh.indices.reserve(segments.size() * 6);
+    for (const StockContourSegment& segment : segments) {
+        const double dx = segment.x1Mm - segment.x0Mm;
+        const double dy = segment.y1Mm - segment.y0Mm;
+        const double len = std::hypot(dx, dy);
+        double nx = 0.0;
+        double ny = 0.0;
+        if (len > 0.0) {
+            nx = -dy / len;
+            ny = dx / len;
+            // Нормаль в сторону дна: билинейная глубина по обе стороны отрезка
+            // (снято глубже нетронутого).
+            const double mx = 0.5 * (segment.x0Mm + segment.x1Mm);
+            const double my = 0.5 * (segment.y0Mm + segment.y1Mm);
+            const double probe = cellMm * 0.25;
+            const double plus = bilinearDepth(depthMm, countX, countY,
+                                              mx + nx * probe, my + ny * probe, bounds, cellMm);
+            const double minus = bilinearDepth(depthMm, countX, countY,
+                                               mx - nx * probe, my - ny * probe, bounds, cellMm);
+            if (minus > plus) {
+                nx = -nx;
+                ny = -ny;
+            }
+        }
+        const double d0 = layerFloorBottomMm(depthMm, countX, countY, bounds, cellMm, cutMm,
+                                             segment.x0Mm, segment.y0Mm, nx, ny, nudgeMm);
+        const double d1 = layerFloorBottomMm(depthMm, countX, countY, bounds, cellMm, cutMm,
+                                             segment.x1Mm, segment.y1Mm, nx, ny, nudgeMm);
+        // Низ на кромке отрезанного дна, верх на плоскости нетронутого верха:
+        // стык верх/стенка/дно идёт по одной границе, без щели.
+        const std::uint32_t base = std::uint32_t(mesh.vertices.size() / 4);
+        const float quad[4][4] = {
+            {float(segment.x0Mm), float(segment.y0Mm), float(double(zTop) - d0), float(d0)},
+            {float(segment.x1Mm), float(segment.y1Mm), float(double(zTop) - d1), float(d1)},
+            {float(segment.x1Mm), float(segment.y1Mm), zTop, float(d1)},
+            {float(segment.x0Mm), float(segment.y0Mm), zTop, float(d0)},
+        };
+        for (int v = 0; v < 4; ++v) {
+            for (int c = 0; c < 4; ++c) {
+                mesh.vertices.push_back(quad[v][c]);
+            }
+        }
+        mesh.indices.push_back(base + 0);
+        mesh.indices.push_back(base + 1);
+        mesh.indices.push_back(base + 2);
+        mesh.indices.push_back(base + 0);
+        mesh.indices.push_back(base + 2);
+        mesh.indices.push_back(base + 3);
+    }
+    return mesh;
+}
+
+StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
+                                    const std::vector<float>& depthMm, int countX, int countY,
+                                    double cutMm,
+                                    const std::vector<StockContourSegment>& segments)
+{
+    StockLayerSurface out;
+    if (countX < 2 || countY < 2 || !(cellMm > 0.0)
+            || depthMm.size() < std::size_t(countX) * std::size_t(countY)) {
+        return out;
+    }
+    const int cellsX = countX - 1;
+    const int cellsY = countY - 1;
+    const float zTop = float(bounds.zMaxMm);
+    const double nudgeMm = cellMm * 0.04;
+    const auto at = [&](int ix, int iy) {
+        return double(depthMm[std::size_t(iy) * std::size_t(countX) + std::size_t(ix)]);
+    };
+    // Узел сетки: последний прижат к габариту, как у stockSurfaceMesh (k = 1).
+    const auto nodeX = [&](int ix) {
+        const double x = bounds.xMinMm + double(ix) * cellMm;
+        return ix == countX - 1 ? std::min(x, bounds.xMaxMm) : x;
+    };
+    const auto nodeY = [&](int iy) {
+        const double y = bounds.yMinMm + double(iy) * cellMm;
+        return iy == countY - 1 ? std::min(y, bounds.yMaxMm) : y;
+    };
+    // Отрезки границы по клеткам: отрезок целиком лежит в своей клетке (marching
+    // squares соединяет переходы на её рёбрах), поэтому клетка отрезка - клетка
+    // его середины.
+    std::vector<std::vector<StockContourSegment>> chords(
+            std::size_t(cellsX) * std::size_t(cellsY));
+    for (const StockContourSegment& segment : segments) {
+        const double mx = 0.5 * (segment.x0Mm + segment.x1Mm);
+        const double my = 0.5 * (segment.y0Mm + segment.y1Mm);
+        const int ix = std::max(0, std::min(cellsX - 1,
+                                            int(std::floor((mx - bounds.xMinMm) / cellMm))));
+        const int iy = std::max(0, std::min(cellsY - 1,
+                                            int(std::floor((my - bounds.yMinMm) / cellMm))));
+        chords[std::size_t(iy) * std::size_t(cellsX) + std::size_t(ix)].push_back(segment);
+    }
+
+    // Точка половины: позиция и нормаль границы внутрь половины (у точки схода).
+    struct Point {
+        double x = 0.0;
+        double y = 0.0;
+        double nx = 0.0;
+        double ny = 0.0;
+        bool onBoundary = false;
+    };
+    std::vector<float> topVertices;
+    std::vector<float> floorVertices;
+    std::vector<std::uint32_t> topIndices;
+    std::vector<std::uint32_t> floorIndices;
+    int boundaryTop = 0;
+    int boundaryFloor = 0;
+    int shiftedTop = 0;
+    int shiftedFloor = 0;
+
+    // Нужен ли сдвиг texcoord у граничной точки: он нужен там, где правило
+    // шейдера СТУПАЕТ (у уступа знак выбирает уровень). У склона правило
+    // билинейно, и половины обязаны сойтись одним texcoord - иначе высоты кромок
+    // разошлись бы на сдвиг.
+    const auto needsShift = [&](const Point& p, StockLayer layer) {
+        const double qx = p.x + p.nx * nudgeMm;
+        const double qy = p.y + p.ny * nudgeMm;
+        const double rule = layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm,
+                                           qx, qy, layer);
+        const double bilinear = bilinearDepth(depthMm, countX, countY, qx, qy, bounds, cellMm);
+        return std::fabs(rule - bilinear) > 1e-9;
+    };
+    const auto emit = [&](const std::vector<Point>& poly, StockLayer layer) {
+        if (poly.size() < 3) {
+            return;
+        }
+        const bool floor = layer == StockLayer::Floor;
+        std::vector<float>& vertices = floor ? floorVertices : topVertices;
+        std::vector<std::uint32_t>& indices = floor ? floorIndices : topIndices;
+        const std::uint32_t base = std::uint32_t(vertices.size() / 5);
+        for (const Point& p : poly) {
+            double u = ((p.x - bounds.xMinMm) / cellMm + 0.5) / double(countX);
+            double v = ((p.y - bounds.yMinMm) / cellMm + 0.5) / double(countY);
+            if (p.onBoundary) {
+                (floor ? boundaryFloor : boundaryTop) += 1;
+                if (needsShift(p, layer)) {
+                    u += p.nx * nudgeMm / (cellMm * double(countX));
+                    v += p.ny * nudgeMm / (cellMm * double(countY));
+                    (floor ? shiftedFloor : shiftedTop) += 1;
+                }
+            }
+            vertices.push_back(float(p.x));
+            vertices.push_back(float(p.y));
+            vertices.push_back(zTop);
+            vertices.push_back(float(u));
+            vertices.push_back(float(v));
+        }
+        for (std::size_t i = 1; i + 1 < poly.size(); ++i) {
+            indices.push_back(base);
+            indices.push_back(base + std::uint32_t(i));
+            indices.push_back(base + std::uint32_t(i + 1));
+        }
+    };
+    // Отсечение выпуклого многоугольника полуплоскостью через A -> B: остаются
+    // точки, у которых знак cross(B - A, X - A), умноженный на keepSign, не
+    // отрицателен. Новые вершины ложатся на прямую границы и помечаются
+    // граничными, с нормалью внутрь половины.
+    const auto clipHalf = [&](std::vector<Point> poly, const Point& a, const Point& b,
+                              int keepSign) {
+        std::vector<Point> kept;
+        const double dx = b.x - a.x;
+        const double dy = b.y - a.y;
+        const double len = std::hypot(dx, dy);
+        if (len <= 0.0) {
+            return poly;
+        }
+        double nx = -dy / len;
+        double ny = dx / len;
+        if (keepSign < 0) {
+            nx = -nx;
+            ny = -ny;
+        }
+        const auto side = [&](const Point& p) {
+            return (dx * (p.y - a.y) - dy * (p.x - a.x)) * double(keepSign);
+        };
+        for (std::size_t i = 0; i < poly.size(); ++i) {
+            const Point& cur = poly[i];
+            const Point& nxt = poly[(i + 1) % poly.size()];
+            const double sc = side(cur);
+            const double sn = side(nxt);
+            if (sc >= 0.0) {
+                kept.push_back(cur);
+            }
+            if ((sc < 0.0) != (sn < 0.0)) {
+                const double t = sc / (sc - sn);
+                Point cut;
+                cut.x = cur.x + (nxt.x - cur.x) * t;
+                cut.y = cur.y + (nxt.y - cur.y) * t;
+                cut.nx = nx;
+                cut.ny = ny;
+                cut.onBoundary = true;
+                kept.push_back(cut);
+            }
+        }
+        return kept;
+    };
+
+    // Одна половина одной клетки: клетка без отрезков границы уходит целиком,
+    // клетка с отрезками режется ими - по треугольнику от центра клетки.
+    const auto buildCell = [&](int ix, int iy, StockLayer layer) {
+        const double x0 = nodeX(ix);
+        const double x1 = nodeX(ix + 1);
+        const double y0 = nodeY(iy);
+        const double y1 = nodeY(iy + 1);
+        const double d[4] = { at(ix, iy), at(ix + 1, iy), at(ix + 1, iy + 1), at(ix, iy + 1) };
+        const double cx[4] = { x0, x1, x1, x0 };
+        const double cy[4] = { y0, y0, y1, y1 };
+        const std::vector<StockContourSegment>& cellChords =
+                chords[std::size_t(iy) * std::size_t(cellsX) + std::size_t(ix)];
+        if (cellChords.empty()) {
+            const bool floorCell = d[0] > cutMm || d[1] > cutMm || d[2] > cutMm || d[3] > cutMm;
+            if (floorCell != (layer == StockLayer::Floor)) {
+                return;                      // клетка другой половины
+            }
+            std::vector<Point> quad(4);
+            for (int k = 0; k < 4; ++k) {
+                quad[k].x = cx[k];
+                quad[k].y = cy[k];
+            }
+            emit(quad, layer);
+            return;
+        }
+        // Пересечения границы с рёбрами клетки: у отрезка конец лежит на ребре
+        // (marching squares соединяет переходы на рёбрах), поэтому ребро и доля
+        // вдоль него находятся по координате. Порядок обхода - по рёбрам (низ,
+        // право, верх, лево), внутри ребра - по доле: он и есть обход клетки.
+        struct Crossing {
+            int edge = 0;
+            double t = 0.0;
+            double x = 0.0;
+            double y = 0.0;
+            int chord = 0;
+            int end = 0;
+        };
+        std::vector<Crossing> crossings;
+        crossings.reserve(cellChords.size() * 2);
+        for (std::size_t ci = 0; ci < cellChords.size(); ++ci) {
+            const StockContourSegment& segment = cellChords[ci];
+            const double px[2] = { segment.x0Mm, segment.x1Mm };
+            const double py[2] = { segment.y0Mm, segment.y1Mm };
+            for (int end = 0; end < 2; ++end) {
+                Crossing c;
+                c.x = px[end];
+                c.y = py[end];
+                c.chord = int(ci);
+                c.end = end;
+                double best = std::numeric_limits<double>::max();
+                for (int e = 0; e < 4; ++e) {
+                    const int a = e;
+                    const int b = (e + 1) & 3;
+                    const double dist = pointSegmentDistanceMm(c.x, c.y, cx[a], cy[a],
+                                                               cx[b], cy[b]);
+                    if (dist < best) {
+                        best = dist;
+                        c.edge = e;
+                        const double ex = cx[b] - cx[a];
+                        const double ey = cy[b] - cy[a];
+                        const double l2 = ex * ex + ey * ey;
+                        const double tt = l2 > 0.0
+                                ? ((c.x - cx[a]) * ex + (c.y - cy[a]) * ey) / l2 : 0.0;
+                        c.t = std::max(0.0, std::min(1.0, tt));
+                    }
+                }
+                crossings.push_back(c);
+            }
+        }
+        std::sort(crossings.begin(), crossings.end(),
+                  [](const Crossing& a, const Crossing& b) {
+                      return a.edge != b.edge ? a.edge < b.edge : a.t < b.t;
+                  });
+        // Отрезки границы в порядке обхода: у каждого - сторона (знак перехода к
+        // первому углу дуги) и уровень этой дуги (тронута она или нет).
+        struct Chord {
+            Point a;
+            Point b;
+            int keepSign = 1;
+        };
+        std::vector<Chord> cutChords;
+        for (std::size_t ci = 0; ci < cellChords.size(); ++ci) {
+            int ia = -1;
+            int ib = -1;
+            for (std::size_t k = 0; k < crossings.size(); ++k) {
+                if (crossings[k].chord != int(ci)) {
+                    continue;
+                }
+                if (crossings[k].end == 0) {
+                    ia = int(k);
+                } else {
+                    ib = int(k);
+                }
+            }
+            if (ia < 0 || ib < 0 || ia == ib) {
+                continue;
+            }
+            if (ib < ia) {
+                std::swap(ia, ib);
+            }
+            Chord chord;
+            chord.a.x = crossings[std::size_t(ia)].x;
+            chord.a.y = crossings[std::size_t(ia)].y;
+            chord.b.x = crossings[std::size_t(ib)].x;
+            chord.b.y = crossings[std::size_t(ib)].y;
+            // Дуга от a к b по обходу клетки содержит ровно один угол - первый
+            // после ребра, на котором стоит a. Его знак и называет сторону дуги.
+            const int arcCorner = (crossings[std::size_t(ia)].edge + 1) & 3;
+            const double dx = chord.b.x - chord.a.x;
+            const double dy = chord.b.y - chord.a.y;
+            const double cross = dx * (cy[arcCorner] - chord.a.y)
+                    - dy * (cx[arcCorner] - chord.a.x);
+            const int arcSign = cross >= 0.0 ? 1 : -1;
+            const bool arcIsFloor = d[arcCorner] > cutMm;
+            const bool keepArc = arcIsFloor == (layer == StockLayer::Floor);
+            chord.keepSign = keepArc ? arcSign : -arcSign;
+            cutChords.push_back(chord);
+        }
+        const double mx = 0.25 * (x0 + x1 + x0 + x1);
+        const double my = 0.25 * (y0 + y0 + y1 + y1);
+        for (int k = 0; k < 4; ++k) {
+            const int k2 = (k + 1) & 3;
+            std::vector<Point> poly(3);
+            poly[0].x = mx;
+            poly[0].y = my;
+            poly[1].x = cx[k];
+            poly[1].y = cy[k];
+            poly[2].x = cx[k2];
+            poly[2].y = cy[k2];
+            for (const Chord& chord : cutChords) {
+                poly = clipHalf(poly, chord.a, chord.b, chord.keepSign);
+                if (poly.size() < 3) {
+                    break;
+                }
+            }
+            emit(poly, layer);
+        }
+    };
+
+    for (int pass = 0; pass < 2; ++pass) {
+        const StockLayer layer = pass == 0 ? StockLayer::Top : StockLayer::Floor;
+        for (int iy = 0; iy < cellsY; ++iy) {
+            for (int ix = 0; ix < cellsX; ++ix) {
+                buildCell(ix, iy, layer);
+            }
+        }
+        if (pass == 0) {
+            out.topVertexCount = int(topVertices.size() / 5);
+            out.topIndexCount = int(topIndices.size());
+        }
+    }
+    out.vertices = std::move(topVertices);
+    out.vertices.insert(out.vertices.end(), floorVertices.begin(), floorVertices.end());
+    out.indices = std::move(topIndices);
+    for (std::uint32_t index : floorIndices) {
+        out.indices.push_back(index + std::uint32_t(out.topVertexCount));
+    }
+    out.boundaryVertices = boundaryTop + boundaryFloor;
+    out.shiftedUvVertices = shiftedTop + shiftedFloor;
+    return out;
+}
+
 StockSurfaceMesh stockSurfaceMesh(const StockBounds& bounds, double cellMm,
                                   int countX, int countY, int subdiv)
 {

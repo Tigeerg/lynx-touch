@@ -38,7 +38,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.58.1+mesh.3"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.58.1+mesh.4"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -55,12 +55,18 @@ Item {
     property string quality: "med"
     readonly property bool qualityReduced: root.quality === "low" || root.quality === "safe"
     readonly property bool qualitySafe: root.quality === "safe"
-    // MSAA View3D: med - 4x (сегодня), high - 8x, low/safe - выкл (главный
-    // тормоз кадра, см. комментарий у environment).
-    readonly property int msaaMode: root.qualityReduced ? SceneEnvironment.NoAA
-                                                        : SceneEnvironment.MSAA
-    readonly property int msaaQuality: root.quality === "high" ? SceneEnvironment.High
-                                        : SceneEnvironment.Medium
+    // Сглаживание сцены - СУПЕРВЫБОРКОЙ, а не MSAA. Кромка реза (переход
+    // нетронутого/снятого металла) и линия границы считаются во фрагментном
+    // шейдере по экранной производной (stocksurface.frag) - это НЕ геометрическая
+    // кромка. MSAA её не сглаживает: все подвыборки пикселя получают один цвет
+    // фрагмента, поэтому тонкая линия на кромке ложилась на сетку подпиксельной
+    // фазой и читалась лестницей/точками (замер: кадр 1024x600, вид «точный
+    // контур», облёт камерой - линия шла рваной). Сцена рендерится в 2x по каждой
+    // оси (renderTextureWidth ниже) и сводится к элементу: и линия, и кромка
+    // ложатся полутоном. MSAA на med/high снят - супервыборка сглаживает и
+    // геометрические силуэты, а вдвоём они стоили бы вчетверо. Цена: вчетверо
+    // фрагментов и памяти цели на med/high (см. журнал).
+    readonly property int msaaMode: SceneEnvironment.NoAA
     // Обводка: safe тоньше (0.8 px против 1.5) и смещение глубже - дешевле на
     // программном растеризаторе; med/high/low держат сегодняшние числа.
     // Ширина снижена с 2.0/1.0 (замер: рёбра детали, касательные и рёбра
@@ -87,10 +93,17 @@ Item {
     // Сетка пола: low/safe грубее - реже линии и шире затухание.
     readonly property int gridStep: root.qualityReduced ? 40 : 20
     readonly property int gridFeather: root.qualityReduced ? 48 : 24
-    // Ограничение DPR: low/safe рендерят сцену в логических пикселях (DPR 1)
-    // вместо логический размер * DPR; 0 - размер следует за элементом (сегодня).
-    readonly property int renderTextureWidth: root.qualityReduced ? Math.round(view3d.width) : 0
-    readonly property int renderTextureHeight: root.qualityReduced ? Math.round(view3d.height) : 0
+    // Масштаб рендера: med/high - супервыборка 2x по каждой оси (вчетверо
+    // фрагментов и памяти цели), low/safe - логические пиксели (дешёвые уровни;
+    // safe поля не рисует вовсе, поэтому контура там нет). Отсчёт - от физического
+    // размера: Math.max(DPR, 2), то есть при DPR>=2 супервыборка к логическому и
+    // так совпадает с физическим разрешением и памяти не добавляет.
+    readonly property int renderTextureWidth: root.qualityReduced
+        ? Math.round(view3d.width)
+        : Math.round(view3d.width * Math.max(Screen.devicePixelRatio, 2))
+    readonly property int renderTextureHeight: root.qualityReduced
+        ? Math.round(view3d.height)
+        : Math.round(view3d.height * Math.max(Screen.devicePixelRatio, 2))
 
     // ---- edge layer toggles (diagnostics: E / D) ----
     property bool showBrepEdges: true      // static STEP B-rep outline
@@ -507,26 +520,19 @@ Item {
     View3D {
         id: view3d
         anchors.fill: parent
-        // Ограничение DPR (quality): 0 - размер текстуры следует за элементом
-        // (логический размер * DPR, сегодняшнее поведение), low/safe - логические
-        // пиксели (DPR 1). Размеры меняются только на этих уровнях.
+        // Масштаб рендера (quality): med/high - супервыборка 2x, low/safe -
+        // логические пиксели. Разбор и цена - у свойства renderTextureWidth.
         explicitTextureWidth: root.renderTextureWidth
         explicitTextureHeight: root.renderTextureHeight
 
         environment: SceneEnvironment {
             clearColor: root.backgroundColor
             backgroundMode: SceneEnvironment.Color
-            // MSAA держит сплошными тонкие рёбра и линии УП (иначе пунктир).
-            // High (8x) стоит почти вдвое дороже кадра; на слабом GPU это
-            // главный тормоз (см. DESIGN.md, разд. 12). Линиям лент он не
-            // нужен - у них свой distance-field AA в stepledges.frag, Medium
-            // (4x) их держит так же (замер render_probe: тёмная обводка
-            // 10062 px при Medium против 11324 px при High - один порядок,
-            // разница в пределах семантики режима кожи, не разрывов нет).
-            // На быстрой карте кадровая цена не видна: QSG_RENDER_TIMING
-            // даёт render=0 мс при swap=16 мс - упор в vsync, не в растер.
+            // Сглаживание - супервыборкой (renderTextureWidth), а не MSAA:
+            // кромка и линия контура реза считаются во фрагментном шейдере, и
+            // MSAA их не берёт - подвыборки MSAA получают один цвет фрагмента.
+            // Разбор и цена - у свойства msaaMode.
             antialiasingMode: root.msaaMode
-            antialiasingQuality: root.msaaQuality
         }
 
         PerspectiveCamera {

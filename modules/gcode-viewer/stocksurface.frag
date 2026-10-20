@@ -244,11 +244,24 @@ void MAIN()
     float deep = max(max(d00, d10), max(d01, d11));
     // Граница реза. У вида «точный контур» (cutExactBoundary) и цвет, и линия
     // берутся из знакового расстояния до ТОЧНОЙ границы реза (ядро
-    // stockCutSignedDistance): оно независимо от узла поля, поэтому кромка не
-    // ступенится. У остальных видов - прежнее: глубина узла против порога.
-    float signedMm = cutExactBoundary ? cutSample(vFieldUv, cutTexel) : (vDepth - cutMm);
-    bool cut = cutExactBoundary ? (signedMm < 0.0) : (vDepth > cutMm);
-    vec3 color = (cut ? stockCutColor.rgb : stockRawColor.rgb) * shade;
+    // stockCutChainDistance): оно независимо от узла поля, поэтому кромка не
+    // ступенится. У остальных видов - прежняя величина: глубина узла против
+    // порога. Знак выбран один на обе ветви - минус значит «снято»
+    // (у уточнённой цепочки это уже так, у порога берётся cutMm - vDepth).
+    float signedMm = cutExactBoundary ? cutSample(vFieldUv, cutTexel) : (cutMm - vDepth);
+    // Экранное расстояние со знаком: производная знаковой величины по экрану
+    // переводит миллиметры в пиксели, знак несёт сторону (минус - снятый металл).
+    float slopeMmPerPx = max(length(vec2(dFdx(signedMm), dFdy(signedMm))), 1e-9);
+    float signedPx = signedMm / slopeMmPerPx;
+    // Цвет кромки - ПОКРЫТИЕ, а не порог. Прежде цвет переключался сравнением
+    // (глубина против порога), то есть кромка ложилась ступенькой на сетку
+    // пикселей: у границы, идущей наискось, переход нетронутый/снятый металл
+    // читался лестницей. Покрытие - свёртка идеального прямоугольника с
+    // пикселем: доля пикселя по одну сторону края. Профиль шириной ровно в
+    // пиксель, поэтому сдвиг границы двигает картинку ровно на сдвиг, а кромка
+    // не гуляет по сетке.
+    float fill = clamp(0.5 - signedPx, 0.0, 1.0);
+    vec3 color = mix(stockRawColor.rgb, stockCutColor.rgb, fill) * shade;
 
     // Граница реза: нулевой уровень знакового расстояния по экранной производной.
     // Расстояние берётся от той же величины, по которой выбран цвет, поэтому линия
@@ -264,15 +277,13 @@ void MAIN()
     bool onStep = vSnap > 0.5 && rise > cell * STEP_CELLS && abs(vDepth - level) > 0.25 * rise;
     if (contourHalfPx > 0.0 && !onStep)
     {
-        float slopeMmPerPx = max(length(vec2(dFdx(signedMm), dFdy(signedMm))), 1e-9);
-        float distPx = abs(signedMm) / slopeMmPerPx;
         // Полутон - доля пикселя: у ровной площадки fwidth(distance) около 1. Без
         // этой поправки край выходил мягким и линия блекла: замер при полуширине
         // 0.7 - у линии на границе оставалось полтона (L 70 при металле 123), а
         // пиксель с центром линии не попадался вовсе (перепад глубины на стенке
         // фрезы умещается в пиксель).
-        float aa = clamp(0.5 * fwidth(distPx), 0.6, 1.5);
-        float line = 1.0 - smoothstep(contourHalfPx - aa, contourHalfPx + aa, distPx);
+        float aa = clamp(0.5 * fwidth(signedPx), 0.6, 1.5);
+        float line = 1.0 - smoothstep(contourHalfPx - aa, contourHalfPx + aa, abs(signedPx));
         color = mix(color, contourColor.rgb, line);
     }
 

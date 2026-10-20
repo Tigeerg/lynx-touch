@@ -353,6 +353,128 @@ ProgramTiming runProgramExact(const std::vector<Move>& moves,
     return out;
 }
 
+// Поле и рисование гладкого вида: зеркало верхнего слоя stocksurface.vert
+// (steppedDepth). Правило обязано совпадать с шейдером: билинейно по четырём
+// узлам клетки, а у настоящего уступа - уровень своей стороны по знаку точного
+// расстояния до границы реза. Разбор правила и его чисел - в шейдере; здесь те
+// же числа: STEP_CELLS 0.5 (порог размаха), площадки - 0.25 перепада на сход с
+// уровнем и 0.75 на расхождение между площадками, cutMm - порог съёма.
+struct DrawnField {
+    const gv::StockBounds* bounds = nullptr;
+    double cellMm = 0.5;
+    int countX = 0;
+    int countY = 0;
+    const std::vector<float>* depth = nullptr;
+    const std::vector<float>* signedMm = nullptr;   // знаковое расстояние до границы
+    double cutMm = 0.05;
+
+    // Узел поля, ix и iy прижаты к сетке - как прижимает шейдер выборку текселя.
+    double node(int ix, int iy) const
+    {
+        ix = std::max(0, std::min(countX - 1, ix));
+        iy = std::max(0, std::min(countY - 1, iy));
+        return double((*depth)[std::size_t(iy) * std::size_t(countX) + std::size_t(ix)]);
+    }
+
+    // Координата точки в узлах поля: узел ix стоит в (ix + 0.5) / count.
+    double nodeCoord(double uv, int count) const
+    {
+        return uv * double(count) - 0.5;
+    }
+
+    // Билинейная реконструкция по четырём узлам клетки, мм - прежнее правило.
+    double bilinear(double u, double v) const
+    {
+        const double p = nodeCoord(u, countX);
+        const double q = nodeCoord(v, countY);
+        const double fx = p - std::floor(p);
+        const double fy = q - std::floor(q);
+        const int ix = int(std::floor(p));
+        const int iy = int(std::floor(q));
+        const double a = node(ix, iy) * (1.0 - fx) + node(ix + 1, iy) * fx;
+        const double b = node(ix, iy + 1) * (1.0 - fx) + node(ix + 1, iy + 1) * fx;
+        return a * (1.0 - fy) + b * fy;
+    }
+
+    // Знаковое расстояние до границы билинейно по её узлам: нулевой уровень
+    // между узлами линеен, поэтому сторона точки берётся тем же правилом, что
+    // цвет и линия во фрагменте (cutSample).
+    double signedAt(double u, double v) const
+    {
+        if (signedMm == nullptr) {
+            return 0.0;
+        }
+        const int n = countX;
+        const auto at = [&](int ix, int iy) {
+            ix = std::max(0, std::min(countX - 1, ix));
+            iy = std::max(0, std::min(countY - 1, iy));
+            return double((*signedMm)[std::size_t(iy) * std::size_t(n) + std::size_t(ix)]);
+        };
+        const double p = nodeCoord(u, countX);
+        const double q = nodeCoord(v, countY);
+        const double fx = p - std::floor(p);
+        const double fy = q - std::floor(q);
+        const int ix = int(std::floor(p));
+        const int iy = int(std::floor(q));
+        const double a = at(ix, iy) * (1.0 - fx) + at(ix + 1, iy) * fx;
+        const double b = at(ix, iy + 1) * (1.0 - fx) + at(ix + 1, iy + 1) * fx;
+        return a * (1.0 - fy) + b * fy;
+    }
+
+    // Глубина нарисованного верха в точке гладкого вида, мм: зеркало
+    // steppedDepth (stocksurface.vert).
+    double step(double u, double v) const
+    {
+        const double p = nodeCoord(u, countX);
+        const double q = nodeCoord(v, countY);
+        const double fx = p - std::floor(p);
+        const double fy = q - std::floor(q);
+        const int ix = int(std::floor(p));
+        const int iy = int(std::floor(q));
+        const double d00 = node(ix, iy);
+        const double d10 = node(ix + 1, iy);
+        const double d01 = node(ix, iy + 1);
+        const double d11 = node(ix + 1, iy + 1);
+        const double depth = bilinear(u, v);
+
+        const double shallow = std::min(std::min(d00, d10), std::min(d01, d11));
+        const double deep = std::max(std::max(d00, d10), std::max(d01, d11));
+        const double rise = deep - shallow;
+        if (rise <= cellMm * 0.5) {
+            return depth;                        // размаха на уступ нет
+        }
+        // Главная ось уступа и площадки за клеткой по обе её стороны.
+        const bool alongX = std::fabs(d10 - d00) + std::fabs(d11 - d01)
+                >= std::fabs(d01 - d00) + std::fabs(d11 - d10);
+        const int ax = alongX ? 1 : 0;
+        const int ay = alongX ? 0 : 1;
+        const int sx = alongX ? 0 : 1;
+        const int sy = alongX ? 1 : 0;
+        const double aheadA = node(ix + 2 * ax, iy + 2 * ay);
+        const double aheadB = node(ix + 2 * ax + sx, iy + 2 * ay + sy);
+        const double behindA = node(ix - ax, iy - ay);
+        const double behindB = node(ix - ax + sx, iy - ay + sy);
+        const double tol = 0.25 * rise;
+        const auto atLevel = [&](double value) {
+            return std::min(std::fabs(value - shallow), std::fabs(value - deep)) <= tol;
+        };
+        bool kink = atLevel(aheadA) && atLevel(aheadB)
+                && atLevel(behindA) && atLevel(behindB);
+        kink = kink && std::fabs(0.5 * (aheadA + aheadB) - 0.5 * (behindA + behindB))
+                               >= 0.75 * rise;
+        if (!kink) {
+            return depth;                        // склон или канавка в клетку
+        }
+        const double mid = 0.5 * (shallow + deep);
+        const bool split = ((d00 > cutMm) == (d00 > mid)) && ((d10 > cutMm) == (d10 > mid))
+                && ((d01 > cutMm) == (d01 > mid)) && ((d11 > cutMm) == (d11 > mid));
+        if (!split) {
+            return depth > mid ? deep : shallow;
+        }
+        return signedAt(u, v) < 0.0 ? deep : shallow;
+    }
+};
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -1325,6 +1447,254 @@ int main(int argc, char** argv)
                            && std::fabs(topSlope) <= 1e-6
                            && std::fabs(wallSlope - wallWant) <= 1e-6);
         }
+    }
+
+    // 7е. Кромка ОСТАВЛЕННОГО материала: верх ступает, а не наклоняется. Случай
+    // держит то, что видит оператор на кадре, - кромку острова внутри кармана, -
+    // против материала: плоская фреза оставляет два ровных уровня (нетронутый верх
+    // 0 и дно d) и отвесную кромку между ними, поэтому нарисованный верх обязан
+    // стоять на СВОЁМ уровне, а наклонная полоса между уровнями - уйти. Прежняя
+    // билинейная реконструкция клала полосу шириной в КЛЕТКУ поля (0.5 мм при узле
+    // 0.5), и кромка читалась валом под atan(клетка / уступ): 32.0 градуса при
+    // уступе 0.8 мм и 7.1 при 4.0 (числа - строки note ниже). Отсюда мера случая:
+    // отклонение рисованного от БЛИЖАЙШЕГО уровня (у прежнего правила - полперепада,
+    // 0.4 мм на уступе 0.8) и ширина полосы перехода с её наклоном от отвеса.
+    // Поле и его байты не трогаются: правило живёт в рисовании (stocksurface.vert,
+    // steppedDepth), случай повторяет его зеркалом (DrawnField).
+    {
+        const double cell = 0.5;
+        const int subdiv = 2;                        // дробление гладкого вида
+        const double cutMm = 0.05;
+        const double r = 5.0;                        // концевая D10
+        const double yPath = -7.7;                   // нижняя сторона хода
+        const double yRim = yPath + r;               // кромка острова: -2.7
+        const double depths[2] = { 4.0, 0.8 };
+        for (double depth : depths) {
+            gv::StockBounds bounds;
+            bounds.xMinMm = -10.0;
+            bounds.xMaxMm = 10.0;
+            bounds.yMinMm = -10.0;
+            bounds.yMaxMm = 10.0;
+            bounds.zMinMm = -5.0;
+            bounds.zMaxMm = 0.0;
+            // Ход по прямоугольнику вокруг острова: след фрезы - полоса шириной
+            // 2r вокруг хода, поэтому остров - прямоугольник, сжатый на r внутрь:
+            // [-2.7, 2.7] x [-2.7, 3.3] с прямыми углами. Кромка y = -2.7 ложится
+            // между подузлами -2.75 и -2.5 (узел -3.0 снят, узел -2.5 нетронут) -
+            // так же, как у настоящего кармана с островом.
+            const std::string program =
+                "G21 G90\n"
+                "G0 X0 Y-14 Z5\n"
+                "G1 Z-" + std::to_string(depth) + " F100\n"
+                "G1 X0 Y-7.7\n"
+                "G1 X7.7\n"
+                "G1 Y8.3\n"
+                "G1 X-7.7\n"
+                "G1 Y-7.7\n"
+                "G1 X0\n"
+                "G0 Z5\n"
+                "M30\n";
+            const gv::ParseResult parsed = gv::parseGcode(program);
+            const gv::PathData data = gv::prepareOrdered(parsed.ordered, parsed.stages);
+            const gv::ToolInfo tool = makeTool(ToolSpec{ "FLAT", 10.0 });
+            const gv::StockRunResult run = gv::simulateStock(data, bounds, cell, tool);
+            const gv::StockField& field = run.field;
+            const int nx = field.countX();
+            const int ny = field.countY();
+            const std::vector<gv::StockCutter> cutters = gv::stockCutterPlan(data, tool);
+            const gv::StockBoundaryResult boundary = gv::stockCutBoundary(
+                data, bounds, cell, cutters, field.depthMm(), nx, ny, cutMm);
+            const std::vector<float> signedMm = gv::stockCutSignedDistance(
+                bounds, cell, field.depthMm(), nx, ny, boundary.segments, cutMm, cell * 3.0);
+            DrawnField drawn;
+            drawn.bounds = &bounds;
+            drawn.cellMm = cell;
+            drawn.countX = nx;
+            drawn.countY = ny;
+            drawn.depth = &field.depthMm();
+            drawn.signedMm = &signedMm;
+            drawn.cutMm = cutMm;
+
+            // Колонка через нижнюю кромку: x = 0 - это узел 20 (доля поля
+            // 20.5 / nx), где ход однороден по длине и кромка параллельна X.
+            // Подузлы рисованной сетки идут через клетка / subdiv (0.25 мм).
+            const double u = 20.5 / double(nx);
+            const int drawnY = (ny - 1) * subdiv + 1;
+            // Уровни случая - по узлам самой колонки: узел 20 по оси x, узел 20 -
+            // нетронутый верх острова (0), узел 14 - дно кармана под кромкой.
+            const double shallowLevel = drawn.node(20, 20);
+            const double deepLevel = drawn.node(20, 14);
+            const double levels[2] = { shallowLevel, deepLevel };
+            const auto nearestLevel = [&](double value) {
+                return std::min(std::fabs(value - levels[0]), std::fabs(value - levels[1]));
+            };
+            const double windowMm = 1.0;             // окно вокруг кромки, мм
+            const double tol = 1e-6;
+            double levelNew = 0.0;
+            double levelOld = 0.0;
+            int rampedNew = 0;
+            int rampedOld = 0;
+            double plateauNew = 0.0;
+            double plateauOld = 0.0;
+            double lastDeepNew = -1e9;
+            double firstShallowNew = 1e9;
+            double lastDeepOld = -1e9;
+            double firstShallowOld = 1e9;
+            for (int k = 0; k + 1 < drawnY; ++k) {
+                const double y0 = bounds.yMinMm + (double(k) / double(subdiv)) * cell;
+                const double y1 = bounds.yMinMm + (double(k + 1) / double(subdiv)) * cell;
+                const double v0 = (double(k) / double(subdiv) + 0.5) / double(ny);
+                const double v1 = (double(k + 1) / double(subdiv) + 0.5) / double(ny);
+                if (std::fabs(y0 - yRim) > windowMm)
+                    continue;
+                const double hereNew = drawn.step(u, v0);
+                const double hereOld = drawn.bilinear(u, v0);
+                levelNew = std::max(levelNew, nearestLevel(hereNew));
+                levelOld = std::max(levelOld, nearestLevel(hereOld));
+                if (nearestLevel(hereNew) > tol)
+                    ++rampedNew;
+                if (nearestLevel(hereOld) > tol)
+                    ++rampedOld;
+                // Полоса перехода: от последнего подузла на дне (ниже кромки) до
+                // первого на нетронутом верху (выше неё).
+                if (nearestLevel(hereNew) <= tol) {
+                    if (std::fabs(hereNew - deepLevel) <= tol)
+                        lastDeepNew = std::max(lastDeepNew, y0);
+                    if (std::fabs(hereNew - shallowLevel) <= tol)
+                        firstShallowNew = std::min(firstShallowNew, y0);
+                }
+                if (nearestLevel(hereOld) <= tol) {
+                    if (std::fabs(hereOld - deepLevel) <= tol)
+                        lastDeepOld = std::max(lastDeepOld, y0);
+                    if (std::fabs(hereOld - shallowLevel) <= tol)
+                        firstShallowOld = std::min(firstShallowOld, y0);
+                }
+            }
+            const double bandNew = firstShallowNew - lastDeepNew;
+            const double bandOld = firstShallowOld - lastDeepOld;
+            // Ровные площадки: наклон пары подузлов ВНЕ полосы перехода - и на
+            // дне, и на нетронутом верху. У склона он не ноль, у уступа - ноль.
+            for (int k = 0; k + 1 < drawnY; ++k) {
+                const double y0 = bounds.yMinMm + (double(k) / double(subdiv)) * cell;
+                const double y1 = bounds.yMinMm + (double(k + 1) / double(subdiv)) * cell;
+                const double v0 = (double(k) / double(subdiv) + 0.5) / double(ny);
+                const double v1 = (double(k + 1) / double(subdiv) + 0.5) / double(ny);
+                if (std::fabs(y0 - yRim) > windowMm)
+                    continue;
+                if (y0 <= firstShallowNew && y1 >= lastDeepNew)
+                    continue;                       // пара через полосу перехода
+                if (y0 <= firstShallowOld && y1 >= lastDeepOld)
+                    continue;
+                plateauNew = std::max(plateauNew,
+                                      std::fabs(drawn.step(u, v1) - drawn.step(u, v0)) / (y1 - y0));
+                plateauOld = std::max(plateauOld,
+                                      std::fabs(drawn.bilinear(u, v1) - drawn.bilinear(u, v0)) / (y1 - y0));
+            }
+            const bool rimInsideNew = lastDeepNew < yRim && yRim < firstShallowNew;
+            const bool rimInsideOld = lastDeepOld < yRim && yRim < firstShallowOld;
+            const double tiltNew = std::atan2(bandNew, deepLevel - shallowLevel) * 180.0 / PI;
+            const double tiltOld = std::atan2(bandOld, deepLevel - shallowLevel) * 180.0 / PI;
+            std::printf("note island_rim_drawn depth_mm=%.2f cell_mm=%.2f subdiv=%d rim_mm=%.2f "
+                        "level_dev_new=%.2e level_dev_old=%.2e ramped_new=%d ramped_old=%d "
+                        "band_new=%.2f band_old=%.2f tilt_new_deg=%.1f tilt_old_deg=%.1f "
+                        "plateau_new=%.1e plateau_old=%.1e wall_segments=%d\n",
+                        depth, cell, subdiv, yRim, levelNew, levelOld, rampedNew, rampedOld,
+                        bandNew, bandOld, tiltNew, tiltOld, plateauNew, plateauOld,
+                        int(boundary.segments.size()));
+            // Сверка: рисованный верх стоит на своём уровне (level_new = 0), ни
+            // один подузел кромки не остался между уровнями (ramped_new = 0),
+            // площадки острова и дна ровные, а подклетка перехода накрывает саму
+            // кромку. Прежнее правило обязано быть красным здесь - иначе случай
+            // слеп: у него полперепада высоты на подузле кромки.
+            reportCase("island_rim_drawn", drawnY, levelNew, tol,
+                       rampedNew == 0 && rimInsideNew && plateauNew <= tol
+                           && std::fabs(bandNew - cell / double(subdiv)) <= tol
+                           && levelOld > 0.4 * (deepLevel - shallowLevel)
+                           && rampedOld > 0 && tiltOld > tiltNew
+                           && boundary.segments.size() > 0);
+        }
+    }
+
+    // 7ж. Ровный СКЛОН ступенью не наклоняется: конус (V-бита 90 градусов) врезан
+    // в плоский верх, стенка долины - 45 градусов, перепад на клетку равен самой
+    // клетке (0.5 мм при узле 0.5) - размах тот же, что у уступа. Отличает склон
+    // кинк: отсчёты через клетку у него равны, площадок по сторонам нет, поэтому
+    // рисованный верх обязан остаться билинейным. Случай красный, если ступень
+    // лезет на склон: полперепада (0.25 мм) высоты на подузле.
+    {
+        const double cell = 0.5;
+        const double cutMm = 0.05;
+        const std::string program =
+            "G21 G90\n"
+            "G0 X0 Y0 Z5\n"
+            "G1 Z-1 F100\n"
+            "G0 Z5\n"
+            "M30\n";
+        const gv::ParseResult parsed = gv::parseGcode(program);
+        const gv::PathData data = gv::prepareOrdered(parsed.ordered, parsed.stages);
+        const gv::ToolInfo tool = makeTool(ToolSpec{ "CHAMFER", 6.0, 45.0 });
+        gv::StockBounds bounds;
+        bounds.xMinMm = -5.0;
+        bounds.xMaxMm = 5.0;
+        bounds.yMinMm = -5.0;
+        bounds.yMaxMm = 5.0;
+        bounds.zMinMm = -5.0;
+        bounds.zMaxMm = 0.0;
+        const gv::StockRunResult run = gv::simulateStock(data, bounds, cell, tool);
+        const gv::StockField& field = run.field;
+        const int nx = field.countX();
+        const int ny = field.countY();
+        const std::vector<gv::StockCutter> cutters = gv::stockCutterPlan(data, tool);
+        const gv::StockBoundaryResult boundary = gv::stockCutBoundary(
+            data, bounds, cell, cutters, field.depthMm(), nx, ny, cutMm);
+        const std::vector<float> signedMm = gv::stockCutSignedDistance(
+            bounds, cell, field.depthMm(), nx, ny, boundary.segments, cutMm, cell * 3.0);
+        DrawnField drawn;
+        drawn.bounds = &bounds;
+        drawn.cellMm = cell;
+        drawn.countX = nx;
+        drawn.countY = ny;
+        drawn.depth = &field.depthMm();
+        drawn.signedMm = &signedMm;
+        drawn.cutMm = cutMm;
+
+        // Точки у самой границы реза по узлам и по подузлам: там, где склон крут
+        // (перепад на клетку 0.5), ступень и лезла бы на него.
+        int checked = 0;
+        double maxDev = 0.0;
+        double snapWouldBe = 0.0;
+        for (int iy = 0; iy < ny; ++iy) {
+            for (int ix = 0; ix < nx; ++ix) {
+                const double x = field.nodeXMm(ix);
+                const double y = field.nodeYMm(iy);
+                const double radius = std::hypot(x, y);
+                if (radius < 0.5 || radius > 1.6) {
+                    continue;               // кольцо вокруг кромки (глубина 0.25..0.9)
+                }
+                for (int k = 0; k < 2; ++k) {
+                    for (int j = 0; j < 2; ++j) {
+                        const double uu = (double(ix) + 0.25 + 0.5 * double(k)) / double(nx);
+                        const double vv = (double(iy) + 0.25 + 0.5 * double(j)) / double(ny);
+                        const double drawnMm = drawn.step(uu, vv);
+                        const double bilinearMm = drawn.bilinear(uu, vv);
+                        maxDev = std::max(maxDev, std::fabs(drawnMm - bilinearMm));
+                        // Цена подмены: размах клетки - это и есть то, что ступень
+                        // поставила бы на склон.
+                        const double shallow = std::min({ drawn.node(ix, iy), drawn.node(ix + 1, iy),
+                                                          drawn.node(ix, iy + 1), drawn.node(ix + 1, iy + 1) });
+                        const double deep = std::max({ drawn.node(ix, iy), drawn.node(ix + 1, iy),
+                                                       drawn.node(ix, iy + 1), drawn.node(ix + 1, iy + 1) });
+                        snapWouldBe = std::max(snapWouldBe, 0.5 * (deep - shallow));
+                        ++checked;
+                    }
+                }
+            }
+        }
+        std::printf("note steep_slope_drawn cell_mm=%.2f checked=%d dev_mm=%.2e "
+                    "snap_would_be_mm=%.3f boundary_segments=%d\n",
+                    cell, checked, maxDev, snapWouldBe, int(boundary.segments.size()));
+        reportCase("steep_slope_drawn", checked, maxDev, 1e-9,
+                   checked > 0 && snapWouldBe > 0.05 && boundary.segments.size() > 0);
     }
 
     // 7в. Точный контур реза и стенка по нему (PLAN-STOCK.md, 3.1). Marching

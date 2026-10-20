@@ -22,6 +22,19 @@ namespace {
 // на окружностях, и разность меньше 1e-9 - это та же окружность.
 constexpr double RADIUS_EPS_MM = 1e-9;
 
+// Невязка уровня реза, мм, на которой подточка цепочки границы считается
+// лежащей на уровне (stockCutBoundary, subdivPerCell): на два порядка строже
+// требования 1e-6 мм (случай boundary_refined пробника stock_sim_probe).
+constexpr double SUBDIV_DEPTH_EPS_MM = 1e-10;
+
+// Допуск ПОЛОЖЕНИЯ подточки на уровне вдоль нормали клетки, мм: у гладкого среза
+// невязка доводится до SUBDIV_DEPTH_EPS_MM, а у кромки плоской фрезы глубина
+// обрывается ступенькой, и там уровень - не линия, а сама кромка: её положение
+// доводится до этого допуска. Число на порядок строже требования 1e-6 мм случая
+// boundary_refined: у гладкого шара отклонение вершины от аналитической границы
+// выходит 1e-7 мм, у кромки плоской фрезы - доли 1e-6 (там "уровень" - разрыв).
+constexpr double SUBDIV_POS_EPS_MM = 1e-7;
+
 // Пи как в tooling.cpp: углы профиля считаются в градусах.
 constexpr double PI = 3.14159265358979323846;
 
@@ -999,7 +1012,8 @@ double pointSegmentDistanceMm(double px, double py, double ax, double ay,
 StockBoundaryResult stockCutBoundary(const PathData& data, const StockBounds& bounds,
                                      double cellMm, const std::vector<StockCutter>& cutters,
                                      const std::vector<float>& depthMm, int countX, int countY,
-                                     double cutMm, StockBoundaryCache* cache, int refineSteps)
+                                     double cutMm, StockBoundaryCache* cache, int refineSteps,
+                                     int subdivPerCell)
 {
     StockBoundaryResult out;
     const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
@@ -1134,13 +1148,171 @@ StockBoundaryResult stockCutBoundary(const PathData& data, const StockBounds& bo
     };
 
     const int steps = std::max(1, refineSteps);
+    const int subdiv = std::max(1, subdivPerCell);
     const auto at = [&](int ix, int iy) {
         return double(depthMm[std::size_t(iy) * std::size_t(countX) + std::size_t(ix)]);
+    };
+    // Точка цепочки границы: хорду между переходами цепочка проходит по УРОВНЮ
+    // реза, а не по прямой. Уровень - линия, которую поле само подразумевает
+    // между узлами: подточка берётся долей вдоль хорды и спускается на уровень по
+    // ТОЧНОЙ глубине хода. Направление спуска - градиент билинейной реконструкции
+    // поля в самой подточке: он перпендикулярен уровню, поэтому спуск трансверсален
+    // и не длиннее клетки (у клетки, где хорда перескакивает через нетронутый
+    // участок, нормаль хорды увела бы спуск вдоль уровня). Где реконструкция
+    // плоская (градиент нулевой), берётся нормаль хорды. Скобка уровня ищется
+    // шагами в долю клетки, а положение в ней уточняется хордой (метод Illinois):
+    // у гладкого среза хорда сходится за считанные шаги, а у кромки плоской фрезы
+    // глубина обрывается ступенькой, и там половинение удержанного конца
+    // оставляет деление пополам. Ложь возврата - уровня рядом не нашлось.
+    const auto projectToCut = [&](double bx, double by, double nx, double ny,
+                                  double& qx, double& qy) {
+        qx = bx;
+        qy = by;
+        const double f = depthAt(bx, by) - cutMm;
+        if (std::fabs(f) <= SUBDIV_DEPTH_EPS_MM) {
+            return true;
+        }
+        // Скобка: шаги долей клетки в сторону, где невязка меняет знак.
+        const double dir = f > 0.0 ? -1.0 : 1.0;
+        const double stepMm = cellMm * 0.25;
+        double sBack = 0.0;
+        double fBack = f;
+        double sFore = 0.0;
+        double fFore = f;
+        bool bracketed = false;
+        for (int k = 1; k <= 4; ++k) {
+            const double s = dir * stepMm * double(k);
+            const double ft = depthAt(bx + nx * s, by + ny * s) - cutMm;
+            if (std::fabs(ft) <= SUBDIV_DEPTH_EPS_MM) {
+                qx = bx + nx * s;
+                qy = by + ny * s;
+                return true;
+            }
+            if ((ft < 0.0) != (f < 0.0)) {
+                sFore = s;
+                fFore = ft;
+                bracketed = true;
+                break;
+            }
+            sBack = s;
+            fBack = ft;
+        }
+        if (!bracketed) {
+            return false;                  // уровня рядом нет: остаётся хорда
+        }
+        // Скобка: sBack и sFore, невязки на них - разных знаков. Уточнение -
+        // хордой (Illinois), а половинение удержанного конца оставляет деление
+        // пополам у ступеньки.
+        double sLo = std::min(sBack, sFore);
+        double sHi = std::max(sBack, sFore);
+        double fLo = sBack <= sFore ? fBack : fFore;
+        double fHi = sBack <= sFore ? fFore : fBack;
+        double sLast = sBack;
+        int sameSide = 0;
+        for (int it = 0; it < 30; ++it) {
+            if (sHi - sLo <= SUBDIV_POS_EPS_MM) {
+                break;                         // положение уровня уже точнее допуска
+            }
+            double sNext = (fLo * sHi - fHi * sLo) / (fLo - fHi);
+            if (!(sNext > sLo && sNext < sHi)) {
+                sNext = 0.5 * (sLo + sHi);
+            }
+            const double fNext = depthAt(bx + nx * sNext, by + ny * sNext) - cutMm;
+            sLast = sNext;
+            if (std::fabs(fNext) <= SUBDIV_DEPTH_EPS_MM) {
+                break;
+            }
+            if ((fNext < 0.0) == (fLo < 0.0)) {
+                sLo = sNext;
+                fLo = fNext;
+                if (sameSide < 0) {
+                    fHi *= 0.5;                 // Illinois: удержанная сторона тает
+                }
+                sameSide = -1;
+            } else {
+                sHi = sNext;
+                if (sameSide > 0) {
+                    fLo *= 0.5;
+                }
+                sameSide = 1;
+            }
+        }
+        qx = bx + nx * sLast;
+        qy = by + ny * sLast;
+        return true;
+    };
+    // Цепочка одной клетки: переходы A и B на её рёбрах и subdiv - 1 подточек
+    // между ними на уровне реза. При subdiv = 1 цепочка - прежняя хорда.
+    // ix/iy - клетка (по её узлам считается градиент поля), unprojected -
+    // счётчик подточек, которым уровня рядом не нашлось.
+    const auto emitChain = [&](double ax, double ay, double bx, double by, int ix, int iy,
+                               std::vector<StockContourSegment>& segments, int& unprojected) {
+        if (subdiv <= 1) {
+            segments.push_back(StockContourSegment{ax, ay, bx, by});
+            return;
+        }
+        const double dx = bx - ax;
+        const double dy = by - ay;
+        const double len = std::hypot(dx, dy);
+        if (!(len > 0.0)) {
+            segments.push_back(StockContourSegment{ax, ay, bx, by});
+            return;
+        }
+        // Нормаль хорды (сторона, где билинейная реконструкция глубже) - запасное
+        // направление спуска: им обходятся клетки с плоской реконструкцией.
+        double fallbackX = -dy / len;
+        double fallbackY = dx / len;
+        const double probe = cellMm * 0.25;
+        const double plus = bilinearDepth(depthMm, countX, countY,
+                                          ax + fallbackX * probe, ay + fallbackY * probe,
+                                          bounds, cellMm);
+        const double minus = bilinearDepth(depthMm, countX, countY,
+                                           ax - fallbackX * probe, ay - fallbackY * probe,
+                                           bounds, cellMm);
+        if (minus > plus) {
+            fallbackX = -fallbackX;
+            fallbackY = -fallbackY;
+        }
+        // Градиент билинейной реконструкции поля в клетке, мм глубины на мм хода.
+        const double d0 = at(ix, iy);
+        const double d1 = at(ix + 1, iy);
+        const double d2 = at(ix + 1, iy + 1);
+        const double d3 = at(ix, iy + 1);
+        const double cellX = bounds.xMinMm + double(ix) * cellMm;
+        const double cellY = bounds.yMinMm + double(iy) * cellMm;
+        double prevX = ax;
+        double prevY = ay;
+        for (int k = 1; k < subdiv; ++k) {
+            const double t = double(k) / double(subdiv);
+            const double baseX = ax + dx * t;
+            const double baseY = ay + dy * t;
+            const double fx = (baseX - cellX) / cellMm;
+            const double fy = (baseY - cellY) / cellMm;
+            double gx = ((d1 - d0) * (1.0 - fy) + (d2 - d3) * fy) / cellMm;
+            double gy = ((d3 - d0) * (1.0 - fx) + (d2 - d1) * fx) / cellMm;
+            const double glen = std::hypot(gx, gy);
+            double nx = fallbackX;
+            double ny = fallbackY;
+            if (glen > 1e-9) {
+                nx = gx / glen;
+                ny = gy / glen;
+            }
+            double qx = 0.0;
+            double qy = 0.0;
+            if (!projectToCut(baseX, baseY, nx, ny, qx, qy)) {
+                ++unprojected;
+            }
+            segments.push_back(StockContourSegment{prevX, prevY, qx, qy});
+            prevX = qx;
+            prevY = qy;
+        }
+        segments.push_back(StockContourSegment{prevX, prevY, bx, by});
     };
     // Отрезки одной клетки: marching squares по знакам узлов поля, положение
     // перехода на ребре уточняется делением отрезка по ТОЧНОЙ аналитической
     // глубине. Знак на концах ребра взят из поля (в узле глубина точна), поэтому
     // скобка верна, а узел задаёт лишь выбор ребра - ошибка от узла не зависит.
+    // Цепочка между переходами дробится на уровне реза (emitChain).
     const auto computeCell = [&](int ix, int iy, std::vector<StockContourSegment>& segments,
                                  int& crossingEdges) {
         segments.clear();
@@ -1182,18 +1354,18 @@ StockBoundaryResult stockCutBoundary(const PathData& data, const StockBounds& bo
             ++count;
         }
         if (count == 2) {
-            segments.push_back(StockContourSegment{px[0], py[0], px[1], py[1]});
+            emitChain(px[0], py[0], px[1], py[1], ix, iy, segments, out.unprojected);
             crossingEdges = 2;
         } else if (count == 4) {
             // Седло: знак среднего по клетке решает, какая пара отрезков - то же
             // правило, что у stockCutContour (детерминизм).
             const double center = 0.25 * (f[0] + f[1] + f[2] + f[3]);
             if (center < 0.0) {
-                segments.push_back(StockContourSegment{px[0], py[0], px[1], py[1]});
-                segments.push_back(StockContourSegment{px[2], py[2], px[3], py[3]});
+                emitChain(px[0], py[0], px[1], py[1], ix, iy, segments, out.unprojected);
+                emitChain(px[2], py[2], px[3], py[3], ix, iy, segments, out.unprojected);
             } else {
-                segments.push_back(StockContourSegment{px[0], py[0], px[3], py[3]});
-                segments.push_back(StockContourSegment{px[1], py[1], px[2], py[2]});
+                emitChain(px[0], py[0], px[3], py[3], ix, iy, segments, out.unprojected);
+                emitChain(px[1], py[1], px[2], py[2], ix, iy, segments, out.unprojected);
             }
             crossingEdges = 4;
         }
@@ -1527,11 +1699,17 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
         const double y = bounds.yMinMm + double(iy) * cellMm;
         return iy == countY - 1 ? std::min(y, bounds.yMaxMm) : y;
     };
-    // Отрезки границы по клеткам: отрезок целиком лежит в своей клетке (marching
+    // Цепочки границы по клеткам: отрезок целиком лежит в своей клетке (marching
     // squares соединяет переходы на её рёбрах), поэтому клетка отрезка - клетка
-    // его середины.
-    std::vector<std::vector<StockContourSegment>> chords(
-            std::size_t(cellsX) * std::size_t(cellsY));
+    // его середины. Подряд идущие отрезки, у которых конец одного совпадает с
+    // началом другого, склеиваются в цепочку: у уточнённой границы переход между
+    // рёбрами клетки раздроблен, и внутри клетки у цепочки есть узлы
+    // (stockCutBoundary, subdivPerCell).
+    struct Chain {
+        std::vector<std::array<double, 2>> points;   // A, узлы..., B
+    };
+    std::vector<std::vector<Chain>> chains(std::size_t(cellsX) * std::size_t(cellsY));
+    constexpr double CHAIN_JOIN_MM = 1e-9;           // звенья цепочки общие точкой
     for (const StockContourSegment& segment : segments) {
         const double mx = 0.5 * (segment.x0Mm + segment.x1Mm);
         const double my = 0.5 * (segment.y0Mm + segment.y1Mm);
@@ -1539,7 +1717,18 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
                                             int(std::floor((mx - bounds.xMinMm) / cellMm))));
         const int iy = std::max(0, std::min(cellsY - 1,
                                             int(std::floor((my - bounds.yMinMm) / cellMm))));
-        chords[std::size_t(iy) * std::size_t(cellsX) + std::size_t(ix)].push_back(segment);
+        std::vector<Chain>& cell = chains[std::size_t(iy) * std::size_t(cellsX) + std::size_t(ix)];
+        if (!cell.empty()) {
+            const std::array<double, 2>& last = cell.back().points.back();
+            if (std::hypot(last[0] - segment.x0Mm, last[1] - segment.y0Mm) <= CHAIN_JOIN_MM) {
+                cell.back().points.push_back({segment.x1Mm, segment.y1Mm});
+                continue;
+            }
+        }
+        Chain chain;
+        chain.points.push_back({segment.x0Mm, segment.y0Mm});
+        chain.points.push_back({segment.x1Mm, segment.y1Mm});
+        cell.push_back(std::move(chain));
     }
 
     // Точка половины: позиция и нормаль границы внутрь половины (у точки схода).
@@ -1602,52 +1791,70 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
             indices.push_back(base + std::uint32_t(i + 1));
         }
     };
-    // Отсечение выпуклого многоугольника полуплоскостью через A -> B: остаются
-    // точки, у которых знак cross(B - A, X - A), умноженный на keepSign, не
-    // отрицателен. Новые вершины ложатся на прямую границы и помечаются
-    // граничными, с нормалью внутрь половины.
-    const auto clipHalf = [&](std::vector<Point> poly, const Point& a, const Point& b,
-                              int keepSign) {
-        std::vector<Point> kept;
-        const double dx = b.x - a.x;
-        const double dy = b.y - a.y;
-        const double len = std::hypot(dx, dy);
-        if (len <= 0.0) {
-            return poly;
-        }
-        double nx = -dy / len;
-        double ny = dx / len;
-        if (keepSign < 0) {
-            nx = -nx;
-            ny = -ny;
-        }
-        const auto side = [&](const Point& p) {
-            return (dx * (p.y - a.y) - dy * (p.x - a.x)) * double(keepSign);
-        };
-        for (std::size_t i = 0; i < poly.size(); ++i) {
-            const Point& cur = poly[i];
-            const Point& nxt = poly[(i + 1) % poly.size()];
-            const double sc = side(cur);
-            const double sn = side(nxt);
-            if (sc >= 0.0) {
-                kept.push_back(cur);
-            }
-            if ((sc < 0.0) != (sn < 0.0)) {
-                const double t = sc / (sc - sn);
-                Point cut;
-                cut.x = cur.x + (nxt.x - cur.x) * t;
-                cut.y = cur.y + (nxt.y - cur.y) * t;
-                cut.nx = nx;
-                cut.ny = ny;
-                cut.onBoundary = true;
-                kept.push_back(cut);
+    // Место точки на обходе многоугольника: ближайшее ребро. Точка цепочки стоит
+    // на ребре (marching squares соединяет переходы на рёбрах), поэтому ближайшее
+    // ребро и есть её ребро.
+    const auto edgeOfPoint = [](const std::vector<Point>& poly, double x, double y) {
+        double best = std::numeric_limits<double>::max();
+        int edge = 0;
+        const std::size_t n = poly.size();
+        for (std::size_t i = 0; i < n; ++i) {
+            const Point& a = poly[i];
+            const Point& b = poly[(i + 1) % n];
+            const double dist = pointSegmentDistanceMm(x, y, a.x, a.y, b.x, b.y);
+            if (dist < best) {
+                best = dist;
+                edge = int(i);
             }
         }
-        return kept;
+        return edge;
+    };
+    // Точка внутри обхода (луч вправо): серединой цепочки она находит своего
+    // хозяина - часть клетки, которую цепочка режет.
+    const auto insidePoly = [](const std::vector<Point>& poly, double x, double y) {
+        bool in = false;
+        const std::size_t n = poly.size();
+        for (std::size_t i = 0, j = n - 1; i < n; j = i++) {
+            const double xi = poly[i].x;
+            const double yi = poly[i].y;
+            const double xj = poly[j].x;
+            const double yj = poly[j].y;
+            if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+                in = !in;
+            }
+        }
+        return in;
+    };
+    // Добавить точку в конец обхода, если она не повторяет последнюю: переход
+    // ровно в угол клетки даёт ту же точку дважды.
+    const auto pushPoint = [](std::vector<Point>& poly, const Point& p) {
+        if (!poly.empty() && std::hypot(poly.back().x - p.x, poly.back().y - p.y) <= 1e-12) {
+            return;
+        }
+        poly.push_back(p);
+    };
+    // Снять последнюю точку, если она повторяет первую (обход замкнут).
+    const auto dropClosingRepeat = [](std::vector<Point>& poly) {
+        while (poly.size() > 2 && std::hypot(poly.front().x - poly.back().x,
+                                             poly.front().y - poly.back().y) <= 1e-12) {
+            poly.pop_back();
+        }
     };
 
-    // Одна половина одной клетки: клетка без отрезков границы уходит целиком,
-    // клетка с отрезками режется ими - по треугольнику от центра клетки.
+    // Часть клетки: обход против часовой (как углы клетки 0-1-2-3) и её половина.
+    struct Part {
+        std::vector<Point> poly;
+        int floorSide = -1;              // 1 - дно, 0 - верх, -1 - не названа
+    };
+    // Одна половина одной клетки. Клетка без цепочек границы уходит целиком,
+    // двумя треугольниками. Клетку с цепочками режет каждая цепочка: половина
+    // берёт СВОЮ сторону цепочки - обход по цепочке плюс обход по рёбрам клетки.
+    // Цепочка идёт по уровню реза (у уточнённой границы внутри клетки есть узлы),
+    // поэтому резать её хордой нельзя: узлы половины обязаны лечь на полилинию
+    // границы, а куски половин - не налезать друг на друга (сумма площадей
+    // половин равна площади клетки, случай layer_surface). Сторону называет угол
+    // между рёбрами переходов, первый по обходу клетки от начала цепочки: правило
+    // прежнее - его глубину читает узел поля.
     const auto buildCell = [&](int ix, int iy, StockLayer layer) {
         const double x0 = nodeX(ix);
         const double x1 = nodeX(ix + 1);
@@ -1656,9 +1863,9 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
         const double d[4] = { at(ix, iy), at(ix + 1, iy), at(ix + 1, iy + 1), at(ix, iy + 1) };
         const double cx[4] = { x0, x1, x1, x0 };
         const double cy[4] = { y0, y0, y1, y1 };
-        const std::vector<StockContourSegment>& cellChords =
-                chords[std::size_t(iy) * std::size_t(cellsX) + std::size_t(ix)];
-        if (cellChords.empty()) {
+        const std::vector<Chain>& cellChains =
+                chains[std::size_t(iy) * std::size_t(cellsX) + std::size_t(ix)];
+        if (cellChains.empty()) {
             const bool floorCell = d[0] > cutMm || d[1] > cutMm || d[2] > cutMm || d[3] > cutMm;
             if (floorCell != (layer == StockLayer::Floor)) {
                 return;                      // клетка другой половины
@@ -1671,117 +1878,109 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
             emit(quad, layer);
             return;
         }
-        // Пересечения границы с рёбрами клетки: у отрезка конец лежит на ребре
-        // (marching squares соединяет переходы на рёбрах), поэтому ребро и доля
-        // вдоль него находятся по координате. Порядок обхода - по рёбрам (низ,
-        // право, верх, лево), внутри ребра - по доле: он и есть обход клетки.
-        struct Crossing {
-            int edge = 0;
-            double t = 0.0;
-            double x = 0.0;
-            double y = 0.0;
-            int chord = 0;
-            int end = 0;
-        };
-        std::vector<Crossing> crossings;
-        crossings.reserve(cellChords.size() * 2);
-        for (std::size_t ci = 0; ci < cellChords.size(); ++ci) {
-            const StockContourSegment& segment = cellChords[ci];
-            const double px[2] = { segment.x0Mm, segment.x1Mm };
-            const double py[2] = { segment.y0Mm, segment.y1Mm };
-            for (int end = 0; end < 2; ++end) {
-                Crossing c;
-                c.x = px[end];
-                c.y = py[end];
-                c.chord = int(ci);
-                c.end = end;
-                double best = std::numeric_limits<double>::max();
-                for (int e = 0; e < 4; ++e) {
-                    const int a = e;
-                    const int b = (e + 1) & 3;
-                    const double dist = pointSegmentDistanceMm(c.x, c.y, cx[a], cy[a],
-                                                               cx[b], cy[b]);
-                    if (dist < best) {
-                        best = dist;
-                        c.edge = e;
-                        const double ex = cx[b] - cx[a];
-                        const double ey = cy[b] - cy[a];
-                        const double l2 = ex * ex + ey * ey;
-                        const double tt = l2 > 0.0
-                                ? ((c.x - cx[a]) * ex + (c.y - cy[a]) * ey) / l2 : 0.0;
-                        c.t = std::max(0.0, std::min(1.0, tt));
-                    }
-                }
-                crossings.push_back(c);
-            }
+        // Части клетки: сначала вся клетка, дальше каждая цепочка режет свою.
+        std::vector<Part> parts(1);
+        for (int k = 0; k < 4; ++k) {
+            Point p;
+            p.x = cx[k];
+            p.y = cy[k];
+            parts[0].poly.push_back(p);
         }
-        std::sort(crossings.begin(), crossings.end(),
-                  [](const Crossing& a, const Crossing& b) {
-                      return a.edge != b.edge ? a.edge < b.edge : a.t < b.t;
-                  });
-        // Отрезки границы в порядке обхода: у каждого - сторона (знак перехода к
-        // первому углу дуги) и уровень этой дуги (тронута она или нет).
-        struct Chord {
-            Point a;
-            Point b;
-            int keepSign = 1;
-        };
-        std::vector<Chord> cutChords;
-        for (std::size_t ci = 0; ci < cellChords.size(); ++ci) {
-            int ia = -1;
-            int ib = -1;
-            for (std::size_t k = 0; k < crossings.size(); ++k) {
-                if (crossings[k].chord != int(ci)) {
-                    continue;
-                }
-                if (crossings[k].end == 0) {
-                    ia = int(k);
-                } else {
-                    ib = int(k);
-                }
-            }
-            if (ia < 0 || ib < 0 || ia == ib) {
+        for (const Chain& chain : cellChains) {
+            const std::size_t pointCount = chain.points.size();
+            if (pointCount < 2) {
                 continue;
             }
-            if (ib < ia) {
-                std::swap(ia, ib);
-            }
-            Chord chord;
-            chord.a.x = crossings[std::size_t(ia)].x;
-            chord.a.y = crossings[std::size_t(ia)].y;
-            chord.b.x = crossings[std::size_t(ib)].x;
-            chord.b.y = crossings[std::size_t(ib)].y;
-            // Дуга от a к b по обходу клетки содержит ровно один угол - первый
-            // после ребра, на котором стоит a. Его знак и называет сторону дуги.
-            const int arcCorner = (crossings[std::size_t(ia)].edge + 1) & 3;
-            const double dx = chord.b.x - chord.a.x;
-            const double dy = chord.b.y - chord.a.y;
-            const double cross = dx * (cy[arcCorner] - chord.a.y)
-                    - dy * (cx[arcCorner] - chord.a.x);
-            const int arcSign = cross >= 0.0 ? 1 : -1;
-            const bool arcIsFloor = d[arcCorner] > cutMm;
-            const bool keepArc = arcIsFloor == (layer == StockLayer::Floor);
-            chord.keepSign = keepArc ? arcSign : -arcSign;
-            cutChords.push_back(chord);
-        }
-        const double mx = 0.25 * (x0 + x1 + x0 + x1);
-        const double my = 0.25 * (y0 + y0 + y1 + y1);
-        for (int k = 0; k < 4; ++k) {
-            const int k2 = (k + 1) & 3;
-            std::vector<Point> poly(3);
-            poly[0].x = mx;
-            poly[0].y = my;
-            poly[1].x = cx[k];
-            poly[1].y = cy[k];
-            poly[2].x = cx[k2];
-            poly[2].y = cy[k2];
-            for (const Chord& chord : cutChords) {
-                poly = clipHalf(poly, chord.a, chord.b, chord.keepSign);
-                if (poly.size() < 3) {
+            // Хозяин цепочки: часть, внутри которой лежит её середина.
+            const std::array<double, 2>& mid = chain.points[pointCount / 2];
+            std::size_t host = 0;
+            for (std::size_t i = 0; i < parts.size(); ++i) {
+                if (insidePoly(parts[i].poly, mid[0], mid[1])) {
+                    host = i;
                     break;
                 }
             }
-            emit(poly, layer);
+            const std::array<double, 2>& a = chain.points.front();
+            const std::array<double, 2>& b = chain.points.back();
+            // Угол дуги: первый по обходу КЛЕТКИ от ребра начала цепочки. Его
+            // глубину читает узел поля - она и называет сторону дуги.
+            int edgeA = 0;
+            double bestEdge = std::numeric_limits<double>::max();
+            for (int e = 0; e < 4; ++e) {
+                const int e2 = (e + 1) & 3;
+                const double dist = pointSegmentDistanceMm(a[0], a[1], cx[e], cy[e],
+                                                           cx[e2], cy[e2]);
+                if (dist < bestEdge) {
+                    bestEdge = dist;
+                    edgeA = e;
+                }
+            }
+            const int arcCorner = (edgeA + 1) & 3;
+            const bool arcIsFloor = d[arcCorner] > cutMm;
+            const std::vector<Point>& hostPoly = parts[host].poly;
+            const std::size_t n = hostPoly.size();
+            const int iA = edgeOfPoint(hostPoly, a[0], a[1]);
+            const int iB = edgeOfPoint(hostPoly, b[0], b[1]);
+            if (iA == iB) {
+                continue;      // оба перехода на одном ребре: у клетки их по одному
+            }
+            // Нормали узлов цепочки: половина лежит влево от СВОЕГО обхода
+            // цепочки (обход клетки против часовой). Нормаль нужна только сдвигу
+            // texcoord (доля клетки), и у почти прямой цепочки она общая.
+            const double dx = b[0] - a[0];
+            const double dy = b[1] - a[1];
+            const double len = std::hypot(dx, dy);
+            const double nx = len > 0.0 ? -dy / len : 0.0;   // влево от A -> B
+            const double ny = len > 0.0 ? dx / len : 0.0;
+            const auto chainPoint = [&](double px, double py, bool onArc) {
+                Point point;
+                point.x = px;
+                point.y = py;
+                point.nx = onArc ? -nx : nx;    // сторона дуги - вправо от A -> B
+                point.ny = onArc ? -ny : ny;
+                point.onBoundary = true;
+                return point;
+            };
+            // Часть дуги (где угол дуги): граница идёт A -> угол -> B по обходу
+            // клетки, а по цепочке - обратно от B к A.
+            Part arc;
+            arc.poly.reserve(pointCount + n + 1);
+            arc.poly.push_back(chainPoint(a[0], a[1], true));
+            for (std::size_t k = (std::size_t(iA) + 1) % n; ; k = (k + 1) % n) {
+                pushPoint(arc.poly, hostPoly[k]);
+                if (k == std::size_t(iB)) {
+                    break;
+                }
+            }
+            arc.poly.push_back(chainPoint(b[0], b[1], true));
+            for (std::size_t k = pointCount - 1; k-- > 1;) {
+                pushPoint(arc.poly, chainPoint(chain.points[k][0], chain.points[k][1], true));
+            }
+            dropClosingRepeat(arc.poly);
+            // Другая часть: цепочка идёт от A к B, обход клетки - от B к A.
+            Part far;
+            far.poly.reserve(pointCount + n);
+            for (std::size_t k = 0; k + 1 < pointCount; ++k) {
+                pushPoint(far.poly, chainPoint(chain.points[k][0], chain.points[k][1], false));
+            }
+            far.poly.push_back(chainPoint(b[0], b[1], false));
+            for (std::size_t k = (std::size_t(iB) + 1) % n; ; k = (k + 1) % n) {
+                pushPoint(far.poly, hostPoly[k]);
+                if (k == std::size_t(iA)) {
+                    break;
+                }
+            }
+            dropClosingRepeat(far.poly);
+            arc.floorSide = arcIsFloor ? 1 : 0;
+            far.floorSide = arcIsFloor ? 0 : 1;
+            parts[host] = std::move(arc);
+            parts.push_back(std::move(far));
+        }
+        for (const Part& part : parts) {
+            if ((part.floorSide == 1) != (layer == StockLayer::Floor)) {
+                continue;
+            }
+            emit(part.poly, layer);
         }
     };
 

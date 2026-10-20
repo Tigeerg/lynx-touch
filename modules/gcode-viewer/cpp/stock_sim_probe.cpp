@@ -2369,6 +2369,143 @@ int main(int argc, char** argv)
                            && vertFine > 0);
         }
 
+        // 7е. Кромка ЦВЕТА идёт по уточнённой цепочке реза, а не по хорде клетки
+        // (stocksurface.frag, ядро stockCutChainDistance). Мера - боковой размах
+        // кромки цвета вдоль аналитической границы реза: по M углам ищется радиус,
+        // где знаковое расстояние пересекает ноль, и берётся размах (r - R). Срез
+        // шара даёт круг s05, срез плоской фрезы - круг радиуса инструмента
+        // (уступ). Поле, его байты и его сверки не трогаются: мера стоит на
+        // ОТДЕЛЬНОМ представлении для рисования, а прежнее правило (билинейная
+        // хорда, refine=1) меряется здесь же - без него случай слеп.
+        {
+            const double cell = 0.5;
+            const double cutMm = 0.05;
+            const double r = 3.0;
+            const double tipZ = -1.0;
+            gv::StockBounds bnd;
+            bnd.xMinMm = -5.0;
+            bnd.xMaxMm = 5.0;
+            bnd.yMinMm = -5.0;
+            bnd.yMaxMm = 5.0;
+            bnd.zMinMm = -5.0;
+            bnd.zMaxMm = 0.0;
+            const double chord = cutMm + r + tipZ - bnd.zMaxMm;
+            const double s05 = std::sqrt(std::max(0.0, r * r - chord * chord));
+
+            // Билинейная выборка поля на его сетке (узел (0,0) в xMin, шаг h).
+            const auto sampleAt = [](const std::vector<float>& f, int nx, int ny,
+                                     const gv::StockBounds& b, double h, double x, double y) {
+                const double px = (x - b.xMinMm) / h;
+                const double py = (y - b.yMinMm) / h;
+                const int ix0 = std::max(0, std::min(nx - 2, int(std::floor(px))));
+                const int iy0 = std::max(0, std::min(ny - 2, int(std::floor(py))));
+                const double fx = std::max(0.0, std::min(1.0, px - double(ix0)));
+                const double fy = std::max(0.0, std::min(1.0, py - double(iy0)));
+                const auto at = [&](int ix, int iy) {
+                    return double(f[std::size_t(iy) * std::size_t(nx) + std::size_t(ix)]);
+                };
+                const double a = at(ix0, iy0) * (1.0 - fx) + at(ix0 + 1, iy0) * fx;
+                const double c = at(ix0, iy0 + 1) * (1.0 - fx) + at(ix0 + 1, iy0 + 1) * fx;
+                return a * (1.0 - fy) + c * fy;
+            };
+            // Размах (r - R) кромки цвета вдоль круга радиуса R, мм. Вдоль каждого
+            // луча снаружи внутрь ищется смена знака (снаружи нетронуто, внутри
+            // снято); положение уточняется долей. maxAbs - наибольшее |r - R|.
+            const auto wobble = [&sampleAt, &bnd](const std::vector<float>& f, int nx, int ny,
+                                                  double h, double R, double* maxAbsOut) {
+                constexpr int M = 180;
+                constexpr int STEPS = 240;
+                const double span = 0.6;
+                double lo = 1e9;
+                double hi = -1e9;
+                double maxAbs = 0.0;
+                for (int m = 0; m < M; ++m) {
+                    const double a = (2.0 * PI * double(m)) / double(M);
+                    const double ca = std::cos(a);
+                    const double sa = std::sin(a);
+                    double prev = 0.0;
+                    double rZero = R;
+                    for (int k = 0; k <= STEPS; ++k) {
+                        const double rad = R + span - 2.0 * span * (double(k) / double(STEPS));
+                        const double val = sampleAt(f, nx, ny, bnd, h, rad * ca, rad * sa);
+                        if (k > 0 && (prev > 0.0) != (val > 0.0)) {
+                            const double t = prev / (prev - val);
+                            const double prevRad =
+                                R + span - 2.0 * span * (double(k - 1) / double(STEPS));
+                            rZero = prevRad + (rad - prevRad) * t;
+                            break;
+                        }
+                        prev = val;
+                    }
+                    const double e = rZero - R;
+                    lo = std::min(lo, e);
+                    hi = std::max(hi, e);
+                    maxAbs = std::max(maxAbs, std::fabs(e));
+                }
+                if (maxAbsOut != nullptr) {
+                    *maxAbsOut = maxAbs;
+                }
+                return hi - lo;
+            };
+
+            const std::string program =
+                "G21 G90\n"
+                "G0 X0 Y0 Z5\n"
+                "G1 Z-1 F100\n";
+            const gv::ParseResult parsed = gv::parseGcode(program);
+            const gv::PathData data = gv::prepareOrdered(parsed.ordered, parsed.stages);
+
+            double coarseWob = 0.0;
+            double fineWob = 0.0;
+            double coarseMax = 0.0;
+            double fineMax = 0.0;
+            int fineNodesX = 0;
+            int fineNodesY = 0;
+            bool haveFine = false;
+            for (int shape = 0; shape < 2; ++shape) {
+                const gv::ToolInfo tool = shape == 0
+                        ? makeTool(ToolSpec{ "BALL", 6.0 })
+                        : makeTool(ToolSpec{ "FLAT", 6.0 });
+                const double R = shape == 0 ? s05 : r;
+                const gv::StockRunResult run = gv::simulateStock(data, bnd, cell, tool);
+                const gv::StockField& field = run.field;
+                const int nx = field.countX();
+                const int ny = field.countY();
+                const std::vector<gv::StockCutter> cutters = gv::stockCutterPlan(data, tool);
+                const gv::StockBoundaryResult boundary = gv::stockCutBoundary(
+                    data, bnd, cell, cutters, field.depthMm(), nx, ny, cutMm);
+                const std::vector<float> coarse = gv::stockCutSignedDistance(
+                    bnd, cell, field.depthMm(), nx, ny, boundary.segments, cutMm, cell * 3.0);
+                const std::vector<float> fine = gv::stockCutChainDistance(
+                    bnd, cell, coarse, nx, ny, boundary.segments, cell * 1.0, 2,
+                    &fineNodesX, &fineNodesY);
+                double cMax = 0.0;
+                double fMax = 0.0;
+                const double cWob = wobble(coarse, nx, ny, cell, R, &cMax);
+                const double fWob = wobble(fine, fineNodesX, fineNodesY, cell / 2.0, R, &fMax);
+                coarseWob = std::max(coarseWob, cWob);
+                fineWob = std::max(fineWob, fWob);
+                coarseMax = std::max(coarseMax, cMax);
+                fineMax = std::max(fineMax, fMax);
+                haveFine = haveFine || !fine.empty();
+                std::printf("note cut_colour_edge_%s cell_mm=%.2f refine=2 R_mm=%.4f "
+                            "coarse_wobble_mm=%.4f coarse_max_mm=%.4f fine_wobble_mm=%.4f "
+                            "fine_max_mm=%.4f nodes=%dx%d\n",
+                            shape == 0 ? "ball" : "flat", cell, R, cWob, cMax, fWob, fMax,
+                            fineNodesX, fineNodesY);
+            }
+            // Кромка цвета: размах у мелкой сетки меньше допуска (0.006 мм - втрое
+            // меньше прежнего размаха и в 200 раз меньше пикселя кадра 0.33 мм), а
+            // прежнее правило (билинейная хорда) обязано быть шире втрое - иначе
+            // случай слеп. Замер: 0.0146 -> 0.0038 мм (шар), 0.0104 -> 0.0028 (фреза).
+            std::printf("note cut_colour_edge cell_mm=%.2f coarse_wobble_mm=%.4f "
+                        "fine_wobble_mm=%.4f coarse_max_mm=%.4f fine_max_mm=%.4f\n",
+                        cell, coarseWob, fineWob, coarseMax, fineMax);
+            reportCase("cut_colour_edge", 2 * 180, fineWob, 6e-3,
+                       fineWob <= 6e-3 && coarseWob >= 3.0 * fineWob && coarseWob > 6e-3
+                           && haveFine);
+        }
+
         // Инкрементальный тик: граница с состоянием (кэш) после подрастания поля
         // обязана совпасть с полной сборкой отрезок в отрезок, а цена - упасть.
         // Поле монотонно (глубина узла только растёт), поэтому тик пересчитывает
@@ -2866,15 +3003,28 @@ int main(int argc, char** argv)
                 bounds, cell, run.field.depthMm(), run.field.countX(), run.field.countY(),
                 boundary.segments, 0.05, cell * 3.0);
             const double sdMs = msSince(tSd);
+            // Цена мелкой сетки знакового расстояния (в STOCK_CUT_REFINE раз чаще
+            // поля): ею фрагмент рисует цвет и линию границы (ядро,
+            // stockCutChainDistance). Время - полная сборка; живой тик платит
+            // столько же, потому что сетка пересчитывается целиком.
+            const Clock::time_point tFine = Clock::now();
+            int fineNx = 0;
+            int fineNy = 0;
+            const std::vector<float> fine = gv::stockCutChainDistance(
+                bounds, cell, sd, run.field.countX(), run.field.countY(), boundary.segments,
+                cell * 1.0, 2, &fineNx, &fineNy);
+            const double fineMs = msSince(tFine);
             char name[64];
             std::snprintf(name, sizeof(name), "stock_boundary_%s",
                           (cell < 0.35) ? "0_2" : "0_5");
             printPhase(name, boundaryMs);
             std::printf("note boundary_price cell=%.1f segments=%d evaluations=%lld "
-                        "unprojected=%d boundary_ms=%.1f sd_ms=%.1f boundary_bytes=%lld sd_bytes=%lld\n",
+                        "unprojected=%d boundary_ms=%.1f sd_ms=%.1f boundary_bytes=%lld sd_bytes=%lld "
+                        "fine_ms=%.1f fine_bytes=%lld fine_nodes=%dx%d\n",
                         cell, int(boundary.segments.size()), boundary.evaluations,
                         boundary.unprojected, boundaryMs, sdMs,
-                        (long long)boundary.segments.size() * 16, (long long)sd.size() * 4);
+                        (long long)boundary.segments.size() * 16, (long long)sd.size() * 4,
+                        fineMs, (long long)fine.size() * 4, fineNx, fineNy);
 
             // Сколько уступов поля Test_model отдано порогу уступа: перепад
             // соседних узлов до клетка - настоящий склон (усреднение верно),

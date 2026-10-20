@@ -1846,7 +1846,7 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
         const bool floor = layer == StockLayer::Floor;
         std::vector<float>& vertices = floor ? floorVertices : topVertices;
         std::vector<std::uint32_t>& indices = floor ? floorIndices : topIndices;
-        const std::uint32_t base = std::uint32_t(vertices.size() / 5);
+        const std::uint32_t base = std::uint32_t(vertices.size() / 6);
         for (const Point& p : poly) {
             double u = ((p.x - bounds.xMinMm) / cellMm + 0.5) / double(countX);
             double v = ((p.y - bounds.yMinMm) / cellMm + 0.5) / double(countY);
@@ -1863,6 +1863,14 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
             vertices.push_back(zTop);
             vertices.push_back(float(u));
             vertices.push_back(float(v));
+            // Сторона половины едет признаком вершины (stocksurface.vert,
+            // steppedDepth): у уступа высота - уровень СВОЕЙ стороны, а знать её
+            // может только тот, кто режет клетку, - то есть здесь. Прежде шейдер
+            // называл сторону знаком знакового расстояния по углам клетки, и
+            // угловая хорда отставала от цепочки: вершины верха падали на дно
+            // отвесным треугольником (замер - случай wall_rim_drawn). Признак
+            // занимает один float - шестой; шейдер читает его как UV1.x.
+            vertices.push_back(floor ? 0.0f : 1.0f);
         }
         for (std::size_t i = 1; i + 1 < poly.size(); ++i) {
             indices.push_back(base);
@@ -2071,7 +2079,7 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
             }
         }
         if (pass == 0) {
-            out.topVertexCount = int(topVertices.size() / 5);
+            out.topVertexCount = int(topVertices.size() / 6);
             out.topIndexCount = int(topIndices.size());
         }
     }

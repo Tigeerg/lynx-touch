@@ -494,7 +494,7 @@ void StockCutLayerGeometry::rebuild()
     const gv::StockLayerSurface mesh = gv::stockLayerSurface(bounds_, cell_mm_, depth,
                                                             count_x_, count_y_, cut_mm_,
                                                             segments);
-    vertex_count_ = int(mesh.vertices.size() / 5);
+    vertex_count_ = int(mesh.vertices.size() / 6);
     triangle_count_ = mesh.triangleCount();
     top_vertex_count_ = mesh.topVertexCount;
     floor_triangle_count_ = mesh.floorTriangles();
@@ -507,9 +507,13 @@ void StockCutLayerGeometry::rebuild()
 
     setVertexData(asBytes(mesh.vertices));
     setIndexData(asBytes(mesh.indices));
-    setStride(5 * 4);                      // позиция 3f + texcoord 2f
+    setStride(6 * 4);                      // позиция 3f + texcoord 2f + сторона 1f
     addAttribute(QQuick3DGeometry::Attribute::PositionSemantic, 0, F32);
     addAttribute(QQuick3DGeometry::Attribute::TexCoord0Semantic, 3 * 4, F32);
+    // Сторона половины (1 - верх, 0 - дно) - шестой float той же вершины:
+    // шейдер читает её как UV1.x (stocksurface.vert, steppedDepth). Сторону
+    // знает тот, кто режет клетку цепочкой (ядро stockLayerSurface).
+    addAttribute(QQuick3DGeometry::Attribute::TexCoord1Semantic, 5 * 4, F32);
     addAttribute(QQuick3DGeometry::Attribute::IndexSemantic, 0,
                  QQuick3DGeometry::Attribute::U32Type);
     // Габарит по всему ходу высоты: вершина стоит на верху заготовки, а

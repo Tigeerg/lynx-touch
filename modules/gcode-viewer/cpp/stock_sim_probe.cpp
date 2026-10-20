@@ -434,8 +434,9 @@ struct DrawnField {
     }
 
     // Глубина нарисованного верха в точке гладкого вида, мм: зеркало
-    // steppedDepth (stocksurface.vert).
-    double step(double u, double v) const
+    // steppedDepth (stocksurface.vert). side - сторона половины (1 - верх, 0 -
+    // дно, -1 - не названа: прежнее правило знаком знакового расстояния).
+    double step(double u, double v, int side = -1) const
     {
         const double p = nodeCoord(u, countX);
         const double q = nodeCoord(v, countY);
@@ -482,6 +483,11 @@ struct DrawnField {
                 && ((d01 > cutMm) == (d01 > mid)) && ((d11 > cutMm) == (d11 > mid));
         if (!split) {
             return depth > mid ? deep : shallow;
+        }
+        // Сторона половины приходит признаком вершины (UV1.x); без признака -
+        // прежнее правило знаком знакового расстояния.
+        if (side >= 0) {
+            return side > 0 ? shallow : deep;
         }
         return signedAt(u, v) < 0.0 ? deep : shallow;
     }
@@ -1626,16 +1632,21 @@ int main(int argc, char** argv)
             double layerWallDev = 0.0;        // низ стенки против кромки дна
             int layerShifted = 0;             // граничных вершин со сдвинутым texcoord
             int layerRamp = 0;                // треугольников с разными высотами
-            for (std::size_t i = 0; i < layers.vertices.size() / 5; ++i) {
-                const double x = double(layers.vertices[i * 5]);
-                const double y = double(layers.vertices[i * 5 + 1]);
-                const double u = double(layers.vertices[i * 5 + 3]);
-                const double v = double(layers.vertices[i * 5 + 4]);
+            int layerFlagBad = 0;             // вершин, чей признак стороны врёт
+            for (std::size_t i = 0; i < layers.vertices.size() / 6; ++i) {
+                const double x = double(layers.vertices[i * 6]);
+                const double y = double(layers.vertices[i * 6 + 1]);
+                const double u = double(layers.vertices[i * 6 + 3]);
+                const double v = double(layers.vertices[i * 6 + 4]);
                 if (std::fabs(x) > 0.05 || std::fabs(y - yRim) > windowMm) {
                     continue;
                 }
                 const bool floor = i >= std::size_t(layers.topVertexCount);
-                const double drawnMm = drawn.step(u, v);
+                // Признак стороны из буфера обязан совпасть с половиной вершины.
+                if ((double(layers.vertices[i * 6 + 5]) > 0.5) == floor) {
+                    ++layerFlagBad;
+                }
+                const double drawnMm = drawn.step(u, v, floor ? 0 : 1);
                 const gv::StockLayer layer =
                         floor ? gv::StockLayer::Floor : gv::StockLayer::Top;
                 layerSideDev = std::max(layerSideDev,
@@ -1668,14 +1679,15 @@ int main(int argc, char** argv)
                 bool inWindow = true;
                 for (int k = 0; k < 3; ++k) {
                     const std::size_t iv = std::size_t(layers.indices[t + std::size_t(k)]);
-                    const double x = double(layers.vertices[iv * 5]);
-                    const double y = double(layers.vertices[iv * 5 + 1]);
+                    const double x = double(layers.vertices[iv * 6]);
+                    const double y = double(layers.vertices[iv * 6 + 1]);
                     if (std::fabs(x) > 0.05 || std::fabs(y - yRim) > windowMm) {
                         inWindow = false;
                         break;
                     }
-                    heights[k] = drawn.step(double(layers.vertices[iv * 5 + 3]),
-                                            double(layers.vertices[iv * 5 + 4]));
+                    heights[k] = drawn.step(double(layers.vertices[iv * 6 + 3]),
+                                            double(layers.vertices[iv * 6 + 4]),
+                                            double(layers.vertices[iv * 6 + 5]) > 0.5 ? 1 : 0);
                 }
                 if (!inWindow) {
                     continue;
@@ -1708,24 +1720,24 @@ int main(int argc, char** argv)
                         "plateau_new=%.1e plateau_old=%.1e wall_segments=%d "
                         "layer_band=%.2f layer_tilt_deg=%.2f layer_level_mm=%.1e "
                         "layer_side_mm=%.1e layer_edge_mm=%.1e layer_wall_mm=%.1e "
-                        "layer_ramp=%d layer_shifted=%d layer_floor_tri=%d\n",
+                        "layer_ramp=%d layer_shifted=%d layer_flag_bad=%d layer_floor_tri=%d\n",
                         depth, cell, subdiv, yRim, levelNew, levelOld, rampedNew, rampedOld,
                         bandNew, bandOld, tiltNew, tiltOld, plateauNew, plateauOld,
                         int(boundary.segments.size()), layerBand, layerTilt, layerLevelDev,
                         layerSideDev, layerEdgeDev, layerWallDev, layerRamp, layerShifted,
-                        layers.floorTriangles());
+                        layerFlagBad, layers.floorTriangles());
             // Сверка: половины сходятся ровно на точной границе (полоса 0 и наклон
             // 0), высота кромки стоит на уровне СВОЕЙ половины, зеркало шейдера
-            // совпадает с правилом слоя, texcoord граничной вершины назвал сторону
-            // (layer_shifted), низ стенки лёг на кромку дна, а наклонных
-            // треугольников у кромки не осталось. Прежние правила обязаны быть
-            // красными здесь же - иначе случай слеп: у билинейного рисованного
-            // подузла кромки полперепада (0.4 мм на уступе 0.8), у ступенчатого -
-            // полоса 0.25 мм и 17.4 градуса.
+            // совпадает с правилом слоя, у каждой вершины названа её сторона
+            // (признак вершины, layer_flag_bad = 0), низ стенки лёг на кромку дна,
+            // а наклонных треугольников у кромки не осталось. Прежние правила
+            // обязаны быть красными здесь же - иначе случай слеп: у билинейного
+            // рисованного подузла кромки полперепада (0.4 мм на уступе 0.8), у
+            // ступенчатого - полоса 0.25 мм и 17.4 градуса.
             reportCase("island_rim_drawn", drawnY, layerBand, tol,
                        layerTilt <= tol && layerLevelDev <= tol && layerSideDev <= 1e-6
                            && layerEdgeDev <= 1e-6 && layerWallDev <= 1e-6
-                           && layerRamp == 0 && layerShifted > 0
+                           && layerRamp == 0 && layerShifted > 0 && layerFlagBad == 0
                            && layerTopMin <= yRim + tol && layerFloorMax >= yRim - tol
                            && rampedNew == 0 && rimInsideNew && plateauNew <= tol
                            && std::fabs(bandNew - cell / double(subdiv)) <= tol
@@ -1872,9 +1884,9 @@ int main(int argc, char** argv)
         // известна точно.
         double areaMm2 = 0.0;
         for (std::size_t t = 0; t + 2 < layers.indices.size(); t += 3) {
-            const std::size_t i0 = std::size_t(layers.indices[t]) * 5;
-            const std::size_t i1 = std::size_t(layers.indices[t + 1]) * 5;
-            const std::size_t i2 = std::size_t(layers.indices[t + 2]) * 5;
+            const std::size_t i0 = std::size_t(layers.indices[t]) * 6;
+            const std::size_t i1 = std::size_t(layers.indices[t + 1]) * 6;
+            const std::size_t i2 = std::size_t(layers.indices[t + 2]) * 6;
             const double ax = double(layers.vertices[i0]);
             const double ay = double(layers.vertices[i0 + 1]);
             const double bx = double(layers.vertices[i1]);
@@ -1897,14 +1909,18 @@ int main(int argc, char** argv)
         double fieldWorst = 0.0;                 // против билинейного поля (где не ступень)
         int boundaryVertices = 0;
         int shiftedVertices = 0;
-        for (std::size_t i = 0; i < layers.vertices.size() / 5; ++i) {
-            const double x = double(layers.vertices[i * 5]);
-            const double y = double(layers.vertices[i * 5 + 1]);
-            const double u = double(layers.vertices[i * 5 + 3]);
-            const double v = double(layers.vertices[i * 5 + 4]);
+        int flagBadVertices = 0;                 // вершин, чей признак стороны врёт
+        for (std::size_t i = 0; i < layers.vertices.size() / 6; ++i) {
+            const double x = double(layers.vertices[i * 6]);
+            const double y = double(layers.vertices[i * 6 + 1]);
+            const double u = double(layers.vertices[i * 6 + 3]);
+            const double v = double(layers.vertices[i * 6 + 4]);
             const bool floor = i >= std::size_t(layers.topVertexCount);
+            if ((double(layers.vertices[i * 6 + 5]) > 0.5) == floor) {
+                ++flagBadVertices;
+            }
             const double signedAt = drawn.signedAt(u, v);
-            const double drawnMm = drawn.step(u, v);
+            const double drawnMm = drawn.step(u, v, floor ? 0 : 1);
             const double bilinearMm = drawn.bilinear(u, v);
             const gv::StockLayer layer = floor ? gv::StockLayer::Floor : gv::StockLayer::Top;
             const double wantMm = gv::stockLayerDepthMm(bounds, cell, field.depthMm(), nx, ny,
@@ -1945,15 +1961,15 @@ int main(int argc, char** argv)
             ++wallBottoms;
             double best = std::numeric_limits<double>::max();
             for (std::size_t k = std::size_t(layers.topVertexCount);
-                 k < layers.vertices.size() / 5; ++k) {
-                const double fx = double(layers.vertices[k * 5]);
-                const double fy = double(layers.vertices[k * 5 + 1]);
+                 k < layers.vertices.size() / 6; ++k) {
+                const double fx = double(layers.vertices[k * 6]);
+                const double fy = double(layers.vertices[k * 6 + 1]);
                 if (std::fabs(fx - wx) > 1e-9 || std::fabs(fy - wy) > 1e-9) {
                     continue;
                 }
-                const double fu = double(layers.vertices[k * 5 + 3]);
-                const double fv = double(layers.vertices[k * 5 + 4]);
-                best = std::min(best, std::fabs(drawn.step(fu, fv) - wd));
+                const double fu = double(layers.vertices[k * 6 + 3]);
+                const double fv = double(layers.vertices[k * 6 + 4]);
+                best = std::min(best, std::fabs(drawn.step(fu, fv, 0) - wd));
             }
             slitWorst = std::max(slitWorst, best);
         }
@@ -1968,17 +1984,18 @@ int main(int argc, char** argv)
                     "top_tri=%d floor_tri=%d area_mm2=%.3f want_area_mm2=%.3f boundary_vertices=%d "
                     "shifted=%d edge_mm=%.2e side_mm=%.2e rule_mm=%.2e field_mm=%.2e "
                     "wall_bottoms=%d slit_mm=%.2e wall_segments=%zu plain_top_tri=%d plain_floor_tri=%d\n",
-                    cell, cutMm, layers.vertices.size() / 5, layers.topVertexCount,
+                    cell, cutMm, layers.vertices.size() / 6, layers.topVertexCount,
                     layers.topTriangles(), layers.floorTriangles(), areaMm2, wantAreaMm2,
                     boundaryVertices, shiftedVertices, edgeWorst, sideWorst, ruleWorst, fieldWorst,
                     wallBottoms, slitWorst, contour.size(), plainLayers.topTriangles(),
                     plainLayers.floorTriangles());
-        reportCase("layer_surface", int(layers.vertices.size() / 5), slitWorst, 1e-6,
+        reportCase("layer_surface", int(layers.vertices.size() / 6), slitWorst, 1e-6,
                    std::fabs(areaMm2 - wantAreaMm2) <= 1e-6 * wantAreaMm2
                        && layers.topTriangles() > 0 && layers.floorTriangles() > 0
                        && boundaryVertices > 0 && shiftedVertices > 0
                        && edgeWorst <= 1e-6 && sideWorst <= hairMm
                        && ruleWorst <= 1e-6 && fieldWorst <= 1e-6
+                       && flagBadVertices == 0
                        && wallBottoms >= 4 && slitWorst <= 1e-6
                        && plainLayers.topTriangles() == plainTriangles
                        && plainLayers.floorTriangles() == 0);
@@ -3083,6 +3100,209 @@ int main(int argc, char** argv)
                 std::printf("note step_window cell_mm=%.1f step_le_cell=%lld step_cell_2cell=%lld "
                             "step_over_2cell=%lld window_single_steps=%lld\n",
                             cell, slopes, window, both, windowSteps);
+            }
+
+            // Кромка площадки и стенка реза на РЕАЛЬНОЙ программе (жалоба: светлые
+            // потёки по стенке кармана, по одному на вершину границы). Стенка несёт
+            // верх на плоскости нетронутого верха - у ВСЕХ квадов
+            // (stockCutWallFromLayer), то есть высота её верха вдоль границы не
+            // меняется, и пофрагментной светлоты у стенки нет (stockcutwall.vert -
+            // ровная доля stockTone). Значит потёк - не стенка. Его даёт половина
+            // ВЕРХА: сторону точки называет правило шейдера (stocksurface.vert,
+            // steppedDepth) - знак знакового расстояния по ЧЕТЫРЁМ УГЛАМ КЛЕТКИ
+            // поля, а угловая хорда отстаёт от уточнённой цепочки. Вершина,
+            // стоящая на цепочке, попадает на «снятую» сторону, её высота уходит
+            // на дно, и треугольник встаёт отвесно: на кадре это потёк цвета
+            // нетронутого верха по стенке. Здесь мерятся обе стороны: высота верха
+            // стенки и число вершин верха, упавших на дно, с высотой падения, а
+            // рядом - то же по МЕЛКОЙ сетке (ею цвет и линия во фрагменте).
+            {
+                const gv::StockLayerSurface layers = gv::stockLayerSurface(
+                    bounds, cell, run.field.depthMm(), run.field.countX(), run.field.countY(),
+                    0.05, boundary.segments);
+                const gv::StockWallMesh wall = gv::stockCutWallFromLayer(
+                    bounds, cell, run.field.depthMm(), run.field.countX(), run.field.countY(),
+                    0.05, boundary.segments);
+                double wallTopDev = 0.0;
+                int wallTopVerts = 0;
+                for (std::size_t i = 0; i < wall.vertices.size() / 4; ++i) {
+                    const double z = double(wall.vertices[i * 4 + 2]);
+                    if (std::fabs(z - double(bounds.zMaxMm)) > 1e-6) {
+                        continue;                  // низ квада
+                    }
+                    ++wallTopVerts;
+                    wallTopDev = std::max(wallTopDev, std::fabs(z - double(bounds.zMaxMm)));
+                }
+                const int nx = run.field.countX();
+                const int ny = run.field.countY();
+                const std::vector<float>& depth = run.field.depthMm();
+                DrawnField drawn;
+                drawn.bounds = &bounds;
+                drawn.cellMm = cell;
+                drawn.countX = nx;
+                drawn.countY = ny;
+                drawn.depth = &depth;
+                drawn.signedMm = &sd;
+                drawn.cutMm = 0.05;
+                const auto node = [&](int ix, int iy) {
+                    ix = std::max(0, std::min(nx - 1, ix));
+                    iy = std::max(0, std::min(ny - 1, iy));
+                    return double(depth[std::size_t(iy) * std::size_t(nx) + std::size_t(ix)]);
+                };
+                // Мелкая сетка знакового расстояния: её узлы стоят через cell/refine,
+                // и texcoord узла мелкой сетки - центр его текселя (как у поля).
+                // Отображение texcoord поля в узел мелкой сетки: узел поля - это
+                // refine узлов мелкой, поэтому p = (u * countX - 0.5) * refine.
+                const int refine = (nx > 1 && fineNx > 1)
+                        ? (fineNx - 1) / (nx - 1) : 1;
+                const auto fineSignedAt = [&](double u, double v, bool correctMap) {
+                    if (fineNx < 2 || fineNy < 2) {
+                        return 0.0;
+                    }
+                    const double p = correctMap ? (u * double(nx) - 0.5) * double(refine)
+                                                : u * double(fineNx) - 0.5;
+                    const double q = correctMap ? (v * double(ny) - 0.5) * double(refine)
+                                                : v * double(fineNy) - 0.5;
+                    const double fx = p - std::floor(p);
+                    const double fy = q - std::floor(q);
+                    const int ix = std::max(0, std::min(fineNx - 2, int(std::floor(p))));
+                    const int iy = std::max(0, std::min(fineNy - 2, int(std::floor(q))));
+                    const auto at = [&](int a, int b) {
+                        a = std::max(0, std::min(fineNx - 1, a));
+                        b = std::max(0, std::min(fineNy - 1, b));
+                        return double(fine[std::size_t(b) * std::size_t(fineNx)
+                                           + std::size_t(a)]);
+                    };
+                    const double a0 = at(ix, iy) * (1.0 - fx) + at(ix + 1, iy) * fx;
+                    const double a1 = at(ix, iy + 1) * (1.0 - fx) + at(ix + 1, iy + 1) * fx;
+                    return a0 * (1.0 - fy) + a1 * fy;
+                };
+                int topBoundary = 0;               // вершин, стоящих на границе
+                int topDropped = 0;                // вершин верха, упавших на дно (прежнее правило)
+                int floorRise = 0;                 // вершин дна, поднявшихся на верх (оно же)
+                int topDroppedFlag = 0;            // то же при стороне из признака вершины
+                int floorRiseFlag = 0;             // и это же
+                int flagBad = 0;                   // вершин, чей признак стороны врёт
+                double dropStepMax = 0.0;          // высота падения, мм
+                double dropOffsetMax = 0.0;        // насколько вершина внутри своей стороны
+                std::vector<double> dropOffsets;   // те же числа по вершинам
+                int topDroppedFine = 0;            // то же, если сторону брать мелкой сеткой
+                for (std::size_t i = 0; i < layers.vertices.size() / 6; ++i) {
+                    const double x = double(layers.vertices[i * 6]);
+                    const double y = double(layers.vertices[i * 6 + 1]);
+                    const double u = double(layers.vertices[i * 6 + 3]);
+                    const double v = double(layers.vertices[i * 6 + 4]);
+                    const bool topHalf = i < std::size_t(layers.topVertexCount);
+                    if ((double(layers.vertices[i * 6 + 5]) > 0.5) != topHalf) {
+                        ++flagBad;                 // признак обязан быть у своей половины
+                    }
+                    const double uPos = ((x - bounds.xMinMm) / cell + 0.5) / double(nx);
+                    const double vPos = ((y - bounds.yMinMm) / cell + 0.5) / double(ny);
+                    if (std::fabs(u - uPos) <= 1e-12 && std::fabs(v - vPos) <= 1e-12) {
+                        continue;                  // угол клетки, а не вершина границы
+                    }
+                    ++topBoundary;
+                    const int ix = int(std::floor(u * double(nx) - 0.5));
+                    const int iy = int(std::floor(v * double(ny) - 0.5));
+                    const double shallow = std::min(std::min(node(ix, iy), node(ix + 1, iy)),
+                                                    std::min(node(ix, iy + 1), node(ix + 1, iy + 1)));
+                    const double deep = std::max(std::max(node(ix, iy), node(ix + 1, iy)),
+                                                 std::max(node(ix, iy + 1), node(ix + 1, iy + 1)));
+                    const double rise = deep - shallow;
+                    if (rise <= cell * 0.5) {
+                        continue;                  // не уступ: правило билинейно
+                    }
+                    // Прежнее правило (сторона знаком знакового расстояния по углам
+                    // клетки) против нынешнего (сторона из признака вершины). Уступ
+                    // (правило ступает) - там, где правила расходятся; у склона оба
+                    // билинейны, и вершина на узле поля стоит на своей глубине - это
+                    // не падение.
+                    const double drawnOld = drawn.step(u, v, -1);
+                    const double drawnFlag = drawn.step(u, v, topHalf ? 1 : 0);
+                    const bool oldDeep = std::fabs(drawnOld - deep) <= 1e-6;
+                    const bool flagDeep = std::fabs(drawnFlag - deep) <= 1e-6;
+                    const bool oldShallow = std::fabs(drawnOld - shallow) <= 1e-6;
+                    const bool flagShallow = std::fabs(drawnFlag - shallow) <= 1e-6;
+                    if (topHalf) {
+                        if (oldDeep && !flagDeep) {
+                            ++topDropped;          // прежнее правило роняло вершину верха
+                            dropStepMax = std::max(dropStepMax, rise);
+                            dropOffsetMax = std::max(dropOffsetMax, std::fabs(drawn.signedAt(u, v)));
+                            dropOffsets.push_back(std::fabs(drawn.signedAt(u, v)));
+                        }
+                        if (flagDeep && !oldDeep) {
+                            ++topDroppedFlag;      // признак роняет вершину (не должен)
+                        }
+                    } else {
+                        // Вершина ДНА, поднятая на верх прежним правилом: её
+                        // треугольник встаёт отвесно ПЕРЕД стенкой (дно - по нашу
+                        // сторону границы), и цвет у него - кромка реза, светлее
+                        // металла: это и есть светлый потёк на кадре.
+                        if (oldShallow && !flagShallow) {
+                            ++floorRise;
+                            dropStepMax = std::max(dropStepMax, rise);
+                            dropOffsetMax = std::max(dropOffsetMax, std::fabs(drawn.signedAt(u, v)));
+                            dropOffsets.push_back(std::fabs(drawn.signedAt(u, v)));
+                        }
+                        if (flagShallow && !oldShallow) {
+                            ++floorRiseFlag;
+                        }
+                    }
+                    // Сторона по МЕЛКОЙ сетке - так её берёт цвет и линия во
+                    // фрагменте: вершины верха на дне и вершины дна на верху быть
+                    // не должно.
+                    if (topHalf && fineSignedAt(u, v, true) < 0.0) {
+                        ++topDroppedFine;
+                    }
+                }
+                // Нулевой уровень вдоль цепочки: чем он дальше от звена, тем грубее
+                // представление. Мера - само знаковое расстояние в точках звеньев.
+                double chainCoarseMm = 0.0;
+                double chainFineMm = 0.0;
+                double chainFineCorrectMm = 0.0;
+                double chainFineCorrectMin = 1e9;
+                double chainFineCorrectMax = -1e9;
+                for (const gv::StockContourSegment& segment : boundary.segments) {
+                    for (int k = 0; k <= 4; ++k) {
+                        const double t = double(k) / 4.0;
+                        const double x = segment.x0Mm + (segment.x1Mm - segment.x0Mm) * t;
+                        const double y = segment.y0Mm + (segment.y1Mm - segment.y0Mm) * t;
+                        const double u = ((x - bounds.xMinMm) / cell + 0.5) / double(nx);
+                        const double v = ((y - bounds.yMinMm) / cell + 0.5) / double(ny);
+                        chainCoarseMm = std::max(chainCoarseMm,
+                                                 std::fabs(drawn.signedAt(u, v)));
+                        chainFineMm = std::max(chainFineMm,
+                                               std::fabs(fineSignedAt(u, v, false)));
+                        const double fineCorrect = fineSignedAt(u, v, true);
+                        chainFineCorrectMm = std::max(chainFineCorrectMm,
+                                                      std::fabs(fineCorrect));
+                        chainFineCorrectMin = std::min(chainFineCorrectMin, fineCorrect);
+                        chainFineCorrectMax = std::max(chainFineCorrectMax, fineCorrect);
+                    }
+                }
+                // Размах знакового расстояния мелкой сетки ВДОЛЬ цепочки: это и есть
+                // зубчатость кромки ЦВЕТА - нулевой уровень мелкой сетки гуляет
+                // около цепочки на этот размах (рисуется цвет и линия фрагментом).
+                const double chainFineSpanMm = chainFineCorrectMax - chainFineCorrectMin;
+                std::printf("note wall_rim_drawn cell=%.1f wall_top_verts=%d wall_top_dev_mm=%.1e "
+                            "boundary_verts=%d drop_old=%d rise_old=%d drop_flag=%d rise_flag=%d "
+                            "flag_bad=%d drop_step_mm=%.2f drop_offset_mm=%.3f "
+                            "drop_offset_med_mm=%.4f chain_coarse_mm=%.4f chain_fine_mm=%.4f "
+                            "chain_fine_correct_mm=%.4f chain_fine_span_mm=%.4f refine=%d\n",
+                            cell, wallTopVerts, wallTopDev, topBoundary, topDropped, floorRise,
+                            topDroppedFlag, floorRiseFlag, flagBad, dropStepMax, dropOffsetMax,
+                            median(dropOffsets), chainCoarseMm, chainFineMm,
+                            chainFineCorrectMm, chainFineSpanMm, refine);
+                // Красный, пока хоть одна вершина верха падает на дно: потёк на
+                // кадре - её отвесный треугольник. «До» показывает прежнее правило
+                // (top_dropped_old > 0 - случай не слеп), «после» - признак стороны,
+                // который обязан быть у каждой вершины своей половины и не ронять
+                // ни одной. Высота верха стенки при этом обязана быть ровной (0) -
+                // иначе виноват был бы не верх.
+                reportCase("wall_rim_drawn", topBoundary, 0.0, 1e-6,
+                           wallTopDev <= 1e-6 && topBoundary > 0
+                               && topDroppedFlag == 0 && floorRiseFlag == 0 && flagBad == 0
+                               && topDropped > 0 && floorRise > 0);
             }
         }
 

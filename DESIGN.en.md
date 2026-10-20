@@ -505,11 +505,15 @@ says.
   segment over the EXACT analytic move depth (`sweepPointDepth` — the same formula as a field node). The sign at
   a node is exact (the field depth at a node is exact), so a node only picks the edge, not the boundary position.
   The wall (`stockCutWallFromSegments`) and the polyline (`StockCutContourGeometry`) are built from it, and for
-  the colour and the line the core hands out the signed distance to the boundary at the field nodes
-  (`stockCutSignedDistance`, negative where cut): the zero level between nodes is linear, so the edge runs as a
-  straight line rather than in node steps. The surface fragment takes that value in the exact contour view
-  (`cutExactBoundary`, `stocksurface.frag`); in the other views the colour and the line are as before, by
-  `vDepth - cutMm`. The line colour is `CNC_STOCK_CONTOUR`, its thickness (1.1 px) is `stockContourHalfPx`.
+  the colour and the line the core hands out the signed distance to the SAME chain on a grid `STOCK_CUT_REFINE =
+  2` times finer than the field (`stockCutChainDistance`; the side comes bilinearly from the signed-distance
+  field, the magnitude is the exact distance to a link within a plateau): the bilinear interpolation of the
+  distance over the FIELD nodes ran as a chord inside a cell, so the colour edge wobbled as a wave at the cell
+  scale (case `cut_colour_edge` — the spread is 0.0146 mm for a ball s05=2.19 and 0.0104 for a D6 flat cutter at
+  a 0.5 node), while the fine grid follows the arc (0.0038 and 0.0028 mm). The surface fragment takes that value
+  in the exact contour view (`cutExactBoundary`, `stocksurface.frag`); in the other views the colour and the line
+  are as before, by `vDepth - cutMm`. The line colour is `CNC_STOCK_CONTOUR`, its thickness (1.1 px) is
+  `stockContourHalfPx`.
   Boundary error in mm against the analytic case (`stock_sim_probe`, cases `boundary_wall` and `boundary_ball`):
   the former field threshold — 0.475 mm (wall) and 0.223 mm (ball) at a 0.5 node, and 0.190 / 0.044 at 0.2; a
   finer field (0.1 mm) — 0.095 / 0.0073; the exact boundary — 1.5e-8 / 6.7e-9 mm, and the drawn signed distance —
@@ -517,8 +521,9 @@ says.
   sub-points dropped onto the level (case `boundary_refined` — the turn per vertex is 13.2 degrees per cell
   against 2.8 at subdivision 6, the deviation from the analytic boundary is 8.2e-8 mm, the shift from the former
   chain is 0.022 mm). The price is named (Test_model): a 0.5 node — 14136 links over 2356 crossings, 683 ms and
-  226 KiB, the signed distance 236 KiB (the same as the field); a 0.2 node — 34944 links, 1196 ms and 559 KiB,
-  1.44 MiB. A live tick recomputes only the cells whose nodes changed (the `StockBoundaryCache` state): 9-18 ms
+  226 KiB, the signed distance 236 KiB (the same as the field), the fine signed-distance grid for the colour —
+  964 KiB and 7.0 ms; a 0.2 node — 34944 links, 1196 ms and 559 KiB, 1.44 MiB, the fine grid — 6.0 MiB and
+  17.3 ms. A live tick recomputes only the cells whose nodes changed (the `StockBoundaryCache` state): 9-18 ms
   per step of 0.1-0.5 % of the path length.
 - The limits of the layered surface are named, not hidden. The vertical face between the top and the floor is
   carried by the wall layer, and at a step it is as tall as the step (0.8 mm), not a seam: before, the wall put

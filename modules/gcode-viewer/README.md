@@ -49,6 +49,7 @@ OCCT точка входа добавляет себе сама. offscreen-пр�
 `#RRGGBB`), `CNC_STOCK_GHOST` (стекло — умолчание; 0/false/off/no снимает),
 `CNC_STOCK_BOX`, `CNC_NO_TOOLPATH`, `CNC_NO_PART_SKIN`, `CNC_PART_MODE` (solid/transparent/hidden),
 `CNC_STOCK_RAW`/`CNC_STOCK_CUT` (`#RRGGBB`), `CNC_STOCK_CELL` (шаг сетки поля, мм),
+`CNC_STOCK_CUT_REFINE` (дробление сетки знакового расстояния для цвета),
 `CNC_FRAME_CAMERA` (`yaw,pitch,dist[,panX,panY]`); `CNC_VIEWER_QML`, `CNC_CPP_QML_DIR`, `CNC_OCC_DIR`,
 `CNC_KEY_DEBUG`. Ядро читает `CNC_DECIMATE_TOL`, `CNC_ARC_DECIMATE_TOL`, `CNC_COLLISION_STEP`,
 `CNC_HOLDER_*`, `CNC_SILHOUETTE`, `CNC_OFS_M*`.

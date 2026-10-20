@@ -38,7 +38,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.58.1+mesh.2"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.58.1+mesh.3"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -696,11 +696,12 @@ Item {
                             mipFilter: Texture.None
                         }
                     }
-                    // Знаковое расстояние до ТОЧНОЙ границы реза (ядро,
-                    // stockCutSignedDistance), того же размера, что поле: им
-                    // фрагмент рисует цвет и линию границы у вида «точный контур»
-                    // (cutExactBoundary), а не глубиной узла поля - поэтому
-                    // граница идёт ровной линией, а не ступенями узла.
+                    // Знаковое расстояние до УТОЧНЁННОЙ цепочки реза (ядро,
+                    // stockCutChainDistance), мелкой сеткой - в stockCutRefine раз
+                    // чаще поля: им фрагмент рисует цвет и линию границы у вида
+                    // «точный контур» (cutExactBoundary), а не глубиной узла поля -
+                    // поэтому кромка цвета совпадает с кромкой геометрии, а не идёт
+                    // хордой клетки.
                     property TextureInput stockCutField: TextureInput {
                         texture: Texture {
                             textureData: path ? path.stockCutField : null

@@ -513,10 +513,13 @@ says.
   Boundary error in mm against the analytic case (`stock_sim_probe`, cases `boundary_wall` and `boundary_ball`):
   the former field threshold — 0.475 mm (wall) and 0.223 mm (ball) at a 0.5 node, and 0.190 / 0.044 at 0.2; a
   finer field (0.1 mm) — 0.095 / 0.0073; the exact boundary — 1.5e-8 / 6.7e-9 mm, and the drawn signed distance —
-  0.011 / 0.002 mm. The price is named (Test_model): a 0.5 node — 2356 segments, 160 ms and 37 KiB, the signed
-  distance 236 KiB (the same as the field); a 0.2 node — 5824 segments, 302 ms and 91 KiB, 1.44 MiB. A live tick
-  recomputes only the cells whose nodes changed (the `StockBoundaryCache` state): 1.1-2.4 ms per step of
-  0.1-0.5 % of the path length.
+  0.011 / 0.002 mm. The polyline follows the LEVEL of the cut, not the chord: the crossings are subdivided by
+  sub-points dropped onto the level (case `boundary_refined` — the turn per vertex is 13.2 degrees per cell
+  against 2.8 at subdivision 6, the deviation from the analytic boundary is 8.2e-8 mm, the shift from the former
+  chain is 0.022 mm). The price is named (Test_model): a 0.5 node — 14136 links over 2356 crossings, 683 ms and
+  226 KiB, the signed distance 236 KiB (the same as the field); a 0.2 node — 34944 links, 1196 ms and 559 KiB,
+  1.44 MiB. A live tick recomputes only the cells whose nodes changed (the `StockBoundaryCache` state): 9-18 ms
+  per step of 0.1-0.5 % of the path length.
 - The limits of the layered surface are named, not hidden. The vertical face between the top and the floor is
   carried by the wall layer, and at a step it is as tall as the step (0.8 mm), not a seam: before, the wall put
   its bottom on the bilinear field depth at the contour point (0.32 at a 0.8 mm step) and hung, not reaching the
@@ -524,9 +527,11 @@ says.
   (0.05 mm; about 0.1 pixel on a 1024x600 frame at a 341 mm distance). The field top between nodes is still a
   height map (bilinear), while the colour
   and the line boundary follow the exact representation: the former caveat "node steps are cured by a finer node"
-  is closed by a representation of its own, not by subdividing the field. The sagitta of the exact polyline is a
-  chord between two sub-cell crossings (0.010 mm at a 0.5 node and radius 3), not an arc; the field node still
-  decides the metal colour away from the boundary.
+  is closed by a representation of its own, not by subdividing the field. The boundary chain follows the LEVEL of
+  the cut, not the chord between crossings: sub-points are placed between the crossings of a cell (subdivision 6),
+  each dropped onto the level along the gradient of the bilinear reconstruction of the field by the exact move
+  depth, so the turn per vertex falls from 13.2 degrees per cell to 2.8 and the line and the cut edge carry one
+  smooth chain (case `boundary_refined`); the field node still decides the metal colour away from the boundary.
 - The top of the stock wall is trimmed by the field (`stockshell.frag`): the wall stands on the bounds and
   otherwise would not know that the cutter removed metal across the edge (measured: 102 cut perimeter nodes out
   of 1000, up to 1.00 mm). The trim runs in the fragment shader and takes the same bilinear reconstruction of

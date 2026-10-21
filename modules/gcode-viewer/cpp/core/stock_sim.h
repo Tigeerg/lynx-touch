@@ -105,17 +105,18 @@ public:
 
     // Material top at the node, machine Z, mm.
     double heightMm(int ix, int iy) const;
-    void setHeightMm(int ix, int iy, double zMm);
+    // timeMm - the accumulated path length at the moment of the cut; a caller that does not
+    // track the cut time (the geometry probe) passes the default and keeps no chronicle.
+    void setHeightMm(int ix, int iy, double zMm, double timeMm = 0.0);
 
-    // Removal at a single position: the tip at (xMm, yMm, tipZMm),
-    // timeMm - the accumulated path length at the moment of the cut.
-    void plunge(const StockCutter& cutter, double xMm, double yMm, double tipZMm, double timeMm);
+    // Removal at a single position: the tip at (xMm, yMm, tipZMm).
+    void plunge(const StockCutter& cutter, double xMm, double yMm, double tipZMm, double timeMm = 0.0);
 
     // Removal along segment A -> B.
     void sweep(const StockCutter& cutter,
                const std::array<double, 3>& aMm,
                const std::array<double, 3>& bMm,
-               double timeMm);
+               double timeMm = 0.0);
 
     // Depths for the texture: countX * countY float32.
     const std::vector<float>& depthMm() const { return depth_; }

@@ -193,7 +193,7 @@ Ninja (MSVC, Qt 6.12 Quick3D, OCCT 8.0.1) в `build/edges`. Сегменты р�
 подключены к контроллеру: переключение бэкенда — этап 5.
 
 **STEP-тесселяция и нормали (этап 4, часть 1) готовы.** Импорт STEP перенесён на OCCT SDK напрямую
-(`cpp/occt/step_import`, цель `gvstep`), нормали кожи — в `cpp/core/normals`. Совпадение бит-в-бит:
+(`cpp/occt/step_import`, цель `gvstep`), нормали skin — в `cpp/core/normals`. Совпадение бит-в-бит:
 `step.verts` [136194,3], `step.tri` [45398,3,3] и `step.normals` [45398,3,3] дают тот же `sha256`, что
 эталон и оракул; проверяет пробник `cpp/step_probe.cpp` и `test_step_core.py`.
 
@@ -217,7 +217,7 @@ Ninja (MSVC, Qt 6.12 Quick3D, OCCT 8.0.1) в `build/edges`. Сегменты р�
 
 **Мост и флаг (этап 5, часть 1) готовы.** C++-слои были статическими библиотеками без C-ABI, то есть
 недоступными Python. Добавлена SHARED-цель `gvbridge` с чистым `extern "C"` API над Qt-free ядром
-(нормали кожи, STEP-модель), Python-шим `gv_cpp.py` (ctypes) и флаг `CNC_CPP` (`normals` | `step` | `all`,
+(нормали skin, STEP-модель), Python-шим `gv_cpp.py` (ctypes) и флаг `CNC_CPP` (`normals` | `step` | `all`,
 по умолчанию выключен, образец — `CNC_SILHOUETTE`). Переключены нормали STL и STEP-ветка; отказ C++ даёт
 предупреждение в журнал и расчёт на Python. Совпадение байт в бит с флагом и без; контракт QML не менялся.
 Остаток этапа 5: перенести в мост поверхности, топологию силуэта и парсер, затем геометрии Qt и

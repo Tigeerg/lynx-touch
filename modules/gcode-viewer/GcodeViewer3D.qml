@@ -1641,7 +1641,7 @@ Item {
                 font.pixelSize: 10
             }
             Text {
-                text: "K кожа: " + (root.showPartSkin ? "вкл" : "выкл")
+                text: "K skin: " + (root.showPartSkin ? "вкл" : "выкл")
                       + " · G линии УП: " + (root.showToolpath ? "вкл" : "выкл")
                 color: "#535C66"
                 font.pixelSize: 10

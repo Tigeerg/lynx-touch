@@ -66,16 +66,18 @@ The controller exposes finished data; QML never receives the per-point path list
 - `stages` — program operations as normalized `[start, end]` path ranges;
 - `collisions` — collision ranges with a representative scene point.
 
-A group of values that travels together is a named type (CLAUDE.md): the module-boundary structures live in
-`cpp/core/gv_types.h` (`PathPoint`, `Stage`, `Aabb`, `PackedEdges`, `PathData`, `CylinderSurface`/`ConeSurface`,
-`TangentFamilies`, `MeshTopology`, `ProfilePoint`/`HolderSection`). A dict remains only where QML reads it
+A group of values that travels together is a named type (CLAUDE.md): the module-boundary structures are named types in
+the core headers - `cpp/core/gv_types.h` (`ToolInfo`, `PathPoint`, `Stage`, `ProfilePoint`/`HolderSection`),
+`path_prep.h` (`Aabb`, `PathData`, `PackedStream`), `packing.h` (`PackedEdges`), `tangents.h`
+(`CylinderSurface`/`ConeSurface`, `TangentFamilies`), `silhouette.h` (`MeshTopology`). A dict remains only where QML reads it
 (`toolInfo`, `stages`, `collisions`, `toolCheck`): that is the QML contract, not debt.
 
 ## 5. Coordinate system
 
-The machine works in (X, Y, Z) with Z up; the scene uses Y up. One permutation covers the whole code
-(`gv::toScene`): machine `(X, Y, Z) -> scene (X, Z, -Y)`. Units are millimeters, the scene is 1:1 with the part,
-so "scene units == machine mm". Every machine <-> scene conversion goes through this function.
+The machine works in (X, Y, Z) with Z up; the scene uses Y up. One permutation covers the whole code:
+machine `(X, Y, Z) -> scene (X, Z, -Y)` - `toScene` (`cpp/qmlbackend/gv_toolpath.cpp`), the same swap in
+`cpp/core/path_prep.cpp` (bounds, stream packing), the reverse one in `cpp/core/stock_sim.cpp`. Units are
+millimeters, the scene is 1:1 with the part, so "scene units == machine mm". No other permutation order exists in the code.
 
 ## 6. Threads and asynchrony
 
@@ -85,7 +87,7 @@ Loading (`load_gcode_async`) starts a task in `QThreadPool::globalInstance()`:
 3. read the model (STEP/STL) in the background;
 4. signal `meshReady` -> the GUI applies the part.
 
-Each result carries a token (`_load_token`, `_edge_token`, `collisionToken`, atomics): a stale result (the user
+Each result carries a token (`load_token_`, `edge_token_`, `collision_token_`, atomics): a stale result (the user
 opened another program) is dropped. The STL outline, the collision scan and the stock removal run as their own
 pool tasks.
 
@@ -174,7 +176,7 @@ Architecture:
   slots.
 
 Code against the CLAUDE.md rules:
-- module-boundary structures are no longer tuples/dicts: they live in `cpp/core/gv_types.h`; a dict
+- module-boundary structures are no longer tuples/dicts: they are named types in the core headers (see §4); a dict
   (QVariantMap) remains only where QML reads it (`toolInfo`, `stages`, `collisions`, `toolCheck`) — a contract,
   not debt;
 - the display toggles (`showStockVisible`, `showBrepEdges`, `stockGhost`, ...) are a run of booleans, not a
@@ -201,7 +203,7 @@ Remaining after the C++ port (open, with measurements):
 - the C++ entry point `gcodeviewer.exe` does not accept an absolute NC path with Cyrillic characters:
   the arguments are read as `QString::fromLocal8Bit(argv[i])`, so `GetCommandLineW`/`CommandLineToArgvW`
   is needed;
-- the optimisations from `docs/PORT-CPP.md` §11: the NC parse (176 ms), the STEP shape cache in the plugin,
+- the optimisations from `docs/PORT-CPP.md` §11: the NC parse (174 ms), the STEP shape cache in the plugin,
   quality presets and level auto-detection, trimming the OCCT build, parallelism of the cold stages.
 
 Outline on the STL branch:
@@ -309,7 +311,7 @@ Performance and hardware adaptivity:
   [`docs/PORT-CPP.en.md`](docs/PORT-CPP.en.md).
 
 Engineering:
-- a single QML <-> C++ contract: module-boundary structures live in `cpp/core/gv_types.h`, QML slots are typed;
+- a single QML <-> C++ contract: module-boundary structures live in the core headers (see §4), QML slots are typed;
 - a performance gate in `pnpm guard` via `bench_probe`;
 - centralized logging;
 - the compute core is ported to C++ (the OCCT SDK directly instead of bindings) — estimate, risks and stages in
@@ -388,7 +390,7 @@ field bytes.
   skipping `G0` would show material that is already cut away. That a rapid into the stock is a crash is the
   collision scan's business, not the simulation's.
 - It runs in the background like the scan: `QThreadPool::globalInstance()` and its own token next to
-  `collisionToken`, the result returns to the GUI thread through `QMetaObject::invokeMethod`, a stale one is
+  `collision_token_`, the result returns to the GUI thread through `QMetaObject::invokeMethod`, a stale one is
   dropped. The GUI never waits: the field may lag the tool — that is the price of the background, and it has to
   be measured.
 - Live publication: while the program plays, the field reflects the cut up to the current `pathDist` — the same
@@ -448,7 +450,7 @@ says.
 - The grid is built once per load (position 3f + texcoord 2f, the same 20 B stride as `ToolpathGeometry`), and
   only the texture changes. The update replaces the whole buffer (there is no partial upload in
   `QQuick3DTextureData`), so the cadence is ours: while the program plays the field is published every 100 ms
-  — 242 KiB per tick at a 0.5 mm node and 1.44 MiB at 0.2 mm on the 150x100 stock, otherwise megabytes per
+  — 236 KiB per tick at a 0.5 mm node and 1.44 MiB at 0.2 mm on the 150x100 stock, otherwise megabytes per
   frame would go over the bus.
 - The stock view is one switch with three positions (`stockView`): exact (one vertex per field node, as
   computed), smooth (the default: the mesh is subdivided, the height is bilinear) and rounded (the node depth
@@ -506,7 +508,7 @@ says.
   thousands of vertices. But the grid is triangles in the frame, and its cap above is part of the orbit budget
   (`docs/PORT-CPP.md` §11: the orbit is cheap, the time goes into the cold load and heavy features).
 - It must not touch the bit-exact contract: the field is in neither `PathData`, nor `PackedStream`
-  (`cpp/core/gv_types.h`), nor the geometry buffers, nor `oracle_manifest.json`; `gv::prepareOrdered`, the parse
+  (`cpp/core/path_prep.h`), nor the geometry buffers, nor `oracle_manifest.json`; `gv::prepareOrdered`, the parse
   and the packing stay as they are. The field accumulates float minima, so sha256 is no use for it at all; the
   comparison uses a millimetre tolerance (`stock_sim_probe`), and that exception to the general rule is named,
   not implied.
@@ -540,11 +542,11 @@ says.
 - Measurements: `bench_probe` — the phases next to `collision_scan`; the cost of the field — the `phase
   stock_sim_*` and `phase stock_live_*` lines of `stock_sim_probe` itself (0.5 and 0.2 mm nodes); the frame with
   and without the field — the `frame` lines of `bench_probe`, on weak hardware mandatory. The live numbers to
-  watch: the collision scan 2.1 ms at a 1 mm step (i5-10400F), the NC parse 174 ms and `ngc_parse` 69.7 ms
-  (i5-13420H), the cold load about 690 ms, the mesh silhouette 0.0791-0.0868 ms, the skin 45398 triangles
+  watch: the collision scan 2.1 ms at a 1 mm step (i5-10400F), the NC parse 174 ms (i5-10400F) and
+  `ngc_parse` 69.7 ms (i5-13420H), the cold load about 690 ms, the mesh silhouette 0.0791-0.0868 ms, the skin 45398 triangles
   (`med`), the full field pass 430 ms at a 0.5 node and 4.89 s at 0.2, the mean tick 0.0074 ms, a half-path
   rewind 200 ms.
-- Measured: the 0.5 mm node (192.5 ms, 301x201), the 0.2 mm one (2288.6 ms, 751x501) and the `safe` 1.0 mm
+- Measured: the 0.5 mm node (191.2 ms, 301x201), the 0.2 mm one (2488.4 ms, 751x501) and the `safe` 1.0 mm
   one (39.5 ms, 151x101) on Test_model. Proposals, not measurements: the caps 256/512/1024, the step = node/2,
   the R32F format, `safe` not drawing the field at all, the 628 KiB and 3.82 MiB of memory, the cap triangles
   130 000/522 000/2 093 000. The number of surface pixels is printed by `--frame` (`non-background pixels`) —
@@ -567,7 +569,7 @@ Numbers enter a comment only when they are measured.
 
 ## 15. Directions for panel development on the 3D base
 
-Five panel features built on the viewer scene and data (the panel is `apps/react-interface/lib/cnc`). For each: the
+Thirteen panel features built on the viewer scene and data (the panel is `apps/react-interface/lib/cnc`). For each: the
 pain today, what the operator does, and what the code rests on — and what is still missing.
 
 1. **Interactive 3D probing (click a face).**
@@ -578,7 +580,7 @@ pain today, what the operator does, and what the code rests on — and what is s
      the proposed probe path in 3D before Cycle Start.
    - Rests on: the analytic faces are already extracted — `cpp/occt/step_import.cpp` (`gv::loadStepModel`, tessellation,
      `GeomAbs_Plane`), `cpp/occt/step_surfaces.cpp` (`gv::loadStepSurfaces`, `GeomAbs_Cylinder`/`GeomAbs_Cone`), the
-     `CylinderSurface`/`ConeSurface` types in `cpp/core/gv_types.h`, the C++ mirror `cpp/occt/step_surfaces.cpp`; the probing
+     `CylinderSurface`/`ConeSurface` types in `cpp/core/tangents.h`, the C++ mirror `cpp/occt/step_surfaces.cpp`; the probing
      macros — `PROBE_CYCLES`/`computeProbeResult` (`lib/cnc/probe.ts`). Required: a ray face pick in
      `GcodeViewer3D.qml` (today `MouseArea` is orbit and pan, there is no ray), mapping a face to a macro, and drawing
      the proposed probe path.
@@ -588,9 +590,9 @@ pain today, what the operator does, and what the code rests on — and what is s
    - Operator: scrubs the 3D trajectory to the break point; the base reads the context (active tool, spindle rpm, work
      offset), builds a safe approach tail (raise Z to machine zero -> spindle and coolant -> rapid X/Y above the start
      point -> descend to clearance -> continue) and draws the tail in 3D before the start.
-   - Rests on: the path data and stages exist — `PathData`/`Stage` (`cpp/core/gv_types.h`), `sampleAt`/`stages`
-     (`cpp/qmlbackend/gv_toolpath.cpp`), `setToolStage`/`stageTools`, the stick-out `gv::toolExposedLength` (`cpp/core/tooling.cpp`); the
-     background pass and token — `gv::scanCollisions`/`collisionToken` (`cpp/core/collision.cpp`, `cpp/qmlbackend/gv_toolpath.cpp`), the stock
+   - Rests on: the path data and stages exist - `PathData`/`Stage` (`cpp/core/path_prep.h`, `cpp/core/gv_types.h`), `sampleAt`/`stages`
+     (`cpp/qmlbackend/gv_toolpath.cpp`), `setToolStage`/`stage_specs_`, the stick-out `gv::toolExposedLength` (`cpp/core/tooling.cpp`); the
+     background pass and token - `gv::scanCollisions`/`collision_token_` (`cpp/core/collision.cpp`, `cpp/qmlbackend/gv_toolpath.cpp`), the stock
      field — `cpp/core/stock_sim.{h,cpp}`. Required: the viewer parses neither the `S` speed nor the work offset
      `G54`..`G59` (`cpp/core/gcode_parser.cpp` knows motion and planes only), and the generation and drawing of the approach tail
      are missing too.
@@ -599,7 +601,7 @@ pain today, what the operator does, and what the code rests on — and what is s
    - Pain: otherwise a 40-minute program is run in full, or a CAM programmer is asked to cut out a fragment.
    - Operator: holds Shift and drags a 3D box around the problem area; the base filters the trajectory and keeps the
      program lines that intersect the volume — only that corner is re-machined.
-   - Rests on: the path geometry and bounds exist — `PathData.pts`/`cum`, `Aabb` (`cpp/core/gv_types.h`), the travelled
+   - Rests on: the path geometry and bounds exist - `PathData.pts`/`cum`, `Aabb` (`cpp/core/path_prep.h`), the travelled
      distance `pathDist` (`GcodeViewer3D.qml`). Required: selecting a volume in the scene and a filter by volume, and
      the link from a segment to a program line must be built from scratch — the viewer keeps no line numbers, and
      "linking 3D and the NC line" is listed as not done in §13.
@@ -610,8 +612,9 @@ pain today, what the operator does, and what the code rests on — and what is s
      and chatter) from the spindle load and the actual feed, and edits the program.
    - Rests on: the trajectory and the programmed feed exist — `toolpath.vert`/`frag` already colours fragments by
      `cutoff`/`pathDist`, `speedAt` (`cpp/qmlbackend/gv_toolpath.cpp`). Required: no layer reads the live machine state;
-     `spindle.0.load` and the actual cutting speed exist only as a list of pins in `HAL_GROUPS`
-     (`lib/cnc/service-data.ts`) — a static reference, not a data source; the panel (`MachineState`) is a mock with
+     the actual cutting speed (`spindle.0.speed-out`) exists only as a list of pins in `HAL_GROUPS`
+     (`lib/cnc/service-data.ts`) — a static reference, not a data source, and there is no spindle load pin even in
+     the reference; the panel (`MachineState`) is a mock with
      `feedOverride`, and the HAL link is not built.
 
 5. **Ctrl+Z for the offsets.**
@@ -630,7 +633,7 @@ pain today, what the operator does, and what the code rests on — and what is s
      vise with the probe — the 3D fixture model snaps to those coordinates, and the look-ahead pass recomputes
      and marks red where the holder would reach the jaws.
    - Rests on: the touch is already modelled — `Touch`/`probeLocalPosition`/`localToMachine`/`PROBE_CYCLES`
-     (`lib/cnc/probe.ts`), the cycle run — `PROBE_STEPS` and the measure step in `machine.ts`; STEP is read
+     (`lib/cnc/probe.ts`), the cycle run - `PROBE_STEPS` (same file), the measure step - `PROBE_STEP` (`machine.ts`); STEP is read
      (`gv::loadStepModel`, `cpp/occt/step_import.cpp`), the collision scan — `gv::scanCollisions`/`gv::holderProfile`
      (`cpp/core/collision.cpp`, `cpp/core/tooling.cpp`). Required: a slot for a second STEP model (the viewer has one today,
      `modelPath` in `cpp/qmlbackend/gv_toolpath.cpp`), snapping the fixture model to the touch, and a "holder against fixture"
@@ -642,7 +645,7 @@ pain today, what the operator does, and what the code rests on — and what is s
    - Operator: sees a semi-transparent ghost tool running along the trajectory 3-5 s ahead of the real one, so
      the next manoeuvre is visible before the machine makes it in iron.
    - Rests on: the whole program is parsed ahead (`gv::parseGcode` -> `gv::prepareOrdered`, `cpp/core/path_prep.cpp`), the path
-     is fully in the samples (`pathSamples`/`cum`), the position comes from `sampleAt`/`speedAt` (`cpp/qmlbackend/gv_toolpath.cpp`),
+     is fully in the samples (`PathData.pts`/`cum`), the position comes from `sampleAt`/`speedAt` (`cpp/qmlbackend/gv_toolpath.cpp`),
      and QML already drives `pathDist` and `path.playing` (`GcodeViewer3D.qml`). Required: a second tool mesh at
      its own `sampleAt(pathDist + lead)`, where the lead is the path covered in 3-5 s by `speedAt`, and its
      semi-transparent drawing.
@@ -665,7 +668,7 @@ pain today, what the operator does, and what the code rests on — and what is s
      plunge — the second part runs much shorter.
    - Rests on: the feed and its override live in the panel state — `motion.feed`, `motionSpeed` (`coords.ts`),
      `feedOverride` (`machine.ts`); block editing — `setLines`/`SEARCH_REPLACE_ALL` (`files.ts`, `prog.ts`).
-     Required: a load source (today `LoadRow` in `side-status.tsx` draws a sine of time, and the
+     Required: a load source (today `SideStatus` in `side-status.tsx` computes a sine of time and feeds `LoadRow`, and the
      `motion.current-vel`/`spindle.0.speed-out` pins in `HAL_GROUPS` are a static reference), recording load
      against coordinates, and splitting long G1 runs with a new `F`.
 
@@ -675,7 +678,7 @@ pain today, what the operator does, and what the code rests on — and what is s
       chips instead of spindle minutes.
     - Rests on: the life and the run time — `Tool.life` (`types.ts`), `toolTime` on `TICK` and `TOOL_RESET_LIFE`
       (`machine.ts`), the `TOOL_LIFE` report (`prog.ts`); the stock height field is already computed —
-      `StockField`/`gv::simulateStock` (`cpp/core/stock_sim.{h,cpp}`), the tool of a stage — `stageTools`/`Stage`
+      `StockField`/`gv::simulateStock` (`cpp/core/stock_sim.{h,cpp}`), the tool of a stage - `stage_specs_`/`Stage`
       (`cpp/qmlbackend/gv_toolpath.cpp`, `cpp/core/gv_types.h`). Required: volume from the height field per stage (or OCCT booleans) and
       debiting `Tool.life` in cm³.
 

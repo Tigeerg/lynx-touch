@@ -11,9 +11,11 @@ C++.
 - `cpp/core/`, `cpp/occt/` — чистое ядро (парсер УП, теги `UI_*`, нормали, STL, обводка, силуэт,
   касательные, инструмент, коллизии, поле съёма `stock_sim`) и слой STEP на OCCT;
 - `cpp/viewer/` — точка входа `gcodeviewer` и пробники живых путей (`keyprobe`, `stock_bind_probe`);
-- `cpp/*.cpp` — пробники сверки с эталоном `oracle_manifest.json` (ключ `--manifest`): `gcode_probe`,
-  `version_probe`, `geometry_probe`, `step_probe`, `stl_probe`, `silhouette_probe`, `tangents_probe`,
-  `stock_sim_probe`, `bench_probe`, `stepledges_probe`;
+- `cpp/*.cpp` — пробники: шесть сверяют дайджесты массивов с эталоном `oracle_manifest.json` (ключ
+  `--manifest`) — `gcode_probe`, `geometry_probe`, `step_probe`, `stl_probe`, `silhouette_probe`,
+  `tangents_probe`; `version_probe` сверяет `VERSION`, `projects.json` и `viewerVersion` в QML;
+  `stock_sim_probe` — аналитика поля съёма; `stepledges_probe` — рёбра STEP (аргумент — файл STEP);
+  `bench_probe` — замеры фаз и кадров;
 - шейдеры: `toolpath.vert`/`.frag` — материал траектории; `stepledges.vert`/`.frag` — ленточная обводка
   (рёбра B-rep, силуэт, рёбра инструмента и оправки); `stocksurface.vert`/`.frag` — верх поля съёма
   (дробление, выборка поля, палитра, лампа слитка); `stockshell.vert`/`.frag` — стенки и дно заготовки
@@ -24,7 +26,7 @@ C++.
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-viewer.ps1
 build\viewer\gcodeviewer.exe "data\cad-testdata\Test_model.ngc"
-build\viewer\gcodeviewer.exe --smoke                       # проверка старта, RESULT: OK
+build\viewer\gcodeviewer.exe --smoke                       # проверка старта, RESULT: OK (parse-level)
 build\viewer\gcodeviewer.exe --frame frame.png <УП.ngc>     # кадр в PNG (нужна живая платформа)
 ```
 Qt обязан быть в `PATH` до старта (exe линкуется с `Qt6Core.dll`); каталог плагина `MockBackend` и DLL
@@ -46,7 +48,7 @@ OCCT точка входа добавляет себе сама. offscreen-пр�
 `CNC_STOCK_RAW`/`CNC_STOCK_CUT` (`#RRGGBB`), `CNC_STOCK_CELL` (шаг сетки поля, мм),
 `CNC_FRAME_CAMERA` (`yaw,pitch,dist[,panX,panY]`); `CNC_VIEWER_QML`, `CNC_CPP_QML_DIR`, `CNC_OCC_DIR`,
 `CNC_KEY_DEBUG`. Ядро читает `CNC_DECIMATE_TOL`, `CNC_ARC_DECIMATE_TOL`, `CNC_COLLISION_STEP`,
-`CNC_HOLDER_*`, `CNC_SILHOUETTE`, `CNC_OFS_M*`.
+`CNC_RAPID_SPEED_MMS`, `CNC_DEFAULT_FEED_MMS`, `CNC_HOLDER_*`, `CNC_SILHOUETTE`, `CNC_OFS_M*`.
 
 ## Проверки
 Шесть пробников манифеста (`gcode_probe`, `geometry_probe`, `step_probe`, `stl_probe`,
@@ -55,20 +57,22 @@ OCCT точка входа добавляет себе сама. offscreen-пр�
 `--frame`. Полный порядок — `VERSIONING.md`, раздел 5.
 
 ## Встраивание в Qt-дизайн
-1. Добавить каталог `build/qmlbackend` в import-пути QML (`QQmlEngine::addImportPath`), а каталог модуля
+1. Добавить каталоги `modules/gcode-viewer` (модуль `GcodeViewer` с компонентом `GcodeViewer3D`) и
+   `build/qmlbackend` в import-пути QML (`QQmlEngine::addImportPath`), а каталог модуля
    `build/qmlbackend/MockBackend` — в `PATH` (точка входа Qt-плагина ищет зависимости по `PATH`).
 2. В Qt-дизайне разместить компонент в layout:
 ```qml
-import MockBackend 1.0
+import GcodeViewer 1.0
 GcodeViewer3D {
-    gcode: ""            // или modelPath для STEP; свойства partMode, stockView,
+    gcode: ""            // текст УП; свойства partMode, stockView,
                           // showToolpath, showBrepEdges, showTangentLines,
-                          // showStockVisible, camera*
+                          // showStockVisible, камера yaw/pitch/dist/panX/panY
 }
 ```
-3. Публичный API — свойства/сигналы `GcodeToolpath` (`load_gcode`/`loadModel`, `pathChanged`,
-`loadFinished`, `stockField`, `stockSimState`, `toolInfo`, геометрии) и свойства корня `GcodeViewer3D`
-(`partMode`, `stockView`, `stockGhost`, `showToolpath`, `showBrepEdges`, `showTangentLines`,
-`showStockVisible`, камера). URI, имена типов, свойства и сигналы совпадают с прежним контрактом.
+3. Публичный API — инвокаблы, свойства и сигналы `GcodeToolpath` (инвокаблы `load_gcode`/`loadModel`,
+сигналы `pathChanged`/`loadFinished`, свойства `stockField`, `stockSimState`, `toolInfo`, геометрии)
+и свойства корня `GcodeViewer3D` (`partMode`, `stockView`, `stockGhost`, `showToolpath`, `showBrepEdges`,
+`showTangentLines`, `showStockVisible`, камера `yaw`/`pitch`/`dist`/`panX`/`panY`). URI, имена типов,
+свойства и сигналы совпадают с прежним контрактом.
 
 Журнал изменений — `CHANGELOG.md`; версия — `VERSION`.

@@ -524,7 +524,7 @@ already-meshed shape costs 46.9-50.0 ms, not an empty pass; the runtime does not
 already-meshed flag — kept as hygiene), dead code removed, the shared numeric
 helpers moved into `core/np_helpers.h`. Corrections to the list above: `packedPositions` is NOT dead (called
 at runtime from `gv_toolpath.cpp`), and the "one tessellation pass less" claim did not hold. The main
-remaining targets by payoff are the NC parse (176 ms) and the STEP shape cache in the plugin (0.6-0.9 s per
+remaining targets by payoff are the NC parse (174 ms) and the STEP shape cache in the plugin (0.6-0.9 s per
 deflection change), not the items 1-4.
 
 **Status and measurements (parts 2-4 done, 0.30.0 and 0.31.0).** The STEP shape cache in `StepEdgesGeometry`: a

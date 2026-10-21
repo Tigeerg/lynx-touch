@@ -1,10 +1,10 @@
-// core/outline.h - обводка меша: рёбра по двугранному углу.
+// core/outline.h - mesh outline: edges by dihedral angle.
 //
-// Отобранные рёбра склеиваются в цепочки смежности и упрощаются по
-// Дугласу-Пекеру: у мелкого меша (медиана ребра Test_model.STL - 0.07 мм) контур
-// иначе превращается в облако субмиллиметровых звеньев. Перенос сверяется с
-// питоновским _feature_edges_np побайтово, поэтому порядок цепочек и упрощения
-// здесь - часть результата.
+// The selected edges are welded into adjacency chains and simplified with
+// Douglas-Peucker: on a fine mesh (median edge of Test_model.STL - 0.07 mm) the
+// contour otherwise turns into a cloud of sub-millimetre links. The port is
+// checked against the reference _feature_edges_np byte for byte, so the order of
+// chains and simplification here is part of the result.
 #pragma once
 
 #include <vector>
@@ -13,13 +13,14 @@
 
 namespace gv {
 
-// Допуск упрощения цепочек контура, мм (зеркало _FEATURE_SIMPLIFY_MM).
+// Chain simplification tolerance, mm (mirrors _FEATURE_SIMPLIFY_MM).
 constexpr double FEATURE_SIMPLIFY_MM = 0.15;
 
-// Зеркало _feature_edges_np: суп треугольников (9 координат float64 на
-// треугольник) -> упакованный Lines-буфер рёбер. Остаются рёбра границы, рёбра
-// с числом граней больше двух и рёбра с двугранным углом больше angle_deg.
-// simplifyMm - допуск упрощения цепочек (у уровня med - FEATURE_SIMPLIFY_MM).
+// Mirrors _feature_edges_np: triangle soup (9 float64 coordinates per triangle)
+// -> packed Lines buffer of edges. Boundary edges, edges with more than two
+// faces and edges with a dihedral angle above angle_deg are kept.
+// simplifyMm - chain simplification tolerance (FEATURE_SIMPLIFY_MM at the med
+// level).
 PackedEdges featureEdgesNp(const std::vector<double>& soup, double angle_deg,
                            double simplifyMm = FEATURE_SIMPLIFY_MM);
 

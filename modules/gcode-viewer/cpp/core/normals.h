@@ -1,29 +1,31 @@
-// core/normals.h - crease-aware нормали кожи:.
+// core/normals.h - crease-aware skin normals.
 //
-// Слой чистый: ни Qt, ни OCCT - только арифметика над массивами, как у
-// path_prep. Поэтому он живёт в gvcore, а не в OCCT-цели: те же нормали нужны и
-// STL-обводке (этап 4 плана переноса), и обеим веткам импорта.
+// The layer is pure: neither Qt nor OCCT - only arithmetic over arrays, like
+// path_prep. That is why it lives in gvcore rather than in the OCCT target: the
+// same normals are needed by the STL outline (stage 4 of the port) and by both
+// import branches.
 #pragma once
 
 #include <vector>
 
 namespace gv {
 
-// Нормали кожи (F,3,3) float32 для супа вершин (F*9 double: по три вершины на
-// треугольник, плоский ряд, как у load_stl_vertices).
+// Skin normals (F,3,3) float32 for a vertex soup (F*9 double: three vertices per
+// triangle, flat row, like load_stl_vertices).
 //
-// Повтор _smooth_face_normals бит-в-бит, включая порядок операций:
-// * нормаль и площадь грани - cross и корень из суммы квадратов в том же
-// порядке, что numpy (по 3 слагаемых, слева направо);
-// * сварка вершин - по сетке 0.001 мм (np.round(T * 1000.0), округление
-// пол-к-чётному), равенство строк int64;
-// * внутри сварки сид кластера - грань наибольшей площади (устойчивая
-// сортировка по -w: равные веса сохраняют порядок слотов), в кластер идут
-// смежные нормали в пределах creaseDeg (20 градусов);
-// * среднее - взвешенное по площади, суммирование по слотам группы по
-// возрастанию номера слота (нули на месте несмежных: x + 0.0 точно).
-// Ориентацию оболочки задаёт вызывающий (step_import): пофейсовый разворот по
-// центроиду выворачивал бы нормали вогнутых участков внутрь.
+// A bit-for-bit repeat of _smooth_face_normals, including the order of
+// operations:
+// * face normal and area - cross and the square root of the sum of squares in
+//   the same order as numpy (three terms, left to right);
+// * vertex welding - on a 0.001 mm grid (np.round(T * 1000.0), round half to
+//   even), int64 row equality;
+// * inside a weld the cluster seed is the largest-area face (stable sort by -w:
+//   equal weights keep the slot order), and adjacent normals within creaseDeg
+//   (20 degrees) join the cluster;
+// * the average is area-weighted, summed over the group slots in ascending slot
+//   order (zeros at non-adjacent slots: x + 0.0 is exact).
+// The caller (step_import) sets the shell orientation: a per-face flip by
+// centroid would turn the normals of concave areas inward.
 std::vector<float> smoothFaceNormals(const std::vector<double>& soup, double creaseDeg = 20.0);
 
 } // namespace gv

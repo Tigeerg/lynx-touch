@@ -1,23 +1,23 @@
-// core/stl_import.h - импорт STL (бинарный и ASCII) в суп треугольников.
+// core/stl_import.h - STL import (binary and ASCII) into a triangle soup.
 //
-// Порядок вершин - часть контракта: суп сверяется с оракулом
-// (stl.soup) побайтово, поэтому вершины идут тройками подряд в порядке файла,
-// без сварки.
+// The vertex order is part of the contract: the soup is checked against the
+// oracle (stl.soup) byte for byte, so vertices go in triples in file order,
+// with no welding.
 #pragma once
 
 #include <string>
 #include <vector>
 
-#include "core/path_prep.h"     // gv::Aabb - тип габарита, как у _verts_bounds
+#include "core/path_prep.h"     // gv::Aabb - the bounds type, as in _verts_bounds
 
 namespace gv {
 
-// Суп треугольников из STL: 9 координат float64 на треугольник (a, b, c).
-// Пустой вектор - файл не прочитан или треугольников в нём нет.
-// Путь - UTF-8: каталог репозитория содержит кириллицу.
+// Triangle soup from STL: 9 float64 coordinates per triangle (a, b, c).
+// An empty vector means the file was not read or holds no triangles.
+// The path is UTF-8: the repository directory contains Cyrillic.
 std::vector<double> loadStlVertices(const std::string& utf8Path);
 
-// Габарит супа (зеркало _verts_bounds). Пустой суп -> нулевой габарит.
+// Bounds of the soup (mirrors _verts_bounds). Empty soup -> zero bounds.
 Aabb vertsBounds(const std::vector<double>& verts);
 
 } // namespace gv

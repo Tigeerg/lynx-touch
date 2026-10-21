@@ -1,15 +1,15 @@
-// core/tooling.h - инструмент и оправка: профили, кольца, вылет.
+// core/tooling.h - tool and holder: profiles, rings, gauge length.
 //
-// Этап 5.4в плана переноса: те же числа и тот же порядок операций, что у
-// питоновского эталона, - профиль инструмента строится по метаданным UI_TOOL,
-// оправка (гайка ER20 и корпус шпинделя) постоянна и берётся теми же
-// константами, что и скан коллизий.
+// Stage 5.4c of the port: the same numbers and the same order of operations as
+// the reference - the tool profile is built from UI_TOOL metadata, the holder
+// (ER20 nut and spindle body) is constant and uses the same constants as the
+// collision scan.
 //
-// Точность: помимо порядка суммирования здесь важно, какой функцией считается
-// гипотенуза. Питоновский `math.hypot` считает её своим алгоритмом (CPython,
-// `vector_norm`), и он расходится с CRT на 1 ulp: на профилях Test_model это
-// 8 пар из 51, а значит обводка оправки разошлась бы байт в байт. Поэтому
-// `pyHypot` повторяет CPython, а не `std::hypot`.
+// Precision: besides the summation order, which function computes the hypotenuse
+// matters here. The reference `math.hypot` uses its own algorithm (CPython,
+// `vector_norm`) and differs from the CRT by 1 ulp: on Test_model profiles that
+// is 8 pairs out of 51, so the holder outline would diverge byte for byte. That
+// is why `pyHypot` repeats CPython rather than `std::hypot`.
 #pragma once
 
 #include <vector>
@@ -18,9 +18,9 @@
 
 namespace gv {
 
-// Константы оправки: гайка ER20 и корпус шпинделя над вылетом инструмента, мм.
-// Значения читаются из окружения при первом обращении (в Python - при импорте
-// модуля), поэтому прогон видит одно и то же значение во всех вызовах.
+// Holder constants: ER20 nut and spindle body above the tool gauge length, mm.
+// The values are read from the environment on first use (in the reference - at
+// module import), so a run sees the same value in all calls.
 struct HolderConstants {
     double nut_d = 33.0;        // ER20 nut OD
     double nut_h = 22.0;        // ER20 nut length
@@ -30,41 +30,44 @@ struct HolderConstants {
 
 HolderConstants holderConstants();
 
-// Гипотенуза по алгоритму CPython (math.hypot, vector_norm): масштабирование на
-// степень двойки, точный квадрат через fma и суммирование с компенсацией.
+// Hypotenuse by the CPython algorithm (math.hypot, vector_norm): scaling by a
+// power of two, an exact square via fma and compensated summation.
 double pyHypot(double x, double y);
 
-// Округление до двух знаков как питоновский round(x, 2): правильное округление
-// двоичного значения, половина - к чётному. std::round(x * 100) / 100 не годится:
-// на 12.345 и 2.675 он даёт другой знак, а эти числа попадают в отчёт сверки.
+// Rounding to two decimals like the reference round(x, 2): correct rounding of
+// the binary value, half to even. std::round(x * 100) / 100 does not do: on
+// 12.345 and 2.675 it gives a different sign, and those numbers reach the check
+// report.
 double pyRound2(double x);
 
-// Профиль инструмента по метаданным UI_TOOL: острие в y = 0, ось +Y. Поддержаны
-// формы, которые рисует панель: плоская и радиусная концевые, шаровая, фаска и
-// конус, сверло и метчик. Пустой вектор - нет диаметра (у эталона None).
+// Tool profile from UI_TOOL metadata: the tip at y = 0, axis +Y. The shapes the
+// panel draws are supported: flat and corner-radius end mills, ball, chamfer and
+// cone, drill and tap. An empty vector means no diameter (the reference's None).
 std::vector<ProfilePoint> toolProfile(const ToolInfo& info);
 
-// Обводка профиля: дилатация наружу по собственным нормалям профиля на `pad`.
-// Радиальный отжим оставил бы острие и торец на оси, и обводка z-fighting'ом
-// сливалась бы с телом ("много сходящихся линий" на вершине сверла).
+// Profile outline: dilation outward along the profile's own normals by `pad`. A
+// radial offset would leave the tip and the face on the axis, and the outline
+// would merge with the body by z-fighting ("many converging lines" at the drill
+// tip).
 std::vector<ProfilePoint> toolOutlineProfile(const std::vector<ProfilePoint>& profile, double pad);
 
-// Видимый вылет режущей части, мм: верх профиля (длина тела, ограниченная OL).
+// Visible length of the cutting part, mm: the top of the profile (body length
+// limited by OL).
 double toolExposedLength(const ToolInfo& info);
 
-// Оправка как секции цилиндров относительно острия инструмента (машинный Z
-// вверх): гайка ER20, затем корпус над ней. Низ оправки - на вылете инструмента.
+// Holder as cylinder sections relative to the tool tip (machine Z up): the ER20
+// nut, then the body above it. The holder bottom is at the tool gauge length.
 std::vector<HolderSection> holderProfile(double tool_len);
 
-// Профиль (r, y) оправки для показа: y = 0 в основании (низ оправки садится на
-// вылет инструмента), вверх положительно.
+// Holder profile (r, y) for display: y = 0 at the base (the holder bottom sits
+// at the tool gauge length), positive upward.
 std::vector<ProfilePoint> holderSolidProfile();
 
-// Наружный профиль оправки для обводки перевёрнутой оболочкой: плоские торцы
-// сняты, чтобы увеличенная копия не показывала их тёмными крышками.
+// Outer holder profile for the inverted-hull outline: the flat faces are removed
+// so the enlarged copy does not show them as dark caps.
 std::vector<ProfilePoint> holderOutlineProfile();
 
-// Отрезок в координатах профиля после вращения вокруг оси Y.
+// A segment in profile coordinates after revolution around the Y axis.
 struct RingSegment {
     double x0 = 0.0;
     double y0 = 0.0;
@@ -74,22 +77,23 @@ struct RingSegment {
     double z1 = 0.0;
 };
 
-// Кольца (окружности) в каждой вершине профиля с r > 0.
+// Rings (circles) at every profile vertex with r > 0.
 std::vector<RingSegment> ringsSegments(const std::vector<ProfilePoint>& profile, int segments = 48);
 
-// Вершины профиля, где направление меняется сильнее min_deg, плюс концы:
-// горизонтальные кольца обводки. На гладких участках (шаровая носовая часть)
-// колец нет, иначе каркас превращается в клетку.
+// Profile vertices where the direction changes by more than min_deg, plus the
+// ends: the horizontal outline rings. Smooth stretches (the ball nose) get no
+// rings, otherwise the frame turns into a cage.
 //
-// Порог 12 градусов стоит между двумя измеренными шагами дискретизации и самой
-// пологой настоящей фаской профиля. Шаги: носовая дуга шара (toolProfile, 12
-// отрезков на 90 градусов) - 7.5, скругление нижнего угла (8 отрезков на 90) -
-// 11.25. Фаска: поясок гайки -> верхняя фаска в holderSolidProfile - 14.0
-// (перепад (16.5, 16) -> (15.5, 20): угол между (0, 13) и (-1, 4)). При прежних 20
-// градусах 14.0 было ниже порога, и кольцо на этой фаске не рисовалось - на
-// кадре оно читалось пропавшей горизонтальной линией. Порог обязан быть выше
-// шага дуги и не выше фаски: 12 держит обе дуги без колец и показывает фаску;
-// сверяет это случай holder_rings пробника stock_sim_probe.
+// The 12 degree threshold sits between two measured discretisation steps and the
+// flattest real chamfer of the profile. Steps: the ball nose arc (toolProfile, 12
+// segments per 90 degrees) - 7.5, the bottom corner round (8 segments per 90) -
+// 11.25. Chamfer: the nut land -> the top chamfer in holderSolidProfile - 14.0
+// (the step (16.5, 16) -> (15.5, 20): the angle between (0, 13) and (-1, 4)). At
+// the former 20 degrees, 14.0 was below the threshold and the ring on that
+// chamfer was not drawn - on a frame it read as a missing horizontal line. The
+// threshold must be above the arc step and not above the chamfer: 12 keeps both
+// arcs without rings and shows the chamfer; this is checked by the holder_rings
+// case of the stock_sim_probe.
 std::vector<ProfilePoint> profileRingPoints(const std::vector<ProfilePoint>& profile,
                                             double min_deg = 12.0);
 

@@ -1,5 +1,5 @@
-// core/path_prep.h - подготовка траектории к отрисовке: потоки вершин, этапы,
-// габарит.
+// core/path_prep.h - path preparation for drawing: vertex streams, stages,
+// bounds.
 #pragma once
 
 #include <array>
@@ -10,13 +10,13 @@
 
 namespace gv {
 
-// Габарит в координатах сцены: минимум и максимум по трём осям, мм.
+// Bounds in scene coordinates: minimum and maximum along the three axes, mm.
 struct Aabb {
     std::array<double, 3> lo{0.0, 0.0, 0.0};
     std::array<double, 3> hi{0.0, 0.0, 0.0};
 };
 
-// Этап, приведённый к долям пути: диапазон [start, end] по длине траектории.
+// Stage reduced to path fractions: the range [start, end] along the path length.
 struct StageRange {
     double start = 0.0;
     double end = 1.0;
@@ -24,21 +24,22 @@ struct StageRange {
     ToolInfo info;
 };
 
-// Буфер одного потока линий: float32 (позиция 3 + параметр пути), как на GPU.
+// Buffer of one line stream: float32 (position 3 + path parameter), as on the
+// GPU.
 struct PackedStream {
     std::vector<unsigned char> bytes;
-    int nv = 0;                 // число вершин (2 на отрезок)
+    int nv = 0;                 // vertex count (2 per segment)
 };
 
-// Подготовленная траектория (зеркало PathData из core/gv_types.h): упакованные
-// буферы обоих потоков, полилиния анимации в координатах сцены и её метрики.
+// Prepared path (mirrors PathData from core/gv_types.h): packed buffers of both
+// streams, the animation polyline in scene coordinates and its metrics.
 struct PathData {
     int seg_count = 0;
     std::array<double, 3> last{0.0, 0.0, 0.0};
-    std::vector<double> pts;              // сцена (X, Z, -Y), N*3
-    std::vector<double> cum;              // накопленная длина, N
-    std::vector<unsigned char> rapid;     // флаг ИСХОДЯЩЕГО сегмента, N (1/0)
-    std::vector<double> speeds;           // скорость ИСХОДЯЩЕГО сегмента, N
+    std::vector<double> pts;              // scene (X, Z, -Y), N*3
+    std::vector<double> cum;              // accumulated length, N
+    std::vector<unsigned char> rapid;     // OUTGOING segment flag, N (1/0)
+    std::vector<double> speeds;           // OUTGOING segment speed, N
     double total = 0.0;
     PackedStream rapid_stream;
     PackedStream feed_stream;
@@ -50,21 +51,22 @@ struct PathData {
     std::vector<StageRange> stages;
 };
 
-// Машинный габарит -> габарит сцены (X, Z, -Y).
+// Machine bounds -> scene bounds (X, Z, -Y).
 Aabb sceneBoundsLoHi(const std::array<double, 3>& lo, const std::array<double, 3>& hi);
 
-// Упаковка одного потока линий: mask по флагу исходящего сегмента, координаты
-// при machine=true переводятся в сцену.
+// Packing of one line stream: mask by the outgoing segment flag; coordinates are
+// converted to the scene when machine=true.
 PackedStream packStream(const std::vector<double>& pts, const std::vector<unsigned char>& flags,
                         const std::vector<double>& cum, double total, bool wantRapid,
                         bool machine = true);
 
-// Этапы (индекс первой точки, подпись) -> диапазоны [start, end] по длине пути.
+// Stages (index of the first point, label) -> ranges [start, end] along the path
+// length.
 std::vector<StageRange> stagesNorm(const std::vector<Stage>& stages,
                                    const std::vector<double>& cum, double total);
 
-// Разбор пути в буферы и метрики. Тяжёлая часть загрузки: может считаться на
-// рабочем потоке, объектов Qt не создаёт.
+// Split the path into buffers and metrics. The heavy part of loading: it can run
+// on a worker thread and creates no Qt objects.
 PathData prepareOrdered(const std::vector<PathPoint>& ordered,
                         const std::vector<Stage>& stages);
 

@@ -1,21 +1,21 @@
-// core/packing.h - упаковка отрезков в Lines-буфер.
+// core/packing.h - packing segments into a Lines buffer.
 //
-// Раскладка буфера - контракт с шейдером обводки: на вершину 5 чисел float32
-// (позиция 3f + texcoord 2f: видимость 1.0/0.0), то есть stride 20 байт и две
-// вершины на отрезок. Ядро сверяется с питоновским эталоном побайтово
-// (модули gcode-viewer/), поэтому порядок вершин и число
-// набивки - часть результата, а не оформление.
+// The buffer layout is a contract with the outline shader: 5 float32 numbers per
+// vertex (position 3f + texcoord 2f: visibility 1.0/0.0), that is stride 20
+// bytes and two vertices per segment. The core is checked against the reference
+// byte for byte, so the vertex order and the amount of padding are part of the
+// result, not formatting.
 #pragma once
 
 #include <vector>
 
-#include "core/path_prep.h"     // gv::Aabb - габарит, как у _pack_edges_np
+#include "core/path_prep.h"     // gv::Aabb - bounds, as in _pack_edges_np
 
 namespace gv {
 
-// Упакованный Lines-буфер отрезков: байты вершин, их число и габарит
-// (зеркало PackedEdges из core/gv_types.h). `has_bounds` = false у пустого буфера:
-// в Python габарит бывает None.
+// Packed Lines buffer of segments: vertex bytes, their count and the bounds
+// (mirrors PackedEdges from core/gv_types.h). `has_bounds` is false for an empty
+// buffer: the reference bounds can be None.
 struct PackedEdges {
     std::vector<unsigned char> raw;
     int nv = 0;
@@ -23,13 +23,13 @@ struct PackedEdges {
     Aabb bounds;
 };
 
-// Зеркало _pack_edges_np: концы отрезков p0 и p1, по три координаты float64 на
-// отрезок, в буфер float32. Габарит считается по float64-входу, как в эталоне
-// (float32-буфер на него не влияет).
+// Mirrors _pack_edges_np: segment ends p0 and p1, three float64 coordinates per
+// segment, into a float32 buffer. The bounds are computed from the float64
+// input, as in the reference (the float32 buffer does not affect them).
 PackedEdges packEdgesNp(const std::vector<double>& p0, const std::vector<double>& p1);
 
-// Зеркало packed_positions: концы отрезков из буфера как (M, 2, 3) float32,
-// плоским списком по 6 чисел на отрезок. Пустой буфер -> пустой список.
+// Mirrors packed_positions: segment ends from the buffer as (M, 2, 3) float32, a
+// flat list of 6 numbers per segment. Empty buffer -> empty list.
 std::vector<float> packedPositions(const PackedEdges& packed);
 
 } // namespace gv

@@ -1,25 +1,27 @@
-// core/silhouette.h - топология меша для силуэта и силуэт на глазу: зеркало
-// core/silhouette.cpp.
+// core/silhouette.h - mesh topology for the silhouette and the silhouette at an
+// eye: mirrors core/silhouette.cpp.
 //
-// Слой чистый: ни Qt, ни OCCT - только арифметика над супом вершин, как у
-// normals и packing. Поэтому он живёт в gvcore, а не в OCCT-цели: топология
-// строится по супу, откуда бы суп ни пришёл (STEP - этап 4a, STL или меш кожи).
+// The layer is pure: neither Qt nor OCCT - only arithmetic over the vertex soup,
+// like normals and packing. That is why it lives in gvcore rather than in the
+// OCCT target: the topology is built from the soup, wherever the soup comes from
+// (STEP - stage 4a, STL or the skin mesh).
 #pragma once
 
 #include <cstdint>
 #include <vector>
 
-#include "core/quality.h"     // gv::QualityPreset - допуски сварки и отбора кандидатов
+#include "core/quality.h"     // gv::QualityPreset - weld and candidate tolerances
 
 namespace gv {
 
-// Топология меша для силуэта (MeshTopology в core/gv_types.h).
+// Mesh topology for the silhouette (MeshTopology in core/gv_types.h).
 //
-// ea/eb (K,3) float32 - концы кандидатных силуэтных рёбер, f0/f1 (K,) int32 -
-// смежные грани (f0 < f1), n (F,3) float32 - нормали граней, d (F,) float32 -
-// предвычисленное n·cen (центроиды граней): на кадре остаётся знаковый тест
-// s = n·E - d. Кандидаты - только рёбра гладкого горизонта: острые переходы
-// (круче 20 градусов) и вырожденные грани отсеяны, см. silhouette.cpp.
+// ea/eb (K,3) float32 - ends of candidate silhouette edges, f0/f1 (K,) int32 -
+// adjacent faces (f0 < f1), n (F,3) float32 - face normals, d (F,) float32 -
+// precomputed n·cen (face centroids): per frame only the sign test
+// s = n·E - d remains. Candidates are only edges of a smooth horizon: sharp
+// transitions (steeper than 20 degrees) and degenerate faces are filtered out,
+// see silhouette.cpp.
 struct MeshTopology {
     std::vector<float> ea;
     std::vector<float> eb;
@@ -32,38 +34,41 @@ struct MeshTopology {
     std::size_t edgeCount() const { return f0.size(); }
 };
 
-// Топология по супу вершин (F*9 double: по три вершины на треугольник, плоский
-// ряд, как у load_step_model и load_stl_vertices).
+// Topology from the vertex soup (F*9 double: three vertices per triangle, flat
+// row, like load_step_model and load_stl_vertices).
 //
-// Повтор _build_silhouette_topology бит-в-бит, включая порядок операций:
-// * сварка вершин - по сетке weld (np.round(V / weld), округление
-// пол-к-чётному), кластеры и их номера - в лексикографическом порядке
-// ключей, как np.unique(axis=0);
-// * рёбра треугольников (a,b) с a < b, группы ровно по двум граням -
-// кандидаты в порядке лексикографической сортировки ключей;
-// * нормали и площади - по самим треугольникам (сглаживание размыло бы
-// горизонт), d - n·cen в float32 тем же порядком слагаемых, что numpy.
-// Допуски берутся из пресета (core/quality.h): у уровня med они те же, что
-// были у жёстко заданных чисел.
+// A bit-for-bit repeat of _build_silhouette_topology, including the order of
+// operations:
+// * vertex welding - on the weld grid (np.round(V / weld), round half to even),
+//   clusters and their numbers in lexicographic key order, like
+//   np.unique(axis=0);
+// * triangle edges (a,b) with a < b, groups of exactly two faces - candidates in
+//   lexicographic key sort order;
+// * normals and areas - from the triangles themselves (smoothing would blur the
+//   horizon), d - n·cen in float32 with the same summation order as numpy.
+// Tolerances come from the preset (core/quality.h): at the med level they are
+// the same as the former hard-coded numbers.
 MeshTopology buildSilhouetteTopology(const std::vector<double>& soup,
                                      const QualityPreset& quality = QualityPreset{});
 
-// Силуэтные рёбра на глазу eyeMm (raw-кадр модели): (K,2,3) float32 плоским
-// рядом - концы кандидатов в порядке топологии; пустой вектор, если силуэта нет.
-// Ребро силуэтное, когда смежные грани лежат по разные стороны от глаза
-// (знак s у них разный): ребро разделяет видимую и невидимую грань.
+// Silhouette edges at eye eyeMm (raw model frame): (K,2,3) float32 flat row -
+// candidate ends in topology order; an empty vector if there is no silhouette.
+// An edge is a silhouette edge when the adjacent faces lie on opposite sides of
+// the eye (their sign s differs): the edge separates a visible and an invisible
+// face.
 std::vector<float> meshSilhouetteSegments(const MeshTopology& topo, const double eyeMm[3]);
 
-// Буферы кадрового силуэта, переживающие кадр: у Test_model на кадр приходилось
-// 20 выделений и 63 КБ, из них 45 КБ - знак по граням. Ёмкости здесь, поэтому на
-// кадр остаётся заполнение, а не заведение буферов.
+// Frame silhouette buffers that survive the frame: Test_model used to allocate 20
+// buffers and 63 KB per frame, 45 KB of them the per-face sign. The capacities
+// live here, so a frame only fills them instead of creating buffers.
 struct MeshSilhouetteScratch {
-    std::vector<std::int8_t> sign;   // (F,) знак s = n*E - d по граням
-    std::vector<float> out;          // (K,2,3) float32 плоским рядом
+    std::vector<std::int8_t> sign;   // (F,) sign s = n*E - d per face
+    std::vector<float> out;          // (K,2,3) float32 flat row
 };
 
-// Силуэт в переданный буфер: scratch.out очищается и заполняется тем же порядком
-// операций, что и у версии выше (числа те же бит-в-бит); возврат - ссылка на него.
+// Silhouette into the given buffer: scratch.out is cleared and filled with the
+// same order of operations as the version above (the same numbers bit for bit);
+// the return is a reference to it.
 const std::vector<float>& meshSilhouetteSegments(const MeshTopology& topo,
                                                  const double eyeMm[3],
                                                  MeshSilhouetteScratch& scratch);

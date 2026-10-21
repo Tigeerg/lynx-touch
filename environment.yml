@@ -1,23 +1,23 @@
-# environment.yml - окружение сборки и запуска 3D-вьювера УП на Linux
-# (README.md, «Сборка и запуск вьювера (C++)»).
+# environment.yml - the build and run environment of the 3D NC viewer on Linux
+# (README.md, "Build and run the viewer (C++)").
 #
-# Создание:  conda env create -f environment.yml
+# Creation:  conda env create -f environment.yml
 #            conda activate gcode-cpp
-# Каталоги SDK той же переменной, что у scripts/build-viewer.sh:
+# SDK directories by the same variable as in scripts/build-viewer.sh:
 #            CNC_QT_DIR="$CONDA_PREFIX" CNC_OCC_DIR="$CONDA_PREFIX" bash scripts/build-viewer.sh
 #
-# Окружение держит и компилятор (cxx-compiler), а не только SDK: conda-сборка
-# OCCT 8.0.1 линкуется символом __cxa_call_terminate@CXXABI_1.3.15 из libstdc++,
-# которого нет в GCC 11 системных Ubuntu 22.04, - сборка системным компилятором
-# падает на линковке. Сборка идёт компилятором окружения; при смене компилятора
-# каталог сборки чистят (rm -rf build), CMake помнит компилятор в кэше.
+# The environment holds the compiler too (cxx-compiler), not just the SDK: the conda build of
+# OCCT 8.0.1 links with the symbol __cxa_call_terminate@CXXABI_1.3.15 from libstdc++,
+# which is absent in GCC 11 of the system Ubuntu 22.04, - the build with the system compiler
+# fails at link time. The build runs with the compiler of the environment; when the compiler
+# changes the build directory is cleaned (rm -rf build), CMake remembers the compiler in the cache.
 #
-# Канал один - conda-forge: служебные каналы repo.anaconda.com не нужны и своих
-# условий использования не просят. Qt зафиксирован на 6.12.0 (документированная
-# версия проекта; нужно не ниже 6.7 из-за explicitTextureWidth/Height в
-# GcodeViewer3D.qml), OCCT - на 8.0.1 (версия, под которой сняты эталонные
-# дайджесты oracle_manifest.json: пробники сверяют тесселяцию и нормали).
-# Питоновских зависимостей здесь нет: вьювер, его пробники и проверки - C++.
+# There is one channel - conda-forge: the service channels repo.anaconda.com are not needed and do not
+# ask for their own terms of use. Qt is pinned to 6.12.0 (the documented
+# version of the project; nothing lower than 6.7 is needed because of explicitTextureWidth/Height in
+# GcodeViewer3D.qml), OCCT - to 8.0.1 (the version under which the reference
+# digests oracle_manifest.json were taken: the probes verify tessellation and normals).
+# There are no Python dependencies here: the viewer, its probes and checks are C++.
 name: gcode-cpp
 channels:
   - conda-forge

@@ -1,47 +1,47 @@
-# QML-плагин "CNC.Edges" — StepEdges: рёбра B-Rep модели как Lines-геометрия.
-# Рядом собирается чистое ядро gvcore (парсер G-кода, теги UI_*, crease-aware
-# нормали) и его пробник gcode_probe — они в плагин не входят и Qt не требуют.
-# Там же слой STEP и нормалей gvstep (этап 4a плана переноса) с пробником
-# step_probe: они читают OCCT напрямую, Qt им не нужен. Импорт STL и обводка меша
-# (этап 4b) лежат в ядре gvcore, их пробник - stl_probe. Топология силуэта
-# (этап 4c) - тоже в gvcore, её пробник silhouette_probe берёт суп из STEP через
-# gvstep. Аналитические поверхности вращения STEP лежат в gvstep
-# (occt/step_surfaces), семейства касательных - в gvcore (core/tangents), их
-# общий пробник - tangents_probe (этап 4d).
-# Пробники сверяются с эталоном сами: ключ --manifest <oracle_manifest.json>
-# считает дайджесты своих массивов и сравнивает с манифестом
-# (cpp/manifest_check.h, без интерпретатора). Питоновского слоя в репозитории нет.
+# QML plugin "CNC.Edges" - StepEdges: B-Rep model edges as Lines geometry.
+# Next to it a pure gvcore core is built (G-code parser, UI_* tags, crease-aware
+# normals) and its probe gcode_probe - they are not part of the plugin and need no Qt.
+# There also lies the STEP and normals layer gvstep (stage 4a of the port plan) with its probe
+# step_probe: they read OCCT directly, Qt is not needed for them. STL import and mesh outline
+# (stage 4b) live in the gvcore core, their probe is stl_probe. Silhouette topology
+# (stage 4c) is in gvcore too, its probe silhouette_probe takes the soup from STEP through
+# gvstep. Analytical surfaces of revolution for STEP live in gvstep
+# (occt/step_surfaces), tangent families - in gvcore (core/tangents), their
+# common probe is tangents_probe (stage 4d).
+# The probes verify against the oracle themselves: the key --manifest <oracle_manifest.json>
+# computes digests of their arrays and compares them with the manifest
+# (cpp/manifest_check.h, no interpreter). There is no Python layer in the repository.
 #
-# Сборка (скрипт делает то же самое):
+# Build (the script does the same):
 #   powershell -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
-# Вручную:
+# Manually:
 #   call <VS2022>\VC\Auxiliary\Build\vcvars64.bat
 #   cmake -S modules/gcode-viewer/cpp -B build/edges -G Ninja -DCMAKE_BUILD_TYPE=Release ^
 #         -DCMAKE_PREFIX_PATH="<Qt6>/msvc2022_64;<OCCT>/Library"
 #   cmake --build build/edges
 #
-# Модуль кладётся в build/edges/CNC/Edges/: qmldir, cncedgesplugin.dll (резервная
-# библиотека с типами и алгоритмом) и cncedgespluginplugin.dll (точка входа, её
-# грузит QML). Импорт-путь для потребителя — build/edges; там же лежит пробник
-# stepledges_probe.exe:
+# The module is placed into build/edges/CNC/Edges/: qmldir, cncedgesplugin.dll (the backing
+# library with the types and the algorithm) and cncedgespluginplugin.dll (the entry point,
+# QML loads it). The import path for the consumer is build/edges; the probe
+# stepledges_probe.exe lies there too:
 #   QML:      import CNC.Edges 1.0
-# Библиотеки OCCT линкуются по импортированным целям TK* из конфиг-пакета, а если их
-# в пакете нет — по переменным OpenCASCADE_INCLUDE_DIR/OpenCASCADE_LIBRARY_DIR.
+# OCCT libraries are linked by the imported targets TK* from the config package, and if they
+# are absent in the package - by the variables OpenCASCADE_INCLUDE_DIR/OpenCASCADE_LIBRARY_DIR.
 #
-# Той же сборкой собирается C++-контроллер вьювера (этап 5.4а): QML-модуль
-# MockBackend 1.0 в <repo>/build/qmlbackend/MockBackend (тип GcodeToolpath и шесть
-# геометрий этапа 3, цель gvqmlbackend). Это единственный бэкенд вьювера; живьём
-# его проверяют пробники viewer/keyprobe и viewer/stock_bind_probe.
+# The same build also builds the C++ viewer controller (stage 5.4a): the QML module
+# MockBackend 1.0 in <repo>/build/qmlbackend/MockBackend (the type GcodeToolpath and the six
+# geometries of stage 3, target gvqmlbackend). This is the only viewer backend; live
+# it is checked by the probes viewer/keyprobe and viewer/stock_bind_probe.
 #   QML:      import MockBackend 1.0
 #
-# Той же сборкой собирается C++-точка входа вьювера: <repo>/build/viewer/
-# gcodeviewer.exe, исходник - viewer/main.cpp. Она грузит GcodeViewer3D.qml в
-# QQuickView и работает только с плагином MockBackend: питоновского бэкенда нет
-# ни в рантайме, ни в репозитории. Запуск - с Qt в PATH (exe линкуется с Qt),
-# каталог плагина и DLL OCCT точка входа добавляет себе сама.
-#   gcodeviewer.exe <УП.ngc>                 offscreen -> "loaded OK", сегменты
-#   gcodeviewer.exe --smoke                  проверка старта
-#   gcodeviewer.exe --frame f.png <УП.ngc>   кадр в PNG
+# The same build builds the C++ viewer entry point: <repo>/build/viewer/
+# gcodeviewer.exe, the source is viewer/main.cpp. It loads GcodeViewer3D.qml into
+# QQuickView and works only with the MockBackend plugin: there is no Python backend
+# either at runtime or in the repository. Launch - with Qt in PATH (the exe links with Qt),
+# the plugin directory and the OCCT DLLs the entry point adds to itself.
+#   gcodeviewer.exe <NC program.ngc>                 offscreen -> "loaded OK", segments
+#   gcodeviewer.exe --smoke                          start check
+#   gcodeviewer.exe --frame f.png <NC program.ngc>   frame to PNG
 
 cmake_minimum_required(VERSION 3.16)
 project(cnc_edges_plugin LANGUAGES CXX)
@@ -49,38 +49,38 @@ project(cnc_edges_plugin LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Linux: объекты статических gvcore, gvqtgeom и gvstep попадают в SHARED-библиотеки
-# (плагины): без PIC линковка кончается отказом GCC "recompile with -fPIC" (у MSVC
-# ключа нет, там свойство ничего не меняет).
+# Linux: objects of the static gvcore, gvqtgeom and gvstep end up in SHARED libraries
+# (plugins): without PIC the link ends with the GCC refusal "recompile with -fPIC" (with MSVC
+# there is no such flag, there the property changes nothing).
 #
-# Про rpath ключей нет: CMake по умолчанию кладёт в rpath сборки каталоги связанных
-# библиотек, поэтому Qt и OCCT, лежащие вне каталогов сборки, находятся без
-# LD_LIBRARY_PATH - и точка входа (viewer/main.cpp, prependPath) на Linux PATH не
-# трогает. В дерево установки этот rpath не переносится, но установки у целей нет.
+# About rpath keys there are none: by default CMake puts the directories of linked
+# libraries into the build rpath, therefore Qt and OCCT lying outside the build directories
+# are found without LD_LIBRARY_PATH - and the entry point (viewer/main.cpp, prependPath) does
+# not touch PATH on Linux. This rpath is not carried into the install tree, but the targets have no install.
 if (UNIX AND NOT APPLE)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
 
-# Каталог QML-модуля MockBackend (C++-контроллер вьювера, этап 5.4а плана
-# переноса). Каталог модуля лежит по предсказуемому пути <repo>/build/qmlbackend/
-# MockBackend, импорт-путь - <repo>/build/qmlbackend: тем же путём его находят
-# точки входа вьювера и пробники, которые не знают о генераторе CMake.
+# Directory of the QML module MockBackend (C++ viewer controller, stage 5.4a of the port
+# plan). The module directory lies at the predictable path <repo>/build/qmlbackend/
+# MockBackend, the import path is <repo>/build/qmlbackend: by the same path it is found by the
+# viewer entry points and the probes that do not know about the CMake generator.
 set(GV_QMLBACKEND_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../build/qmlbackend"
     CACHE PATH "Каталог, куда кладётся QML-модуль MockBackend")
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Quick3D)
 find_package(OpenCASCADE REQUIRED)
 
-# Чистое ядро gvcore (этапы 2 и 4 плана переноса): парсер G-кода, теги UI_*,
-# crease-aware нормали кожи (этап 4a), импорт STL и обводка меша (этап 4b),
-# топология силуэта (этап 4c), семейства касательных (этап 4d), инструмент с
-# оправкой и коллизии (этап 5.4в). Ни Qt, ни OCCT не нужны - только стандартная
-# библиотека. Цель отдельная от плагина, чтобы ядро можно было собрать и сверить
-# с оракулом без Qt.
+# Pure gvcore core (stages 2 and 4 of the port plan): G-code parser, UI_* tags,
+# crease-aware skin normals (stage 4a), STL import and mesh outline (stage 4b),
+# silhouette topology (stage 4c), tangent families (stage 4d), tool with
+# holder and collisions (stage 5.4c). Neither Qt nor OCCT is needed - only the standard
+# library. The target is separate from the plugin so that the core can be built and verified
+# against the oracle without Qt.
 #
-# /fp:precise обязателен: ядро сверяется с эталонными дайджестами побайтово, а
-# /fp:fast разрешает переассоциацию и слияние умножения со сложением (FMA), что
-# сдвигает результат.
+# /fp:precise is mandatory: the core is verified against reference digests byte by byte, and
+# /fp:fast allows reassociation and contraction of multiplication with addition (FMA), which
+# shifts the result.
 add_library(gvcore STATIC
     core/collision.cpp
     core/gcode_parser.cpp
@@ -103,10 +103,10 @@ else()
     target_compile_options(gvcore PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
 
-# Пробник ядра: отдельная цель, в плагин не входит. Печатает точки, флаги,
-# этапы и sha256 тех же сериализаций, что и оракул, и пишет те же массивы
-# дампом. Режим --manifest/--check сверяет дайджесты path.*, pd.* и tag.* с
-# oracle_manifest.json без интерпретатора.
+# Core probe: a separate target, not part of the plugin. It prints points, flags,
+# stages and sha256 of the same serializations as the oracle, and writes the same arrays
+# as a dump. The --manifest/--check mode verifies the digests path.*, pd.* and tag.* against
+# oracle_manifest.json without an interpreter.
 add_executable(gcode_probe gcode_probe.cpp)
 set_target_properties(gcode_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -116,10 +116,10 @@ if (MSVC)
 endif()
 target_link_libraries(gcode_probe PRIVATE gvcore)
 
-# Пробник версии: сверяет modules/gcode-viewer/VERSION, поле version проекта
-# gcode-viewer в projects.json и свойство viewerVersion в GcodeViewer3D.qml -
-# забытая правка одного из трёх не видна ни сборке, ни прогону. Ни Qt, ни OCCT
-# ему не нужны: только стандартная библиотека.
+# Version probe: verifies modules/gcode-viewer/VERSION, the field version of the project
+# gcode-viewer in projects.json and the property viewerVersion in GcodeViewer3D.qml -
+# a forgotten edit of one of the three is invisible both to the build and to the run. Neither Qt
+# nor OCCT is needed for it: only the standard library.
 add_executable(version_probe version_probe.cpp)
 set_target_properties(version_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -127,18 +127,18 @@ set_target_properties(version_probe PROPERTIES
 if (MSVC)
     target_compile_options(version_probe PRIVATE /utf-8)
 endif()
-# Заголовок gv::manifest::repoRoot (общий поиск корня репозитория у пробников)
-# лежит в cpp/, а gvcore эту цель не тянет: путь поиска задаётся здесь.
+# The gv::manifest::repoRoot header (the common repository root search of the probes)
+# lies in cpp/, and gvcore does not pull this target: the search path is set here.
 target_include_directories(version_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-# Геометрии Qt Quick 3D (этап 3 плана переноса) с теми же форматами буферов
-# (stride 20 и 48 - контракт QML и шейдеров toolpath.*/stepledges.*). Цель
-# отдельная от плагина: геометрии сверяются с дайджестами оракула побайтово, а в
-# QML-модуль их подключает этап 5.
+# Qt Quick 3D geometries (stage 3 of the port plan) with the same buffer formats
+# (stride 20 and 48 - the contract of QML and the shaders toolpath.*/stepledges.*). The target
+# is separate from the plugin: the geometries are verified against the oracle digests byte by byte,
+# and stage 5 connects them into the QML module.
 #
-# /fp:precise обязателен так же, как у gvcore: часть чисел геометрий (нормали
-# меша, ленты контура) считалась в float32, и переассоциация с FMA сдвинула бы
-# младшие биты буфера.
+# /fp:precise is mandatory just like for gvcore: part of the geometry numbers (mesh
+# normals, contour strips) were computed in float32, and reassociation with FMA would shift
+# the low bits of the buffer.
 add_library(gvqtgeom STATIC qt/gv_geometry.cpp)
 target_include_directories(gvqtgeom PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(gvqtgeom PUBLIC Qt6::Core Qt6::Gui Qt6::Quick3D)
@@ -148,14 +148,14 @@ else()
     target_compile_options(gvqtgeom PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
 
-# Пробник геометрий: отдельная цель, в плагин не входит. Строит каждую геометрию
-# на входных данных, которые пишет сам, печатает состояние и sha256 буфера и
-# пишет буферы дампом.
+# Geometry probe: a separate target, not part of the plugin. It builds each geometry
+# on input data it writes itself, prints the state and sha256 of the buffer and
+# writes the buffers as a dump.
 #
-# Режим --manifest/--check строит вход сам (gvcore: parseGcode + prepareOrdered,
-# toolProfile) и сверяет дайджесты буферов с oracle_manifest.json без
-# интерпретатора, поэтому нужен gvcore: траектория берётся из УП тем же путём,
-# что рантайм.
+# The --manifest/--check mode builds the input itself (gvcore: parseGcode + prepareOrdered,
+# toolProfile) and verifies the buffer digests against oracle_manifest.json without an
+# interpreter, therefore gvcore is needed: the trajectory is taken from the NC program by the same
+# path as at runtime.
 add_executable(geometry_probe geometry_probe.cpp)
 set_target_properties(geometry_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -165,16 +165,16 @@ if (MSVC)
 endif()
 target_link_libraries(geometry_probe PRIVATE gvqtgeom gvcore Qt6::Core Qt6::Gui Qt6::Quick3D)
 
-# STEP, crease-aware нормали и аналитические поверхности (этап 4a и 4d плана
-# переноса) на OCCT SDK напрямую (нормали и семейства касательных лежат в
-# gvcore - они от Qt и OCCT не зависят). Цель отдельная от плагина: слой
-# сверяется с дайджестами оракула побитово, а в бэкенд его подключает этап 5.
-# Qt сюда не тянется: STEP-слой читает OCCT, больше ему ничего не нужно.
+# STEP, crease-aware normals and analytical surfaces (stages 4a and 4d of the port
+# plan) on the OCCT SDK directly (normals and tangent families lie in
+# gvcore - they do not depend on Qt and OCCT). The target is separate from the plugin: the layer
+# is verified against the oracle digests bitwise, and stage 5 connects it into the backend.
+# Qt is not pulled here: the STEP layer reads OCCT, it needs nothing else.
 #
-# /fp:precise обязателен так же, как у gvcore и gvqtgeom: и суп вершин, и
-# нормали сверяются с эталонными дайджестами бит-в-бит, а /fp:fast разрешает
-# переассоциацию и слияние умножения со сложением (FMA), что сдвигает младшие
-# биты.
+# /fp:precise is mandatory just like for gvcore and gvqtgeom: both the vertex soup and
+# the normals are verified against reference digests bit by bit, and /fp:fast allows
+# reassociation and contraction of multiplication with addition (FMA), which shifts the low
+# bits.
 add_library(gvstep STATIC occt/step_import.cpp occt/step_surfaces.cpp
                             occt/step_edges.cpp occt/step_bundle.cpp)
 target_include_directories(gvstep PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -185,9 +185,9 @@ else()
     target_compile_options(gvstep PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
 
-# OpenCASCADE: TKMesh - тесселяция (BRepMesh_IncrementalMesh, Poly_Triangulation),
-# TKDESTEP/TKXSBase - чтение STEP, TKBRep/TKTopAlgo - обход топологии, TKG3d -
-# GCPnts_UniformDeflection (полилинии рёбер в occt/step_edges).
+# OpenCASCADE: TKMesh - tessellation (BRepMesh_IncrementalMesh, Poly_Triangulation),
+# TKDESTEP/TKXSBase - STEP reading, TKBRep/TKTopAlgo - topology traversal, TKG3d -
+# GCPnts_UniformDeflection (edge polylines in occt/step_edges).
 set(OCC_STEP_NEEDED TKernel TKMath TKG3d TKG2d TKGeomBase TKTopAlgo TKBRep
                     TKMesh TKDESTEP TKXSBase)
 foreach(lib IN LISTS OCC_STEP_NEEDED)
@@ -199,10 +199,10 @@ foreach(lib IN LISTS OCC_STEP_NEEDED)
 endforeach()
 target_include_directories(gvstep PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
-# Пробник STEP и нормалей: отдельная цель, в плагин не входит. Печатает число
-# вершин и треугольников и sha256 вершин, треугольников и нормалей в тех же
-# сериализациях, что и оракул, и пишет те же массивы дампом; режим --manifest
-# сверяет дайджесты step.* с oracle_manifest.json.
+# STEP and normals probe: a separate target, not part of the plugin. It prints the number
+# of vertices and triangles and sha256 of vertices, triangles and normals in the same
+# serializations as the oracle, and writes the same arrays as a dump; the --manifest mode
+# verifies the digests step.* against oracle_manifest.json.
 add_executable(step_probe step_probe.cpp)
 set_target_properties(step_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -211,15 +211,15 @@ if (MSVC)
     target_compile_options(step_probe PRIVATE /utf-8)
 endif()
 target_link_libraries(step_probe PRIVATE gvstep)
-# Заголовок слоя включает TopoDS_Shape.hxx: инклюды OCCT у gvstep приватные.
+# The layer header includes TopoDS_Shape.hxx: the OCCT includes of gvstep are private.
 target_include_directories(step_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
-# Пробник STL и обводки меша (этап 4b плана переноса): отдельная цель, в плагин
-# не входит. Читает STL (бинарный или ASCII) в суп треугольников, считает рёбра
-# по двугранному углу со склейкой цепочек, печатает число вершин и отрезков и
-# sha256 супа и рёбер в тех же сериализациях, что и оракул, и пишет те же массивы
-# дампом; режим --manifest сверяет дайджесты stl.* с oracle_manifest.json. Ни Qt,
-# ни OCCT: слой живёт в gvcore.
+# STL and mesh outline probe (stage 4b of the port plan): a separate target, not part of
+# the plugin. It reads STL (binary or ASCII) into a triangle soup, computes edges
+# by the dihedral angle with chain merging, prints the number of vertices and segments and
+# sha256 of the soup and edges in the same serializations as the oracle, and writes the same arrays
+# as a dump; the --manifest mode verifies the digests stl.* against oracle_manifest.json. Neither Qt
+# nor OCCT: the layer lives in gvcore.
 add_executable(stl_probe stl_probe.cpp)
 set_target_properties(stl_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -229,12 +229,12 @@ if (MSVC)
 endif()
 target_link_libraries(stl_probe PRIVATE gvcore)
 
-# Пробник поля высот остатка заготовки (core/stock_sim): отдельная цель, в
-# плагин не входит, ни Qt, ни OCCT не требует. Сверяет поле с аналитикой,
-# посчитанной в самом пробнике, и меряет цену прохода и всего Test_model.ngc при
-# узле 0.5 и 0.2 мм. Печатает "case <имя>", строки "phase <имя> <мс>" и
-# "RESULT: OK" / "RESULT: FAIL (n)"; замер кадров и оракул не трогает.
-#   stock_sim_probe.exe [файл.ngc]
+# Stock remainder height field probe (core/stock_sim): a separate target, it is not part
+# of the plugin and needs neither Qt nor OCCT. It verifies the field against the analytics
+# computed in the probe itself, and measures the cost of a pass and of the whole Test_model.ngc at
+# grid node 0.5 and 0.2 mm. It prints "case <name>", the lines "phase <name> <ms>" and
+# "RESULT: OK" / "RESULT: FAIL (n)"; it does not touch frame measurement and the oracle.
+#   stock_sim_probe.exe [file.ngc]
 add_executable(stock_sim_probe stock_sim_probe.cpp)
 set_target_properties(stock_sim_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -244,14 +244,14 @@ if (MSVC)
 endif()
 target_link_libraries(stock_sim_probe PRIVATE gvcore)
 
-# Пробник топологии силуэта и силуэта на фиксированных глазах (этап 4c плана
-# переноса): отдельная цель, в плагин не входит. Берёт суп вершин из STEP тем же
-# путём gvstep, что и рантайм, строит топологию и считает
-# силуэт на пяти глазах. Печатает число вершин, треугольников и кандидатных
-# рёбер и sha256 массивов топологии и силуэтов в тех же сериализациях, что и
-# оракул, и пишет те же массивы дампом; режим --manifest сверяет дайджесты
-# silhouette.* с oracle_manifest.json. Топология живёт в gvcore, поэтому
-# цели нужен только слой STEP: DLL OCCT пробнику нужны, DLL Qt - нет.
+# Silhouette topology and silhouette on fixed eyes probe (stage 4c of the port
+# plan): a separate target, not part of the plugin. It takes the vertex soup from STEP by the same
+# gvstep path as at runtime, builds the topology and computes
+# the silhouette on five eyes. It prints the number of vertices, triangles and candidate
+# edges and sha256 of the topology and silhouette arrays in the same serializations as
+# the oracle, and writes the same arrays as a dump; the --manifest mode verifies the digests
+# silhouette.* against oracle_manifest.json. The topology lives in gvcore, therefore
+# the target needs only the STEP layer: the probe needs OCCT DLLs, Qt DLLs - not.
 add_executable(silhouette_probe silhouette_probe.cpp)
 set_target_properties(silhouette_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -260,25 +260,25 @@ if (MSVC)
     target_compile_options(silhouette_probe PRIVATE /utf-8)
 endif()
 target_link_libraries(silhouette_probe PRIVATE gvstep)
-# Заголовок слоя включает TopoDS_Shape.hxx: инклюды OCCT у gvstep приватные.
+# The layer header includes TopoDS_Shape.hxx: the OCCT includes of gvstep are private.
 target_include_directories(silhouette_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
-# Пробник аналитических поверхностей STEP и семейств касательных (этап 4d плана
-# переноса): отдельная цель, в плагин не входит. Берёт суп вершин и поверхности
-# вращения из STEP тем же путём gvstep, что и рантайм, строит упакованные рёбра
-# STEP сам из той же формы тем же путём, что рантайм (occt/step_edges +
-# core/packing), и строит семейства касательных (ядро gvcore), затем считает
-# отрезки на пяти фиксированных глазах. Печатает числа и sha256 массивов в тех же
-# сериализациях, что и оракул, и пишет те же массивы дампом. Семейства живут в
-# gvcore, поэтому цели нужен только слой STEP: DLL OCCT пробнику нужны, DLL Qt -
-# нет.
+# Analytical STEP surfaces and tangent families probe (stage 4d of the port
+# plan): a separate target, not part of the plugin. It takes the vertex soup and the surfaces
+# of revolution from STEP by the same gvstep path as at runtime, builds the packed STEP edges
+# itself from the same shape by the same path as at runtime (occt/step_edges +
+# core/packing), and builds the tangent families (the gvcore core), then computes
+# segments on five fixed eyes. It prints numbers and sha256 of the arrays in the same
+# serializations as the oracle, and writes the same arrays as a dump. The families live in
+# gvcore, therefore the target needs only the STEP layer: the probe needs OCCT DLLs, Qt DLLs -
+# not.
 #
-# Есть и режим --manifest/--check: он сверяет 22 записи tangents.* манифеста со
-# своего буфера рёбер. Оговорка: свой буфер не совпадает с дайджестом
-# packed_edges.f32 манифеста байт в байт - набор из 2426 отрезков один, но 64
-# отрезка стоят на чужой позиции, а 16 расходятся в младших битах (максимум
-# 1.8e-15 мм при значениях порядка 5.7e-14); sha256 4eff01c2... против 926b3836...
-# Разбор чисел идёт в cpp/tangents_probe.cpp.
+# There is also the --manifest/--check mode: it verifies 22 entries tangents.* of the manifest against
+# its own edge buffer. Caveat: its own buffer does not match the digest
+# packed_edges.f32 of the manifest byte for byte - the set of 2426 segments is the same, but 64
+# segments stand at a foreign position, and 16 diverge in the low bits (maximum
+# 1.8e-15 mm at values of the order of 5.7e-14); sha256 4eff01c2... against 926b3836...
+# The analysis of the numbers goes in cpp/tangents_probe.cpp.
 add_executable(tangents_probe tangents_probe.cpp)
 set_target_properties(tangents_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -287,15 +287,15 @@ if (MSVC)
     target_compile_options(tangents_probe PRIVATE /utf-8)
 endif()
 target_link_libraries(tangents_probe PRIVATE gvstep)
-# Заголовки слоёв включают TopoDS_Shape.hxx: инклюды OCCT у gvstep приватные.
+# The layer headers include TopoDS_Shape.hxx: the OCCT includes of gvstep are private.
 target_include_directories(tangents_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
-# Пробник замеров (не входит ни в плагин, ни в ядро): фазы холодной загрузки
-# модели STEP и УП по шагам и цена кадра (силуэт и установка буферов HLR).
-# Печатает строки "phase <имя> <мс>" и "frame <имя> <мс>". Ему нужны OCCT (фазы
-# STEP) и Qt (установка буферов HLRLineGeometry - цель gvqtgeom). Запуск - с DLL
-# OCCT и Qt в PATH:
-#   bench_probe.exe <файл.step> <файл.ngc> [повторы фаз] [повторы кадров]
+# Benchmark probe (part of neither the plugin nor the core): the phases of cold loading
+# of the STEP model and of the NC program step by step and the frame cost (silhouette and setting HLR buffers).
+# It prints the lines "phase <name> <ms>" and "frame <name> <ms>". It needs OCCT (the STEP
+# phases) and Qt (setting the HLRLineGeometry buffers - target gvqtgeom). Launch - with the DLLs of
+# OCCT and Qt in PATH:
+#   bench_probe.exe <file.step> <file.ngc> [phase repeats] [frame repeats]
 add_executable(bench_probe bench_probe.cpp)
 set_target_properties(bench_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -308,36 +308,36 @@ target_include_directories(bench_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
 qt_standard_project_setup()
 if(COMMAND qt_policy)
-    # Префикс ресурсов QML-модуля ':/qt/qml/' — значение по умолчанию для новых проектов.
+    # The QML module resource prefix ':/qt/qml/' is the default for new projects.
     qt_policy(SET QTP0001 NEW)
 endif()
 
-# Модуль разделён по образцу Qt: резервная библиотека cncedgesplugin (SHARED) несёт
-# типы и алгоритм, плагин cncedgespluginplugin (MODULE) — точка входа, которую QML
-# грузит по строке "plugin cncedgespluginplugin" в qmldir. Резервная библиотека
-# линкуется в пробник; MODULE-библиотеку CMake линковать не разрешает.
+# The module is split following the Qt pattern: the backing library cncedgesplugin (SHARED) carries
+# the types and the algorithm, the plugin cncedgespluginplugin (MODULE) - the entry point that QML
+# loads by the line "plugin cncedgespluginplugin" in qmldir. The backing library
+# is linked into the probe; CMake does not allow linking a MODULE library.
 qt_add_library(cncedgesplugin SHARED)
 
 set_target_properties(cncedgesplugin PROPERTIES
     QT_QML_GENERATE_QMLLS_INI OFF
-    # Резервная библиотека лежит рядом с плагином: иначе QML не найдёт её при загрузке.
-    # Linux: .so - это LIBRARY-артефакт, поэтому тот же каталог задан и ему;
-    # точку входа плагина (cncedgespluginplugin) кладёт в CNC/Edges сам
-    # qt_add_qml_module (OUTPUT_DIRECTORY).
+    # The backing library lies next to the plugin: otherwise QML will not find it at load time.
+    # Linux: .so is the LIBRARY artifact, therefore the same directory is set for it too;
+    # the plugin entry point (cncedgespluginplugin) is placed into CNC/Edges by
+    # qt_add_qml_module (OUTPUT_DIRECTORY) itself.
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
     LIBRARY_OUTPUT_DIRECTORY_DEBUG ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
     LIBRARY_OUTPUT_DIRECTORY_RELEASE ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
     LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
     LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
-    # Windows: класс StepEdgesGeometry нужен пробнику, а по умолчанию DLL ничего не экспортирует.
+    # Windows: the class StepEdgesGeometry is needed by the probe, and by default the DLL exports nothing.
     WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
 
 qt_add_qml_module(cncedgesplugin
     URI CNC.Edges
     VERSION 1.0
-    # Каталог модуля повторяет URI: <build>/CNC/Edges/. Импорт-путь потребителя — <build>.
+    # The module directory repeats the URI: <build>/CNC/Edges/. The consumer import path is <build>.
     OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/CNC/Edges
     SOURCES
         stepledgesgeometry.h
@@ -349,8 +349,8 @@ if (MSVC)
     target_compile_options(cncedgesplugin PRIVATE /utf-8 /MP)
 endif()
 
-# OpenCASCADE: сначала импортированные цели (TKxxx::), иначе классические переменные
-# из старого конфиг-пакета.
+# OpenCASCADE: first the imported targets (TKxxx::), otherwise the classic variables
+# from the old config package.
 set(OCC_NEEDED TKernel TKMath TKTopAlgo TKGeomBase TKBRep TKDESTEP TKXSBase)
 foreach(lib IN LISTS OCC_NEEDED)
     if (TARGET OpenCASCADE::${lib})
@@ -363,15 +363,15 @@ target_include_directories(cncedgesplugin PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
 target_link_libraries(cncedgesplugin PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Quick3D)
-# Отбор и склейка рёбер лежат в gvstep (cpp/occt/step_edges): одна редакция на
-# плагин и контроллер.
+# Edge selection and merging lie in gvstep (cpp/occt/step_edges): one edition for
+# the plugin and the controller.
 target_link_libraries(cncedgesplugin PRIVATE gvstep)
 target_include_directories(cncedgesplugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-# Пробник рёбер STEP: отдельная цель, в плагин не входит.
-# Читает геометрию через сам плагин (setSource -> setShape), печатает число
-# отрезков и sha256 буфера; ключ --qml дополнительно проверяет, что движок QML
-# открывает модуль CNC.Edges и создаёт элемент StepEdges.
+# STEP edges probe: a separate target, not part of the plugin.
+# It reads the geometry through the plugin itself (setSource -> setShape), prints the number
+# of segments and sha256 of the buffer; the key --qml additionally checks that the QML engine
+# opens the module CNC.Edges and creates the element StepEdges.
 add_executable(stepledges_probe stepledges_probe.cpp)
 set_target_properties(stepledges_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -380,11 +380,11 @@ if (MSVC)
     target_compile_options(stepledges_probe PRIVATE /utf-8 /MP)
 endif()
 target_link_libraries(stepledges_probe PRIVATE cncedgesplugin Qt6::Core Qt6::Qml Qt6::Quick3D)
-# Пробник включает заголовок плагина stepledgesgeometry.h, а его инлайны зовут
-# Standard::Free из TKernel. OCCT плагин линкует PRIVATE и эти символы наружу не
-# отдаёт: на Windows линковка проходила, на Linux ld отвечал "DSO missing from
-# command line" и требовал OCCT прямо в пробнике. Пробник берёт тот же набор
-# OCCT_NEEDED, что и плагин выше.
+# The probe includes the plugin header stepledgesgeometry.h, and its inlines call
+# Standard::Free from TKernel. The plugin links OCCT PRIVATE and does not give these symbols
+# outwards: on Windows the link passed, on Linux ld answered "DSO missing from
+# command line" and required OCCT directly in the probe. The probe takes the same set
+# OCCT_NEEDED as the plugin above.
 foreach(lib IN LISTS OCC_NEEDED)
     if (TARGET OpenCASCADE::${lib})
         target_link_libraries(stepledges_probe PRIVATE OpenCASCADE::${lib})
@@ -394,28 +394,28 @@ foreach(lib IN LISTS OCC_NEEDED)
 endforeach()
 target_include_directories(stepledges_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
-# C++-контроллер вьювера (этап 5.4а плана переноса): QML-модуль MockBackend 1.0 с
-# типом GcodeToolpath и шестью геометриями этапа 3. Там же две геометрии
-# рисования остатка заготовки (qmlbackend/gv_stockgeom): верх поля высот и
-# оболочка коробки без верхней грани; в набор сверки шести они не входят.
-# Это единственный бэкенд вьювера: точки входа грузят только его, питоновской
-# регистрации тех же типов нет.
+# C++ viewer controller (stage 5.4a of the port plan): the QML module MockBackend 1.0 with
+# the type GcodeToolpath and the six geometries of stage 3. There also lie the two stock
+# remainder drawing geometries (qmlbackend/gv_stockgeom): the top of the height field and
+# the box shell without the top face; they are not part of the six-item verification set.
+# This is the only viewer backend: the entry points load only it, there is no Python
+# registration of the same types.
 #
-# Модуль, как и CNC.Edges, разделён по образцу Qt: резервная библиотека
-# gvqmlbackend.dll несёт типы и логику (её грузит точка входа), точка входа
-# gvqmlbackendplugin.dll - то, что QML открывает по строке "plugin ..." в qmldir.
-# Каталог модуля лежит не в каталоге сборки, а по предсказуемому пути
-# <repo>/build/qmlbackend/MockBackend: тем же путём его находят точки входа
-# вьювера, которые не знают о генераторе CMake и конфигурации.
+# The module, like CNC.Edges, is split following the Qt pattern: the backing library
+# gvqmlbackend.dll carries the types and the logic (the entry point loads it), the entry point
+# gvqmlbackendplugin.dll - what QML opens by the line "plugin ..." in qmldir.
+# The module directory lies not in the build directory, but at the predictable path
+# <repo>/build/qmlbackend/MockBackend: by the same path it is found by the viewer
+# entry points that do not know about the CMake generator and configuration.
 #
-# /fp:precise обязателен так же, как у gvcore и gvqtgeom: буферы траектории
-# сверяются с эталонными дайджестами побайтово, а /fp:fast разрешает
-# переассоциацию и слияние умножения со сложением (FMA), что сдвигает младшие биты.
+# /fp:precise is mandatory just like for gvcore and gvqtgeom: the trajectory buffers
+# are verified against reference digests byte by byte, and /fp:fast allows
+# reassociation and contraction of multiplication with addition (FMA), which shifts the low bits.
 qt_add_library(gvqmlbackend SHARED)
 set_target_properties(gvqmlbackend PROPERTIES
     QT_QML_GENERATE_QMLLS_INI OFF
-    # Резервная библиотека лежит рядом с точкой входа: иначе QML её не найдёт.
-    # Linux: тот же каталог задан и LIBRARY-артефакту (.so), см. cncedgesplugin.
+    # The backing library lies next to the entry point: otherwise QML will not find it.
+    # Linux: the same directory is set for the LIBRARY artifact (.so) too, see cncedgesplugin.
     RUNTIME_OUTPUT_DIRECTORY ${GV_QMLBACKEND_DIR}/MockBackend
     LIBRARY_OUTPUT_DIRECTORY ${GV_QMLBACKEND_DIR}/MockBackend
     LIBRARY_OUTPUT_DIRECTORY_DEBUG ${GV_QMLBACKEND_DIR}/MockBackend
@@ -426,7 +426,7 @@ set_target_properties(gvqmlbackend PROPERTIES
 qt_add_qml_module(gvqmlbackend
     URI MockBackend
     VERSION 1.0
-    # Каталог модуля повторяет URI: <build>/MockBackend. Импорт-путь - <build>.
+    # The module directory repeats the URI: <build>/MockBackend. The import path is <build>.
     OUTPUT_DIRECTORY ${GV_QMLBACKEND_DIR}/MockBackend
     SOURCES
         qmlbackend/gv_qmlgeom.h
@@ -437,17 +437,17 @@ qt_add_qml_module(gvqmlbackend
         qmlbackend/gv_toolpath.cpp
 )
 target_include_directories(gvqmlbackend PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-# Сгенерированный qt_add_qml_module файл регистрации типов включает заголовки
-# по имени файла (<gv_qmlgeom.h>, <gv_toolpath.h>): их каталог обязан быть в
-# путях поиска, иначе регистрация молча пропускается (__has_include).
+# The generated qt_add_qml_module file of type registration includes the headers
+# by file name (<gv_qmlgeom.h>, <gv_toolpath.h>): their directory must be in the
+# search paths, otherwise registration is silently skipped (__has_include).
 target_include_directories(gvqmlbackend PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/qmlbackend)
-# Ядро (разбор УП, подготовка траектории, STL, обводка, силуэт и касательные),
-# геометрии этапа 3 (буферы линий) и слой STEP (чтение модели вместе с обводкой
-# B-Rep и поверхностями: этап 5.4б). OCCT-библиотеки тянет gvstep.
+# The core (NC program parsing, trajectory preparation, STL, outline, silhouette and tangents),
+# the stage 3 geometries (line buffers) and the STEP layer (model reading together with the B-Rep
+# outline and surfaces: stage 5.4b). gvstep pulls the OCCT libraries.
 target_link_libraries(gvqmlbackend PRIVATE
     gvcore gvstep gvqtgeom Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Quick3D)
-# Заголовки слоя STEP включают TopoDS_Shape.hxx (orientShellOutward): у gvstep
-# инклюды OCCT приватные, поэтому путь поиска задаётся здесь (как у step_probe).
+# The STEP layer headers include TopoDS_Shape.hxx (orientShellOutward): the OCCT includes
+# of gvstep are private, therefore the search path is set here (as for step_probe).
 target_include_directories(gvqmlbackend PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 if (MSVC)
     target_compile_options(gvqmlbackend PRIVATE /utf-8 /MP /fp:precise)
@@ -455,15 +455,15 @@ else()
     target_compile_options(gvqmlbackend PRIVATE -ffp-contract=off -fno-fast-math)
 endif()
 
-# C++-точка входа вьювера: <repo>/build/viewer/gcodeviewer.exe грузит
-# GcodeViewer3D.qml в QQuickView и работает только с плагином MockBackend -
-# питоновского бэкенда нет ни в пути исполнения, ни в репозитории. Каталог
-# вынесен отдельной переменной по той же причине, что у моста: путь знает
-# сторож и сборка, а не генератор CMake.
+# C++ viewer entry point: <repo>/build/viewer/gcodeviewer.exe loads
+# GcodeViewer3D.qml into QQuickView and works only with the MockBackend plugin -
+# there is no Python backend either in the execution path or in the repository. The directory
+# is moved into a separate variable for the same reason as with the bridge: the path is known
+# by the watcher and the build, not by the CMake generator.
 #
-# Корень репозитория и файл вьювера записаны в цель на случай запуска exe из
-# другого каталога: по умолчанию точка входа выводит их из своего пути
-# (<репо>/build/viewer -> <репо>).
+# The repository root and the viewer file are written into the target in case the exe is launched from
+# another directory: by default the entry point derives them from its own path
+# (<repo>/build/viewer -> <repo>).
 get_filename_component(GV_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 set(GV_VIEWER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../build/viewer"
     CACHE PATH "Каталог, куда кладётся gcodeviewer.exe")
@@ -475,16 +475,16 @@ set_target_properties(gcodeviewer PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_RELEASE ${GV_VIEWER_DIR}
     RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_VIEWER_DIR}
     RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${GV_VIEWER_DIR}
-    # Q_OBJECT-класс живёт в main.cpp: moc собирается автоматически.
+    # The Q_OBJECT class lives in main.cpp: moc is built automatically.
     AUTOMOC ON
 )
-# Qt6::Quick нужен QQuickView (окно для Item-корня вьювера); QtQuick3D движок
-# находит как QML-модуль Qt, отдельной линковки не требует.
-# gvcore нужен: gv::presetFromEnv из core/quality.h зовёт gv::strtodC, а тот
-# живёт в core/text_util.cpp. Без линковки точка входа не собирается (LNK2019).
+# Qt6::Quick is needed for QQuickView (the window for the Item root of the viewer); QtQuick3D the engine
+# finds as a QML module of Qt, it requires no separate linking.
+# gvcore is needed: gv::presetFromEnv from core/quality.h calls gv::strtodC, and it
+# lives in core/text_util.cpp. Without linking the entry point does not build (LNK2019).
 target_link_libraries(gcodeviewer PRIVATE gvcore Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick)
-# core/quality.h читает уровень тем же разбором, что ядро (gv::presetFromEnv),
-# поэтому каталог cpp/ обязан быть в путях поиска заголовков.
+# core/quality.h reads the level with the same parsing as the core (gv::presetFromEnv),
+# therefore the cpp/ directory must be in the header search paths.
 target_include_directories(gcodeviewer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(gcodeviewer PRIVATE
     GV_REPO_ROOT="${GV_REPO_ROOT}"
@@ -493,13 +493,13 @@ if (MSVC)
     target_compile_options(gcodeviewer PRIVATE /utf-8)
 endif()
 
-# Пробник горячих клавиш (viewer/keyprobe.cpp): грузит тот же GcodeViewer3D.qml в
-# QQuickView и подаёт клавиши с признаками настоящего события (скан-код, VK и символ
-# по раскладке), проверяя, что каждая горячая клавиша переключила своё свойство. Им
-# измеряют дефект «горячие клавиши требовательны к языку»: на русской раскладке
-# буквенные ветки обязаны срабатывать по скан-коду. Платформа - offscreen, окно не
-# показывается, поэтому пробник годится и для сторожа.
-#   keyprobe.exe <УП.ngc> [ru,en]
+# Hot key probe (viewer/keyprobe.cpp): it loads the same GcodeViewer3D.qml into
+# QQuickView and feeds keys with the signs of a real event (scan code, VK and the character
+# by layout), checking that each hot key switched its own property. With it
+# they measure the defect "hot keys are language-sensitive": in the Russian layout
+# the letter branches must fire by scan code. The platform is offscreen, the window is not
+# shown, therefore the probe is suitable for the watcher too.
+#   keyprobe.exe <NC program.ngc> [ru,en]
 add_executable(keyprobe viewer/keyprobe.cpp)
 set_target_properties(keyprobe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${GV_VIEWER_DIR}
@@ -517,13 +517,13 @@ if (MSVC)
     target_compile_options(keyprobe PRIVATE /utf-8)
 endif()
 
-# Проба привязки съёма материала к траектории (gv_toolpath): создаёт настоящий
-# GcodeToolpath из QML-модуля MockBackend и грузит реальную УП. Печатает время
-# фонового прохода при пресетах med и high, сверяет текстуру рисования с полем и
-# задержку отмены. Платформа offscreen ставится сама. CMake-цель
-# нужна Qt (движок QML), сам контроллер приходит из собранного плагина, как у
-# точки входа вьювера; Qt6::Quick3D нужен на тип QQuick3DTextureData - им
-# проверяется опубликованное поле.
+# Material removal to trajectory binding probe (gv_toolpath): it creates a real
+# GcodeToolpath from the QML module MockBackend and loads a real NC program. It prints the time
+# of the background pass at the presets med and high, verifies the drawing texture against the field and
+# the cancellation delay. The offscreen platform is set by itself. The CMake target
+# needs Qt (the QML engine), the controller itself comes from the built plugin, as for
+# the viewer entry point; Qt6::Quick3D is needed for the type QQuick3DTextureData - with it
+# the published field is verified.
 add_executable(stock_bind_probe viewer/stock_bind_probe.cpp)
 set_target_properties(stock_bind_probe PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${GV_VIEWER_DIR}

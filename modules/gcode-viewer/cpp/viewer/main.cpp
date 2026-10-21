@@ -1,58 +1,64 @@
-/* gcodeviewer - C++-точка входа вьювера УП: вьювер запускается без Python.
+/* gcodeviewer - C++ entry point of the NC viewer: the viewer runs without Python.
  *
- * Вьювер целиком на C++: 3D-поверхность - modules/gcode-viewer/GcodeViewer3D.qml
- * (корень - Item), контроллер, геометрии, разбор УП, STEP/STL и коллизии приходят
- * из QML-плагина MockBackend (cpp/qmlbackend). Питоновский бэкенд в пути
- * исполнения не участвует: здесь его нет вовсе, и подменять его нечем.
+ * The viewer is entirely C++: the 3D surface is modules/gcode-viewer/GcodeViewer3D.qml
+ * (root - Item), the controller, geometries, NC parsing, STEP/STL and collisions
+ * come from the MockBackend QML plugin (cpp/qmlbackend). The reference backend is
+ * not part of the execution path: it is not here at all, and there is nothing to
+ * substitute for it.
  *
- * Что делает точка входа:
- * * находит каталог QML-плагина (CNC_CPP_QML_DIR, иначе <репо>/build/qmlbackend)
- * и каталог DLL OCCT (CNC_OCC_DIR, иначе из CONDA_PREFIX) и кладёт оба в PATH
- * до создания движка: точка входа Qt-плагина разрешает зависимости по PATH, а
- * не через add_dll_directory (разбор - docs/PORT-CPP.md, «Ограничения рантайма Qt»).
- * На Linux PATH и LD_LIBRARY_PATH не трогает: Qt и OCCT загрузчик находит по
- * rpath сборки, который CMake заполняет сам (BUILD_RPATH, cpp/CMakeLists.txt);
- * * отдаёт движку путь импорта плагина и грузит GcodeViewer3D.qml в QQuickView:
- * окно создаёт QQuickView, потому что корень вьювера - Item, а не Window, и
- * сам файл вьювера не правится;
- * * берёт у корня объект gcodeToolpath и грузит УП из аргумента. В offscreen
- * (QT_QPA_PLATFORM=offscreen) загрузка синхронная и без цикла событий - по ней
- * сверяют число сегментов; в живом окне - load_gcode_async и печать по
- * сигналам контракта (toolpathLoaded, loadFinished).
- * * перед показом окна отпускает консоль, заведённую для самого процесса
- * (detachOwnConsole): её окно - второе окно верхнего уровня у вьювера, и оно
- * отбирает передний план. Число созданных вьюверов и окон процесса печатается
- * (reportWindows), поэтому «окно одно» - проверка, а не обещание.
+ * What the entry point does:
+ * * finds the QML plugin directory (CNC_CPP_QML_DIR, otherwise
+ * <repo>/build/qmlbackend) and the OCCT DLL directory (CNC_OCC_DIR, otherwise from
+ * CONDA_PREFIX) and puts both into PATH before creating the engine: the Qt plugin
+ * entry point resolves dependencies via PATH, not through add_dll_directory
+ * (breakdown - docs/PORT-CPP.md, "Qt runtime limitations").
+ * On Linux it does not touch PATH and LD_LIBRARY_PATH: the loader finds Qt and
+ * OCCT via the build rpath that CMake fills in itself (BUILD_RPATH,
+ * cpp/CMakeLists.txt);
+ * * gives the engine the plugin import path and loads GcodeViewer3D.qml into a
+ * QQuickView: the window is created by QQuickView because the viewer root is an
+ * Item, not a Window, and the viewer file itself is not edited;
+ * * takes the gcodeToolpath object from the root and loads the NC from the
+ * argument. In offscreen (QT_QPA_PLATFORM=offscreen) loading is synchronous and
+ * without an event loop - the segment count is checked by it; in a live window -
+ * load_gcode_async and printing by contract signals (toolpathLoaded,
+ * loadFinished).
+ * * before showing the window it detaches the console created for the process
+ * itself (detachOwnConsole): its window is the second top-level window of the
+ * viewer, and it takes the foreground. The number of viewers and process windows
+ * created is printed (reportWindows), so "one window" is a check, not a promise.
  *
- * Ключ --smoke - короткая проверка старта: грузит QML вьювера offscreen и
- * печатает число корневых объектов, тип и размер корня, затем RESULT: OK
- * (parse-level). Проверка неглубокая - "вьювер стартует", геометрия не меряется.
- * Обычный запуск (без ключа) не меняется.
+ * The --smoke key is a short start check: it loads the viewer QML offscreen and
+ * prints the number of root objects, the root type and size, then RESULT: OK
+ * (parse-level). The check is shallow - "the viewer starts", geometry is not
+ * measured. A normal run (without the key) is unchanged.
  *
- * Ключ --frame <файл.png> снимает кадр: строит сцену, ждёт нарисованный кадр,
- * берёт его у окна (QQuickWindow::grabWindow) и пишет PNG. Печатает размер
- * картинки и число пикселей не-фона (фон - пиксель левого верхнего угла): по ним
- * видно, попала ли в кадр геометрия. Картинка - доказательство приёмки; числа
- * геометрии доказывают аналитические случаи пробников (stocksurface, stockshell,
- * stock_bind), а не счёт пикселей.
+ * The --frame <file.png> key captures a frame: it builds the scene, waits for a
+ * drawn frame, takes it from the window (QQuickWindow::grabWindow) and writes a
+ * PNG. It prints the image size and the number of non-background pixels (the
+ * background is the top-left pixel): they show whether geometry made it into the
+ * frame. The image is acceptance evidence; the geometry is proven by the analytic
+ * probe cases (stocksurface, stockshell, stock_bind), not by a pixel count.
  *
- * Платформа кадра - та, что задана снаружи; пустая даёт живую. Offscreen на
- * Windows сцену Quick3D не рисует (замер: в кадре только элементы интерфейса,
- * 3D пуст), поэтому картинку для приёмки снимают на живой платформе, а
- * QT_QPA_PLATFORM=offscreen оставлен прогону без экрана: он снимает кадр и
- * выходит с кодом 0, сцены в кадре нет.
+ * The frame platform is the one set outside; an empty one gives the live platform.
+ * Offscreen on Windows does not draw the Quick3D scene (measured: the frame has
+ * only interface elements, the 3D is empty), so the acceptance image is captured
+ * on the live platform, while QT_QPA_PLATFORM=offscreen is left for the headless
+ * run: it captures a frame and exits with code 0, with no scene in the frame.
  *
- * Плагина нет - внятная ошибка и ненулевой код возврата: отката на Python нет.
+ * Without the plugin - a clear error and a non-zero return code: there is no
+ * fallback to the reference.
  *
- * Запуск (Qt обязан быть в PATH до старта процесса: exe линкуется с Qt6Core.dll;
- * каталог плагина и DLL OCCT точка входа добавляет себе сама):
+ * Run (Qt must be in PATH before the process starts: the exe links with
+ * Qt6Core.dll; the plugin directory and OCCT DLLs the entry point adds itself):
  * set PATH=C:\Qt\6.12.0\msvc2022_64\bin;%PATH%
  * build\viewer\gcodeviewer.exe data\cad-testdata\Test_model.ngc
  * Offscreen: set QT_QPA_PLATFORM=offscreen
- * Дым-прогон: build\viewer\gcodeviewer.exe --smoke
- * Кадр: build\viewer\gcodeviewer.exe --frame frame.png data\cad-testdata\Test_model.ngc
- * (QT_QPA_PLATFORM=offscreen - прогон без экрана: кадр снимается, сцены в нём нет)
- * Linux (Qt и OCCT находит rpath сборки, PATH и LD_LIBRARY_PATH не нужны):
+ * Smoke run: build\viewer\gcodeviewer.exe --smoke
+ * Frame: build\viewer\gcodeviewer.exe --frame frame.png data\cad-testdata\Test_model.ngc
+ * (QT_QPA_PLATFORM=offscreen - a headless run: the frame is captured, there is no scene in it)
+ * Linux (Qt and OCCT are found via the build rpath, PATH and LD_LIBRARY_PATH are
+ * not needed):
  * build/viewer/gcodeviewer data/cad-testdata/Test_model.ngc
  */
 #include <QColor>
@@ -77,7 +83,7 @@
 
 #include <algorithm>
 
-#include "core/quality.h"   // gv::presetFromEnv: уровень CNC_QUALITY тем же чтением, что ядро
+#include "core/quality.h"   // gv::presetFromEnv: the CNC_QUALITY level by the same read as the core
 
 #ifdef Q_OS_WIN
 #  include <windows.h>
@@ -92,9 +98,9 @@
 
 namespace {
 
-// Вывод строк в UTF-8; консоль переводится в UTF-8 в main. Технические строки
-// (пути, числа, "loaded OK") повторяют формулировки питоновских точек входа: по
-// ним сверяют прогон.
+// Line output in UTF-8; the console is switched to UTF-8 in main. The technical
+// lines (paths, numbers, "loaded OK") repeat the wording of the reference entry
+// points: the run is checked by them.
 void say(const QString &text)
 {
     QTextStream stream(stdout);
@@ -107,19 +113,20 @@ void warn(const QString &text)
     stream << text << '\n';
 }
 
-// Предупреждения движка QML - отдельной строкой, как у питоновских точек входа:
-// живой прогон обязан быть без "[QML warning]".
+// QML engine warnings - as a separate line, like the reference entry points: a live
+// run must have no "[QML warning]".
 void reportQmlWarnings(const QList<QQmlError> &errors)
 {
     for (const QQmlError &error : errors)
         warn(QStringLiteral("[QML warning] ") + error.toString());
 }
 
-// Вьюверов у точки входа три ветки (дым-прогон, съёмка кадра, живой запуск), и
-// в каждой окно одно: корень GcodeViewer3D.qml - Item, поэтому окно заводит
-// QQuickView, а сам файл вьювера не правится. Окно - наследник QQuickView со
-// счётчиком: число вьюверов печатается на старте (reportWindows), поэтому
-// вторая ветка с окном была бы видна числом, а не на глаз.
+// The entry point has three viewer branches (smoke run, frame capture, live run),
+// and each has one window: the root of GcodeViewer3D.qml is an Item, so the window
+// is created by QQuickView, and the viewer file itself is not edited. The window is
+// a QQuickView subclass with a counter: the number of viewers is printed at start
+// (reportWindows), so a second branch with a window would be visible as a number,
+// not by eye.
 int &createdViews()
 {
     static int created = 0;
@@ -132,16 +139,16 @@ public:
     ViewerWindow() { ++createdViews(); }
 };
 
-// Окна верхнего уровня процесса: сколько всего и сколько видимых. Меряется
-// перечислением окон этого процесса (EnumWindows с отбором по pid), а не
-// пересказом. Видимое окно у вьювера одно; остальные (замер: шесть всего) -
-// служебные окна Qt и ввода (рамка _q_titlebar, наблюдатели темы и экрана,
-// MSCTFIME UI, IME). До правки (0.55.0, запуск с новой консолью) их выходило
-// семь, а видимых два: окно вьювера (класс Qt6120QWindowIcon) и окно консоли
-// (ConsoleWindowClass), которое система заводит приложению консольной
-// подсистемы. Консоль забирала передний план, и нажатия пробы клавиш по
-// SendInput до окна вьювера не доходили (tools/keyprobe.ps1, «SendInput ... до
-// окна вьювера не доходил»).
+// Top-level windows of the process: how many in total and how many visible.
+// Measured by enumerating this process's windows (EnumWindows filtered by pid), not
+// by retelling. The viewer has one visible window; the rest (measured: six in
+// total) are Qt and input service windows (_q_titlebar frame, theme and screen
+// observers, MSCTFIME UI, IME). Before the fix (0.55.0, launched with a new
+// console) there were seven, two of them visible: the viewer window (class
+// Qt6120QWindowIcon) and the console window (ConsoleWindowClass), which the system
+// creates for a console-subsystem application. The console took the foreground, and
+// key-probe presses via SendInput did not reach the viewer window
+// (tools/keyprobe.ps1, "SendInput ... did not reach the viewer window").
 struct WindowCount
 {
     int total = 0;
@@ -172,29 +179,29 @@ WindowCount processWindows()
     return count;
 }
 
-// Консоль, заведённая ДЛЯ самого процесса, отпускается: её окно и есть второе
-// окно верхнего уровня, оно же отбирает передний план у вьювера (замер до
-// правки: два видимых окна, см. WindowCount). Консоль родителя (терминала,
-// откуда вьювер запустили) не трогают: её окно завёл не вьювер, и именно в неё
-// печатается ход загрузки. Перенаправление (конвейер, файл) консолью не
-// является, поэтому отпускание консоли вывода не лишает. Цена названа прямо:
-// при запуске двойным щелчком окно консоли успевает появиться и гаснет в первые
-// миллисекунды - сам вьювер его не показывает.
+// The console created FOR the process itself is detached: its window is the second
+// top-level window, and it takes the foreground from the viewer (measured before the
+// fix: two visible windows, see WindowCount). The parent's console (the terminal the
+// viewer was launched from) is not touched: its window was not created by the
+// viewer, and it is where the loading progress is printed. Redirection (a pipe, a
+// file) is not a console, so detaching does not lose the output. The price is named
+// outright: when launched by double-click the console window has time to appear and
+// goes out in the first milliseconds - the viewer itself does not show it.
 void detachOwnConsole()
 {
 #ifdef Q_OS_WIN
     DWORD attached[4] = { 0, 0, 0, 0 };
-    // Список процессов консоли: один (наш) - консоль заведена для процесса,
-    // больше - консоль общая с родителем.
+    // The console process list: one (ours) - the console was created for the
+    // process, more - the console is shared with the parent.
     if (GetConsoleProcessList(attached, 4) != 1)
         return;
     FreeConsole();
 #endif
 }
 
-// Число вьюверов и окон верхнего уровня: печатается на старте живого окна и
-// съёмки кадра, чтобы «окно одно» было проверкой. В offscreen-прогоне окно не
-// показывается, и эта строка не печатается - окна там нет вовсе.
+// The number of viewers and top-level windows: printed at the start of a live window
+// and of frame capture, so that "one window" is a check. In an offscreen run the
+// window is not shown, and this line is not printed - there is no window at all.
 void reportWindows(const QString &branch)
 {
 #ifdef Q_OS_WIN
@@ -208,8 +215,8 @@ void reportWindows(const QString &branch)
 #endif
 }
 
-// Показ окна вьювера: сначала отпускается своя консоль (разбор - у
-// detachOwnConsole), потом окно показывается, потом печатается число окон.
+// Showing the viewer window: first the own console is detached (breakdown at
+// detachOwnConsole), then the window is shown, then the window count is printed.
 void showViewerWindow(ViewerWindow &view, const QString &branch)
 {
     detachOwnConsole();
@@ -217,10 +224,10 @@ void showViewerWindow(ViewerWindow &view, const QString &branch)
     reportWindows(branch);
 }
 
-// Корень репозитория: exe лежит в <репо>/build/viewer (цель gcodeviewer), значит
-// два уровня вверх. Догадка проверяется файлом вьювера: сборка с другим каталогом
-// сборки не должна уводить поиск в чужое дерево - тогда берётся корень, записанный
-// при сборке.
+// Repository root: the exe lies in <repo>/build/viewer (target gcodeviewer), so two
+// levels up. The guess is verified by the viewer file: a build with another build
+// directory must not lead the search into a foreign tree - then the root recorded at
+// build time is taken.
 QString repoRoot()
 {
     const QString guess =
@@ -230,8 +237,8 @@ QString repoRoot()
     return QString::fromUtf8(GV_REPO_ROOT);
 }
 
-// Файл вьювера: CNC_VIEWER_QML, иначе GcodeViewer3D.qml корня репозитория, иначе
-// путь, записанный при сборке.
+// The viewer file: CNC_VIEWER_QML, otherwise the repository root's GcodeViewer3D.qml,
+// otherwise the path recorded at build time.
 QString viewerQmlPath()
 {
     const QString override = qEnvironmentVariable("CNC_VIEWER_QML");
@@ -243,8 +250,9 @@ QString viewerQmlPath()
     return QString::fromUtf8(GV_VIEWER_QML);
 }
 
-// Каталог DLL OCCT: CNC_OCC_DIR (или окружение conda), подкаталог bin. Умолчание
-// то же, что у сборки (scripts/build-viewer.ps1) и у питоновского шима.
+// OCCT DLL directory: CNC_OCC_DIR (or the conda environment), the bin subdirectory.
+// The default is the same as the build (scripts/build-viewer.ps1) and the former
+// Python shim.
 QString occtBinDir()
 {
     QString occ = qEnvironmentVariable("CNC_OCC_DIR");
@@ -258,10 +266,10 @@ QString occtBinDir()
     return occ + QStringLiteral("/bin");
 }
 
-// Каталоги в PATH: поиск зависимостей плагина идёт по PATH, а уже бывшие там
-// каталоги не дублируются. На Linux PATH не трогают: там и Qt, и OCCT находит
-// загрузчик по rpath сборки (BUILD_RPATH, cpp/CMakeLists.txt), и LD_LIBRARY_PATH
-// не нужен.
+// Directories into PATH: the plugin's dependency search goes via PATH, and
+// directories already there are not duplicated. On Linux PATH is not touched: there
+// the loader finds both Qt and OCCT via the build rpath (BUILD_RPATH,
+// cpp/CMakeLists.txt), and LD_LIBRARY_PATH is not needed.
 void prependPath(const QStringList &dirs)
 {
 #ifdef Q_OS_LINUX
@@ -289,25 +297,26 @@ void prependPath(const QStringList &dirs)
 #endif
 }
 
-// Переключатели чистого вида - у съёмки кадра и у живого окна одни и те же:
-// снятие линий УП (CNC_NO_TOOLPATH) и кожи детали (CNC_NO_PART_SKIN). Это те же
-// ручки, что клавиши G и K вьювера (GcodeViewer3D.qml): у съёмки кадра клавиш
-// нет вовсе, поэтому кадр для сравнения вида снимают переменной. Без переменных
-// поведение прежнее - и линии, и кожа видны.
+// Clean-view switches - frame capture and the live window share the same ones:
+// hiding the NC lines (CNC_NO_TOOLPATH) and the part skin (CNC_NO_PART_SKIN). These
+// are the same handles as the viewer keys G and K (GcodeViewer3D.qml): frame capture
+// has no keys at all, so a frame for a view comparison is captured by a variable.
+// Without the variables the behaviour is the previous one - both the lines and the
+// skin are visible.
 void applyCleanViewEnv(QQuickItem *root_item)
 {
     root_item->setProperty("showToolpath", !qEnvironmentVariableIsSet("CNC_NO_TOOLPATH"));
     root_item->setProperty("showPartSkin", !qEnvironmentVariableIsSet("CNC_NO_PART_SKIN"));
 }
 
-// CNC_STOCK_VIEW: вид остатка заготовки до старта - та же ручка, что клавиша R
-// (GcodeViewer3D.qml, stockView). Три вида: exact (точный по узлам поля),
-// smooth (гладкий: дроблённый меш, высота билинейная - вид по умолчанию) и
-// rounded (скруглённый: глубина узла - среднее по окрестности, прежний тумблер
-// CNC_STOCK_ROUND). CNC_STOCK_ROUND=1 остаётся как сокращение для rounded:
-// переменная была в контракте запуска, и её поведение сохранено. Непонятная
-// строка - отказ с причиной в stderr: молча показать не тот вид нельзя, кадры
-// сравнивают по видам.
+// CNC_STOCK_VIEW: the stock remainder view before start - the same handle as key R
+// (GcodeViewer3D.qml, stockView). Three views: exact (exact by field nodes), smooth
+// (smooth: a subdivided mesh, bilinear height - the default view) and rounded
+// (rounded: a node's depth is the average over its neighbourhood, the former
+// CNC_STOCK_ROUND toggle). CNC_STOCK_ROUND=1 stays as a shorthand for rounded: the
+// variable was in the launch contract, and its behaviour is preserved. An unclear
+// string is a refusal with the reason in stderr: silently showing the wrong view is
+// not allowed, frames are compared by view.
 void applyStockViewEnv(QQuickItem *root_item)
 {
     const char *names[] = { "exact", "smooth", "rounded" };
@@ -328,19 +337,20 @@ void applyStockViewEnv(QQuickItem *root_item)
                  .arg(text));
 }
 
-// Цвета палитры остатка материала до старта. Пара "переменная -> свойство" одной
-// таблицей: свойство у обоих цветов однотипное, а имя переменной - часть
-// контракта запуска (README, GcodeViewer3D.qml).
+// Material remainder palette colours before start. The "variable -> property" pair
+// as one table: both colours have a property of the same kind, and the variable name
+// is part of the launch contract (README, GcodeViewer3D.qml).
 struct StockColorEnv {
     const char *variable;
     const char *property;
 };
 
-// CNC_STOCK_RAW и CNC_STOCK_CUT ставят цвета палитры по "#RRGGBB" (или
-// "#AARRGGBB") - те же две ручки, что пресеты вьювера и клавиша C
-// (GcodeViewer3D.qml, stockPresets): переменная задаёт цвет пары до старта,
-// пресет остаётся тем, что был. Непонятная строка - отказ с причиной в stderr:
-// молча красить слиток в чёрный нельзя, по его цвету читают, где металл снят.
+// CNC_STOCK_RAW and CNC_STOCK_CUT set palette colours by "#RRGGBB" (or
+// "#AARRGGBB") - the same two handles as the viewer presets and key C
+// (GcodeViewer3D.qml, stockPresets): the variable sets the pair's colour before
+// start, the preset stays as it was. An unclear string is a refusal with the reason
+// in stderr: silently painting the ingot black is not allowed, its colour is read to
+// see where metal is removed.
 void applyStockColorEnv(QQuickItem *root_item)
 {
     const StockColorEnv vars[] = {
@@ -362,28 +372,28 @@ void applyStockColorEnv(QQuickItem *root_item)
     }
 }
 
-// CNC_STOCK_GHOST: заготовка полупрозрачной до старта - та же ручка, что клавиша
-// V (GcodeViewer3D.qml, stockGhost). Стекло теперь умолчание, поэтому переменная
-// не включает вид, а снимает его: пустая переменная или 1/true/on оставляют
-// стекло, а 0/false/off/no ставят сплошной до старта - так кадры сравнивают
-// виды, как их зовёт оператор, и молчаливой подмены вида нет.
+// CNC_STOCK_GHOST: the stock translucent before start - the same handle as key V
+// (GcodeViewer3D.qml, stockGhost). The glass is the default now, so the variable
+// does not enable the view but disables it: an empty variable or 1/true/on keeps the
+// glass, while 0/false/off/no sets solid before start - that is how frames compare
+// views as the operator calls them, and there is no silent view substitution.
 void applyStockGhostEnv(QQuickItem *root_item)
 {
     if (!qEnvironmentVariableIsSet("CNC_STOCK_GHOST"))
-        return;                                // умолчание вьювера: стекло
+        return;                                // the viewer default: glass
     const QString text = qEnvironmentVariable("CNC_STOCK_GHOST").trimmed().toLower();
     const bool solid = text == QLatin1String("0") || text == QLatin1String("false")
             || text == QLatin1String("off") || text == QLatin1String("no");
     root_item->setProperty("stockGhost", !solid);
 }
 
-// CNC_PART_MODE: вид детали до старта - та же ручка, что клавиша M
-// (GcodeViewer3D.qml, partMode), и единственная: solid - сплошная кожа
-// (умолчание), transparent - прозрачная, hidden - деталь скрыта целиком.
-// Прозрачная кожа и есть прежний рентген-вид (клавиши X у вьювера больше нет):
-// два переключателя одного вида не оставляли понять, какой вид сейчас и чем он
-// отличается от соседнего. Непонятная строка - отказ с причиной в stderr: молча
-// показать не тот вид нельзя, кадры сравнивают по видам.
+// CNC_PART_MODE: the part view before start - the same handle as key M
+// (GcodeViewer3D.qml, partMode), and the only one: solid - an opaque skin (default),
+// transparent - translucent, hidden - the part is hidden entirely. The translucent
+// skin is the former x-ray view (the viewer no longer has key X): two switches of one
+// view did not let one tell which view is current and how it differs from the
+// neighbouring one. An unclear string is a refusal with the reason in stderr:
+// silently showing the wrong view is not allowed, frames are compared by view.
 void applyPartModeEnv(QQuickItem *root_item)
 {
     const QString text = qEnvironmentVariable("CNC_PART_MODE").trimmed().toLower();
@@ -401,13 +411,14 @@ void applyPartModeEnv(QQuickItem *root_item)
                  .arg(text));
 }
 
-// CNC_FRAME_CAMERA: камера съёмки кадра явными числами - "yaw,pitch,dist" плюс
-// необязательные "panX,panY". Ими снимают кадр одного и того же вида с другой
-// точки; прогон без переменной берёт углы вьювера и дистанцию по габариту
-// траектории (те же числа, что ставит вьювер). Разбор строгий: неполная или
-// нечисловая строка - отказ с причиной в stderr, а не кадр с другим масштабом
-// (кадры сравнивают между собой, и молчаливая подмена здесь дороже отказа).
-// Возвращает ложь, если строка была задана, но не разобрана.
+// CNC_FRAME_CAMERA: the frame capture camera with explicit numbers -
+// "yaw,pitch,dist" plus optional "panX,panY". They capture a frame of the same view
+// from another point; a run without the variable takes the viewer's angles and the
+// distance by the path bounds (the same numbers the viewer sets). The parse is
+// strict: an incomplete or non-numeric string is a refusal with the reason in stderr,
+// not a frame with another scale (frames are compared with each other, and a silent
+// substitution here is more expensive than a refusal). Returns false if the string
+// was set but not parsed.
 bool applyFrameCameraEnv(QQuickItem *root_item)
 {
     const QString text = qEnvironmentVariable("CNC_FRAME_CAMERA").trimmed();
@@ -435,20 +446,21 @@ bool applyFrameCameraEnv(QQuickItem *root_item)
     return true;
 }
 
-// Камера съёмки кадра: углы, дистанция и панорама ставятся здесь, а не тем, что
-// успел сделать вьювер к моменту снятия. Привязка дистанции к габариту
-// траектории висит в QML на сигнале pathChanged (GcodeViewer3D.qml:
-// dist = max(90, radius * 3 + 60)), поэтому кадр, снятый до этого сигнала и
-// после него, показывает разный масштаб - замер 0.53.0: габарит инструмента
-// уезжал в шесть разных положений из шести прогонов. Здесь те же числа ставятся
-// один раз, уже после загрузки УП и готовности поля: углы читаются у вьювера
-// (их не двигает ничто, кроме мыши, а у съёмки мыши нет), дистанция берётся той
-// же формулой, что у вьювера, а панорама обнуляется. Затем CNC_FRAME_CAMERA
-// перекрывает поставленное - она задана нарочно, и перекрывать её нечем. Силуэт
-// инструмента и оправки пересчитывается последним: он строится по глазу камеры,
-// и кадр, снятый до пересчёта, показал бы силуэт прежней точки.
-// Ложь возврата - CNC_FRAME_CAMERA задана, но не разобрана: кадр тогда снимать
-// нельзя, масштаб был бы не тот, что просили.
+// Frame capture camera: the angles, distance and panorama are set here, not by
+// whatever the viewer managed to do by the capture moment. The distance binding to
+// the path bounds hangs in QML on the pathChanged signal (GcodeViewer3D.qml:
+// dist = max(90, radius * 3 + 60)), so a frame captured before and after that signal
+// shows a different scale - measured in 0.53.0: the tool bounds landed in six
+// different positions out of six runs. Here the same numbers are set once, after the
+// NC is loaded and the field is ready: the angles are read from the viewer (nothing
+// but the mouse moves them, and capture has no mouse), the distance is taken by the
+// same formula as the viewer's, and the panorama is zeroed. Then CNC_FRAME_CAMERA
+// overrides what was set - it is set on purpose, and there is nothing to override it
+// with. The tool and holder silhouette is recomputed last: it is built from the
+// camera eye, and a frame captured before the recompute would show the previous
+// point's silhouette.
+// A false return - CNC_FRAME_CAMERA is set but not parsed: the frame must not be
+// captured then, the scale would not be the one requested.
 bool applyFrameCamera(QQuickItem *root_item, QObject *backend)
 {
     const double radius = backend != nullptr ? backend->property("radius").toDouble() : 0.0;
@@ -461,9 +473,9 @@ bool applyFrameCamera(QQuickItem *root_item, QObject *backend)
     return true;
 }
 
-// Дым-прогон (--smoke): загрузить QML вьювера без экрана и доложить разбор.
-// Проверка неглубокая: "вьювер вообще стартует", геометрия не меряется. Размер
-// корня берётся в том же окне 1024x600, что у обычного запуска.
+// Smoke run (--smoke): load the viewer QML headless and report the parse. The check
+// is shallow: "the viewer starts at all", geometry is not measured. The root size is
+// taken in the same 1024x600 window as a normal run.
 int runSmoke(const QString &viewer_qml, const QString &backend_import)
 {
     QList<QQmlError> collected;
@@ -495,15 +507,15 @@ int runSmoke(const QString &viewer_qml, const QString &backend_import)
     return 0;
 }
 
-// Съёмка кадра (--frame <файл.png>): построить сцену, дождаться нарисованного
-// кадра, забрать его у окна и записать PNG. Числа на выходе (размер картинки и
-// число пикселей не-фона) говорят, что в кадре есть геометрия, но доказательство
-// геометрии - не они, а аналитические случаи пробников (stocksurface, stockshell,
-// stock_bind). Картинка нужна как доказательство приёмки (CLAUDE.md: визуальный
-// результат смотрят картинкой).
+// Frame capture (--frame <file.png>): build the scene, wait for a drawn frame, take
+// it from the window and write a PNG. The output numbers (image size and the number
+// of non-background pixels) say that the frame has geometry, but the geometry is
+// proven not by them but by the analytic probe cases (stocksurface, stockshell,
+// stock_bind). The image is needed as acceptance evidence (CLAUDE.md: a visual result
+// is viewed as an image).
 //
-// Платформа берётся снаружи: пустая - живая (на ней Quick3D и рисует сцену),
-// offscreen - прогон без экрана (кадр снимается, сцены в нём нет).
+// The platform is taken from outside: empty - the live one (Quick3D draws the scene
+// on it), offscreen - a headless run (the frame is captured, there is no scene in it).
 int runFrame(const QString &viewer_qml, const QString &backend_import,
              const QString &program, const QString &frame_path)
 {
@@ -530,12 +542,12 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
         return 1;
     }
 
-    // Те же свойства сцены, что у обычного запуска: уровень качества, коробка
-    // вместо поля съёма (CNC_STOCK_BOX), переключатели чистого вида
-    // (CNC_NO_TOOLPATH, CNC_NO_PART_SKIN, CNC_STOCK_GHOST, CNC_PART_MODE), вид
-    // остатка (CNC_STOCK_VIEW, CNC_STOCK_ROUND) и цвета палитры слитка
-    // (CNC_STOCK_RAW, CNC_STOCK_CUT). Иначе кадр показывал бы не то, что видит
-    // оператор.
+    // The same scene properties as a normal run: the quality level, a box instead of
+    // the removal field (CNC_STOCK_BOX), the clean-view switches (CNC_NO_TOOLPATH,
+    // CNC_NO_PART_SKIN, CNC_STOCK_GHOST, CNC_PART_MODE), the remainder view
+    // (CNC_STOCK_VIEW, CNC_STOCK_ROUND) and the ingot palette colours
+    // (CNC_STOCK_RAW, CNC_STOCK_CUT). Otherwise the frame would show something other
+    // than what the operator sees.
     root_item->setProperty("quality", QString::fromLatin1(gv::presetFromEnv().level));
     root_item->setProperty("stockPlainBox", qEnvironmentVariableIsSet("CNC_STOCK_BOX"));
     applyCleanViewEnv(root_item);
@@ -550,8 +562,8 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
             warn(QStringLiteral("gcodeviewer: FAIL файл УП не найден: %1").arg(program));
             return 3;
         }
-        // Загрузка синхронная (тот же путь, что у offscreen-прогона): кадр снимают
-        // после неё, а не по сигналам фонового потока.
+        // Loading is synchronous (the same path as the offscreen run): the frame is
+        // captured after it, not by background-thread signals.
         int segments = 0;
         QMetaObject::invokeMethod(backend, "load_gcode", Q_RETURN_ARG(int, segments),
                                   Q_ARG(QString, program));
@@ -559,11 +571,11 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
                 .arg(program).arg(segments));
     }
 
-    // Поле съёма считается фоном (QThreadPool), поэтому кадр снимается после
-    // того, как оно готово: иначе в кадре была бы коробка заготовки, а не
-    // остаток материала. Потолок ожидания - 20 с на медленной машине и крупном
-    // узле; состояние и признак поля печатаются, чтобы это было видно, а не
-    // подразумевалось.
+    // The removal field is computed in the background (QThreadPool), so the frame is
+    // captured after it is ready: otherwise the frame would show the stock box instead
+    // of the material remainder. The wait ceiling is 20 s on a slow machine and a
+    // coarse node; the state and the field flag are printed so this is visible, not
+    // implied.
     if (backend != nullptr && !program.isEmpty()) {
         QElapsedTimer wait;
         wait.start();
@@ -584,8 +596,8 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
                                                                  : QStringLiteral("no")));
     }
 
-    // Камера кадра - детерминированная (разбор в applyFrameCamera): двумя
-    // прогонами одной команды сверяют не только картинку, но и эти числа.
+    // The frame camera is deterministic (breakdown in applyFrameCamera): two runs of
+    // one command are compared not only by the image but also by these numbers.
     if (!applyFrameCamera(root_item, backend))
         return 2;
     {
@@ -602,10 +614,10 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
                 .arg(pivot.z(), 0, 'f', 3));
     }
 
-    // Ждём нарисованные кадры: grabWindow до первого кадра отдаёт пустую картинку.
-    // Сигнал frameSwapped отмечает готовый кадр; потолок ожидания - на случай, что
-    // сцена не нарисовалась вовсе (тогда кадр всё равно сохраняется и это видно по
-    // числу пикселей не-фона).
+    // Wait for drawn frames: grabWindow before the first frame gives an empty image.
+    // The frameSwapped signal marks a ready frame; the wait ceiling is in case the
+    // scene was not drawn at all (then the frame is still saved, and this is visible
+    // by the number of non-background pixels).
     int frames = 0;
     QEventLoop loop;
     QObject::connect(&view, &QQuickWindow::frameSwapped, [&frames, &loop] {
@@ -625,8 +637,9 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
         return 1;
     }
 
-    // Фон - пиксель левого верхнего угла: сцену вьювера он не занимает (там сетка
-    // и небо), поэтому разница с ним и есть нарисованная геометрия.
+    // The background is the top-left pixel: the viewer scene does not occupy it
+    // (there is the grid and the sky), so the difference from it is the drawn
+    // geometry.
     const QRgb background = image.pixel(0, 0);
     qint64 painted = 0;
     for (int y = 0; y < image.height(); ++y) {
@@ -647,9 +660,10 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
     return 0;
 }
 
-// Печать хода загрузки в живом окне. Сигналы контракта приходят из QML-плагина,
-// который движок грузит сам: тип контроллера точке входа не виден, поэтому
-// принимает их отдельный объект со слотами, а связь задаётся по именам сигналов.
+// Printing the loading progress in a live window. The contract signals come from the
+// QML plugin that the engine loads itself: the entry point cannot see the controller
+// type, so a separate object with slots receives them, and the connection is set by
+// signal names.
 class LoadReporter : public QObject
 {
     Q_OBJECT
@@ -686,10 +700,10 @@ private:
 int main(int argc, char *argv[])
 {
 #ifdef Q_OS_WIN
-    SetConsoleOutputCP(CP_UTF8);          // русский текст виден в консоли распорядителя
+    SetConsoleOutputCP(CP_UTF8);          // Russian text is visible in the manager's console
 #endif
-    // --smoke и --frame ищут в argv до создания приложения: платформа выбирается
-    // раньше него.
+    // --smoke and --frame are looked for in argv before the application is created:
+    // the platform is chosen before it.
     bool smoke = false;
     bool frame = false;
     for (int i = 1; i < argc; ++i) {
@@ -698,13 +712,13 @@ int main(int argc, char *argv[])
         if (qstrcmp(argv[i], "--frame") == 0)
             frame = true;
     }
-    // Дым-прогон ничего не показывает: без экрана ему достаточно offscreen, а
-    // заданную снаружи платформу не трогают (keyprobe.cpp делает так же).
-    // Съёмке кадра платформу НЕ навязывают: offscreen-растеризатор Quick3D на
-    // Windows сцены не рисует (замер: кадр 1024x600 содержит только элементы
-    // интерфейса, 3D пуст), поэтому живая платформа даёт настоящую картинку, а
-    // QT_QPA_PLATFORM=offscreen снаружи по-прежнему снимает кадр и выходит с
-    // кодом 0 - годен для прогона без экрана.
+    // The smoke run shows nothing: offscreen is enough for it, and a platform set
+    // outside is not touched (keyprobe.cpp does the same). Frame capture is NOT forced
+    // onto a platform: the offscreen Quick3D rasteriser on Windows does not draw the
+    // scene (measured: a 1024x600 frame contains only interface elements, the 3D is
+    // empty), so the live platform gives a real image, while QT_QPA_PLATFORM=offscreen
+    // from outside still captures a frame and exits with code 0 - good for a headless
+    // run.
     if (smoke && qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
         qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
@@ -719,7 +733,8 @@ int main(int argc, char *argv[])
             return 0;
         }
         if (arg == QLatin1String("--frame")) {
-            // Значение идёт следующим аргументом: без него снимать некуда.
+            // The value comes as the next argument: without it there is nowhere to
+            // capture.
             if (i + 1 >= argc) {
                 warn(QStringLiteral("gcodeviewer: FAIL у --frame нет пути к файлу кадра"));
                 return 2;
@@ -738,8 +753,8 @@ int main(int argc, char *argv[])
         : qEnvironmentVariable("CNC_CPP_QML_DIR");
     const QString backend_module = backend_import + QStringLiteral("/MockBackend");
 
-    // Плагина нет - внятная ошибка и ненулевой код: питоновского бэкенда в
-    // рантайме нет, подменять нечем.
+    // No plugin - a clear error and a non-zero code: there is no reference backend at
+    // runtime, and there is nothing to substitute.
     if (!QFileInfo::exists(backend_module + QStringLiteral("/qmldir"))) {
         warn(QStringLiteral("gcodeviewer: FAIL QML-модуль MockBackend не найден: %1/qmldir")
                  .arg(backend_module));
@@ -763,7 +778,7 @@ int main(int argc, char *argv[])
 
     ViewerWindow view;
     view.setResizeMode(QQuickView::SizeRootObjectToView);
-    view.resize(1024, 600);              // тот же размер окна, что у съёмки кадра
+    view.resize(1024, 600);              // the same window size as frame capture
     view.engine()->addImportPath(backend_import);
     QObject::connect(view.engine(), &QQmlEngine::warnings, &reportQmlWarnings);
     view.setSource(QUrl::fromLocalFile(viewer_qml));
@@ -787,29 +802,29 @@ int main(int argc, char *argv[])
     say(QStringLiteral("gcodeviewer: viewer version: %1")
             .arg(root_item->property("viewerVersion").toString()));
 
-    // Диагностика клавиатуры: CNC_KEY_DEBUG=1 включает в корне вьювера печать
-    // признаков нажатия (GcodeViewer3D.qml, keyLogRaw/keyLogState) - ею измеряют
-    // доставку клавиш на разных раскладках. По умолчанию вывод молчит.
+    // Keyboard diagnostics: CNC_KEY_DEBUG=1 enables printing key-press signs in the
+    // viewer root (GcodeViewer3D.qml, keyLogRaw/keyLogState) - it measures key
+    // delivery on different layouts. By default the output is silent.
     root_item->setProperty("keyDebug", qEnvironmentVariableIsSet("CNC_KEY_DEBUG"));
 
-    // Уровень качества из CNC_QUALITY: им корень вьювера задаёт рендер-ручки
-    // (GcodeViewer3D.qml, свойство quality). Чтение то же, что у ядра
-    // (gv::presetFromEnv): пустое или неизвестное значение даёт med - прежнюю
-    // картинку, поэтому без переменной поведение не меняется.
+    // The quality level from CNC_QUALITY: the viewer root sets render handles with it
+    // (GcodeViewer3D.qml, property quality). The read is the same as the core's
+    // (gv::presetFromEnv): an empty or unknown value gives med - the previous image,
+    // so without the variable the behaviour does not change.
     root_item->setProperty("quality", QString::fromLatin1(gv::presetFromEnv().level));
 
-    // CNC_STOCK_BOX: прежняя коробка вместо поверхности съёма - ею снимают кадр
-    // для сравнения (та же ручка, что клавиша B). По умолчанию коробки нет:
-    // заготовку рисует поле высот.
+    // CNC_STOCK_BOX: the former box instead of the removal surface - it captures a
+    // frame for comparison (the same handle as key B). By default there is no box:
+    // the stock is drawn by the height field.
     root_item->setProperty("stockPlainBox", qEnvironmentVariableIsSet("CNC_STOCK_BOX"));
     applyCleanViewEnv(root_item);
     applyStockViewEnv(root_item);
 
-    // CNC_STOCK_RAW/CNC_STOCK_CUT: цвета палитры слитка до старта (те же две
-    // ручки, что пресеты и клавиша C).
+    // CNC_STOCK_RAW/CNC_STOCK_CUT: ingot palette colours before start (the same two
+    // handles as the presets and key C).
     applyStockColorEnv(root_item);
 
-    // Заготовка полупрозрачной (V) и вид детали (M) до старта.
+    // Translucent stock (V) and part view (M) before start.
     applyStockGhostEnv(root_item);
     applyPartModeEnv(root_item);
 
@@ -836,8 +851,8 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    // Живое окно: разбор УП и модель идут на рабочем потоке, оверлей загрузки
-    // ведёт корень вьювера (у питоновской точки входа так же).
+    // Live window: NC parsing and the model run on a worker thread, and the loading
+    // overlay is driven by the viewer root (the same as at the reference entry point).
     root_item->setProperty("loading", true);
     auto *reporter = new LoadReporter(program, root_item, backend, &app);
     Q_UNUSED(reporter);

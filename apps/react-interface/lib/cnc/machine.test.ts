@@ -36,14 +36,25 @@ describe('аварийный стоп и сброс', () => {
   })
 
   it('RESET гасит ошибки и обнуляет счётчики', () => {
-    const dirty: MachineState = { ...initialState, run: 'ALARM', line: 12, cycleTime: 900 }
+    const dirty: MachineState = {
+      ...initialState,
+      run: 'ALARM',
+      line: 12,
+      cycleTime: 900,
+      alarms: [
+        { id: 'a-test-error', code: 1002, level: 'error', text: 'Ошибка привода X', time: '12:00:00', active: true },
+        { id: 'a-test-warning', code: 2001, level: 'warning', text: 'Износ фрезы', time: '12:00:01', active: true },
+      ],
+    }
     const s = run(dirty, { type: 'RESET' })
 
     expect(s.run).toBe('IDLE')
     expect(s.line).toBe(0)
     expect(s.cycleTime).toBe(0)
     expect(s.message?.text).toBe('Сброс выполнен')
-    expect(s.alarms.every((al) => al.level !== 'error' || !al.active)).toBe(true)
+    // RESET clears only errors: a warning stays active - that is the RESET contract.
+    expect(s.alarms.find((al) => al.id === 'a-test-error')?.active).toBe(false)
+    expect(s.alarms.find((al) => al.id === 'a-test-warning')?.active).toBe(true)
   })
 })
 

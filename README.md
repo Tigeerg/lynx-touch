@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Версия" src="https://img.shields.io/badge/версия-0.18.4-blue">
+  <img alt="Версия" src="https://img.shields.io/badge/версия-0.18.5-blue">
   <img alt="Лицензия" src="https://img.shields.io/badge/лицензия-Apache--2.0-green">
   <img alt="Платформы" src="https://img.shields.io/badge/платформы-Windows%20%7C%20Linux-lightgrey">
   <img alt="Стек" src="https://img.shields.io/badge/стек-React%20%7C%20Qt%2FQML%20%7C%20C%2B%2B%2FOCCT-informational">
@@ -37,11 +37,11 @@ QtQuick3D и OpenCASCADE.
 ## 🧩 Состав
 
 Продукт — четыре независимо версионируемых проекта (манифест — [`projects.json`](projects.json)). Версия
-продукта — `0.18.4` ([`VERSION`](VERSION)); правила ведения — [`VERSIONING.md`](VERSIONING.md).
+продукта — `0.18.5` ([`VERSION`](VERSION)); правила ведения — [`VERSIONING.md`](VERSIONING.md).
 
 | Проект | Версия | Стек | Что это |
 |---|---|---|---|
-| **react-interface** — [панель оператора](apps/react-interface) | `0.12.3` | Next.js · React · TypeScript | Основной интерфейс: экраны, логика станка, сенсорный и панельный режимы |
+| **react-interface** — [панель оператора](apps/react-interface) | `0.12.4` | Next.js · React · TypeScript | Основной интерфейс: экраны, логика станка, сенсорный и панельный режимы |
 | **qt-interface** — [Qt-порт](apps/qt-interface) | `0.5.5` | QML | Перенос интерфейса на Qt/QML (`main.qml`, данные — `preview.qml`) |
 | **gcode-viewer** — [3D-вьювер УП](modules/gcode-viewer) | `0.58.3` | QtQuick3D · C++ · OCCT | Траектория, деталь, инструмент, коллизии, поле съёма |
 | **cad-testdata** — [тестовые данные](data/cad-testdata) | `0.5.1` | данные · постпроцессор | Тестовые УП/модели и постпроцессор с тегами `UI_*` |

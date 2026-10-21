@@ -1,26 +1,26 @@
-// core/tangents.h - аналитические касательные контура: семейства цилиндров и
-// конусов.
+// core/tangents.h - analytic contour tangents: families of cylinders and cones.
 //
-// Слой чистый: ни Qt, ни OCCT - только арифметика над дескрипторами
-// поверхностей, упакованными рёбрами STEP и супом кожи. Поэтому он живёт в
-// gvcore, а дескрипторы поверхностей даёт OCCT-слой gvstep
-// (cpp/occt/step_surfaces.*): разделение то же, что у силуэта и STEP-тесселяции.
+// The layer is pure: neither Qt nor OCCT - only arithmetic over surface
+// descriptors, packed STEP edges and the skin soup. That is why it lives in
+// gvcore, while the surface descriptors come from the OCCT layer gvstep
+// (cpp/occt/step_surfaces.*): the split is the same as for the silhouette and
+// STEP tessellation.
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
 #include <vector>
 
-#include "core/packing.h"     // gv::PackedEdges - упакованные рёбра STEP
-#include "core/quality.h"     // gv::QualityPreset - допуски силуэта и конусов
-#include "gv_types.h"         // gv::ProfilePoint - 2D-профиль тела вращения
+#include "core/packing.h"     // gv::PackedEdges - packed STEP edges
+#include "core/quality.h"     // gv::QualityPreset - silhouette and cone tolerances
+#include "gv_types.h"         // gv::ProfilePoint - 2D profile of a surface of revolution
 
 namespace gv {
 
-// Аналитическая цилиндрическая грань STEP (CylinderSurface в core/gv_types.h):
-// o - точка на оси, d - единичное направление оси, e1/e2 - базис поперечного
-// сечения, arc - дуга грани в радианах (has_arc = false у полного круга),
-// r - радиус, t0/t1 - пределы вдоль оси по вершинам грани, мм.
+// Analytic cylindrical STEP face (CylinderSurface in core/gv_types.h): o - a
+// point on the axis, d - unit axis direction, e1/e2 - cross-section basis, arc -
+// the face arc in radians (has_arc = false for a full circle), r - radius,
+// t0/t1 - limits along the axis by the face vertices, mm.
 struct CylinderSurface {
     double o[3] = {0.0, 0.0, 0.0};
     double d[3] = {0.0, 0.0, 1.0};
@@ -34,9 +34,9 @@ struct CylinderSurface {
     double t1 = 0.0;
 };
 
-// Аналитическая коническая грань STEP (ConeSurface в core/gv_types.h): a - вершина,
-// d - единичное направление оси, psi - полуугол (рад), s0/s1 - пределы
-// параметра образующей (длина вдоль оси / cos psi), мм.
+// Analytic conical STEP face (ConeSurface in core/gv_types.h): a - apex, d - unit
+// axis direction, psi - half-angle (rad), s0/s1 - limits of the slant parameter
+// (length along the axis / cos psi), mm.
 struct ConeSurface {
     double a[3] = {0.0, 0.0, 0.0};
     double d[3] = {0.0, 0.0, 1.0};
@@ -45,9 +45,9 @@ struct ConeSurface {
     double s1 = 0.0;
 };
 
-// Один элемент списка поверхностей. В эталоне это список объектов двух типов, и
-// его порядок (обход граней TopExp_Explorer) виден в порядке семейств, поэтому
-// список хранит вид поверхности, а не два раздельных массива.
+// One element of the surface list. In the reference this is a list of objects of
+// two types, and its order (TopExp_Explorer face traversal) shows in the family
+// order, so the list stores the surface kind rather than two separate arrays.
 struct StepSurface {
     bool is_cylinder = true;
     CylinderSurface cyl;
@@ -56,16 +56,16 @@ struct StepSurface {
 
 using StepSurfaceList = std::vector<StepSurface>;
 
-// Порог длины образующей конуса, число азимутов пробы вогнутости, порог дуги
-// силуэта цилиндра, минимальный пролёт образующей и перекрытие по оси политики
-// DROP теперь идут пресетом качества (core/quality.h): у уровня med это те же
-// _CONE_MIN_SLANT_MM = 2.5 мм, _CONE_PROBE_AZIMUTHS = 8, 85 градусов, 2.5 мм и
-// 2 мм, что в эталоне.
+// The cone slant length threshold, the number of concavity probe azimuths, the
+// cylinder silhouette arc threshold, the minimum slant span and the axial
+// overlap of the DROP policy now come from the quality preset (core/quality.h):
+// at the med level these are the same _CONE_MIN_SLANT_MM = 2.5 mm,
+// _CONE_PROBE_AZIMUTHS = 8, 85 degrees, 2.5 mm and 2 mm as in the reference.
 
-// Суп кожи для политики конусов: треугольники (F,3,3), их центроиды (F,3) и
-// нормаль первого угла грани (F,3) - всё float64, как в эталоне после asarray.
-// `valid` = false повторяет skin_tris = None (кожа не передана или не делится
-// на тройки вершин).
+// Skin soup for the cone policy: triangles (F,3,3), their centroids (F,3) and
+// the first-corner normal of a face (F,3) - all float64, as in the reference
+// after asarray. `valid` = false repeats skin_tris = None (the skin is not
+// passed or is not divisible into vertex triples).
 struct SkinTriangles {
     bool valid = false;
     std::size_t count = 0;
@@ -74,9 +74,9 @@ struct SkinTriangles {
     std::vector<double> skirm;   // (F,3)
 };
 
-// Предвычисленные цилиндрические семейства (CylinderFamilies в core/gv_types.h).
-// Плоские массивы: O/D/E1/E2 - (N,3), R/T0/T1/RREF/A0/A1 - (N,), FULL - (N,),
-// DROP - (N,8) с NaN в незанятых ячейках, ARC - (N,64).
+// Precomputed cylindrical families (CylinderFamilies in core/gv_types.h). Flat
+// arrays: O/D/E1/E2 - (N,3), R/T0/T1/RREF/A0/A1 - (N,), FULL - (N,), DROP -
+// (N,8) with NaN in unused cells, ARC - (N,64).
 struct CylinderFamilies {
     std::vector<double> O;
     std::vector<double> D;
@@ -94,64 +94,68 @@ struct CylinderFamilies {
     std::size_t count = 0;
 };
 
-// Семейства касательных STEP (TangentFamilies в core/gv_types.h).
+// STEP tangent families (TangentFamilies in core/gv_types.h).
 struct TangentFamilies {
     CylinderFamilies cylinders;
     std::vector<ConeSurface> cones;
 };
 
-// Суп кожи -> SkinTriangles: зеркало куска _tangent_families, который готовит
-// sktri/skcen/skirm из skin=(verts, normals). Центроид - среднее трёх вершин,
-// нормаль - первый угол грани; порядок слагаемых как у numpy.
+// Skin soup -> SkinTriangles: mirrors the part of _tangent_families that
+// prepares sktri/skcen/skirm from skin=(verts, normals). The centroid is the
+// mean of three vertices, the normal is the first face corner; the summation
+// order is numpy's.
 SkinTriangles buildSkinTriangles(const std::vector<double>& soup,
                                  const std::vector<float>& normals);
 
-// Предвычисление семейств: зеркало _tangent_families. surfs - в порядке граней
-// STEP; packedEdges (STEP-обводка, если известна) помечает азимуты генераторов,
-// совпадающие со стыковыми рёбрами B-rep; skin - политика конусов. nullptr
-// означает, что данных нет (в эталоне None). Допуски берутся из пресета
-// (core/quality.h): у уровня med они те же, что были у жёстко заданных чисел.
+// Precompute the families: mirrors _tangent_families. surfs - in STEP face
+// order; packedEdges (STEP outline, if known) marks generator azimuths that
+// coincide with B-rep seam edges; skin - the cone policy. nullptr means the data
+// is absent (the reference's None). Tolerances come from the preset
+// (core/quality.h): at the med level they are the same as the former hard-coded
+// numbers.
 TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
                                      const PackedEdges* packedEdges = nullptr,
                                      const SkinTriangles* skin = nullptr,
                                      const QualityPreset& quality = QualityPreset{});
 
-// Семейства касательных тела вращения по 2D-профилю (r, y), мм: постоянный
-// радиус -> полный цилиндр, наклонный участок -> конус. Пороги силуэта STEP
-// (дуга 85 гр, минимальный пролёт 2.5 мм, DROP стыковых рёбер) здесь не
-// применяются: у профиля инструмента короткие секции - это форма, а не шум
-// модели (острие сверла 1.75 мм, сегменты полусферы ~0.2 мм), и порог выбросил
-// бы их. Азимут генератора считает tangentFromFamilies, поэтому математика
-// силуэта одна и та же у детали и у тела вращения.
+// Tangent families of a surface of revolution from a 2D profile (r, y), mm: a
+// constant radius -> a full cylinder, a slanted stretch -> a cone. The STEP
+// silhouette thresholds (85 deg arc, 2.5 mm minimum span, seam-edge DROP) do not
+// apply here: the tool profile has short sections that are shape, not model
+// noise (a drill tip of 1.75 mm, hemisphere segments of ~0.2 mm), and the
+// threshold would throw them out. The generator azimuth is computed by
+// tangentFromFamilies, so the silhouette math is the same for the part and for a
+// surface of revolution.
 TangentFamilies profileTangentFamilies(const std::vector<ProfilePoint>& profile);
 
-// Кадровый проход: обе касательные стороны каждого логического цилиндра и
-// образующие конусов на глазу eyeMm (raw-кадр модели). Результат - плоский ряд
-// (M,2,3) float64: две точки на отрезок, порядок тот же, что у эталона.
+// Per-frame pass: both tangent sides of each logical cylinder and the cone
+// generators at eye eyeMm (raw model frame). The result is a flat row (M,2,3)
+// float64: two points per segment, the same order as the reference.
 std::vector<double> tangentFromFamilies(const TangentFamilies& fam, const double eyeMm[3]);
 
-// Буферы кадрового прохода касательных, переживающие кадр: у Test_model на кадр
-// приходилось 30 выделений и 35 КБ промежуточных векторов и готовых отрезков.
-// Ёмкости здесь, поэтому на кадр остаётся заполнение, а не заведение буферов.
+// Per-frame tangent buffers that survive the frame: Test_model used to allocate
+// 30 buffers and 35 KB of intermediate vectors and finished segments per frame.
+// The capacities live here, so a frame only fills them instead of creating
+// buffers.
 struct TangentScratch {
-    std::vector<double> along;      // (N,) проекция глаза на ось
-    std::vector<double> perp;       // (N,3) плечо глаза от оси
-    std::vector<double> rp;         // (N,) расстояние глаза до оси
-    std::vector<double> mh;         // (N,3) единичное плечо
+    std::vector<double> along;      // (N,) eye projection onto the axis
+    std::vector<double> perp;       // (N,3) eye offset from the axis
+    std::vector<double> rp;         // (N,) eye distance to the axis
+    std::vector<double> mh;         // (N,3) unit offset
     std::vector<double> rot;        // (N,3) d x mh
-    std::vector<double> nrm;        // (N,3) касательная нормаль стороны
-    std::vector<double> cg;         // (N,) cos угла касания
-    std::vector<double> sg;         // (N,) sin угла касания
-    std::vector<double> phi;        // (N,) азимут касания
-    std::vector<double> baseA;      // (N,3) начало образующей (t0)
-    std::vector<double> baseB;      // (N,3) конец образующей (t1)
-    std::vector<std::uint8_t> ok;   // (N,) проходит ли сторона обрезку дуги и DROP
-    std::vector<double> segments;   // (M,2,3) float64 плоским рядом
+    std::vector<double> nrm;        // (N,3) tangent normal of the side
+    std::vector<double> cg;         // (N,) cos of the tangency angle
+    std::vector<double> sg;         // (N,) sin of the tangency angle
+    std::vector<double> phi;        // (N,) tangency azimuth
+    std::vector<double> baseA;      // (N,3) generator start (t0)
+    std::vector<double> baseB;      // (N,3) generator end (t1)
+    std::vector<std::uint8_t> ok;   // (N,) does the side pass the arc trim and DROP
+    std::vector<double> segments;   // (M,2,3) float64 flat row
 };
 
-// Касательные в переданный буфер: scratch.segments очищается и заполняется тем
-// же порядком операций, что и у версии выше (числа те же бит-в-бит); возврат -
-// ссылка на него.
+// Tangents into the given buffer: scratch.segments is cleared and filled with
+// the same order of operations as the version above (the same numbers bit for
+// bit); the return is a reference to it.
 const std::vector<double>& tangentFromFamilies(const TangentFamilies& fam,
                                                const double eyeMm[3],
                                                TangentScratch& scratch);

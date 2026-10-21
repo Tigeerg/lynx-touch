@@ -1,13 +1,14 @@
-// cpp/qmlbackend/gv_toolpath.cpp - контроллер вьювера на C++ (этапы 5.4а - 5.4в).
+// cpp/qmlbackend/gv_toolpath.cpp - the C++ viewer controller (stages 5.4a - 5.4c).
 //
-// Разбор УП, подготовка траектории, модель STEP/STL, обводка и силуэт, профиль
-// инструмента с оправкой и коллизии считаются ядром gvcore и слоем gvstep
-// (Qt-free), установка буферов - геометрии этапа 3 (gvqtgeom). Здесь только
-// состояние контроллера и его контракт с QML.
+// NC parsing, path preparation, the STEP/STL model, outline and silhouette, the
+// tool profile with the holder and collisions are computed by the gvcore core and
+// the gvstep layer (Qt-free); buffer installation is done by the stage 3
+// geometries (gvqtgeom). Here there is only the controller state and its contract
+// with QML.
 //
-// Скан коллизий идёт на пуле потоков: данные пути лежат за shared_ptr, результат
-// возвращается вызовом очереди событий и применяется только при совпадении
-// токена (collision_token_), поэтому устаревший скан не публикуется.
+// The collision scan runs on the thread pool: the path data lives behind
+// shared_ptr, the result returns by an event-queue call and is applied only when
+// the token matches (collision_token_), so a stale scan is not published.
 #include "qmlbackend/gv_toolpath.h"
 
 #include <QByteArray>
@@ -45,22 +46,23 @@
 #include "occt/step_edges.h"
 #include "occt/step_import.h"
 
-// Категория журнала контроллера: отказ стадии виден в выводе вьювера.
+// Controller log category: a stage failure is visible in the viewer output.
 Q_LOGGING_CATEGORY(gvController, "gv.controller")
 
 namespace gvqml {
 
 namespace {
 
-// Отказ стадии: qCWarning плюс строка в stderr.
+// Stage failure: qCWarning plus a line in stderr.
 //
-// Почему два канала: у Qt в сборке PySide6 вывод сообщений по умолчанию выключен -
-// замер показал, что qWarning без установленного обработчика не печатает ничего ни
-// в stdout, ни в stderr, а с qInstallMessageHandler доходит. Одного qCWarning мало:
-// отказ C++-контроллера в процессе вьювера остался бы невидимым. Строка в stderr
-// видна всегда, qCWarning - там, где обработчик сообщений установлен.
-// Монотонные микросекунды: по ним меряется задержка отмены съёма - GUI-поток
-// пишет время запроса, рабочий поток вычитает его из времени остановки.
+// Why two channels: in a Qt built for PySide6 message output is off by default -
+// measurement showed that qWarning without an installed handler prints nothing to
+// stdout or stderr, while with qInstallMessageHandler it gets through. One
+// qCWarning is not enough: a C++ controller failure inside the viewer process
+// would stay invisible. The stderr line is always visible, qCWarning - where a
+// message handler is installed.
+// Monotonic microseconds: they measure the removal cancel latency - the GUI thread
+// writes the request time, the worker thread subtracts it from its stop time.
 long long steadyUs()
 {
     return std::chrono::duration_cast<std::chrono::microseconds>(
@@ -76,22 +78,22 @@ void reportRefusal(const QString &text)
     std::fputc('\n', stderr);
 }
 
-// Ключи тега UI_TOOL в том порядке, что у питоновского ui_tags.parse_ui_tool:
-// QML читает структуру по именам полей, поэтому имена не переводятся.
+// UI_TOOL tag keys in the order of the reference ui_tags.parse_ui_tool: QML reads
+// the structure by field names, so the names are not translated.
 const char *const TOOL_FIELDS[] = {
     "number", "diameter", "corner_radius", "taper_deg", "tip_angle_deg",
     "tip_diameter", "flute_length", "shoulder_length", "body_length",
     "shank_diameter", "overall_length", "flutes",
 };
 
-// Поля UI_TOOL, которые питоновский разбор отдаёт целыми (int(num(...))).
+// UI_TOOL fields that the reference parse returns as integers (int(num(...))).
 bool isToolIntField(const QString &key)
 {
     return key == QLatin1String("number") || key == QLatin1String("flutes");
 }
 
-// Разобранный тег UI_TOOL -> QVariantMap контракта QML ({} без тега: пустая
-// карта - это "инструмент не описан", как пустой dict у эталона).
+// Parsed UI_TOOL tag -> QML contract QVariantMap ({} without the tag: an empty map
+// means "tool not described", like the reference's empty dict).
 QVariantMap toolMap(const gv::ToolInfo &info)
 {
     QVariantMap out;
@@ -112,9 +114,9 @@ QVariantMap toolMap(const gv::ToolInfo &info)
     return out;
 }
 
-// Один и тот же инструмент: у эталона это сравнение двух dict, здесь - полей.
-// setToolStage зовётся на каждую смену этапа, и без сравнения геометрия
-// инструмента пересобиралась бы на каждый вызов.
+// The same tool: in the reference this compares two dicts, here - the fields.
+// setToolStage is called on every stage change, and without the comparison the
+// tool geometry would be rebuilt on every call.
 bool sameTool(const gv::ToolInfo &a, const gv::ToolInfo &b)
 {
     return a.present == b.present && a.number == b.number && a.type == b.type
@@ -126,7 +128,7 @@ bool sameTool(const gv::ToolInfo &a, const gv::ToolInfo &b)
         && a.flutes == b.flutes;
 }
 
-// Буфер ядра (std::vector) -> QByteArray: пустой вектор остаётся пустым массивом.
+// Core buffer (std::vector) -> QByteArray: an empty vector stays an empty array.
 QByteArray toByteArray(const std::vector<unsigned char> &bytes)
 {
     if (bytes.empty())
@@ -134,9 +136,9 @@ QByteArray toByteArray(const std::vector<unsigned char> &bytes)
     return QByteArray(reinterpret_cast<const char *>(bytes.data()), qsizetype(bytes.size()));
 }
 
-// Чтение УП в текст: питоновский путь читает utf-8 с errors="ignore", в C++
-// неполная последовательность заменяется на U+FFFD (недопустимые байты в УП не
-// встречаются, поведение на них названо, а не угадано).
+// Read the NC into text: the reference path reads utf-8 with errors="ignore", in
+// C++ an incomplete sequence is replaced with U+FFFD (invalid bytes do not occur
+// in an NC program; the behaviour on them is named, not guessed).
 bool readTextFile(const QString &path, QString *text)
 {
     QFile file(path);
@@ -148,8 +150,8 @@ bool readTextFile(const QString &path, QString *text)
     return true;
 }
 
-// Сайдкар модели рядом с УП: STEP важнее STL (контур STEP - настоящие рёбра
-// B-Rep, у STL он восстанавливается по двугранному углу).
+// Model sidecar next to the NC program: STEP matters more than STL (the STEP
+// contour is real B-Rep edges, the STL one is recovered by dihedral angle).
 QString findModel(const QString &filepath)
 {
     const QFileInfo info(filepath);
@@ -173,15 +175,15 @@ QString findModel(const QString &filepath)
     }
     if (!QFileInfo::exists(stl))
         return QString();
-    // Разделители как у путей ОС: свойство читают и человек, и питоновский путь
-    // (os.path.abspath у эталона отдаёт обратные слэши).
+    // Separators as in OS paths: the property is read by a human and by the
+    // reference path (the reference's os.path.abspath returns backslashes).
     return QDir::toNativeSeparators(QFileInfo(stl).absoluteFilePath());
 }
 
-// Тяжёлая часть загрузки: разбор УП и подготовка буферов. Свободная функция, а
-// не метод: рабочий поток обязан считать её, не заглядывая в объект контроллера
-// (объект может исчезнуть, пока загрузка идёт). Ни Qt-объектов, ни замков -
-// ядро gvcore чистое.
+// The heavy part of loading: NC parsing and buffer preparation. A free function,
+// not a method: a worker thread must compute it without looking into the controller
+// object (the object may disappear while loading runs). No Qt objects, no locks -
+// the gvcore core is pure.
 std::shared_ptr<const gv::PathData> preparePath(const QString &text)
 {
     const QByteArray utf8 = text.toUtf8();
@@ -191,23 +193,24 @@ std::shared_ptr<const gv::PathData> preparePath(const QString &text)
         gv::prepareOrdered(parsed.ordered, parsed.stages));
 }
 
-// double -> float отдельной функцией: запись float(v) в объявлении с
-// инициализацией компилятор разбирает как параметр функции (v - имя
-// параметра), а не как приведение.
+// double -> float in a separate function: writing float(v) in a declaration with
+// an initializer is parsed by the compiler as a function parameter (v is the
+// parameter name), not as a cast.
 float f32(double v)
 {
     return static_cast<float>(v);
 }
 
-// Машинные (X, Y, Z) -> сцена (X, Z, -Y), как _to_3d у эталона.
+// Machine (X, Y, Z) -> scene (X, Z, -Y), like the reference _to_3d.
 QVector3D toScene(const std::array<double, 3> &p)
 {
     return QVector3D(f32(p[0]), f32(p[2]), f32(-p[1]));
 }
 
-// Кватернион по трём столбцам матрицы поворота: повтор ui_tags.quat_from_cols.
-// Считается в double, к float приводится конструктором QQuaternion - так же, как
-// питоновский вызов QQuaternion(...) с float64-аргументами.
+// Quaternion from three columns of a rotation matrix: mirrors
+// ui_tags.quat_from_cols. Computed in double, converted to float by the
+// QQuaternion constructor - as the reference QQuaternion(...) call with float64
+// arguments.
 QQuaternion quatFromCols(const std::array<double, 9> &matrix)
 {
     const double m00 = matrix[0], m10 = matrix[1], m20 = matrix[2];
@@ -234,9 +237,10 @@ QQuaternion quatFromCols(const std::array<double, 9> &matrix)
                        float((m12 + m21) / s), float(0.25 * s));
 }
 
-// Рёбра STEP до склейки (N,2,3 float64 плоским рядом) -> склейка и упаковка:
-// повтор пары _coalesce_segments + _pack_edge_segments питоновского эталона
-// (controller._load_model_verts, ветка STEP). Допуски склейки - из пресета.
+// STEP edges before welding (N,2,3 float64 flat row) -> welding and packing:
+// mirrors the pair _coalesce_segments + _pack_edge_segments of the reference
+// (controller._load_model_verts, STEP branch). The welding tolerances come from the
+// preset.
 gv::PackedEdges packStepEdges(const std::vector<double> &flat,
                               const gv::QualityPreset &quality)
 {
@@ -262,10 +266,10 @@ gv::PackedEdges packStepEdges(const std::vector<double> &flat,
     return gv::packEdgesNp(p0, p1);
 }
 
-// Ветка STL: суп треугольников, разворот оболочки наружу, crease-aware нормали и
-// топология силуэта - тот же набор, что у питоновского _load_model_verts для STL.
-// Обводка STL приходит не отсюда: её считает отдельный проход (у эталона -
-// _feature_edges в своём потоке, 0.4 с на Test_model.STL).
+// STL branch: triangle soup, shell flip outward, crease-aware normals and
+// silhouette topology - the same set as the reference _load_model_verts for STL.
+// The STL outline does not come from here: it is computed by a separate pass (in
+// the reference - _feature_edges in its own thread, 0.4 s on Test_model.STL).
 bool fillStlModel(const QString &path, ModelData *out, QString *error,
                   const gv::QualityPreset &quality)
 {
@@ -276,7 +280,8 @@ bool fillStlModel(const QString &path, ModelData *out, QString *error,
         *error = QStringLiteral("STL не прочитан или пуст: %1").arg(path);
         return false;
     }
-    // Суп перемещается в кожу и разворачивается на месте: лишней копии супа нет.
+    // The soup is moved into the skin and flipped in place: there is no extra soup
+    // copy.
     out->verts = std::move(soup);
     gv::orientShellOutwardInPlace(out->verts);
     out->normals = gv::smoothFaceNormals(out->verts, quality.creaseDeg);
@@ -284,23 +289,23 @@ bool fillStlModel(const QString &path, ModelData *out, QString *error,
     return true;
 }
 
-// Чтение модели, как питоновский controller._load_model_verts: STEP (суп, рёбра
-// B-Rep до склейки, нормали и поверхности одним проходом) или STL. Обводка STEP
-// склеивается и упаковывается здесь же.
+// Model reading, like the reference controller._load_model_verts: STEP (soup,
+// B-Rep edges before welding, normals and surfaces in one pass) or STL. The STEP
+// outline is welded and packed right here.
 //
-// Отказ возвращает nullptr и текст причины: молчаливого отказа нет.
+// A refusal returns nullptr and the reason text: there is no silent failure.
 //
-// Чтение сериализовано мьютексом: у питоновского эталона ту же роль играет замок
-// _occt (OCP отпускает GIL, и два потока на одной форме портят кучу), а здесь
-// рабочий поток загрузки и синхронный load_gcode могут идти внахлёст.
+// Reading is serialised by a mutex: in the reference the _occt lock plays the same
+// role (OCP releases the GIL, and two threads on one shape corrupt the heap), while
+// here the loading worker thread and a synchronous load_gcode may overlap.
 std::shared_ptr<ModelData> readModelData(const QString &path, QString *used_path,
                                          QString *error)
 {
     static std::mutex read_mutex;
     const std::lock_guard<std::mutex> guard(read_mutex);
 
-    // Уровень читается один раз на загрузку модели: им пользуются обе ветки
-    // чтения и обводка STL (startEdgesTask), а не кадровый проход.
+    // The level is read once per model load: it is used by both reading branches
+    // and by the STL outline (startEdgesTask), but not by the per-frame pass.
     const gv::QualityPreset quality = gv::presetFromEnv();
 
     const QString low = path.toLower();
@@ -324,22 +329,24 @@ std::shared_ptr<ModelData> readModelData(const QString &path, QString *used_path
             gv::loadStepBundleAll(file, quality.stepDeflectionMm,
                                   quality.edgeDeflectionMm, quality.creaseDeg);
         out->is_step = true;
-        // Перемещение: суп, нормали и поверхности едут в материал модели без
-        // копии (на Test_model это около 5 МБ).
+        // Move: the soup, normals and surfaces travel into the model material
+        // without a copy (on Test_model that is about 5 MB).
         out->verts = std::move(all.bundle.verts);
         out->normals = std::move(all.bundle.normals);
         out->surfaces = std::move(all.surfaces);
         out->step_edges = packStepEdges(all.bundle.segments, quality);
         out->has_step_edges = true;
-        // Семейства касательных строятся один раз на модель и живут до её смены:
-        // режим CNC_SILHOUETTE=analytic берёт их на кадре (у эталона то же место).
+        // Tangent families are built once per model and live until it changes: the
+        // CNC_SILHOUETTE=analytic mode takes them per frame (the same place as in
+        // the reference).
         const gv::SkinTriangles skin = gv::buildSkinTriangles(out->verts, out->normals);
         out->families = gv::buildTangentFamilies(out->surfaces, &out->step_edges, &skin,
                                                  quality);
         out->topo = gv::buildSilhouetteTopology(out->verts, quality);
         return out;
     } catch (const std::exception &exc) {
-        // Модель рядом бывает и STL: эталон при отказе STEP переходит на него.
+        // There may be an STL next to the model: the reference falls back to it when
+        // STEP fails.
         const QFileInfo info(path);
         const QString base =
             info.absolutePath() + QLatin1Char('/') + info.completeBaseName();
@@ -372,9 +379,9 @@ std::shared_ptr<ModelData> readModelData(const QString &path, QString *used_path
 GcodeToolpath::GcodeToolpath(QObject *parent)
     : QObject(parent)
 {
-    // Геометрии создаются без родителя: родителем QQuick3DGeometry обязан быть
-    // QQuick3DObject, а контроллер - обычный QObject. Владение остаётся у C++,
-    // иначе QML освободил бы объект, который ещё показывает сцена.
+    // Geometries are created without a parent: the parent of a QQuick3DGeometry must
+    // be a QQuick3DObject, and the controller is a plain QObject. Ownership stays
+    // with C++, otherwise QML would free an object the scene still shows.
     rapid_ = new ToolpathGeometry();
     feed_ = new ToolpathGeometry();
     mesh_ = new MeshGeometry();
@@ -389,9 +396,10 @@ GcodeToolpath::GcodeToolpath(QObject *parent)
     holder_rings_geo_ = new ToolpathGeometry();
     tool_profile_edges_ = new HLRLineGeometry();
     holder_profile_edges_ = new HLRLineGeometry();
-    // Поле съёма текстурой: 1x1 с нулём до первого готового поля. Объект создан
-    // заранее нарочно: Texture в QML, сославшись на пустое свойство, осталась бы
-    // без данных, а рисование берёт поле только в состоянии ready.
+    // Removal field as a texture: 1x1 with a zero until the first ready field. The
+    // object is created in advance on purpose: a Texture in QML referring to an
+    // empty property would be left without data, while drawing takes the field only
+    // in the ready state.
     stock_field_ = new QQuick3DTextureData();
     stock_field_->setFormat(QQuick3DTextureData::R32F);
     stock_field_->setSize(QSize(1, 1));
@@ -404,16 +412,16 @@ GcodeToolpath::GcodeToolpath(QObject *parent)
     for (QObject *object : owned)
         QQmlEngine::setObjectOwnership(object, QQmlEngine::CppOwnership);
 
-    // Ручная поправка положения детали (CNC_OFS_MX/MY/MZ, машинные оси) - то же
-    // чтение окружения, что у эталона.
+    // Manual part position correction (CNC_OFS_MX/MY/MZ, machine axes) - the same
+    // environment read as the reference.
     part_offset_ = {
         qEnvironmentVariable("CNC_OFS_MX", QStringLiteral("0")).toDouble(),
         qEnvironmentVariable("CNC_OFS_MY", QStringLiteral("0")).toDouble(),
         qEnvironmentVariable("CNC_OFS_MZ", QStringLiteral("0")).toDouble(),
     };
 
-    // Оправка постоянна (гайка ER20 и корпус шпинделя): тело, обводка
-    // перевёрнутой оболочкой и кольца строятся один раз, как у эталона.
+    // The holder is constant (ER20 nut and spindle body): the body, the
+    // inverted-hull outline and the rings are built once, as in the reference.
     holder_profile_ = gv::holderSolidProfile();
     setToolProfile(holder_geo_, holder_profile_);
     setToolProfile(holder_outline_geo_,
@@ -426,31 +434,31 @@ GcodeToolpath::GcodeToolpath(QObject *parent)
         holder_radius_ = std::max(holder_radius_, point.radius_mm);
     }
 
-    // Результат рабочего потока приходит сигналом контракта; соединение прямое:
-    // сигнал испускается уже на GUI-потоке (см. load_gcode_async).
+    // The worker-thread result arrives by contract signal; the connection is direct:
+    // the signal is already emitted on the GUI thread (see load_gcode_async).
     connect(this, &GcodeToolpath::toolpathReady, this, &GcodeToolpath::onToolpathReady);
     connect(this, &GcodeToolpath::meshReady, this, &GcodeToolpath::onMeshReady);
 
-    // Отложенно, как у эталона: дать QML закончить привязки, затем сообщить,
-    // чтобы привязки пересчитались.
+    // Deferred, as in the reference: let QML finish binding, then report so the
+    // bindings recompute.
     QTimer::singleShot(0, this, &GcodeToolpath::ready);
 }
 
 GcodeToolpath::~GcodeToolpath()
 {
-    // Задачи пула (загрузка, обводка, скан коллизий) зовут контроллер по this:
-    // reportRefusal из потока и QMetaObject::invokeMethod(this,...). Задача,
-    // живущая дольше объекта, бьёт по мёртвому QObject - SIGSEGV в
-    // QObject::thread на выходе (Test_model.ngc, offscreen, код 139; то же
-    // на точке входа). waitForDone держит GUI-поток, пока задачи
-    // не закончатся: их отложенные вызовы к этому моменту уже не нужны, их
-    // отбрасывает ~QObject. Глобальный пул в этом процессе держит только задачи
-    // контроллера, поэтому ожидание ограничено ими.
+    // Pool tasks (loading, outline, collision scan) call the controller by this:
+    // reportRefusal from a thread and QMetaObject::invokeMethod(this,...). A task
+    // living longer than the object hits a dead QObject - SIGSEGV in
+    // QObject::thread on exit (Test_model.ngc, offscreen, code 139; the same at the
+    // entry point). waitForDone holds the GUI thread until the tasks finish: their
+    // deferred calls are no longer needed by then, and ~QObject discards them. The
+    // global pool in this process holds only the controller's tasks, so the wait is
+    // bounded by them.
     QThreadPool::globalInstance()->waitForDone();
 }
 
 // ---------------------------------------------------------------------------
-// Свойства: данные траектории
+// Properties: path data
 // ---------------------------------------------------------------------------
 QVector3D GcodeToolpath::center() const
 {
@@ -473,8 +481,8 @@ int GcodeToolpath::toolIssueCount() const
 
 double GcodeToolpath::partRadius() const
 {
-    // Полудиагональ габарита кожи: QML берёт её для толщины обводки. Без меша -
-    // 1.0, как у эталона.
+    // Half-diagonal of the skin bounds: QML takes it for the outline thickness.
+    // Without a mesh - 1.0, as in the reference.
     if (!has_mesh_)
         return 1.0;
     double sum = 0.0;
@@ -487,7 +495,7 @@ double GcodeToolpath::partRadius() const
 
 QVector3D GcodeToolpath::toolPosition() const
 {
-    // Машинные (X, Y, Z) -> сцена (X, Z, -Y), как _to_3d у эталона.
+    // Machine (X, Y, Z) -> scene (X, Z, -Y), like the reference _to_3d.
     return QVector3D(float(tool_[0]), float(tool_[2]), float(-tool_[1]));
 }
 
@@ -522,7 +530,7 @@ QQuick3DGeometry *GcodeToolpath::toolProfileEdges() const { return tool_profile_
 QQuick3DGeometry *GcodeToolpath::holderProfileEdges() const { return holder_profile_edges_; }
 
 // ---------------------------------------------------------------------------
-// Слоты QML
+// QML slots
 // ---------------------------------------------------------------------------
 void GcodeToolpath::setToolStage(int index)
 {
@@ -532,17 +540,18 @@ void GcodeToolpath::setToolStage(int index)
     const gv::ToolInfo &spec = stage_specs_[std::size_t(i)];
     if (spec.present && !sameTool(spec, tool_spec_)) {
         applyToolInfo(spec);
-        // Съём здесь не пересчитывается: поле строится по инструментам ЭТАПОВ
-        // программы (stockCutterPlan), а выбранный этап в него не входит.
-        // Перезапуск отменил бы живой обход и вернул поле к полной программе -
-        // на проигрывании это показало бы снятое, которого ещё нет.
+        // Removal is not recomputed here: the field is built from the tools of the
+        // program STAGES (stockCutterPlan), and the selected stage is not part of
+        // it. A restart would cancel the live walk and return the field to the full
+        // program - during playback that would show material not yet removed.
     }
 }
 
 void GcodeToolpath::analyzeCollisions()
 {
-    // Скан идёт вне GUI-потока (эталон - свой поток). Без пути, этапов или
-    // заготовки сканировать нечего: результат пуст, как у эталона без UI_STOCK.
+    // The scan runs off the GUI thread (the reference uses its own thread). Without
+    // a path, stages or stock there is nothing to scan: the result is empty, as in
+    // the reference without UI_STOCK.
     if (!data_ || data_->stages.empty() || !stock_bounds_) {
         collisions_.clear();
         emit collisionsChanged();
@@ -557,7 +566,8 @@ void GcodeToolpath::analyzeCollisions()
     lens.reserve(std::size_t(stage_specs_.size()));
     for (const gv::ToolInfo &spec : stage_specs_)
         lens.push_back(gv::toolExposedLength(spec));
-    // Вылет оправки из UI_HOLDER перекрывает профиль: это настоящий вылет.
+    // The holder gauge length from UI_HOLDER overrides the profile: this is the real
+    // gauge length.
     const double gauge = holder_tag_ && holder_tag_->has_gauge ? holder_tag_->gauge : 0.0;
     if (gauge > 0.0)
         lens.assign(std::max(std::size_t(1), starts.size()), gauge);
@@ -583,7 +593,7 @@ void GcodeToolpath::analyzeCollisions()
         }
         QMetaObject::invokeMethod(this, [this, token, ranges] {
             if (token != collision_token_)
-                return;                              // скан устарел
+                return;                              // the scan is stale
             collisions_.clear();
             for (const gv::CollisionRange &range : ranges)
                 collisions_.append(collisionMap(range));
@@ -599,8 +609,8 @@ void GcodeToolpath::clearStockField()
     stock_count_x_ = 0;
     stock_count_y_ = 0;
     stock_has_field_ = false;
-    // Текстура снова 1x1: прошлые байты не держат память GPU, а QML не остаётся
-    // с текстурой чужого размера, когда поля нет.
+    // The texture is 1x1 again: the previous bytes do not hold GPU memory, and QML
+    // is not left with a texture of a foreign size when there is no field.
     if (stock_field_ != nullptr) {
         stock_field_->setSize(QSize(1, 1));
         stock_field_->setTextureData(QByteArray(4, '\0'));
@@ -610,9 +620,9 @@ void GcodeToolpath::clearStockField()
 
 void GcodeToolpath::startStockSim()
 {
-    // Смена программы отменяет старый проход: генерация растёт, время запроса
-    // пишется до запуска нового. Рабочий видит чужую генерацию и возвращает
-    // неполное поле, которое не публикуется.
+    // A program change cancels the old pass: the generation grows, the request time
+    // is written before the new pass starts. The worker sees a foreign generation and
+    // returns an incomplete field, which is not published.
     const bool was_running = stock_sim_state_ == QLatin1String("computing")
             || stock_tick_in_flight_;
     const std::shared_ptr<StockRunToken> token = stock_token_;
@@ -620,13 +630,13 @@ void GcodeToolpath::startStockSim()
     if (was_running)
         token->cancel_us.store(steadyUs());
 
-    // Поле снимается здесь и только здесь: оно посчитано для прежних пути,
-    // заготовки и инструментов, а новая программа к ним отношения не имеет.
-    // Дальше поле живёт до готового нового - ни полный проход, ни тик, ни
-    // перемотка его не чистят (DESIGN.md: "пока считается - видно последнее
-    // целое поле"). Первый проход программы прежнего поля не имеет, и на экране
-    // остаётся коробка заготовки; отменённый проход не публикует ничего, то есть
-    // оставляет на экране то же последнее целое поле.
+    // The field is dropped here and only here: it was computed for the previous
+    // path, stock and tools, and the new program has nothing to do with them. After
+    // that the field lives until a new one is ready - neither a full pass, nor a
+    // tick, nor a seek clears it (DESIGN.md: "while it computes, the last whole
+    // field is visible"). The first pass of a program has no previous field, and the
+    // stock box stays on screen; a cancelled pass publishes nothing, that is, it
+    // leaves the same last whole field on screen.
     stock_session_.reset();
     stock_tick_in_flight_ = false;
     stock_live_target_ = 0.0;
@@ -635,8 +645,9 @@ void GcodeToolpath::startStockSim()
     stock_sim_time_ms_ = 0.0;
     stock_sim_tick_ms_ = 0.0;
 
-    // Без пути или габарита UI_STOCK считать нечего. Отменённый проход остаётся
-    // в состоянии cancelled (результата нет), иначе - idle (ещё не считали).
+    // Without a path or UI_STOCK bounds there is nothing to compute. A cancelled
+    // pass stays in the cancelled state (no result), otherwise - idle (not computed
+    // yet).
     if (!data_ || !stock_bounds_) {
         const QString next = was_running ? QStringLiteral("cancelled") : QStringLiteral("idle");
         const bool changed = next != stock_sim_state_;
@@ -660,8 +671,9 @@ void GcodeToolpath::startStockSim()
     emit stockSimProgressChanged();
     emit stockSimStateChanged();
 
-    // Полный проход идёт до конца программы: пока оператор не играет, на экране
-    // остаток, снятый всей программой. Живой обход начинается с этого поля.
+    // The full pass runs to the end of the program: while the operator is not
+    // playing, the screen shows the remainder removed by the whole program. The live
+    // walk starts from this field.
     QThreadPool::globalInstance()->start(QRunnable::create(
         [this, generation, token, data, bounds, cell, initial] {
             auto session = std::make_shared<StockSession>();
@@ -669,7 +681,7 @@ void GcodeToolpath::startStockSim()
             auto payload = std::make_shared<StockPassPayload>();
             const double total = data->total;
             payload->total_mm = total;
-            double cancel_ms = -1.0;       // задержка отмены этого прохода, мс
+            double cancel_ms = -1.0;       // the cancel latency of this pass, ms
             double last_progress = 0.0;
             const double report_step = std::max(1e-6, total / 100.0);
             try {
@@ -691,9 +703,9 @@ void GcodeToolpath::startStockSim()
                         },
                         [this, generation, token, report_step, total,
                          &last_progress](double d) {
-                            // Прогресс - по длине пути, как у скана коллизий; в
-                            // очередь идут только шаги в 1 процент, иначе 70
-                            // тысяч событий на программу.
+                            // Progress - by path length, as in the collision scan;
+                            // only 1 percent steps go to the queue, otherwise 70
+                            // thousand events per program.
                             if (d - last_progress < report_step)
                                 return;
                             last_progress = d;
@@ -712,18 +724,18 @@ void GcodeToolpath::startStockSim()
                 payload->failed = true;
             }
             if (payload->cancelled && cancel_ms >= 0.0) {
-                // Отменённый проход не публикует поле. Наружу идёт только замер
-                // задержки: он относится к отмене, а не к результату.
+                // A cancelled pass does not publish a field. Only the latency
+                // measurement goes out: it belongs to the cancel, not to the result.
                 QMetaObject::invokeMethod(this, [this, generation, cancel_ms] {
                     if (generation < stock_cancel_reported_)
-                        return;              // более свежая отмена уже измерена
+                        return;              // a newer cancel is already measured
                     stock_cancel_reported_ = generation;
                     stock_sim_cancel_ms_ = cancel_ms;
                     emit stockSimChanged();
                 }, Qt::QueuedConnection);
             }
             if (payload->cancelled) {
-                return;                      // отменённый проход не публикует ничего
+                return;                      // a cancelled pass publishes nothing
             }
             if (!payload->refused && !payload->failed) {
                 const gv::StockField &field = session->walk.field();
@@ -740,15 +752,15 @@ void GcodeToolpath::startStockSim()
                 payload->count_y = field.countY();
                 payload->has_field = !payload->depth.isEmpty();
                 payload->target_mm = total;
-                // Сброс поля плюс обход: та же цена, что simulateStock отдаёт
-                // двумя числами.
+                // Field reset plus the walk: the same cost that simulateStock
+                // returns as two numbers.
                 payload->time_ms = session->walk.lastResetMs()
                         + session->walk.advanceMs();
                 payload->session = session;
             }
             QMetaObject::invokeMethod(this, [this, generation, token, payload] {
                 if (token->generation.load() != generation)
-                    return;                  // пока считали, программу сменили
+                    return;                  // the program changed while computing
                 applyStockPass(*payload);
             }, Qt::QueuedConnection);
         }));
@@ -756,14 +768,14 @@ void GcodeToolpath::startStockSim()
 
 void GcodeToolpath::stockFollow(double pathDistMm)
 {
-    // Живая публикация: поле должно отражать съём до pathDist. Тик задаёт QML
-    // (около 10 Гц), здесь только цель и запуск; пока тик идёт, вызов двигает
-    // цель, и её догоняет завершение тика.
+    // Live publication: the field must reflect removal up to pathDist. The tick is
+    // set by QML (about 10 Hz), here there is only the target and the start; while a
+    // tick runs, a call moves the target, and the tick completion catches up.
     if (!stock_session_ || !data_ || !(data_->total > 0.0))
-        return;                            // поля ещё нет: первый проход в работе
+        return;                            // no field yet: the first pass is running
     const double target = std::max(0.0, std::min(data_->total, pathDistMm));
     if (target == stock_live_target_ && !stock_tick_in_flight_)
-        return;                            // это уже показано
+        return;                            // this is already shown
     stock_live_target_ = target;
     startStockTick();
 }
@@ -778,8 +790,8 @@ void GcodeToolpath::startStockTick()
     const int generation = token->generation.load();
     const double target = stock_live_target_;
     stock_tick_in_flight_ = true;
-    // Работа идёт, а на экране прежнее целое поле: оно уже не описывает текущий
-    // pathDist, и состояние это говорит.
+    // Work is running, and the screen shows the previous whole field: it no longer
+    // describes the current pathDist, and the state says so.
     if (stock_sim_state_ != QLatin1String("computing")) {
         stock_sim_state_ = QStringLiteral("computing");
         emit stockSimStateChanged();
@@ -792,9 +804,10 @@ void GcodeToolpath::startStockTick()
             payload->target_mm = target;
             double cancel_ms = -1.0;
             try {
-                // Назад по пути обход сам сбрасывает поле и идёт с начала; вперёд -
-                // продолжает с курсора. Оба пути дают одно поле (проверка
-                // stock_live в stock_sim_probe: дайджест равен полному проходу).
+                // Backwards along the path the walk resets the field itself and goes
+                // from the start; forwards it continues from the cursor. Both paths
+                // give one field (the stock_live check in stock_sim_probe: the digest
+                // equals the full pass).
                 payload->cancelled = !session->walk.advanceTo(
                     target, [&token, generation, &cancel_ms](double) {
                         if (token->generation.load() == generation)
@@ -813,8 +826,8 @@ void GcodeToolpath::startStockTick()
                 std::chrono::duration<double, std::milli>(
                     std::chrono::steady_clock::now() - t0).count();
             if (!payload->cancelled && !payload->failed) {
-                // Копия поля на рабочем потоке: частичной загрузки у
-                // QQuick3DTextureData нет, поэтому тик платит за весь буфер.
+                // Field copy on the worker thread: QQuick3DTextureData has no partial
+                // upload, so a tick pays for the whole buffer.
                 const gv::StockField &field = session->walk.field();
                 const std::vector<float> &depth = field.depthMm();
                 payload->depth = depth.empty()
@@ -831,8 +844,9 @@ void GcodeToolpath::startStockTick()
             }
             QMetaObject::invokeMethod(this, [this, token, generation, payload, cancel_ms] {
                 if (token->generation.load() != generation) {
-                    // Пока тик считался, программу сменили или съём отменили:
-                    // тик ничего не публикует, только замер отмены.
+                    // While the tick was computed, the program changed or removal was
+                    // cancelled: the tick publishes nothing, only the cancel
+                    // measurement.
                     if (cancel_ms >= 0.0 && generation >= stock_cancel_reported_) {
                         stock_cancel_reported_ = generation;
                         stock_sim_cancel_ms_ = cancel_ms;
@@ -842,29 +856,30 @@ void GcodeToolpath::startStockTick()
                 }
                 stock_tick_in_flight_ = false;
                 if (payload->failed) {
-                    applyStockPass(*payload);  // состояние перестаёт быть computing
+                    applyStockPass(*payload);  // the state stops being computing
                     return;
                 }
                 if (payload->cancelled || !payload->has_field)
-                    return;                  // неполное поле не публикуется
+                    return;                  // an incomplete field is not published
                 applyStockPass(*payload);
                 if (stock_live_target_ != payload->target_mm)
-                    startStockTick();        // цель сдвинулась за время тика
+                    startStockTick();        // the target moved during the tick
             }, Qt::QueuedConnection);
         }));
 }
 
 void GcodeToolpath::cancelStockSim()
 {
-    // Отмена без замены: генерация растёт, следующий проход начнёт новую.
+    // Cancel without replacement: the generation grows, the next pass starts a new
+    // one.
     if (stock_sim_state_ != QLatin1String("computing"))
         return;
     stock_token_->generation.fetch_add(1);
     stock_token_->cancel_us.store(steadyUs());
     stock_tick_in_flight_ = false;
-    // Новое поле не публикуется, живой обход останавливается: отмена прекращает
-    // работу, но не переписывает уже посчитанное - последнее целое поле остаётся
-    // на экране (если оно было; у отменённого первого прохода его нет).
+    // No new field is published, the live walk stops: a cancel stops the work but
+    // does not rewrite what is already computed - the last whole field stays on
+    // screen (if there was one; a cancelled first pass has none).
     stock_session_.reset();
     stock_sim_state_ = QStringLiteral("cancelled");
     emit stockSimChanged();
@@ -875,9 +890,9 @@ void GcodeToolpath::cancelStockSim()
 void GcodeToolpath::applyStockPass(const StockPassPayload &payload)
 {
     if (payload.refused) {
-        // Инструмент картой высот не выражается: поля нет, на экране коробка
-        // заготовки, причина - в строке отказа (reportRefusal: qCWarning и
-        // stderr, второй канал не заводится).
+        // The tool is not expressible by a height map: there is no field, the screen
+        // shows the stock box, and the reason is in the refusal line (reportRefusal:
+        // qCWarning and stderr, no second channel is added).
         stock_session_.reset();
         clearStockField();
         stock_sim_progress_ = 0.0;
@@ -898,20 +913,21 @@ void GcodeToolpath::applyStockPass(const StockPassPayload &payload)
         return;
     }
     if (!payload.has_field) {
-        return;                            // публиковать нечего
+        return;                            // nothing to publish
     }
-    // Поле подменяется только здесь и только целым: пока тик или перемотка
-    // считались, на экране было прежнее поле, а не смесь.
+    // The field is swapped only here and only whole: while a tick or a seek was
+    // computed, the screen showed the previous field, not a mixture.
     stock_depth_ = payload.depth;
     stock_bounds_list_ = payload.bounds;
     stock_cell_mm_ = payload.cell_mm;
     stock_count_x_ = payload.count_x;
     stock_count_y_ = payload.count_y;
     stock_has_field_ = true;
-    // Та же копия поля идёт текстурой в вершинный шейдер: размер - число узлов,
-    // порядок строк тот же (строка буфера лежит на V = 0), поэтому texcoord узла
-    // - центр его текселя. Обновление - целым буфером: частичной загрузки у
-    // QQuick3DTextureData нет, и это цена тика (замер - stockSimTickMs).
+    // The same field copy goes as a texture to the vertex shader: the size is the
+    // node count, the row order is the same (a buffer row lies at V = 0), so a
+    // node's texcoord is the centre of its texel. The update is the whole buffer:
+    // QQuick3DTextureData has no partial upload, and this is the price of a tick
+    // (measured by stockSimTickMs).
     if (stock_field_ != nullptr) {
         stock_field_->setSize(QSize(stock_count_x_, stock_count_y_));
         stock_field_->setFormat(QQuick3DTextureData::R32F);
@@ -922,14 +938,16 @@ void GcodeToolpath::applyStockPass(const StockPassPayload &payload)
         ? std::max(0.0, std::min(1.0, payload.target_mm / payload.total_mm))
         : 0.0;
     if (payload.session) {
-        // Полный проход: с его поля начинается живой обход. Время - сброс поля
-        // плюс обход; замер идёт в ядре, на том же рабочем потоке.
+        // Full pass: the live walk starts from its field. The time is the field
+        // reset plus the walk; the measurement runs in the core, on the same worker
+        // thread.
         stock_session_ = payload.session;
         stock_live_target_ = payload.target_mm;
         stock_sim_time_ms_ = payload.time_ms;
         stock_sim_tick_ms_ = 0.0;
     } else {
-        // Тик: обход продолжен с курсора, плюс копия поля на рабочем потоке.
+        // Tick: the walk continued from the cursor, plus the field copy on the
+        // worker thread.
         stock_sim_tick_ms_ = payload.time_ms;
     }
     stock_sim_state_ = QStringLiteral("ready");
@@ -940,8 +958,9 @@ void GcodeToolpath::applyStockPass(const StockPassPayload &payload)
 
 void GcodeToolpath::setMachineTools(const QVariantList &tools)
 {
-    // Таблица стойки: [{number, length, name, enabled}], length - измеренный
-    // вылет (мм). Номер без числа (нераспознанный) пропускается, как у эталона.
+    // Machine table: [{number, length, name, enabled}], length - the measured gauge
+    // length (mm). A number without a value (unrecognised) is skipped, as in the
+    // reference.
     machine_tools_.clear();
     for (const QVariant &item : tools) {
         const QVariantMap map = item.toMap();
@@ -960,7 +979,7 @@ void GcodeToolpath::setMachineTools(const QVariantList &tools)
 
 void GcodeToolpath::setMachineLimits(const QVariantMap &limits)
 {
-    // Пустая карта у эталона ложна: пределы тогда не заданы, а не нулевые.
+    // An empty map is false in the reference: the limits are then unset, not zero.
     machine_limits_ = gv::MachineLimits{};
     if (!limits.isEmpty()) {
         machine_limits_.present = true;
@@ -995,8 +1014,8 @@ void GcodeToolpath::setToolTip(const QVector3D &tip)
 
 void GcodeToolpath::refreshTangents(const QVector3D &view_point)
 {
-    // Глаз приходит в кадре сцены; в raw-кадр модели его переводит обратная
-    // трансформа детали (та же, что у видимой геометрии).
+    // The eye arrives in the scene frame; it is converted to the raw model frame by
+    // the inverse part transform (the same one the visible geometry uses).
     const QVector3D eye(view_point.x() - part_position_.x(),
                         view_point.y() - part_position_.y(),
                         view_point.z() - part_position_.z());
@@ -1004,23 +1023,26 @@ void GcodeToolpath::refreshTangents(const QVector3D &view_point)
     eye_raw_ = raw;
     emit eyeChanged();
 
-    // Рёбра инструмента и оправки - тоже силуэт: генераторы на текущем глазу.
-    // Считаются до веток модели, чтобы тело вращения жило и без детали.
+    // Tool and holder edges are also a silhouette: generators at the current eye.
+    // They are computed before the model branches so the surface of revolution lives
+    // even without a part.
     view_point_ = view_point;
     has_view_point_ = true;
     refreshProfileEdges();
 
-    // Режим задаёт CNC_SILHOUETTE: mesh (умолчание) - силуэт по топологии меша,
-    // analytic - касательные образующие цилиндров и конусов STEP.
+    // The mode is set by CNC_SILHOUETTE: mesh (default) - silhouette from the mesh
+    // topology, analytic - tangent generators of STEP cylinders and cones.
     //
-    // Модель без меша выходит здесь же, как эталон: ничего не публикуется и не
-    // отказывает. Слот зовётся на каждое движение камеры (десятки раз в секунду),
-    // поэтому отказ считается один раз (warnDeferred), а не построчно.
+    // A model without a mesh exits right here, as in the reference: nothing is
+    // published and nothing fails. The slot is called on every camera move (dozens
+    // of times per second), so the failure is counted once (warnDeferred), not line
+    // by line.
     const double eye_mm[3] = {double(raw.x()), double(raw.y()), double(raw.z())};
     const QByteArray mode = qgetenv("CNC_SILHOUETTE").trimmed().toLower();
-    // Буферы кадра лежат в объекте: на кадр остаются те же числа, но без
-    // заведения промежуточных векторов. Силуэт заполняется прямо в sil_scratch_,
-    // касательные - в tan_scratch_ (float64) с переводом в tan_segments_ (float32).
+    // The frame buffers live in the object: a frame keeps the same numbers but does
+    // not create intermediate vectors. The silhouette is filled directly into
+    // sil_scratch_, the tangents - into tan_scratch_ (float64) with a conversion to
+    // tan_segments_ (float32).
     const std::vector<float> *segments = nullptr;
     try {
         if (mode == QByteArrayLiteral("analytic")) {
@@ -1052,12 +1074,13 @@ void GcodeToolpath::refreshTangents(const QVector3D &view_point)
                          .arg(QString::fromUtf8(exc.what())));
         return;
     }
-    // Публикация вне try, как было: отказ самого setSegments - не отказ силуэта.
+    // Publication outside try, as before: a failure of setSegments itself is not a
+    // silhouette failure.
     setSilhouetteSegments(*segments);
 }
 
-// Публикация силуэта: у эталона - set_segments сегментов float32, пустой список
-// означает снятие слоя.
+// Silhouette publication: in the reference it is set_segments of float32 segments,
+// an empty list means the layer is removed.
 void GcodeToolpath::setSilhouetteSegments(const std::vector<float> &segments)
 {
     if (segments.empty()) {
@@ -1073,7 +1096,7 @@ int GcodeToolpath::load_gcode(const QString &filepath)
     QString text;
     if (!readTextFile(filepath, &text))
         return 0;
-    const int count = load_string(text);           // у строки модели нет
+    const int count = load_string(text);           // a string has no model
     applyModelPath(findModel(filepath));
     return count;
 }
@@ -1083,17 +1106,18 @@ bool GcodeToolpath::loadModel(const QString &filepath)
     const QFileInfo info(filepath);
     if (!info.exists())
         return false;
-    // Устаревшая асинхронная загрузка отменяется: её результат к этой модели
-    // отношения не имеет (у эталона тот же счётчик _load_token).
+    // A stale asynchronous load is cancelled: its result has nothing to do with
+    // this model (the reference has the same _load_token counter).
     ++(*load_token_);
     applyModelPath(QDir::toNativeSeparators(info.absoluteFilePath()));
-    emit loadFinished();                           // вся загрузка сделана здесь же
+    emit loadFinished();                           // the whole load is done right here
     return true;
 }
 
-// Загрузка модели по пути: чтение (STEP или STL) и публикация кожи с обводкой.
-// Синхронный путь - load_gcode и loadModel; пустой путь означает, что модели нет,
-// и тогда публикуется пустая кожа, как у эталона (_apply_mesh_verts(None)).
+// Model loading by path: reading (STEP or STL) and publishing the skin with the
+// outline. The synchronous path - load_gcode and loadModel; an empty path means
+// there is no model, and then an empty skin is published, as in the reference
+// (_apply_mesh_verts(None)).
 void GcodeToolpath::applyModelPath(const QString &path)
 {
     QString error;
@@ -1118,9 +1142,9 @@ int GcodeToolpath::load_gcode_async(const QString &filepath)
     QString text;
     if (!readTextFile(filepath, &text))
         return 0;
-    // Токен делает устаревший результат невидимым: новая загрузка его отменяет.
-    // Счётчик взят по указателю и передан рабочему потоку копией: он переживёт
-    // контроллер, поэтому поток читает счётчик, а не объект.
+    // The token makes a stale result invisible: a new load cancels it. The counter
+    // is taken by pointer and passed to the worker thread by copy: it outlives the
+    // controller, so the thread reads the counter, not the object.
     const std::shared_ptr<std::atomic<int>> token_ref = load_token_;
     const int token = ++(*token_ref);
     setLoading(true);
@@ -1133,7 +1157,8 @@ int GcodeToolpath::load_gcode_async(const QString &filepath)
             } catch (const std::exception &exc) {
                 reportRefusal(QStringLiteral("разбор УП не прошёл: %1 (%2)")
                                   .arg(filepath, QString::fromUtf8(exc.what())));
-                // Отказ виден и в состоянии: оверлей загрузки не остаётся навсегда.
+                // The failure is visible in the state too: the loading overlay does
+                // not stay forever.
                 QMetaObject::invokeMethod(this, [this] {
                     setLoading(false);
                     emit loadFinished();
@@ -1141,22 +1166,24 @@ int GcodeToolpath::load_gcode_async(const QString &filepath)
                 return;
             }
             if (token != token_ref->load())
-                return;                   // загрузку обогнала новая - результат не нужен
+                return;                   // a new load overtook this one - the result is not needed
             PreparedPath payload;
             payload.token = token;
             payload.text = *shared;
             payload.data = data;
-            // Сайдкар модели разрешает рабочий поток, как у эталона (_worker_load).
+            // The worker thread resolves the model sidecar, as in the reference
+            // (_worker_load).
             payload.model_path = findModel(filepath);
-            // Сигнал испускается на GUI-потоке: вызов отменяется, если объекта
-            // контроллера к этому моменту уже нет.
+            // The signal is emitted on the GUI thread: the call is cancelled if the
+            // controller object is already gone by then.
             QMetaObject::invokeMethod(this, [this, payload] {
                 emit toolpathReady(QVariant::fromValue(payload));
             }, Qt::QueuedConnection);
 
-            // Вторая фаза: модель рядом с УП (STEP важнее STL). Читается здесь же,
-            // на рабочем потоке; в буферы её ставит GUI-поток (meshReady). Обводка
-            // STL идёт третьим проходом (startEdgesTask).
+            // Second phase: the model next to the NC program (STEP matters more than
+            // STL). It is read right here, on the worker thread; the GUI thread puts
+            // it into the buffers (meshReady). The STL outline is a third pass
+            // (startEdgesTask).
             const QString model_path = payload.model_path;
             QString error;
             QString used = model_path;
@@ -1172,7 +1199,7 @@ int GcodeToolpath::load_gcode_async(const QString &filepath)
                     reportRefusal(error);
             }
             if (token != token_ref->load())
-                return;                   // загрузку обогнала новая - модель не нужна
+                return;                   // a new load overtook this one - the model is not needed
             PreparedModel model_payload;
             model_payload.token = token;
             model_payload.path = model ? used : model_path;
@@ -1186,7 +1213,7 @@ int GcodeToolpath::load_gcode_async(const QString &filepath)
 
 int GcodeToolpath::load_string(const QString &text)
 {
-    setModelPath(QString());             // у строки нет файла рядом
+    setModelPath(QString());             // a string has no file nearby
     std::shared_ptr<const gv::PathData> data;
     try {
         data = preparePath(text);
@@ -1196,10 +1223,11 @@ int GcodeToolpath::load_string(const QString &text)
         return 0;
     }
     applyToolpathData(data, text);
-    mesh_->reset();                      // строка: у программы нет модели
+    mesh_->reset();                      // a string: the program has no model
     clearEdges();
-    // Габарит кожи и силуэт прошлой модели эталон здесь не сбрасывает: строка
-    // приходит без файла, а состояние модели живёт до следующей модели.
+    // The reference does not reset the skin bounds and the previous model's
+    // silhouette here: the string comes without a file, and the model state lives
+    // until the next model.
     emit meshChanged();
     return data->seg_count;
 }
@@ -1237,16 +1265,16 @@ double GcodeToolpath::speedAt(double d) const
 }
 
 // ---------------------------------------------------------------------------
-// Приватная часть
+// Private part
 // ---------------------------------------------------------------------------
 void GcodeToolpath::onToolpathReady(const QVariant &payload)
 {
     const PreparedPath result = payload.value<PreparedPath>();
     if (result.token != load_token_->load())
-        return;                          // результат отменённой загрузки
+        return;                          // result of a cancelled load
     setModelPath(result.model_path);
     applyToolpathData(result.data, result.text);
-    mesh_->reset();                      // кожу поставит фаза модели
+    mesh_->reset();                      // the model phase will set the skin
     clearEdges();
     emit meshChanged();
     emit toolpathLoaded(result.data->seg_count);
@@ -1256,10 +1284,10 @@ void GcodeToolpath::onMeshReady(const QVariant &payload)
 {
     const PreparedModel result = payload.value<PreparedModel>();
     if (result.token != load_token_->load())
-        return;                          // модель отменённой загрузки
+        return;                          // model of a cancelled load
     setModelPath(result.path);
     applyModelData(result.model);
-    // Кожа и обводка стоят: оверлей загрузки уходит, как у эталона.
+    // Skin and outline are set: the loading overlay goes away, as in the reference.
     setLoading(false);
     emit loadFinished();
 }
@@ -1268,8 +1296,9 @@ void GcodeToolpath::applyToolpathData(const std::shared_ptr<const gv::PathData> 
                                       const QString &text)
 {
     data_ = data;
-    // Теги сцены идут первыми, как у эталона: трансформа детали собирается из них
-    // и из габарита кожи, а путь публикуется уже с готовым положением детали.
+    // Scene tags come first, as in the reference: the part transform is assembled
+    // from them and from the skin bounds, and the path is published with the part
+    // position already set.
     applySceneTags(text);
     stage_specs_.clear();
     stage_specs_.reserve(data->stages.size());
@@ -1282,15 +1311,17 @@ void GcodeToolpath::applyToolpathData(const std::shared_ptr<const gv::PathData> 
             break;
         }
     }
-    // Инструмент без единого UI_TOOL в этапах берётся из тега в тексте УП - как у
-    // эталона (_apply_tool_info(parse_ui_tool(text))). Он же - инструмент программы
-    // до первого тега этапа: съём не должен зависеть от выбранного этапа.
+    // A tool without a single UI_TOOL in the stages is taken from the tag in the NC
+    // text - as in the reference (_apply_tool_info(parse_ui_tool(text))). It is also
+    // the program tool before the first stage tag: removal must not depend on the
+    // selected stage.
     program_tool_ = first.present ? first : gv::parseUiTool(text.toStdString());
     applyToolInfo(program_tool_);
 
-    // Заготовка (UI_STOCK) публикуется до трансформы: подгонка модели под её
-    // нижний угол без заготовки не работает. Оправка (UI_HOLDER) и её вылет
-    // разобраны в applySceneTags; скан коллизий и сверка со станком идут ниже.
+    // The stock (UI_STOCK) is published before the transform: fitting the model to
+    // its lower corner does not work without the stock. The holder (UI_HOLDER) and
+    // its gauge length are parsed in applySceneTags; the collision scan and the
+    // machine check run below.
     emit stockChanged();
     rebuildPartTransform();
 
@@ -1313,16 +1344,16 @@ void GcodeToolpath::applyToolpathData(const std::shared_ptr<const gv::PathData> 
     rapid_->setPacked(toByteArray(data->rapid_stream.bytes), bounds, data->rapid_stream.nv);
     feed_->setPacked(toByteArray(data->feed_stream.bytes), bounds, data->feed_stream.nv);
     emit pathChanged();
-    analyzeCollisions();                 // скан коллизий оправки с заготовкой
-    startStockSim();                     // съём материала по всей программе в фоне
-    runToolCheck();                      // сверка УП со станочной таблицей
+    analyzeCollisions();                 // holder collisions with the stock
+    startStockSim();                     // material removal over the whole program in the background
+    runToolCheck();                      // NC check against the machine table
 }
 
 void GcodeToolpath::applyToolInfo(const gv::ToolInfo &spec)
 {
-    // Профиль инструмента (core/tooling): тело вращения, обводка перевёрнутой
-    // оболочкой и кольца рёбер. Пустой профиль оставляет геометрии пустыми, как
-    // у эталона set_profile(None).
+    // Tool profile (core/tooling): a surface of revolution, an inverted-hull outline
+    // and edge rings. An empty profile leaves the geometries empty, like the
+    // reference set_profile(None).
     tool_spec_ = spec;
     tool_info_ = toolMap(spec);
     tool_profile_ = spec.present ? gv::toolProfile(spec) : std::vector<gv::ProfilePoint>{};
@@ -1335,8 +1366,8 @@ void GcodeToolpath::applyToolInfo(const gv::ToolInfo &spec)
         tool_length_ = std::max(tool_length_, point.height_mm);
         tool_radius_ = std::max(tool_radius_, point.radius_mm);
     }
-    // Обводка силуэта: профиль, раздвинутый на `pad`; QML гасит ближние грани,
-    // поэтому виден только наружный контур.
+    // Silhouette outline: the profile pushed out by `pad`; QML hides the near faces,
+    // so only the outer contour is visible.
     const double pad = std::max(0.12, 0.05 * tool_radius_);
     setToolProfile(tool_outline_geo_,
                    profile.empty() ? profile : gv::toolOutlineProfile(profile, pad));
@@ -1348,7 +1379,7 @@ void GcodeToolpath::applyToolInfo(const gv::ToolInfo &spec)
 }
 
 // ---------------------------------------------------------------------------
-// Инструмент, оправка и коллизии
+// Tool, holder and collisions
 // ---------------------------------------------------------------------------
 void GcodeToolpath::setToolProfile(ToolGeometry *geo, const std::vector<gv::ProfilePoint> &profile)
 {
@@ -1391,14 +1422,15 @@ void GcodeToolpath::setProfileEdges(HLRLineGeometry *geo,
                                     const double eye_mm[3],
                                     gv::TangentScratch &scratch)
 {
-    // Рёбра тела вращения теми же лентами, что у детали (stepledges): набор
-    // отрезков в кадре профиля (острие в нуле, ось +Y). Горизонтальные кольца -
-    // та же выборка profileRingPoints, что у toolRings, поэтому кромки ложатся
-    // на настоящие рёбра профиля. Продольные образующие - настоящий силуэт:
-    // tangentFromFamilies по профилю на текущем глазу, поэтому на цилиндре
-    // остаются две касательные, а не шов на фиксированном азимуте. Смещение к
-    // глазу и перекрытие с телом даёт материал (polyOffset) и depthBias -50000,
-    // поэтому радиальный отжим FLOAT_SCALE (setReference) здесь не нужен.
+    // Edges of a surface of revolution as the same ribbons as the part
+    // (stepledges): a set of segments in the profile frame (the tip at zero, axis
+    // +Y). The horizontal rings are the same profileRingPoints sampling as
+    // toolRings, so the edges land on real profile edges. The longitudinal
+    // generators are the real silhouette: tangentFromFamilies over the profile at
+    // the current eye, so a cylinder keeps two tangents instead of a seam at a fixed
+    // azimuth. The offset toward the eye and the overlap with the body come from the
+    // material (polyOffset) and depthBias -50000, so the radial FLOAT_SCALE offset
+    // (setReference) is not needed here.
     const std::vector<gv::ProfilePoint> ring_pts = gv::profileRingPoints(profile);
     if (ring_pts.empty()) {
         geo->setSegments(nullptr, 0);
@@ -1425,8 +1457,8 @@ void GcodeToolpath::setProfileEdges(HLRLineGeometry *geo,
 
 void GcodeToolpath::refreshProfileEdges()
 {
-    // Профиль и оправка живут в кадре сцены без поворота: ось +Y, острие в
-    // tool_tip_, низ оправки сдвинут на holderBase (как в QML).
+    // The profile and the holder live in the scene frame without a rotation: axis
+    // +Y, the tip at tool_tip_, the holder bottom shifted by holderBase (as in QML).
     if (!has_view_point_) {
         return;
     }
@@ -1449,7 +1481,7 @@ QVariantMap GcodeToolpath::toolCheckMap(const gv::ToolCheckRow &row)
     map.insert(QStringLiteral("name"), QString::fromUtf8(row.name.c_str()));
     map.insert(QStringLiteral("ncLength"), row.nc_length);
     map.insert(QStringLiteral("depth"), row.depth);
-    // Нет измеренной длины у стойки - None, как у эталона.
+    // No measured machine length - None, as in the reference.
     map.insert(QStringLiteral("machineLength"),
                row.has_machine_length ? QVariant(row.machine_length) : QVariant());
     map.insert(QStringLiteral("delta"), row.has_delta ? QVariant(row.delta) : QVariant());
@@ -1472,7 +1504,7 @@ QVariantMap GcodeToolpath::collisionMap(const gv::CollisionRange &range)
 
 
 // ---------------------------------------------------------------------------
-// Модель, обводка и трансформа детали
+// Model, outline and part transform
 // ---------------------------------------------------------------------------
 void GcodeToolpath::applySceneTags(const QString &text)
 {
@@ -1487,34 +1519,35 @@ void GcodeToolpath::applySceneTags(const QString &text)
     cad_origin_ = origin ? *origin : std::array<double, 3>{0.0, 0.0, 0.0};
 
     const std::optional<std::array<double, 6>> stock = gv::parseUiStock(utf8);
-    stock_bounds_ = stock;                               // габарит для скана коллизий
+    stock_bounds_ = stock;                               // bounds for the collision scan
     if (stock) {
         const std::array<double, 6> &s = *stock;         // xmin, xmax, ymin, ymax, zmin, zmax
         const std::array<double, 3> center{(s[0] + s[1]) / 2.0,
                                            (s[2] + s[3]) / 2.0,
                                            (s[4] + s[5]) / 2.0};
-        stock_center_ = toScene(center);                 // машинные -> сцена
+        stock_center_ = toScene(center);                 // machine -> scene
         stock_size_ = QVector3D(f32(s[1] - s[0]), f32(s[5] - s[4]), f32(s[3] - s[2]));
-        stock_lower_m_ = {s[0], s[2], s[4]};             // нижний угол, машинные
+        stock_lower_m_ = {s[0], s[2], s[4]};             // lower corner, machine
         has_stock_ = true;
     } else {
-        // Габарита в теге нет: заготовка снимается, а её прежние числа остаются
-        // (у эталона те же строки и тот же порядок: QML их читает только при
-        // hasStock).
+        // There is no bounds in the tag: the stock is removed, and its previous
+        // numbers stay (the reference has the same lines and the same order: QML
+        // reads them only when hasStock).
         has_stock_ = false;
     }
 
-    // Оправка: вылет (holderGauge) и имя. Без тега вылет нулевой, и скан
-    // коллизий берёт вылет из профиля инструмента, как у эталона.
+    // Holder: gauge length (holderGauge) and name. Without the tag the gauge length
+    // is zero, and the collision scan takes the gauge length from the tool profile,
+    // as in the reference.
     holder_tag_ = gv::parseUiHolder(utf8);
     holder_gauge_ = holder_tag_ && holder_tag_->has_gauge ? holder_tag_->gauge : 0.0;
 }
 
 void GcodeToolpath::rebuildPartTransform()
 {
-    // Итоговая трансформа: сцена <- база <- WCS <- CAD (эталон
-    // _rebuild_part_transform). База разворачивает машинный Z-вверх в сцену
-    // Y-вверх, WCS и CAD приходят тегами UI_ROTATION/UI_ORIGIN/UI_CAD_MATRIX.
+    // The final transform: scene <- base <- WCS <- CAD (the reference
+    // _rebuild_part_transform). The base turns machine Z-up into scene Y-up, WCS and
+    // CAD come from the tags UI_ROTATION/UI_ORIGIN/UI_CAD_MATRIX.
     const QQuaternion q_base = QQuaternion::fromEulerAngles(-90.0f, 0.0f, 0.0f);
     const QQuaternion q_wcs = QQuaternion::fromEulerAngles(f32(rot_[0]), f32(rot_[1]),
                                                            f32(rot_[2]));
@@ -1525,18 +1558,18 @@ void GcodeToolpath::rebuildPartTransform()
         q_cad = quatFromCols(cad_matrix_);
         t_cad = QVector3D(f32(cad_origin_[0]), f32(cad_origin_[1]), f32(cad_origin_[2]));
     } else {
-        q_cad = QQuaternion(1.0f, 0.0f, 0.0f, 0.0f);     // CAD-трансформы нет
+        q_cad = QQuaternion(1.0f, 0.0f, 0.0f, 0.0f);     // no CAD transform
     }
-    const QQuaternion q_m = q_wcs * q_cad;               // CAD -> машинные
+    const QQuaternion q_m = q_wcs * q_cad;               // CAD -> machine
     const QQuaternion q = q_base * q_m;
 
     QVector3D t;
     if (has_stock_ && has_mesh_) {
-        // Асимметричная подгонка: нижний угол повёрнутого габарита модели
-        // совмещается с нижним углом заготовки.
+        // Asymmetric fit: the lower corner of the rotated model bounds is aligned
+        // with the lower corner of the stock.
         double rmin[3] = {1e30, 1e30, 1e30};
-        // Углы габарита: для каждой оси - обе границы, порядок обхода как у
-        // эталона (lo, hi) по x, затем по y, затем по z.
+        // Bounds corners: for each axis - both limits, traversal order as in the
+        // reference (lo, hi) over x, then y, then z.
         const double corners[3][2] = {{mesh_lo_[0], mesh_hi_[0]},
                                       {mesh_lo_[1], mesh_hi_[1]},
                                       {mesh_lo_[2], mesh_hi_[2]}};
@@ -1557,12 +1590,13 @@ void GcodeToolpath::rebuildPartTransform()
                                           stock_lower_m_[2] - rmin[2]};
         t = q_base.rotatedVector(QVector3D(f32(shift[0]), f32(shift[1]), f32(shift[2])));
     } else {
-        // Регистрация без переноса (флаг _part_auto_center у эталона всегда
-        // включён): центр кожи повёрнутой модели ставится в центр траектории.
+        // Registration without transfer (the reference _part_auto_center flag is
+        // always on): the skin centre of the rotated model is placed at the path
+        // centre.
         const QVector3D rc = q.rotatedVector(mesh_center_);
         t = center() - rc;
     }
-    t += toScene(part_offset_);                          // машинные оси -> сцена
+    t += toScene(part_offset_);                          // machine axes -> scene
     part_rotation_ = q;
     part_position_ = t;
     emit partTransformChanged();
@@ -1570,23 +1604,25 @@ void GcodeToolpath::rebuildPartTransform()
 
 void GcodeToolpath::applyModelData(const std::shared_ptr<const ModelData> &model)
 {
-    // Порядок как у эталона (_apply_mesh_verts): снять прошлую кожу, обводку и
-    // силуэт, затем поставить новую кожу и запустить обводку отдельным проходом.
+    // Order as in the reference (_apply_mesh_verts): drop the previous skin, outline
+    // and silhouette, then set the new skin and start the outline as a separate pass.
     mesh_->reset();
-    clearEdges();                                        // свежая пустая обводка
-    hlr_tangents_->setSegments(nullptr, 0);              // силуэт прошлой модели убран
+    clearEdges();                                        // fresh empty outline
+    hlr_tangents_->setSegments(nullptr, 0);              // the previous model's silhouette removed
     mesh_center_ = QVector3D(0.0f, 0.0f, 0.0f);
     has_mesh_ = false;
     const int token = ++edge_token_;
 
-    // Состояние чтения модели публикуется даже у меша без вершин: эталон ставит
-    // его в _load_model_verts, до установки кожи. Отказ чтения сбрасывает рёбра
-    // B-Rep и нормали, а поверхности и семейства оставляет прежними - тоже как
-    // эталон (их переписывает только удачная ветка STEP).
+    // The model read state is published even for a mesh without vertices: the
+    // reference sets it in _load_model_verts, before installing the skin. A read
+    // failure resets the B-Rep edges and normals, and leaves the surfaces and
+    // families as before - also like the reference (only a successful STEP branch
+    // rewrites them).
     has_step_edges_ = model ? model->has_step_edges : false;
     step_edges_ = model ? model->step_edges : gv::PackedEdges{};
-    // Уровень качества едет с моделью: им пользуются обводка STL (startEdgesTask)
-    // и кадровый проход по семействам. Без модели остаётся прежний.
+    // The quality level travels with the model: it is used by the STL outline
+    // (startEdgesTask) and the per-frame pass over the families. Without a model the
+    // previous one stays.
     if (model)
         quality_ = model->quality;
     if (model && model->is_step) {
@@ -1594,7 +1630,7 @@ void GcodeToolpath::applyModelData(const std::shared_ptr<const ModelData> &model
         tan_fams_ = model->families;
         has_tan_fams_ = true;
     } else if (model) {
-        rev_surfaces_.clear();                           // STL: поверхностей нет
+        rev_surfaces_.clear();                           // STL: no surfaces
         tan_fams_ = gv::TangentFamilies{};
         has_tan_fams_ = false;
     }
@@ -1602,8 +1638,8 @@ void GcodeToolpath::applyModelData(const std::shared_ptr<const ModelData> &model
 
     const bool has_verts = model && !model->verts.empty();
     if (has_verts) {
-        // Нормали приходят float32 (F,3,3); MeshGeometry принимает double и сам
-        // приводит их к float32 - значение от этого не меняется.
+        // Normals arrive as float32 (F,3,3); MeshGeometry takes double and casts them
+        // to float32 itself - the value does not change.
         std::vector<double> normals;
         if (model->normals.size() == model->verts.size()) {
             normals.reserve(model->normals.size());
@@ -1625,9 +1661,9 @@ void GcodeToolpath::applyModelData(const std::shared_ptr<const ModelData> &model
         has_mesh_ = true;
         has_topo_ = true;
         startEdgesTask(model, token);
-        rebuildPartTransform();                          // габарит кожи изменился
+        rebuildPartTransform();                          // the skin bounds changed
     } else {
-        mesh_topo_ = gv::MeshTopology{};                 // меша нет - силуэта нет
+        mesh_topo_ = gv::MeshTopology{};                 // no mesh - no silhouette
         has_topo_ = false;
     }
     emit meshChanged();
@@ -1635,11 +1671,11 @@ void GcodeToolpath::applyModelData(const std::shared_ptr<const ModelData> &model
 
 void GcodeToolpath::startEdgesTask(const std::shared_ptr<const ModelData> &model, int token)
 {
-    // Обводка вторым проходом (эталон - поток _compute_edges): STEP отдаёт её
-    // готовой из чтения модели, STL считает рёбра по двугранному углу и допуску
-    // упрощения пресета (у med - 20 градусов и 0.15 мм). Работа идёт вне
-    // GUI-потока, результат применяется по токену: обводка устаревшей модели не
-    // публикуется.
+    // Outline in a second pass (the reference uses the _compute_edges thread): STEP
+    // gives it ready from the model read, STL computes edges by the preset's
+    // dihedral angle and simplification tolerance (20 degrees and 0.15 mm at med).
+    // The work runs off the GUI thread, the result is applied by token: the outline
+    // of a stale model is not published.
     const std::shared_ptr<const ModelData> shared = model;
     const gv::QualityPreset quality = model ? model->quality : gv::QualityPreset{};
     QThreadPool::globalInstance()->start(QRunnable::create([this, token, shared, quality] {
@@ -1658,7 +1694,7 @@ void GcodeToolpath::startEdgesTask(const std::shared_ptr<const ModelData> &model
         }
         QMetaObject::invokeMethod(this, [this, token, packed] {
             if (token != edge_token_)
-                return;                                  // обводка устарела
+                return;                                  // the outline is stale
             setEdgesPacked(packed);
             emit meshChanged();
         }, Qt::QueuedConnection);
@@ -1667,16 +1703,16 @@ void GcodeToolpath::startEdgesTask(const std::shared_ptr<const ModelData> &model
 
 void GcodeToolpath::setEdgesPacked(const gv::PackedEdges &packed)
 {
-    // Свежий объект, а не установка буфера в текущий: QML перезаливает буфер в
-    // Model только тогда, когда меняется сам объект геометрии.
+    // A fresh object, not setting the buffer on the current one: QML re-uploads the
+    // buffer into the Model only when the geometry object itself changes.
     ToolpathGeometry *fresh = new ToolpathGeometry();
     QQmlEngine::setObjectOwnership(fresh, QQmlEngine::CppOwnership);
     fresh->setPacked(toByteArray(packed.raw), packed.has_bounds ? &packed.bounds : nullptr,
                      packed.nv);
     ToolpathGeometry *old = edges_;
     edges_ = fresh;
-    // Лента контура (stride 48) идёт тем же содержимым: обводка B-Rep в основной
-    // сцене и её позиционная копия для отжима от центра габарита.
+    // The contour ribbon (stride 48) carries the same content: the B-Rep outline in
+    // the main scene and its positional copy for the offset from the bounds centre.
     syncHlrReference();
     const std::vector<float> positions = gv::packedPositions(packed);
     hlr_edges_->setSegments(positions.empty() ? nullptr : positions.data(),
@@ -1687,8 +1723,9 @@ void GcodeToolpath::setEdgesPacked(const gv::PackedEdges &packed)
 
 void GcodeToolpath::syncHlrReference()
 {
-    // Общий центр габарита кожи: от него обе ленты контура отжимаются наружу
-    // (FLOAT_SCALE в HLRLineGeometry), поэтому он один на слои обводки и силуэта.
+    // Common centre of the skin bounds: both contour ribbons are pushed outward from
+    // it (FLOAT_SCALE in HLRLineGeometry), so there is one for the outline and
+    // silhouette layers.
     const double center[3] = {0.5 * (mesh_lo_[0] + mesh_hi_[0]),
                               0.5 * (mesh_lo_[1] + mesh_hi_[1]),
                               0.5 * (mesh_lo_[2] + mesh_hi_[2])};
@@ -1724,8 +1761,8 @@ void GcodeToolpath::setTool(double x, double y, double z)
 
 void GcodeToolpath::clearEdges()
 {
-    // Свежий объект, а не очистка текущего: QML перезаливает буфер в Model даже
-    // тогда, когда обводка пустеет после первого кадра.
+    // A fresh object, not clearing the current one: QML re-uploads the buffer into
+    // the Model even when the outline becomes empty after the first frame.
     ToolpathGeometry *old = edges_;
     edges_ = new ToolpathGeometry();
     QQmlEngine::setObjectOwnership(edges_, QQmlEngine::CppOwnership);
@@ -1742,7 +1779,7 @@ int GcodeToolpath::indexAt(double d) const
         return 0;
     if (d >= cum[std::size_t(n - 1)])
         return n - 2;
-    // Верхняя граница (первый элемент строго больше d) - то же, что
+    // Upper bound (the first element strictly greater than d) - the same as
     // numpy.searchsorted(cum, d, side="right").
     const int i = int(std::upper_bound(cum.begin(), cum.end(), d) - cum.begin()) - 1;
     if (i < 0)

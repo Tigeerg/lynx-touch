@@ -3,7 +3,7 @@
 Панель оператора ЧПУ. Состоит из четырёх проектов: React-интерфейс, Qt-порт
 интерфейса, 3D-вьювер управляющих программ и тестовые данные/постпроцессор.
 
-**Версия продукта:** `0.17.0` (см. [`VERSION`](VERSION)).
+**Версия продукта:** `0.18.0` (см. [`VERSION`](VERSION)).
 Версии проектов и правила ведения — в [`projects.json`](projects.json) и
 [`VERSIONING.md`](VERSIONING.md).
 
@@ -212,9 +212,15 @@ pnpm dev
 ## Документация
 
 - [`VERSIONING.md`](VERSIONING.md) — версионирование и порядок внесения изменений
-- [`projects.json`](projects.json) — манифест проектов и версий
-- [`DESIGN.md`](DESIGN.md) / [`DESIGN.en.md`](DESIGN.en.md) — архитектура 3D-вьювера и технический долг
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) / [`ARCHITECTURE.en.md`](ARCHITECTURE.en.md) — карта модулей и слоёв
+  продукта (русский / английский)
+- [`DESIGN.md`](DESIGN.md) / [`DESIGN.en.md`](DESIGN.en.md) — устройство 3D-вьювера и технический долг
   (русский / английский)
+- [`CLAUDE.md`](CLAUDE.md) — свод стандартов разработки (роль `PROJECT_STANDARDS.md`)
+- [`AI_WORKFLOW.md`](AI_WORKFLOW.md) — роли ИИ-агентов и цикл задачи
+- [`TODO.md`](TODO.md) — технический долг и открытые задачи
+- [`docs/README.md`](docs/README.md) — планы и исследования
+- [`projects.json`](projects.json) — манифест проектов и версий
 - [`modules/gcode-viewer/CHANGELOG.md`](modules/gcode-viewer/CHANGELOG.md) — журнал вьювера
 
 ## Лицензия

@@ -1,7 +1,8 @@
 # DESIGN.md — 3D viewer for NC programs (`gcode-viewer`)
 
 The source of truth is the code and its behavior (CLAUDE.md), not this description: the document explains the
-design and may lag behind. Change this file together with behavior. Russian version — [DESIGN.md](DESIGN.md);
+design and may lag behind. Change this file together with behavior. The map of the whole product is
+[ARCHITECTURE.md](ARCHITECTURE.md); this file is the viewer deep dive. Russian version — [DESIGN.md](DESIGN.md);
 edit both languages in the same pass.
 
 ## 1. Purpose and place in the product

@@ -1,35 +1,36 @@
-/* keyprobe - проба горячих клавиш вьювера на разных раскладках.
+/* keyprobe - probe of the viewer hotkeys on different layouts.
  *
- * Зачем: дефект «горячие клавиши требовательны к языку». Проба грузит живой QML
- * вьювера (GcodeViewer3D.qml) в QQuickView и подаёт клавиши так, как их подаёт
- * платформенный плагин Windows: QKeyEvent с nativeScanCode, nativeVirtualKey и
- * текстом, посчитанными по раскладке (MapVirtualKeyEx/ToUnicodeEx). Признак
- * срабатывания - не журнал, а свойства вьювера: каждая горячая клавиша обязана
- * переключить своё (P - пуск, S - заготовка, M - вид детали, K - кожа детали без
- * рёбер, G - линии УП, L - весь код, T - этапы, E - рёбра, D - касательные,
- * F - fps, B - коробка вместо поля съёма, C - палитра слитка,
- * V - заготовка полупрозрачной, R - вид остатка заготовки: точный -> гладкий ->
- * скруглённый; у R и M проверяется и круг положений: сколько положений, столько
- * нажатий обязаны вернуть вид к исходному, и промежуточные - отличаться).
- * Клавиши X у вьювера больше нет: прежний рентген сведён в M (прозрачная кожа),
- * и проба стережёт, что X вид детали не трогает.
- * Затем проверяется связь вида, а не переключателя: вид детали зависит только от
- * partMode - ни заготовка, ни поле съёма, ни уровень качества его не меняют
- * (сплошная кожа обязана остаться непрозрачной), а боковой зазор стенок заготовки
- * равен нулю - стенка стоит на габарите поля (shellGapSideMm).
+ * Why: the defect "hotkeys are language-sensitive". The probe loads the live viewer
+ * QML (GcodeViewer3D.qml) into a QQuickView and feeds keys the way the Windows
+ * platform plugin does: a QKeyEvent with nativeScanCode, nativeVirtualKey and text
+ * computed by the layout (MapVirtualKeyEx/ToUnicodeEx). The sign of firing is not a
+ * log but the viewer's properties: each hotkey must toggle its own (P - play,
+ * S - stock, M - part view, K - part skin without edges, G - NC lines, L - all
+ * code, T - stages, E - edges, D - tangents, F - fps, B - box instead of the
+ * removal field, C - ingot palette, V - stock translucent, R - stock remainder
+ * view: exact -> smooth -> rounded; for R and M the position cycle is checked too:
+ * as many presses as positions must return the view to the initial one, and the
+ * intermediate ones must differ).
+ * The viewer no longer has key X: the former x-ray is merged into M (transparent
+ * skin), and the probe guards that X does not touch the part view.
+ * Then it checks the link of the view, not of the switch: the part view depends only
+ * on partMode - neither the stock, nor the removal field, nor the quality level
+ * change it (a solid skin must stay opaque), and the stock wall side gap is zero -
+ * the wall stands on the field bounds (shellGapSideMm).
  *
- * Чем это отличается от живой пробы с SendInput (tools/keyprobe.ps1): живая проба
- * требует переднего окна в незапертой сессии, а перевод скан-кода в VK и символ
- * делает сама система; в закрытой сессии нажатия теряются. Здесь те же числа считает
- * сама проба по раскладке, а поля события заполняются как у настоящего события;
- * событие доставляется в окно вызовом QQuickWindow::keyPressEvent - тем же, каким
- * его отдаёт платформенный плагин, минуя проверку «окно в фокусе». Проверка фокуса
- * измерена отдельно, живой пробой: на живом вьювере Keys.onPressed получает события
- * (focus=true), то есть путь доставки тот же.
+ * How this differs from a live SendInput probe (tools/keyprobe.ps1): the live probe
+ * needs a foreground window in an unlocked session, and the system itself does the
+ * scan-code to VK and character conversion; in a locked session the presses are
+ * lost. Here the probe computes the same numbers from the layout itself, and the
+ * event fields are filled as in a real event; the event is delivered to the window by
+ * a QQuickWindow::keyPressEvent call - the same one the platform plugin uses - bypassing
+ * the "window in focus" check. The focus check was measured separately, by a live
+ * probe: on a live viewer Keys.onPressed receives events (focus=true), that is, the
+ * delivery path is the same.
  *
- * Запуск (Qt в PATH; картинка не нужна, платформа offscreen ставится сама):
+ * Run (Qt in PATH; no image is needed, the offscreen platform is set itself):
  * build\viewer\keyprobe.exe data\cad-testdata\Test_model.ngc [ru,en]
- * Код возврата: 0 - все клавиши сработали, 1 - нет, 2 - нечего проверять.
+ * Return code: 0 - all keys fired, 1 - not, 2 - nothing to check.
  */
 #include <QChar>
 #include <QCoreApplication>
@@ -85,9 +86,9 @@ QString repoRoot()
 
 QString viewerQmlPath()
 {
-    // CNC_VIEWER_QML - подмена файла вьювера: ею пробник гоняют на прежней редакции
-    // обработчика клавиш (проверка обязана быть красной до фикса). То же имя
-    // переменной у точки входа (viewer/main.cpp).
+    // CNC_VIEWER_QML - a substitute for the viewer file: it is used to run the probe
+    // against a previous revision of the key handler (the check must be red before the
+    // fix). The entry point (viewer/main.cpp) uses the same variable name.
     const QString override = qEnvironmentVariable("CNC_VIEWER_QML");
     if (!override.isEmpty())
         return override;
@@ -103,8 +104,8 @@ QString backendImportPath()
     return override.isEmpty() ? repoRoot() + QStringLiteral("/build/qmlbackend") : override;
 }
 
-// Каталог DLL OCCT: CNC_OCC_DIR (или окружение conda), подкаталог bin. Те же
-// умолчания, что у точки входа вьювера (viewer/main.cpp) и у сборки.
+// OCCT DLL directory: CNC_OCC_DIR (or the conda environment), the bin subdirectory.
+// The same defaults as the viewer entry point (viewer/main.cpp) and the build.
 QString occtBinDir()
 {
     QString occ = qEnvironmentVariable("CNC_OCC_DIR");
@@ -118,8 +119,9 @@ QString occtBinDir()
     return occ + QStringLiteral("/bin");
 }
 
-// Каталоги в PATH: точка входа QML-плагина разрешает зависимости по PATH, а не через
-// add_dll_directory (разбор - docs/PORT-CPP.md, «Ограничения рантайма Qt»).
+// Directories into PATH: the QML plugin entry point resolves dependencies via PATH,
+// not through add_dll_directory (breakdown - docs/PORT-CPP.md, "Qt runtime
+// limitations").
 void prependPath(const QStringList &dirs)
 {
     const QChar separator = QDir::listSeparator();
@@ -143,7 +145,7 @@ void prependPath(const QStringList &dirs)
     qputenv("PATH", add.join(separator).toLocal8Bit());
 }
 
-// Клавиша пробы: физический скан-код и свойство вьювера, которое она переключает.
+// A probe key: the physical scan code and the viewer property it toggles.
 struct ProbeKey
 {
     const char *name;
@@ -168,14 +170,14 @@ const ProbeKey KEYS[] = {
     { "R", 0x13, "stockView" },
 };
 
-// Раскладка и номер клавиши по скан-коду: то, что система сообщает о физическом
-// нажатии. Раскладка одна на поток, поэтому и VK, и символ берутся по ней.
+// Layout and key number by scan code: what the system reports about a physical press.
+// The layout is per thread, so both the VK and the character are taken from it.
 struct LayoutKey
 {
     int scan = 0;
     int vk = 0;
-    int key = 0;       // код, который QML видит как event.key
-    QChar text;        // символ, который QML видит как event.text (пусто у служебных)
+    int key = 0;       // the code QML sees as event.key
+    QChar text;        // the character QML sees as event.text (empty for service keys)
     bool resolved = false;
 };
 
@@ -187,9 +189,9 @@ LayoutKey resolveKey(int scan, const QString &klid)
     const HKL hkl = LoadKeyboardLayoutW(reinterpret_cast<const wchar_t *>(klid.utf16()), KLF_ACTIVATE);
     if (!hkl)
         return out;
-    // Скан-код в VK и символ по раскладке: раскладка задана явно (hkl), а не взята
-    // из состояния потока, чтобы проба не зависела от того, какая раскладка сейчас
-    // выбрана у машины.
+    // Scan code to VK and character by the layout: the layout is set explicitly (hkl),
+    // not taken from the thread state, so the probe does not depend on which layout is
+    // currently selected on the machine.
     const UINT vk = MapVirtualKeyExW(static_cast<UINT>(scan), MAPVK_VSC_TO_VK, hkl);
     if (!vk)
         return out;
@@ -199,12 +201,12 @@ LayoutKey resolveKey(int scan, const QString &klid)
     int key = 0;
     if (length > 0) {
         out.text = QChar(static_cast<char16_t>(text[0]));
-        // Платформенный плагин сообщает как event.key код символа в верхнем регистре
-        // (на русской раскладке для клавиши S это Key_Ы), а сам символ отдаёт
-        // в event.text: измерено на живом вьювере, key 1067 при text 1099.
+        // The platform plugin reports the uppercase character code as event.key (on the
+        // Russian layout, for key S that is Key_Ы), and the character itself in
+        // event.text: measured on a live viewer, key 1067 with text 1099.
         key = out.text.toUpper().unicode();
     } else {
-        // Символа нет (служебная клавиша): Qt берёт код из VK.
+        // No character (a service key): Qt takes the code from the VK.
         key = static_cast<int>(vk);
     }
     out.vk = static_cast<int>(vk);
@@ -214,8 +216,8 @@ LayoutKey resolveKey(int scan, const QString &klid)
     return out;
 }
 
-// QQuickWindow::keyPressEvent/keyReleaseEvent объявлены защищёнными: открываем их,
-// чтобы подать событие тем же вызовом, каким его подаёт платформенный плагин.
+// QQuickWindow::keyPressEvent/keyReleaseEvent are declared protected: we open them up
+// to feed the event with the same call the platform plugin uses.
 class ProbeView : public QQuickView
 {
 public:
@@ -223,8 +225,8 @@ public:
     using QQuickView::keyReleaseEvent;
 };
 
-// Нажатие и отпускание: событие подаётся с теми же признаками, что у настоящего
-// (код клавиши, скан-код, VK, символ, сочетание).
+// Press and release: the event is fed with the same signs as a real one (key code,
+// scan code, VK, character, modifiers).
 void press(ProbeView &view, const LayoutKey &key, Qt::KeyboardModifiers modifiers)
 {
     QKeyEvent down(QEvent::KeyPress, key.key, modifiers,
@@ -268,8 +270,8 @@ int run(const QString &program, const QStringList &layouts)
         return 2;
     }
 
-    // УП нужна не всем клавишам, но P (пуск) и T (этапы) без неё молчат: проба
-    // повторяет путь живого запуска, а он грузит программу.
+    // Not all keys need the NC, but P (play) and T (stages) are silent without it: the
+    // probe repeats the live-run path, and it loads the program.
     if (!program.isEmpty()) {
         if (!QFileInfo::exists(program)) {
             warn(QStringLiteral("keyprobe: FAIL файл УП не найден: %1").arg(program));
@@ -281,8 +283,8 @@ int run(const QString &program, const QStringList &layouts)
         say(QStringLiteral("keyprobe: УП %1, сегментов: %2").arg(program).arg(segments));
     }
 
-    // Журнал признаков: диагностика вьювера (GcodeViewer3D.qml, keyLogRaw) печатает
-    // измеренные key/cp/vk/sc - ими и видно, что именно получает обработчик.
+    // Sign log: the viewer diagnostics (GcodeViewer3D.qml, keyLogRaw) print the
+    // measured key/cp/vk/sc - they show exactly what the handler receives.
     root->setProperty("keyDebug", true);
     root->forceActiveFocus();
     say(QStringLiteral("keyprobe: focus=%1").arg(root->property("activeFocus").toBool()));
@@ -320,9 +322,9 @@ int run(const QString &program, const QStringList &layouts)
                     .arg(after.toString())
                     .arg(changed ? QStringLiteral("сработала") : QStringLiteral("НЕ сработала")));
 
-            // Лишних срабатываний быть не должно: сочетание буквы с Ctrl или Alt -
-            // команда приложения (и переключатель раскладки Alt+Shift), а не горячая
-            // клавиша вьювера. Проверяется тем же нажатием с признаком сочетания.
+            // There must be no extra triggers: a letter with Ctrl or Alt is an
+            // application command (and the layout switch Alt+Shift), not a viewer
+            // hotkey. It is checked by the same press with the modifier sign.
             for (Qt::KeyboardModifier modifier : { Qt::ControlModifier, Qt::AltModifier }) {
                 const QVariant steady = root->property(property.constData());
                 press(view, resolved, modifier);
@@ -337,14 +339,13 @@ int run(const QString &program, const QStringList &layouts)
                 }
             }
 
-            // Клавиша с числом положений больше двух (R - вид остатка заготовки:
-            // точный, гладкий, скруглённый; M - вид детали: сплошная, прозрачная,
-            // скрыта) проверяется ещё и кругом: столько нажатий, сколько
-            // положений, обязаны вернуть свойство к исходному значению, а
-            // промежуточные - отличаться. Иначе «сработала» значило бы только
-            // «что-то изменилось», и залипшее положение прошло бы проверку.
-            // Список имён положений - свойство самого вьювера, а не второй
-            // счётчик здесь: stockViewNames и partModeNames.
+            // A key with more than two positions (R - stock remainder view: exact,
+            // smooth, rounded; M - part view: solid, transparent, hidden) is also
+            // checked by a cycle: as many presses as positions must return the property
+            // to the initial value, and the intermediate ones must differ. Otherwise
+            // "fired" would only mean "something changed", and a stuck position would
+            // pass the check. The list of position names is the viewer's own property,
+            // not a second counter here: stockViewNames and partModeNames.
             const QByteArray positionsProperty =
                     (property == QByteArray("stockView")) ? QByteArray("stockViewNames")
                   : (property == QByteArray("partMode")) ? QByteArray("partModeNames")
@@ -389,16 +390,16 @@ int run(const QString &program, const QStringList &layouts)
         quietFailed = 0;
     }
 
-    // Вид детали - один переключатель и только он. Проба ставит сплошную деталь
-    // и перебирает виды заготовки, поле и уровень качества, сверяя плотность
-    // кожи: сплошная обязана остаться непрозрачной (partSkinOpacity 1.0) и
-    // рисоваться сплошной моделью (partSkinSolid) при любом из них. До правки
-    // проверка красна: кожа уходила в призрак (0.15) при готовом поле и
-    // возвращалась в сплошную по клавише S, то есть вид детали решала заготовка,
-    // а не вид (заявил оператор: «деталь прозрачная в любом виде»).
-    // Отдельно проверяются два положения того же переключателя (прозрачная,
-    // скрыта) и то, что прежняя клавиша рентгена X больше вид детали не трогает:
-    // два переключателя одного вида слились в один (partMode).
+    // The part view is one switch and only it. The probe sets a solid part and iterates
+    // the stock views, the field and the quality level, checking the skin density: a
+    // solid skin must stay opaque (partSkinOpacity 1.0) and be drawn as a solid model
+    // (partSkinSolid) with any of them. Before the fix the check is red: the skin went
+    // ghost (0.15) with a ready field and returned to solid on key S, that is, the
+    // stock decided the part view, not the view (the operator reported: "the part is
+    // transparent in any view").
+    // Separately checked are the two other positions of the same switch (transparent,
+    // hidden) and that the former x-ray key X no longer touches the part view: two
+    // switches of one view merged into one (partMode).
     if (backend != nullptr) {
         QString state = backend->property("stockSimState").toString();
         QElapsedTimer wait;
@@ -414,7 +415,7 @@ int run(const QString &program, const QStringList &layouts)
         say(QStringLiteral("keyprobe: вид детали - поле съёма %1 (%2)")
                 .arg(hasField ? QStringLiteral("готово") : QStringLiteral("не готово"), state));
 
-        // Один случай проверки: что сверялось, что вышло и сошлось ли.
+        // One check case: what was compared, what came out and whether it matched.
         auto checkLook = [&total, &fired](const QString &name, const QString &got, bool ok) {
             ++total;
             if (ok)
@@ -435,8 +436,8 @@ int run(const QString &program, const QStringList &layouts)
                     && root->property("partSkinSolid").toBool();
         };
 
-        // Сплошная деталь при готовом поле и видимой заготовке - тот самый
-        // случай, в котором кожа прежде уходила в призрак.
+        // A solid part with a ready field and a visible stock - the very case in which
+        // the skin used to go ghost.
         root->setProperty("partMode", 0);
         root->setProperty("showPartSkin", true);
         root->setProperty("showStockVisible", true);
@@ -444,17 +445,17 @@ int run(const QString &program, const QStringList &layouts)
         root->setProperty("quality", QStringLiteral("med"));
         checkLook(QStringLiteral("сплошная при готовом поле"), solidLook(), solidOk());
 
-        // Клавиша S прячет габарит (и поле съёма вместе с ним): вид детали от
-        // этого не меняется - это путь заявителя, а не только свойство.
+        // Key S hides the stock (and the removal field with it): the part view does not
+        // change from it - this is the reporter's path, not just a property.
         const LayoutKey sKey = resolveKey(0x1F, QStringLiteral("00000409"));   // S
         press(view, sKey, Qt::NoModifier);
         const bool stockHidden = !root->property("showStockVisible").toBool();
         checkLook(QStringLiteral("сплошная при скрытом габарите (S)"), solidLook(),
                   stockHidden && solidOk());
-        press(view, sKey, Qt::NoModifier);           // вернуть габарит на место
+        press(view, sKey, Qt::NoModifier);           // put the stock back
 
-        // Ни коробка вместо поля, ни уровень safe вид детали не трогают: у
-        // правила один вход - partMode.
+        // Neither a box instead of the field nor the safe level touches the part view:
+        // the rule has one input - partMode.
         root->setProperty("stockPlainBox", true);
         checkLook(QStringLiteral("сплошная при коробке вместо поля"), solidLook(), solidOk());
         root->setProperty("stockPlainBox", false);
@@ -462,7 +463,7 @@ int run(const QString &program, const QStringList &layouts)
         checkLook(QStringLiteral("сплошная на уровне safe"), solidLook(), solidOk());
         root->setProperty("quality", QStringLiteral("med"));
 
-        // Два других положения того же переключателя.
+        // The two other positions of the same switch.
         root->setProperty("partMode", 1);
         const double clearAlpha = root->property("partSkinOpacity").toDouble();
         checkLook(QStringLiteral("прозрачная деталь"),
@@ -482,8 +483,9 @@ int run(const QString &program, const QStringList &layouts)
                                                                          : QStringLiteral("скрыт")),
                   !root->property("showPartVisible").toBool());
 
-        // Прежняя клавиша рентгена X: вида детали больше не трогает (нажатие
-        // молчит), иначе один вид решали бы две клавиши - та самая путаница.
+        // The former x-ray key X: it no longer touches the part view (the press is
+        // silent), otherwise one view would be decided by two keys - that very
+        // confusion.
         root->setProperty("partMode", 0);
         const double before = root->property("partSkinOpacity").toDouble();
         const int modeBefore = root->property("partMode").toInt();
@@ -496,10 +498,10 @@ int run(const QString &program, const QStringList &layouts)
                   root->property("partSkinOpacity").toDouble() == before
                           && root->property("partMode").toInt() == modeBefore);
 
-        // Стенка заготовки стоит на габарите поля: боковой зазор - ноль
-        // (GcodeViewer3D.qml, shellGapSideMm). Положительный зазор сдвигал стенку
-        // наружу и оставлял вдоль верхнего ребра полку, сквозь которую читались
-        // фон и нутро слитка. Проверка красна до правки.
+        // The stock wall stands on the field bounds: the side gap is zero
+        // (GcodeViewer3D.qml, shellGapSideMm). A positive gap shifted the wall outward
+        // and left a shelf along the top edge, through which the background and the
+        // ingot interior were visible. The check is red before the fix.
         const double sideGap = root->property("shellGapSideMm").toDouble();
         ++total;
         if (sideGap == 0.0)
@@ -524,9 +526,10 @@ int main(int argc, char *argv[])
 #ifdef Q_OS_WIN
     SetConsoleOutputCP(CP_UTF8);
 #endif
-    // Отдельного окна проба не показывает: событие подаётся прямо в окно вьювера,
-    // поэтому платформа offscreen достаточна и не мешает работе за машиной. Платформа
-    // выбирается до создания приложения, отсюда и запись окружения здесь.
+    // The probe shows no separate window: the event is fed straight into the viewer
+    // window, so the offscreen platform is enough and does not interfere with work at
+    // the machine. The platform is chosen before the application is created, hence the
+    // environment write here.
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
         qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);

@@ -119,7 +119,7 @@ QString occtBinDir()
 }
 
 // Каталоги в PATH: точка входа QML-плагина разрешает зависимости по PATH, а не через
-// add_dll_directory (разбор - PORT-CPP.md, «Ограничения рантайма Qt»).
+// add_dll_directory (разбор - docs/PORT-CPP.md, «Ограничения рантайма Qt»).
 void prependPath(const QStringList &dirs)
 {
     const QChar separator = QDir::listSeparator();

@@ -895,7 +895,7 @@ Item {
                 }
             }
 
-            // ----- 5. Alarms counter (⚠ 2) --------------------------------
+            // ----- 5. Alarms counter (2) --------------------------------
             Rectangle {
                 id: alarmBadge
                 Layout.preferredWidth: 64

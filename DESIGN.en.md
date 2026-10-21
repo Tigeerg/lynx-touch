@@ -169,7 +169,7 @@ faces). The holder is a coarse ER20 model (nut plus body) from `gv::holderProfil
 
 Architecture:
 - the Python layer is gone entirely: the former `mock_backend` facade and the modules it split the monolith into
-  are no longer in the repository; the C++ layer is built from the same split (`PORT-CPP.md` §7).
+  are no longer in the repository; the C++ layer is built from the same split (`docs/PORT-CPP.md` §7).
 - `GcodeViewer3D.qml` (about 1900 lines) holds JS camera, projection and stage logic; it belongs in backend
   slots.
 
@@ -201,7 +201,7 @@ Remaining after the C++ port (open, with measurements):
 - the C++ entry point `gcodeviewer.exe` does not accept an absolute NC path with Cyrillic characters:
   the arguments are read as `QString::fromLocal8Bit(argv[i])`, so `GetCommandLineW`/`CommandLineToArgvW`
   is needed;
-- the optimisations from `PORT-CPP.md` §11: the NC parse (176 ms), the STEP shape cache in the plugin,
+- the optimisations from `docs/PORT-CPP.md` §11: the NC parse (176 ms), the STEP shape cache in the plugin,
   quality presets and level auto-detection, trimming the OCCT build, parallelism of the cold stages.
 
 Outline on the STL branch:
@@ -305,15 +305,15 @@ Performance and hardware adaptivity:
   result in `QSettings` so the measurement is not paid on every start; force the OpenGL branch on ION;
 - C++ optimisation after the port: an opaque handle on the silhouette topology instead of per-frame copies,
   a cached STEP shape in `StepEdgesGeometry`, removing the second `BRepMesh`, buffer reuse, and parallelism
-  of the cold stages — the list with estimates is in [`PORT-CPP.md`](PORT-CPP.md) §11 /
-  [`PORT-CPP.en.md`](PORT-CPP.en.md).
+  of the cold stages — the list with estimates is in [`docs/PORT-CPP.md`](docs/PORT-CPP.md) §11 /
+  [`docs/PORT-CPP.en.md`](docs/PORT-CPP.en.md).
 
 Engineering:
 - a single QML <-> C++ contract: module-boundary structures live in `cpp/core/gv_types.h`, QML slots are typed;
 - a performance gate in `pnpm guard` via `bench_probe`;
 - centralized logging;
 - the compute core is ported to C++ (the OCCT SDK directly instead of bindings) — estimate, risks and stages in
-  [`PORT-CPP.md`](PORT-CPP.md) / [`PORT-CPP.en.md`](PORT-CPP.en.md).
+  [`docs/PORT-CPP.md`](docs/PORT-CPP.md) / [`docs/PORT-CPP.en.md`](docs/PORT-CPP.en.md).
 
 ### Material removal simulation (height map, in the background)
 
@@ -504,7 +504,7 @@ says.
 
 - It must not slow the orbit: no per-frame work, no per-frame texture upload, no JS loop over hundreds of
   thousands of vertices. But the grid is triangles in the frame, and its cap above is part of the orbit budget
-  (`PORT-CPP.md` §11: the orbit is cheap, the time goes into the cold load and heavy features).
+  (`docs/PORT-CPP.md` §11: the orbit is cheap, the time goes into the cold load and heavy features).
 - It must not touch the bit-exact contract: the field is in neither `PathData`, nor `PackedStream`
   (`cpp/core/gv_types.h`), nor the geometry buffers, nor `oracle_manifest.json`; `gv::prepareOrdered`, the parse
   and the packing stay as they are. The field accumulates float minima, so sha256 is no use for it at all; the

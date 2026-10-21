@@ -9,7 +9,7 @@
  * * находит каталог QML-плагина (CNC_CPP_QML_DIR, иначе <репо>/build/qmlbackend)
  * и каталог DLL OCCT (CNC_OCC_DIR, иначе из CONDA_PREFIX) и кладёт оба в PATH
  * до создания движка: точка входа Qt-плагина разрешает зависимости по PATH, а
- * не через add_dll_directory (разбор - PORT-CPP.md, «Ограничения рантайма Qt»).
+ * не через add_dll_directory (разбор - docs/PORT-CPP.md, «Ограничения рантайма Qt»).
  * На Linux PATH и LD_LIBRARY_PATH не трогает: Qt и OCCT загрузчик находит по
  * rpath сборки, который CMake заполняет сам (BUILD_RPATH, cpp/CMakeLists.txt);
  * * отдаёт движку путь импорта плагина и грузит GcodeViewer3D.qml в QQuickView:

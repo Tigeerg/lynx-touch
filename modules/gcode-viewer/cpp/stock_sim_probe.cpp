@@ -64,6 +64,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -2967,6 +2968,186 @@ int main(int argc, char** argv)
             move.bMm = parsed.ordered[i].point;
             move.cutter = cutter;
             moves.push_back(move);
+        }
+
+        // Стык слоёв реза на РЕАЛЬНОЙ программе: покрытие габарита половинами по
+        // клеткам и стык низа стенки с кромкой дна. Половины делят клетку по
+        // цепочке границы, поэтому площадь их треугольников в клетке равна её
+        // площади: клетка, где цепочка не разрезала часть, осталась бы дырой во
+        // всю клетку, и сквозь неё видно оболочку заготовки. Стык: у каждой нижней
+        // вершины квада стенки обязана найтись вершина кромки дна в той же точке
+        // (x, y) с той же высотой - иначе вдоль низа стенки стоит наплыв дна
+        // (кромка выше низа) или щель (ниже). Мера - самая высокая кромка в точке:
+        // наплыв и щель видны одним числом.
+        const auto measureLayerSeam = [&](const gv::StockRunResult& run,
+                                          const gv::StockBoundaryResult& boundary,
+                                          double cell, const char* caseName) {
+            const int nx = run.field.countX();
+            const int ny = run.field.countY();
+            const std::vector<float>& depth = run.field.depthMm();
+            const gv::StockLayerSurface layers = gv::stockLayerSurface(
+                    bounds, cell, depth, nx, ny, 0.05, boundary.segments);
+            const gv::StockWallMesh wall = gv::stockCutWallFromLayer(
+                    bounds, cell, depth, nx, ny, 0.05, boundary.segments);
+            const std::vector<float> sd = gv::stockCutSignedDistance(
+                    bounds, cell, depth, nx, ny, boundary.segments, 0.05, cell * 3.0);
+            DrawnField drawn;
+            drawn.bounds = &bounds;
+            drawn.cellMm = cell;
+            drawn.countX = nx;
+            drawn.countY = ny;
+            drawn.depth = &depth;
+            drawn.signedMm = &sd;
+            drawn.cutMm = 0.05;
+
+            // (а) Покрытие клеток: сумма площадей треугольников половин в клетке.
+            const int cellsX = nx - 1;
+            const int cellsY = ny - 1;
+            std::vector<double> cellArea(std::size_t(cellsX) * std::size_t(cellsY), 0.0);
+            for (std::size_t t = 0; t + 2 < layers.indices.size(); t += 3) {
+                const std::size_t i0 = std::size_t(layers.indices[t]) * 7;
+                const std::size_t i1 = std::size_t(layers.indices[t + 1]) * 7;
+                const std::size_t i2 = std::size_t(layers.indices[t + 2]) * 7;
+                const double ax = double(layers.vertices[i0]);
+                const double ay = double(layers.vertices[i0 + 1]);
+                const double bx = double(layers.vertices[i1]);
+                const double by = double(layers.vertices[i1 + 1]);
+                const double cx = double(layers.vertices[i2]);
+                const double cy = double(layers.vertices[i2 + 1]);
+                const double area = 0.5 * std::fabs((bx - ax) * (cy - ay) - (by - ay) * (cx - ax));
+                const int ix = std::max(0, std::min(cellsX - 1,
+                        int(std::floor(((ax + bx + cx) / 3.0 - bounds.xMinMm) / cell))));
+                const int iy = std::max(0, std::min(cellsY - 1,
+                        int(std::floor(((ay + by + cy) / 3.0 - bounds.yMinMm) / cell))));
+                cellArea[std::size_t(iy) * std::size_t(cellsX) + std::size_t(ix)] += area;
+            }
+            int holeCells = 0;
+            double holeWorstMm2 = 0.0;
+            double holeX = 0.0;
+            double holeY = 0.0;
+            const double cellAreaMm2 = cell * cell;
+            for (int iy = 0; iy < cellsY; ++iy) {
+                for (int ix = 0; ix < cellsX; ++ix) {
+                    const double miss = cellAreaMm2
+                            - cellArea[std::size_t(iy) * std::size_t(cellsX) + std::size_t(ix)];
+                    if (miss > 1e-3 * cellAreaMm2) {   // доля клетки, не шум float
+                        ++holeCells;
+                        if (miss > holeWorstMm2) {
+                            holeWorstMm2 = miss;
+                            holeX = bounds.xMinMm + (double(ix) + 0.5) * cell;
+                            holeY = bounds.yMinMm + (double(iy) + 0.5) * cell;
+                        }
+                    }
+                }
+            }
+
+            // (б) Кромка дна: высота вершины половины дна, стоящей на полилинии
+            // границы. Ключи концов звеньев берутся по float - как в буфере
+            // вершины (перебор всех звеньев на каждую вершину был бы O(вершины *
+            // звенья): при узле 0.15 это 1e11 обращений).
+            std::map<std::pair<long long, long long>, std::vector<double>> floorEdgeMm;
+            std::map<std::pair<long long, long long>, char> onBoundary;
+            for (const gv::StockContourSegment& segment : boundary.segments) {
+                onBoundary[{std::llround(double(float(segment.x0Mm)) * 1e6),
+                            std::llround(double(float(segment.y0Mm)) * 1e6)}] = 1;
+                onBoundary[{std::llround(double(float(segment.x1Mm)) * 1e6),
+                            std::llround(double(float(segment.y1Mm)) * 1e6)}] = 1;
+            }
+            for (std::size_t k = std::size_t(layers.topVertexCount);
+                 k < layers.vertices.size() / 7; ++k) {
+                const double x = double(layers.vertices[k * 7]);
+                const double y = double(layers.vertices[k * 7 + 1]);
+                const auto key = std::make_pair(std::llround(x * 1e6), std::llround(y * 1e6));
+                if (onBoundary.find(key) == onBoundary.end()) {
+                    continue;                        // угол клетки, не вершина кромки
+                }
+                const double u = double(layers.vertices[k * 7 + 3]);
+                const double v = double(layers.vertices[k * 7 + 4]);
+                floorEdgeMm[key].push_back(drawn.step(u, v, 0));
+            }
+            int seamBottom = 0;
+            int seamOrphan = 0;
+            double seamWorstMm = 0.0;
+            double seamX = 0.0;
+            double seamY = 0.0;
+            double seamWallMm = 0.0;
+            double seamFloorMm = 0.0;
+            for (std::size_t i = 0; i < wall.vertices.size() / 4; ++i) {
+                const float* p = &wall.vertices[i * 4];
+                if (std::fabs(double(p[2]) - double(bounds.zMaxMm)) < 1e-9) {
+                    continue;                        // верх квада стенки
+                }
+                ++seamBottom;
+                const auto key = std::make_pair(std::llround(double(p[0]) * 1e6),
+                                                std::llround(double(p[1]) * 1e6));
+                const auto it = floorEdgeMm.find(key);
+                if (it == floorEdgeMm.end()) {
+                    ++seamOrphan;
+                    continue;
+                }
+                double best = std::numeric_limits<double>::max();
+                for (double height : it->second) {
+                    best = std::min(best, std::fabs(height - double(p[3])));
+                }
+                if (best > seamWorstMm) {
+                    seamWorstMm = best;
+                    seamX = double(p[0]);
+                    seamY = double(p[1]);
+                    seamWallMm = double(p[3]);
+                    seamFloorMm = best;
+                }
+            }
+            if (seamWorstMm > 0.01) {
+                const int ix = std::max(0, std::min(nx - 2,
+                        int(std::floor((seamX - bounds.xMinMm) / cell))));
+                const int iy = std::max(0, std::min(ny - 2,
+                        int(std::floor((seamY - bounds.yMinMm) / cell))));
+                const auto at = [&](int a, int b) {
+                    a = std::max(0, std::min(nx - 1, a));
+                    b = std::max(0, std::min(ny - 1, b));
+                    return double(depth[std::size_t(b) * std::size_t(nx) + std::size_t(a)]);
+                };
+                std::printf("note seam_worst at=(%.3f,%.3f) frac=(%.4f,%.4f) wall_d=%.3f floor_d=%.3f "
+                            "cell_d=(%.3f,%.3f,%.3f,%.3f) rule_floor=%.3f rule_top=%.3f\n",
+                            seamX, seamY,
+                            (seamX - bounds.xMinMm) / cell - double(ix),
+                            (seamY - bounds.yMinMm) / cell - double(iy),
+                            seamWallMm, seamFloorMm,
+                            at(ix, iy), at(ix + 1, iy), at(ix + 1, iy + 1), at(ix, iy + 1),
+                            gv::stockLayerDepthMm(bounds, cell, depth, nx, ny, 0.05, seamX, seamY,
+                                                  gv::StockLayer::Floor),
+                            gv::stockLayerDepthMm(bounds, cell, depth, nx, ny, 0.05, seamX, seamY,
+                                                  gv::StockLayer::Top));
+            }
+            std::printf("note layer_seam cell=%.2f cells=%dx%d hole_cells=%d hole_worst_mm2=%.3e "
+                        "at=(%.2f,%.2f) wall_bottoms=%d orphan=%d seam_mm=%.3e at=(%.2f,%.2f)\n",
+                        cell, cellsX, cellsY, holeCells, holeWorstMm2, holeX, holeY,
+                        seamBottom, seamOrphan, seamWorstMm, seamX, seamY);
+            // Красный, пока хоть одна кромка дна ушла от низа стенки на видимую
+            // величину: 0.01 мм - треть пикселя кадра вблизи при узле 0.15. Шум
+            // float (units last place texcoord) остаётся много ниже. orphan в
+            // счёт не идёт: у звена цепочки внутри клетки вершина есть только у
+            // ОДНОЙ половины (её берёт дальняя часть), а стык меряется по
+            // ближайшей вершине кромки.
+            reportCase(caseName, seamBottom, seamWorstMm, 0.01,
+                       seamBottom > 0 && holeCells == 0 && seamWorstMm <= 0.01);
+        };
+        {
+            const gv::PathData seamPath = gv::prepareOrdered(parsed.ordered, parsed.stages);
+            const gv::ToolInfo initial = gv::parseUiTool(text);
+            const std::vector<gv::StockCutter> plan = gv::stockCutterPlan(seamPath, initial);
+            // Узлы: два прежних (сверка с их числами) и узел жалобы 0.15.
+            const double nodes[] = {0.5, 0.2, 0.15};
+            for (double node : nodes) {
+                const gv::StockRunResult run = gv::simulateStock(seamPath, bounds, node, initial);
+                const gv::StockBoundaryResult boundary = gv::stockCutBoundary(
+                        seamPath, bounds, node, plan, run.field.depthMm(), run.field.countX(),
+                        run.field.countY(), 0.05);
+                char name[64];
+                std::snprintf(name, sizeof(name), "layer_seam_%s",
+                              node < 0.18 ? "0_15" : (node < 0.35 ? "0_2" : "0_5"));
+                measureLayerSeam(run, boundary, node, name);
+            }
         }
 
         const double cells[] = {0.5, 0.2};

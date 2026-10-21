@@ -300,6 +300,26 @@ void applyCleanViewEnv(QQuickItem *root_item)
     root_item->setProperty("showPartSkin", !qEnvironmentVariableIsSet("CNC_NO_PART_SKIN"));
 }
 
+// CNC_FRAME_BG: цвет фона съёмки кадра по "#RRGGBB" - свойство backgroundColor
+// корня (GcodeViewer3D.qml). Ручка замера, а не вид: умолчание вьювера почти
+// белое (#FCFDFF), и на белом фоне щель между слоями остатка неотличима от
+// самого фона - замер щели идёт на цветном фоне, где пиксель фона внутри металла
+// виден и считается. Непонятная строка - отказ с причиной в stderr: молча
+// снять кадр на другом фоне нельзя, кадры сравнивают по фону.
+void applyFrameBackgroundEnv(QQuickItem *root_item)
+{
+    const QString text = qEnvironmentVariable("CNC_FRAME_BG").trimmed();
+    if (text.isEmpty())
+        return;
+    const QColor color(text);
+    if (!color.isValid()) {
+        warn(QStringLiteral("gcodeviewer: CNC_FRAME_BG: цвет не разобран: %1 "
+                            "(ожидается #RRGGBB)").arg(text));
+        return;
+    }
+    root_item->setProperty("backgroundColor", color);
+}
+
 // CNC_STOCK_VIEW: вид остатка заготовки до старта - та же ручка, что клавиша R
 // (GcodeViewer3D.qml, stockView). Четыре вида: exact (точный по узлам поля),
 // smooth (гладкий: дроблённый меш, высота билинейная - вид по умолчанию),
@@ -543,6 +563,7 @@ int runFrame(const QString &viewer_qml, const QString &backend_import,
     root_item->setProperty("quality", QString::fromLatin1(gv::presetFromEnv().level));
     root_item->setProperty("stockPlainBox", qEnvironmentVariableIsSet("CNC_STOCK_BOX"));
     applyCleanViewEnv(root_item);
+    applyFrameBackgroundEnv(root_item);
     applyStockViewEnv(root_item);
     applyStockColorEnv(root_item);
     applyStockGhostEnv(root_item);

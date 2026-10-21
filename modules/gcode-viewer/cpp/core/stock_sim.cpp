@@ -1653,24 +1653,91 @@ double layerRuleDepth(const std::vector<float>& depthMm, int countX, int countY,
     return layer == StockLayer::Floor ? deep : shallow;
 }
 
-// Низ стенки на кромке дна в точке контура: у уступа - по СДВИНУТОЙ внутрь дна
-// точке (там правило ступает, и уровень выбирает сторона), у склона - по самой
-// точке контура (правило билинейно, и кромка дна там не сдвигается: сдвиг
-// увёл бы низ стенки от кромки на сдвиг, умноженный на наклон поля).
-double layerFloorBottomMm(const std::vector<float>& depthMm, int countX, int countY,
-                          const StockBounds& bounds, double cellMm, double cutMm,
-                          double xMm, double yMm, double nx, double ny, double nudgeMm)
+// Сдвиг texcoord граничной вершины: направление и нужен ли он.
+//
+// Направление - СПУСК поля в самой точке (глубже - снятый металл): половина дна
+// уводит texcoord вниз по спуску, половина верха - вверх, поэтому высота вершины
+// берётся у клетки СВОЕЙ половины. Прежнее направление - нормаль звена
+// (влево/вправо от A -> B) со знаком по намотке клетки: у границы, идущей ровно
+// по ребру клетки, знак выходил из намотки и уводил texcoord в чужую клетку.
+//
+// Сдвиг нужен в двух случаях, и оба - про то, какая клетка назовёт высоту:
+//   - правило у сдвинутой точки СТУПАЕТ (у уступа высоту называет уровень
+//     стороны, а не билинейная смесь);
+//   - точка стоит на РЕБРЕ клетки (ровно одна координата на линии узлов), и
+//     правило через это ребро меняется: texcoord такой вершины float округляет в
+//     любую сторону, и шейдер читает у неё соседнюю клетку. Соседняя клетка даёт
+//     билинейную высоту вместо уровня - кромка дна встаёт на 9.07 мм выше низа
+//     стенки (замер - случай layer_seam пробника stock_sim_probe, Test_model,
+//     узел 0.5: 44 точки; узел 0.2 - 49). Это и есть светлая волосинка у низа
+//     стенки: кромка дна поднимается на уступ и встаёт перед стенкой наплывом.
+// У склона вдали от рёбер клеток сдвиг не нужен: правило билинейно, и половины
+// сходятся одним texcoord - иначе высоты кромок разошлись бы на сдвиг.
+//
+// Ложь возврата - сдвига нет (поле в точке ровное: сторона не названа).
+bool boundaryShift(const std::vector<float>& depthMm, int countX, int countY,
+                   const StockBounds& bounds, double cellMm, double cutMm, double nudgeMm,
+                   double xMm, double yMm, StockLayer layer,
+                   double* outNx, double* outNy)
 {
+    *outNx = 0.0;
+    *outNy = 0.0;
+    const double side = layer == StockLayer::Floor ? 1.0 : -1.0;
+    const double h = cellMm * 0.25;
+    double gx = bilinearDepth(depthMm, countX, countY, xMm + h, yMm, bounds, cellMm)
+              - bilinearDepth(depthMm, countX, countY, xMm - h, yMm, bounds, cellMm);
+    double gy = bilinearDepth(depthMm, countX, countY, xMm, yMm + h, bounds, cellMm)
+              - bilinearDepth(depthMm, countX, countY, xMm, yMm - h, bounds, cellMm);
+    const double len = std::hypot(gx, gy);
+    if (!(len > 0.0)) {
+        return false;               // поле в точке ровное: сторона не названа
+    }
+    gx = side * gx / len;
+    gy = side * gy / len;
+    // Вершина на линии узлов: texcoord её float округляет в любую сторону, и
+    // клетку называет округление, а не сторона. Сдвиг обязан увести пробу ЧЕРЕЗ
+    // это ребро - в свою клетку: у дна это сторона с большим уровнем правила, у
+    // верха с меньшим. Спуска поля тут мало: у седла он идёт ВДОЛЬ ребра, проба
+    // остаётся на линии, и округление снова называет чужую клетку.
+    const double px = (xMm - bounds.xMinMm) / cellMm;
+    const double py = (yMm - bounds.yMinMm) / cellMm;
+    const bool onNodeX = std::fabs(px - std::round(px)) <= 1e-9;
+    const bool onNodeY = std::fabs(py - std::round(py)) <= 1e-9;
+    const double probeMm = 1e-6;    // мм: мера «правило меняется через ребро»
+    bool acrossEdge = false;
+    if (onNodeX) {
+        const double plus = layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm,
+                                           xMm + probeMm, yMm, layer);
+        const double minus = layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm,
+                                            xMm - probeMm, yMm, layer);
+        acrossEdge = acrossEdge || std::fabs(plus - minus) > 1e-9;
+        gx = (side > 0.0 ? plus >= minus : plus <= minus) ? 1.0 : -1.0;
+    }
+    if (onNodeY) {
+        const double plus = layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm,
+                                           xMm, yMm + probeMm, layer);
+        const double minus = layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm,
+                                            xMm, yMm - probeMm, layer);
+        acrossEdge = acrossEdge || std::fabs(plus - minus) > 1e-9;
+        gy = (side > 0.0 ? plus >= minus : plus <= minus) ? 1.0 : -1.0;
+    }
+    const double nlen = std::hypot(gx, gy);
+    if (!(nlen > 0.0)) {
+        return false;
+    }
+    const double nx = gx / nlen;
+    const double ny = gy / nlen;
     const double qx = xMm + nx * nudgeMm;
     const double qy = yMm + ny * nudgeMm;
     const double rule = layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm,
-                                       qx, qy, StockLayer::Floor);
+                                       qx, qy, layer);
     const double bilinear = bilinearDepth(depthMm, countX, countY, qx, qy, bounds, cellMm);
-    if (std::fabs(rule - bilinear) > 1e-9) {
-        return rule;                          // правило ступает: кромка сдвинута
+    if (!acrossEdge && std::fabs(rule - bilinear) <= 1e-9) {
+        return false;               // склон: сдвиг развёл бы кромки половин
     }
-    return layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm,
-                          xMm, yMm, StockLayer::Floor);
+    *outNx = nx;
+    *outNy = ny;
+    return true;
 }
 
 } // namespace
@@ -1682,6 +1749,18 @@ double stockLayerDepthMm(const StockBounds& bounds, double cellMm,
     if (countX < 2 || countY < 2 || !(cellMm > 0.0)
             || depthMm.size() < std::size_t(countX) * std::size_t(countY)) {
         return 0.0;
+    }
+    // Та же точка, что у нарисованной граничной вершины: она уводит свой texcoord
+    // сдвигом (boundaryShift), и высота её - правило в сдвинутой точке. Без этого
+    // высота вершины, стоящей на ребре клетки, читалась бы у соседней клетки (её
+    // texcoord округляет float), а у стенки - у своей: стык расходился бы на уступ
+    // (замер - случай layer_seam).
+    double nx = 0.0;
+    double ny = 0.0;
+    if (boundaryShift(depthMm, countX, countY, bounds, cellMm, cutMm, cellMm * 0.04,
+                      xMm, yMm, layer, &nx, &ny)) {
+        return layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm,
+                              xMm + nx * cellMm * 0.04, yMm + ny * cellMm * 0.04, layer);
     }
     return layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm, xMm, yMm, layer);
 }
@@ -1702,32 +1781,22 @@ StockWallMesh stockCutWallFromLayer(const StockBounds& bounds, double cellMm,
     mesh.vertices.reserve(segments.size() * 4 * 4);
     mesh.indices.reserve(segments.size() * 6);
     for (const StockContourSegment& segment : segments) {
-        const double dx = segment.x1Mm - segment.x0Mm;
-        const double dy = segment.y1Mm - segment.y0Mm;
-        const double len = std::hypot(dx, dy);
-        double nx = 0.0;
-        double ny = 0.0;
-        if (len > 0.0) {
-            nx = -dy / len;
-            ny = dx / len;
-            // Нормаль в сторону дна: билинейная глубина по обе стороны отрезка
-            // (снято глубже нетронутого).
-            const double mx = 0.5 * (segment.x0Mm + segment.x1Mm);
-            const double my = 0.5 * (segment.y0Mm + segment.y1Mm);
-            const double probe = cellMm * 0.25;
-            const double plus = bilinearDepth(depthMm, countX, countY,
-                                              mx + nx * probe, my + ny * probe, bounds, cellMm);
-            const double minus = bilinearDepth(depthMm, countX, countY,
-                                               mx - nx * probe, my - ny * probe, bounds, cellMm);
-            if (minus > plus) {
-                nx = -nx;
-                ny = -ny;
+        // Низ - там же, где кромка дна у граничной вершины половины дна: та же
+        // точка (сдвиг по спуску поля, boundaryShift) и то же правило, поэтому
+        // стык сходится точка в точку: концы отрезков и есть граничные вершины.
+        const auto bottomMm = [&](double x, double y) {
+            double nx = 0.0;
+            double ny = 0.0;
+            if (boundaryShift(depthMm, countX, countY, bounds, cellMm, cutMm, nudgeMm,
+                              x, y, StockLayer::Floor, &nx, &ny)) {
+                return layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm,
+                                      x + nx * nudgeMm, y + ny * nudgeMm, StockLayer::Floor);
             }
-        }
-        const double d0 = layerFloorBottomMm(depthMm, countX, countY, bounds, cellMm, cutMm,
-                                             segment.x0Mm, segment.y0Mm, nx, ny, nudgeMm);
-        const double d1 = layerFloorBottomMm(depthMm, countX, countY, bounds, cellMm, cutMm,
-                                             segment.x1Mm, segment.y1Mm, nx, ny, nudgeMm);
+            return layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm,
+                                  x, y, StockLayer::Floor);
+        };
+        const double d0 = bottomMm(segment.x0Mm, segment.y0Mm);
+        const double d1 = bottomMm(segment.x1Mm, segment.y1Mm);
         // Низ на кромке отрезанного дна, верх на плоскости нетронутого верха:
         // стык верх/стенка/дно идёт по одной границе, без щели.
         const std::uint32_t base = std::uint32_t(mesh.vertices.size() / 4);
@@ -1810,12 +1879,10 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
         cell.push_back(std::move(chain));
     }
 
-    // Точка половины: позиция и нормаль границы внутрь половины (у точки схода).
+    // Точка половины: позиция и признак того, что она стоит на точной границе.
     struct Point {
         double x = 0.0;
         double y = 0.0;
-        double nx = 0.0;
-        double ny = 0.0;
         bool onBoundary = false;
     };
     std::vector<float> topVertices;
@@ -1831,14 +1898,6 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
     // шейдера СТУПАЕТ (у уступа знак выбирает уровень). У склона правило
     // билинейно, и половины обязаны сойтись одним texcoord - иначе высоты кромок
     // разошлись бы на сдвиг.
-    const auto needsShift = [&](const Point& p, StockLayer layer) {
-        const double qx = p.x + p.nx * nudgeMm;
-        const double qy = p.y + p.ny * nudgeMm;
-        const double rule = layerRuleDepth(depthMm, countX, countY, bounds, cellMm, cutMm,
-                                           qx, qy, layer);
-        const double bilinear = bilinearDepth(depthMm, countX, countY, qx, qy, bounds, cellMm);
-        return std::fabs(rule - bilinear) > 1e-9;
-    };
     const auto emit = [&](const std::vector<Point>& poly, StockLayer layer) {
         if (poly.size() < 3) {
             return;
@@ -1852,9 +1911,19 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
             double v = ((p.y - bounds.yMinMm) / cellMm + 0.5) / double(countY);
             if (p.onBoundary) {
                 (floor ? boundaryFloor : boundaryTop) += 1;
-                if (needsShift(p, layer)) {
-                    u += p.nx * nudgeMm / (cellMm * double(countX));
-                    v += p.ny * nudgeMm / (cellMm * double(countY));
+            }
+            // Сдвиг texcoord - тем же правилом и тем же расстоянием, что у низа
+            // стенки (stockCutWallFromLayer): одна точка, одно правило, поэтому
+            // кромка дна и низ стенки берут одну клетку и одну высоту. Сдвигается
+            // и угол клетки ВНУТРИ половины: его texcoord float округляет так же,
+            // и клетку у него называет округление.
+            {
+                double nx = 0.0;
+                double ny = 0.0;
+                if (boundaryShift(depthMm, countX, countY, bounds, cellMm, cutMm, nudgeMm,
+                                  p.x, p.y, layer, &nx, &ny)) {
+                    u += nx * nudgeMm / (cellMm * double(countX));
+                    v += ny * nudgeMm / (cellMm * double(countY));
                     (floor ? shiftedFloor : shiftedTop) += 1;
                 }
             }
@@ -2019,17 +2088,10 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
             // Нормали узлов цепочки: половина лежит влево от СВОЕГО обхода
             // цепочки (обход клетки против часовой). Нормаль нужна только сдвигу
             // texcoord (доля клетки), и у почти прямой цепочки она общая.
-            const double dx = b[0] - a[0];
-            const double dy = b[1] - a[1];
-            const double len = std::hypot(dx, dy);
-            const double nx = len > 0.0 ? -dy / len : 0.0;   // влево от A -> B
-            const double ny = len > 0.0 ? dx / len : 0.0;
-            const auto chainPoint = [&](double px, double py, bool onArc) {
+            const auto chainPoint = [](double px, double py) {
                 Point point;
                 point.x = px;
                 point.y = py;
-                point.nx = onArc ? -nx : nx;    // сторона дуги - вправо от A -> B
-                point.ny = onArc ? -ny : ny;
                 point.onBoundary = true;
                 return point;
             };
@@ -2037,25 +2099,25 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
             // клетки, а по цепочке - обратно от B к A.
             Part arc;
             arc.poly.reserve(pointCount + n + 1);
-            arc.poly.push_back(chainPoint(a[0], a[1], true));
+            arc.poly.push_back(chainPoint(a[0], a[1]));
             for (std::size_t k = (std::size_t(iA) + 1) % n; ; k = (k + 1) % n) {
                 pushPoint(arc.poly, hostPoly[k]);
                 if (k == std::size_t(iB)) {
                     break;
                 }
             }
-            arc.poly.push_back(chainPoint(b[0], b[1], true));
+            arc.poly.push_back(chainPoint(b[0], b[1]));
             for (std::size_t k = pointCount - 1; k-- > 1;) {
-                pushPoint(arc.poly, chainPoint(chain.points[k][0], chain.points[k][1], true));
+                pushPoint(arc.poly, chainPoint(chain.points[k][0], chain.points[k][1]));
             }
             dropClosingRepeat(arc.poly);
             // Другая часть: цепочка идёт от A к B, обход клетки - от B к A.
             Part far;
             far.poly.reserve(pointCount + n);
             for (std::size_t k = 0; k + 1 < pointCount; ++k) {
-                pushPoint(far.poly, chainPoint(chain.points[k][0], chain.points[k][1], false));
+                pushPoint(far.poly, chainPoint(chain.points[k][0], chain.points[k][1]));
             }
-            far.poly.push_back(chainPoint(b[0], b[1], false));
+            far.poly.push_back(chainPoint(b[0], b[1]));
             for (std::size_t k = (std::size_t(iB) + 1) % n; ; k = (k + 1) % n) {
                 pushPoint(far.poly, hostPoly[k]);
                 if (k == std::size_t(iA)) {

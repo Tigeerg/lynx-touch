@@ -39,7 +39,7 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
     <FhdStage width={SCREEN_W} height={SCREEN_H}>
       <div
         className={cn(
-          'touch-ui relative flex touch-manipulation select-none flex-col gap-1.5 overflow-hidden bg-background p-1.5',
+          'touch-ui cnc-screen relative flex touch-manipulation select-none flex-col gap-[var(--panel-gap)] overflow-hidden bg-background p-1.5',
           testMode && 'ring-4 ring-warning',
         )}
         style={{ width: SCREEN_W, height: SCREEN_H }}

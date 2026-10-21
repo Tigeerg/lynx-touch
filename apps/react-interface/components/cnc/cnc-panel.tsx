@@ -55,7 +55,7 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
   const displayInner = (
     <div
       className={cn(
-        'relative flex flex-col gap-1.5 overflow-hidden bg-background p-1.5',
+        'relative flex flex-col gap-[var(--panel-gap)] overflow-hidden bg-background p-1.5 cnc-screen',
         hardware && 'rounded-md ring-2 ring-hw-edge',
         testMode && 'rounded-md ring-4 ring-warning',
       )}
@@ -74,6 +74,7 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
         focused={focused}
         hardwareOpen={hardware}
         onToggleHardware={() => setHardware((v) => !v)}
+        onToggleTheme={() => dispatch({ type: 'THEME_TOGGLE' })}
         onWorkplace={(w) => dispatch({ type: 'SET_WORKPLACE', workplace: w })}
       />
       <ScreenTabs
@@ -87,7 +88,7 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
 
       <div
         className={cn(
-          'grid min-h-0 flex-1 gap-1.5',
+          'grid min-h-0 flex-1 gap-[var(--panel-gap)]',
           testMode
             ? 'grid-cols-1 grid-rows-[minmax(0,1fr)]'
             : showModes

@@ -28,7 +28,7 @@ export function ScreenTabs({
 }) {
   const active = tabOfScreen(screen)
   return (
-    <nav aria-label="Экраны" className="grid shrink-0 grid-cols-5 gap-1.5">
+    <nav aria-label="Экраны" className="grid shrink-0 grid-cols-5 gap-[var(--panel-gap)]">
       {TABS.map((tab, i) => {
         const Icon = TAB_ICON[tab]
         const target = screenOfTab(tab, workplace)

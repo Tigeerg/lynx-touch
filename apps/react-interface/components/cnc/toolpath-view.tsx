@@ -78,7 +78,7 @@ export function ToolpathView({
   const feedCount = segments.filter((s) => !s.rapid).length
 
   const content = (
-    <div className="relative h-full bg-[radial-gradient(var(--border)_1px,transparent_1px)] [background-size:16px_16px]">
+    <div className="toolpath-grid relative h-full bg-[radial-gradient(var(--border)_1px,transparent_1px)] [background-size:16px_16px]">
       {geometry ? (
         <svg
           viewBox={`${geometry.minX} ${geometry.minY} ${geometry.w} ${geometry.h}`}

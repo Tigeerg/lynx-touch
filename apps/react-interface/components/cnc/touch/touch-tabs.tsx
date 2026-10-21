@@ -18,7 +18,7 @@ export function TouchTabs({
 }) {
   const active = tabOfScreen(screen)
   return (
-    <nav aria-label="Экраны" className="grid h-16 shrink-0 grid-cols-5 gap-1.5">
+    <nav aria-label="Экраны" className="grid h-16 shrink-0 grid-cols-5 gap-[var(--panel-gap)]">
       {TABS.map((tab) => {
         const Icon = TAB_ICON[tab]
         const target = screenOfTab(tab, workplace)

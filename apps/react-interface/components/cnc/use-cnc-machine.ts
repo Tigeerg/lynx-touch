@@ -186,9 +186,11 @@ export function useCncMachine() {
   const theme = state.params[THEME_PARAM]
   useEffect(() => {
     const root = document.documentElement
-    root.classList.toggle('dark', theme === 1 || theme === 2)
-    root.classList.toggle('theme-graphite', theme === 2)
-    root.classList.toggle('theme-mint', theme === 3)
+    root.classList.toggle('dark', theme === 1 || theme === 3 || theme === 4)
+    root.classList.toggle('theme-graphite', theme === 4)
+    root.classList.toggle('theme-mint', theme === 5)
+    root.classList.toggle('theme-minimal', theme === 0 || theme === 1)
+    root.classList.toggle('theme-minimal-dark', theme === 1)
   }, [theme])
 
   return { state, dispatch, softkeys, clock, focused, pathView: state.test.view, cycleView }

@@ -29,7 +29,7 @@ export function Panel({
   className?: string
 }) {
   return (
-    <section className={cn('flex min-h-0 flex-col overflow-hidden rounded-md border bg-card', className)}>
+    <section className={cn('cnc-box flex min-h-0 flex-col overflow-hidden rounded-md border bg-card', className)}>
       <header className="flex h-8 shrink-0 items-center gap-2 border-b bg-muted px-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         {Icon && <Icon className="size-4 shrink-0" aria-hidden="true" />}
         <h2 className="min-w-0 truncate">{title}</h2>

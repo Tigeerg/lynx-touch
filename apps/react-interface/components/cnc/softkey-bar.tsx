@@ -31,7 +31,11 @@ export function MessageBar({ message }: { message: MachineState['message'] }) {
 
 export function SoftkeyBar({ keys, onPress }: { keys: (Softkey | null)[]; onPress: (k: Softkey) => void }) {
   return (
-    <div className="grid shrink-0 grid-cols-8 gap-1.5" role="toolbar" aria-label="Функциональные клавиши">
+    <div
+      className="grid shrink-0 grid-cols-8 gap-[var(--panel-gap)]"
+      role="toolbar"
+      aria-label="Функциональные клавиши"
+    >
       {keys.map((k, i) => {
         const label = `F${i + 1}`
         if (!k) {

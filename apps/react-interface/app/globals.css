@@ -74,6 +74,7 @@
   --input: oklch(0.85 0.01 250);
   --ring: oklch(0.5 0.16 255);
   --radius: 0.5rem;
+  --panel-gap: 0.375rem;
   --hw-plate: oklch(0.36 0.012 255);
   --hw-edge: oklch(0.19 0.012 255);
   --hw-key: oklch(0.48 0.012 255);
@@ -165,6 +166,231 @@
   --border: oklch(0.84 0.02 175);
   --input: oklch(0.84 0.02 175);
   --ring: oklch(0.5 0.1 180);
+}
+
+/* Минимал — оформление в духе промышленных ЧПУ: два цвета контраста, прямые
+   углы, 1px-линии вместо карточек, никаких теней, градиентов и анимаций.
+   Светлая (theme-minimal) и тёмная (theme-minimal + theme-minimal-dark) —
+   одна и та же геометрия, меняется только палитра. */
+:root.theme-minimal {
+  color-scheme: light;
+  --background: #d9d9d5;
+  --foreground: #182027;
+  --card: #f1f2ee;
+  --card-foreground: #182027;
+  --popover: #f1f2ee;
+  --popover-foreground: #182027;
+  --primary: #168447;
+  --primary-foreground: #ffffff;
+  --secondary: #c5c9c7;
+  --secondary-foreground: #182027;
+  --muted: #e5e7e3;
+  --muted-foreground: #536068;
+  --accent: #d9a441;
+  --accent-foreground: #182027;
+  --destructive: #c94132;
+  --success: #168447;
+  --warning: #d9a441;
+  --warning-foreground: #182027;
+  --border: #182027;
+  --input: #536068;
+  --ring: #168447;
+  --radius: 0rem;
+  --panel-gap: 0rem;
+  --splash: #182027;
+}
+
+:root.theme-minimal.theme-minimal-dark {
+  color-scheme: dark;
+  --background: #182027;
+  --foreground: #eef1ed;
+  --card: #252e34;
+  --card-foreground: #eef1ed;
+  --popover: #252e34;
+  --popover-foreground: #eef1ed;
+  --primary: #35c878;
+  --primary-foreground: #102017;
+  --secondary: #344047;
+  --secondary-foreground: #eef1ed;
+  --muted: #20292f;
+  --muted-foreground: #aeb9b8;
+  --accent: #d9a441;
+  --accent-foreground: #182027;
+  --destructive: #f06451;
+  --success: #35c878;
+  --warning: #e8b650;
+  --warning-foreground: #182027;
+  --border: #b7c0bd;
+  --input: #aeb9b8;
+  --ring: #35c878;
+}
+
+/* Экран в духе промышленного ЧПУ: моноширинный шрифт, одна линия 1px между
+   блоками (соседние рамки накладываются), заголовок блока — инверсная плашка,
+   активное состояние — инверсия, без теней, скруглений, градиентов и анимаций. */
+.theme-minimal .cnc-screen {
+  position: relative;
+  padding: 0 !important;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.theme-minimal .cnc-screen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  border: 2px solid var(--foreground);
+  pointer-events: none;
+}
+.theme-minimal .cnc-screen * {
+  box-shadow: none !important;
+  text-shadow: none !important;
+  border-radius: 0 !important;
+  transition: none !important;
+  animation: none !important;
+}
+.theme-minimal .cnc-screen .font-sans {
+  font-family: inherit;
+}
+.theme-minimal .cnc-screen [class*='bg-gradient'],
+.theme-minimal .cnc-screen [class*='backdrop'] {
+  background-image: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Общие границы: соседние блоки делят одну линию. */
+.theme-minimal .cnc-screen > header > *,
+.theme-minimal .cnc-screen nav[aria-label='Экраны'] > button,
+.theme-minimal .cnc-screen [role='toolbar'] > *,
+.theme-minimal .cnc-screen .cnc-box {
+  border: 1px solid var(--foreground);
+  margin: 0 -1px -1px 0;
+}
+.theme-minimal .cnc-screen > header {
+  height: 40px;
+}
+
+/* Заголовок блока: инверсная плашка слева, под ним линия. */
+.theme-minimal .cnc-screen .cnc-box > header {
+  height: 24px;
+  padding: 0 !important;
+  gap: 0 !important;
+  background: var(--background);
+  color: var(--foreground);
+  border-bottom: 1px solid var(--foreground);
+}
+.theme-minimal .cnc-screen .cnc-box > header > svg {
+  display: none;
+}
+.theme-minimal .cnc-screen .cnc-box > header > h2 {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 100%;
+  padding: 0 10px;
+  background: var(--foreground);
+  color: var(--background);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+.theme-minimal .cnc-screen .cnc-box > header > div {
+  padding-right: 6px;
+}
+
+/* Вкладки: номер без рамки, активная — инверсия, недоступная — серая. */
+.theme-minimal .cnc-screen nav[aria-label='Экраны'] > button {
+  height: 28px;
+  padding-inline: 8px;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+.theme-minimal .cnc-screen nav[aria-label='Экраны'] > button:disabled {
+  text-decoration: none;
+  opacity: 1;
+  color: color-mix(in oklab, var(--foreground) 40%, var(--background));
+  cursor: not-allowed;
+}
+.theme-minimal .cnc-screen kbd {
+  height: auto;
+  min-width: 0;
+  padding: 0 4px;
+  border: 1px solid currentColor !important;
+  background: transparent !important;
+  color: inherit !important;
+  font-weight: 700;
+}
+
+/* Функциональные клавиши. */
+.theme-minimal .cnc-screen [role='toolbar'] > * {
+  height: 48px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.theme-minimal .cnc-screen [role='toolbar'] > div {
+  border-style: solid !important;
+  background: var(--muted);
+}
+.theme-minimal .cnc-screen [role='toolbar'] > div kbd {
+  opacity: 0.4;
+}
+.theme-minimal .cnc-screen [role='toolbar'] > button[aria-pressed='true'] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.theme-minimal .cnc-screen .text-success,
+.theme-minimal .cnc-screen [class*='text-green'] {
+  color: var(--success) !important;
+}
+.theme-minimal .cnc-screen .text-warning,
+.theme-minimal .cnc-screen [class*='text-amber'],
+.theme-minimal .cnc-screen [class*='text-yellow'] {
+  color: var(--warning) !important;
+}
+.theme-minimal .cnc-screen .text-destructive,
+.theme-minimal .cnc-screen [class*='text-red'] {
+  color: var(--destructive) !important;
+}
+.theme-minimal .cnc-screen [role='toolbar'] > button:disabled {
+  opacity: 1;
+  color: color-mix(in oklab, var(--foreground) 40%, var(--background));
+  background: var(--background);
+}
+
+.theme-minimal .cnc-screen button {
+  font-weight: 700;
+}
+.theme-minimal .cnc-screen button:disabled {
+  cursor: not-allowed;
+}
+.theme-minimal .cnc-screen button:focus-visible,
+.theme-minimal .cnc-screen [tabindex]:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: -3px;
+}
+.theme-minimal .cnc-screen [role='toolbar'] button svg,
+.theme-minimal .cnc-screen nav[aria-label='Экраны'] button svg,
+.theme-minimal .cnc-screen header button svg {
+  display: none;
+}
+.theme-minimal .cnc-screen .wp-word {
+  display: inline;
+}
+.theme-minimal .cnc-screen .wp-btn {
+  width: auto;
+  padding-inline: 6px;
+}
+
+/* Координатная сетка траектории: сплошные линии вместо точек. */
+.theme-minimal .toolpath-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--foreground) 14%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 14%, transparent) 1px, transparent 1px) !important;
+  background-size: 40px 40px !important;
+  background-color: var(--background) !important;
 }
 
 @layer base {

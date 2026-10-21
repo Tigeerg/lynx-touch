@@ -1,6 +1,7 @@
 import { FlaskConical, Play, TriangleAlert, Wrench, type LucideIcon } from 'lucide-react'
 import { MACHINE_NAME, RUN_LABEL, WORKPLACE_LABEL } from '@/lib/cnc/data'
 import { currentFile } from '@/lib/cnc/machine'
+import { THEME_OPTIONS, THEME_PARAM } from '@/lib/cnc/service-data'
 import { WORKPLACES, type MachineState, type Workplace } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 
@@ -24,6 +25,7 @@ export function HeaderBar({
   focused,
   hardwareOpen,
   onToggleHardware,
+  onToggleTheme,
   onWorkplace,
 }: {
   state: MachineState
@@ -31,6 +33,7 @@ export function HeaderBar({
   focused: boolean
   hardwareOpen: boolean
   onToggleHardware: () => void
+  onToggleTheme: () => void
   onWorkplace: (w: Workplace) => void
 }) {
   const activeAlarms = state.alarms.filter((a) => a.active)
@@ -38,7 +41,7 @@ export function HeaderBar({
   const WorkplaceIcon = WORKPLACE_ICON[state.workplace]
 
   return (
-    <header className="flex h-11 shrink-0 items-stretch gap-1.5 whitespace-nowrap">
+    <header className="flex h-11 shrink-0 items-stretch gap-[var(--panel-gap)] whitespace-nowrap">
       <div className="flex shrink-0 items-center gap-2 rounded-md border bg-card px-2">
         <div className="flex size-7 items-center justify-center rounded-sm bg-primary font-mono text-[11px] font-bold text-primary-foreground">
           ЧПУ
@@ -69,13 +72,14 @@ export function HeaderBar({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => onWorkplace(w)}
                   className={cn(
-                    'flex size-7 items-center justify-center rounded-sm border transition-colors',
+                    'wp-btn flex size-7 items-center justify-center rounded-sm border transition-colors',
                     active
                       ? 'border-primary bg-primary text-primary-foreground'
                       : 'bg-muted text-muted-foreground hover:bg-accent',
                   )}
                 >
                   <Icon className="size-3.5" aria-hidden="true" />
+                  <span className="wp-word hidden truncate text-[10px] font-semibold">{WORKPLACE_LABEL[w]}</span>
                   <span className="sr-only">{WORKPLACE_LABEL[w]}</span>
                 </button>
               </li>
@@ -134,6 +138,17 @@ export function HeaderBar({
           )}
         >
           Пульт
+        </button>
+        <button
+          type="button"
+          tabIndex={-1}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onToggleTheme}
+          title={`Тема: ${THEME_OPTIONS[state.params[THEME_PARAM]]}. Нажмите, чтобы сменить`}
+          aria-label={`Сменить тему. Сейчас: ${THEME_OPTIONS[state.params[THEME_PARAM]]}`}
+          className="flex h-7 items-center rounded-sm border bg-muted px-2 text-[11px] font-semibold transition-colors hover:bg-accent"
+        >
+          Тема
         </button>
         <span
           role="img"

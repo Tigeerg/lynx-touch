@@ -28,6 +28,7 @@ import {
   hasServiceList,
   paramAt,
   SERVICE_PASSWORD,
+  THEME_OPTIONS,
   THEME_PARAM,
   TOOLPATH_PARAM,
   UI_MODE_PARAM,
@@ -804,9 +805,9 @@ export function reducer(state: MachineState, a: Action): MachineState {
 
     case 'THEME_TOGGLE':
       return markSaved(
-        { ...s, params: { ...s.params, [THEME_PARAM]: (s.params[THEME_PARAM] + 1) % 4 } },
+        { ...s, params: { ...s.params, [THEME_PARAM]: (s.params[THEME_PARAM] + 1) % THEME_OPTIONS.length } },
         THEME_PARAM,
-        (s.params[THEME_PARAM] + 1) % 4,
+        (s.params[THEME_PARAM] + 1) % THEME_OPTIONS.length,
       )
     case 'UI_MODE_SET':
       if (s.params[UI_MODE_PARAM] === a.value) return s

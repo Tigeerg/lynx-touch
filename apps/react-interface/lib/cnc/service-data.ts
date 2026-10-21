@@ -78,6 +78,8 @@ export const SCREEN_SIZE_PARAM = 'DISPLAY.SCREEN_SIZE'
 export const MAX_FEED_PARAM = 'DISPLAY.MAX_FEED_OVERRIDE'
 export const MAX_SPINDLE_PARAM = 'DISPLAY.MAX_SPINDLE_OVERRIDE'
 
+export const THEME_OPTIONS = ['Минимал · светлая', 'Минимал · тёмная', 'Светлая', 'Тёмная', 'Графит', 'Мята']
+
 export const SYSTEM_PARAMS: ParamDef[] = [
   p({
     group: 'DISPLAY',
@@ -85,9 +87,9 @@ export const SYSTEM_PARAMS: ParamDef[] = [
     label: 'Тема интерфейса',
     step: 1,
     min: 0,
-    max: 3,
+    max: THEME_OPTIONS.length - 1,
     default: 0,
-    options: ['Светлая', 'Тёмная', 'Графит', 'Мята'],
+    options: THEME_OPTIONS,
     free: true,
   }),
   p({

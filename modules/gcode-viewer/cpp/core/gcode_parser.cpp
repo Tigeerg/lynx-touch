@@ -1,9 +1,10 @@
-// core/gcode_parser.cpp - разбор управляющей программы.
+// core/gcode_parser.cpp - NC program parsing.
 //
-// Точность важнее краткости: питоновское ядро сверяется побайтово
-// (oracle_manifest.json, ключи path.*), поэтому здесь сохранены порядок операций,
-// способ округления и даже алгоритм math.hypot из CPython - подмена hypot на
-// sqrt(x*x + y*y) сдвигает 51 точку из 70915 на Test_model.ngc (измерено).
+// Precision matters more than brevity: the reference core is checked byte for
+// byte (oracle_manifest.json, path.* keys), so the order of operations, the
+// rounding mode and even the CPython math.hypot algorithm are kept here -
+// replacing hypot with sqrt(x*x + y*y) shifts 51 points out of 70915 on
+// Test_model.ngc (measured).
 #include "gcode_parser.h"
 
 #include <algorithm>
@@ -20,29 +21,29 @@
 namespace gv {
 namespace {
 
-// math.pi и math.degrees: в CPython degrees(x) считается как x * (180/pi), где
-// множитель - константа, вычисленная на этапе компиляции.
+// math.pi and math.degrees: in CPython degrees(x) is computed as x * (180/pi),
+// where the multiplier is a compile-time constant.
 const double kPi = 3.141592653589793238462643383279502884;
 const double kRadToDeg = 180.0 / kPi;
 
-// ---- math.hypot из CPython 3.12 (Modules/mathmodule.c, vector_norm) ---------
-// Python считает hypot не как sqrt(x*x + y*y): он масштабирует слагаемые,
-// квадраты складывает с компенсацией (dl_mul на fma + dl_fast_sum) и добавляет
-// дифференциальную поправку. Для двух аргументов это ниже.
+// ---- math.hypot from CPython 3.12 (Modules/mathmodule.c, vector_norm) ---------
+// The reference computes hypot not as sqrt(x*x + y*y): it scales the terms, adds
+// the squares with compensation (dl_mul on fma + dl_fast_sum) and adds a
+// differential correction. For two arguments this is below.
 
 struct DoubleLength {
     double hi = 0.0;
     double lo = 0.0;
 };
 
-// Algorithm 1.1: компенсированное сложение двух чисел; |a| >= |b| по условию.
+// Algorithm 1.1: compensated addition of two numbers; |a| >= |b| by assumption.
 DoubleLength dlFastSum(double a, double b) {
     const double x = a + b;
     const double y = (a - x) + b;
     return DoubleLength{x, y};
 }
 
-// Algorithm 3.5: точное разложение произведения (остаток через fma).
+// Algorithm 3.5: exact product decomposition (the remainder via fma).
 DoubleLength dlMul(double x, double y) {
     const double z = x * y;
     const double zz = std::fma(x, y, -z);
@@ -61,7 +62,7 @@ double hypot2(double a, double b) {
     int maxE = 0;
     std::frexp(max, &maxE);
     if (maxE < -1023) {
-        // Субнормальный максимум: ldexp(1.0, -maxE) переполнился бы.
+        // Subnormal maximum: ldexp(1.0, -maxE) would overflow.
         const double dblMin = std::numeric_limits<double>::min();
         vec[0] /= dblMin;
         vec[1] /= dblMin;
@@ -90,8 +91,8 @@ double hypot2(double a, double b) {
     return h / scale;
 }
 
-// ---- плоскости и смещения дуг ---------------------------------------------
-// Активная плоскость -> (ось u, ось v, ось w); w - ось винта/нормали.
+// ---- planes and arc offsets -----------------------------------------------
+// Active plane -> (u axis, v axis, w axis); w is the screw/normal axis.
 enum class Plane { XY, XZ, YZ };
 
 void planeAxes(Plane plane, int& u, int& v, int& w) {
@@ -100,16 +101,17 @@ void planeAxes(Plane plane, int& u, int& v, int& w) {
     else { u = 1; v = 2; w = 0; }
 }
 
-// Активная плоскость -> буквы смещений центра (u, v).
+// Active plane -> center offset letters (u, v).
 void planeOffsets(Plane plane, char& lu, char& lv) {
     if (plane == Plane::XY) { lu = 'I'; lv = 'J'; }
     else if (plane == Plane::XZ) { lu = 'I'; lv = 'K'; }
     else { lu = 'J'; lv = 'K'; }
 }
 
-// Слова строки: буква и число (-? \d*.? \d+) - питоновский _WORD_RE.findall.
-// Число - не копия, а срез в буфере строки: строку никто не меняет и не
-// перевыделяет, пока значение читается (иначе срез повис бы).
+// Words of the line: a letter and a number (-? \d*.? \d+) - the reference
+// _WORD_RE.findall. The number is not a copy but a slice into the line buffer:
+// nobody changes or reallocates the line while the value is read (otherwise the
+// slice would dangle).
 struct Word {
     char letter = 'A';
     size_t valueStart = 0;
@@ -119,13 +121,13 @@ struct Word {
 std::vector<Word> findWords(const std::string& line) {
     std::vector<Word> out;
     const size_t n = line.size();
-    out.reserve(n / 2 + 1);                        // слово занимает минимум 2 байта
+    out.reserve(n / 2 + 1);                        // a word takes at least 2 bytes
     size_t i = 0;
     while (i < n) {
         if (!isLetterCh(line[i])) { ++i; continue; }
         size_t p = i + 1;
         while (p < n && isSpaceCh(static_cast<unsigned char>(line[p]))) { ++p; }
-        const size_t valueStart = p;               // знак входит в число
+        const size_t valueStart = p;               // the sign is part of the number
         if (p < n && (line[p] == '+' || line[p] == '-')) { ++p; }
         const size_t digitsStart = p;
         while (p < n && isDigitCh(line[p])) { ++p; }
@@ -148,9 +150,9 @@ std::vector<Word> findWords(const std::string& line) {
     return out;
 }
 
-// Питоновский text.splitlines: границы строк \n, \r, \r\n, \v, \f, 0x1c-0x1e.
-// 0x85 не считается границей: файл читается как байты, и одиночный 0x85 внутри
-// UTF-8 был бы половиной чужого символа.
+// The reference text.splitlines: line boundaries \n, \r, \r\n, \v, \f,
+// 0x1c-0x1e. 0x85 does not count as a boundary: the file is read as bytes, and a
+// lone 0x85 inside UTF-8 would be half of another character.
 std::vector<std::string> splitLines(const std::string& text) {
     std::vector<std::string> out;
     size_t start = 0;
@@ -169,7 +171,7 @@ std::vector<std::string> splitLines(const std::string& text) {
     return out;
 }
 
-// Питоновский _COMMENT_RE.sub("", s): все (...) без вложенных ')'.
+// The reference _COMMENT_RE.sub("", s): all (...) without a nested ')'.
 std::string stripComments(const std::string& s) {
     std::string out;
     out.reserve(s.size());
@@ -190,7 +192,7 @@ std::string stripComments(const std::string& s) {
     return out;
 }
 
-// Смена инструмента: шаблон \bT\s*(\d+)\s*M0?6\b; digits - то, что взяла группа.
+// Tool change: the pattern \bT\s*(\d+)\s*M0?6\b; digits - what the group captured.
 struct ToolChange {
     bool found = false;
     std::string digits;
@@ -199,7 +201,7 @@ struct ToolChange {
 ToolChange findToolChange(const std::string& s) {
     for (size_t i = 0; i < s.size(); ++i) {
         if (s[i] != 'T') { continue; }
-        if (i > 0 && isWordCh(s[i - 1])) { continue; }        // \b перед T
+        if (i > 0 && isWordCh(s[i - 1])) { continue; }        // \b before T
         size_t p = i + 1;
         while (p < s.size() && isSpaceCh(static_cast<unsigned char>(s[p]))) { ++p; }
         const size_t digitsStart = p;
@@ -212,7 +214,7 @@ ToolChange findToolChange(const std::string& s) {
         if (p < s.size() && s[p] == '0') { ++p; }
         if (p >= s.size() || s[p] != '6') { continue; }
         ++p;
-        if (p < s.size() && isWordCh(s[p])) { continue; }     // \b после 6
+        if (p < s.size() && isWordCh(s[p])) { continue; }     // \b after 6
         ToolChange tc;
         tc.found = true;
         tc.digits = digits;
@@ -237,11 +239,12 @@ double envDouble(const char *name, double def) {
 }
 
 bool samePoint(const std::array<double, 3>& a, const std::array<double, 3>& b) {
-    // Кортеж в Python сравнивается поэлементно, поэтому -0.0 равно 0.0.
+    // A tuple in the reference compares element-wise, so -0.0 equals 0.0.
     return a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
 }
 
-// Смещения дуги этой строки: I, J, K, R, Q и F (F тоже лежит в питоновском ijkr).
+// Arc offsets of this line: I, J, K, R, Q and F (F also lives in the reference
+// ijkr).
 struct Ijkr {
     bool hasI = false, hasJ = false, hasK = false;
     bool hasR = false, hasQ = false, hasF = false;
@@ -274,7 +277,7 @@ struct Ijkr {
     }
 };
 
-// Направленная угловая длина дуги (питоновский _arc_sweep).
+// Directed angular length of the arc (the reference _arc_sweep).
 double arcSweep(double sx, double sy, double ex, double ey, double cx, double cy, bool cw) {
     double a0 = std::atan2(sy - cy, sx - cx);
     double a1 = std::atan2(ey - cy, ex - cx);
@@ -286,7 +289,8 @@ double arcSweep(double sx, double sy, double ex, double ey, double cx, double cy
     return a1 - a0;
 }
 
-// Тесселяция дуги G2/G3 в активной плоскости (винт - по нормальной оси).
+// Tessellation of a G2/G3 arc in the active plane (the screw runs along the
+// normal axis).
 std::vector<std::array<double, 3>> arcPoints(const std::array<double, 3>& start,
                                              const std::array<double, 3>& end,
                                              const Ijkr& ij, bool cw, Plane plane,
@@ -328,7 +332,7 @@ std::vector<std::array<double, 3>> arcPoints(const std::array<double, 3>& start,
         cy = sy + ij.get(lv);
         sweep = arcSweep(sx, sy, ex, ey, cx, cy, cw);
     } else {
-        return {start, end};              // центра нет: прямая хорда
+        return {start, end};              // no center: straight chord
     }
 
     const double r = hypot2(sx - cx, sy - cy);
@@ -351,7 +355,7 @@ std::vector<std::array<double, 3>> arcPoints(const std::array<double, 3>& start,
     return pts;
 }
 
-// Параметры активного кадрового цикла (питоновский dict cycle).
+// Parameters of the active canned cycle (the reference dict cycle).
 struct Cycle {
     bool on = false;
     int code = 81;
@@ -363,9 +367,9 @@ struct Cycle {
     double q = 0.0;
 };
 
-// Питоновский emit: точка (a, b) с флагом ИСХОДЯЩЕГО сегмента и его скоростью.
-// Порядок ветвей и замена последней точки повторены дословно: флаги зависят от
-// него, а по флагам потом режется быстрый/рабочий поток.
+// The reference emit: a point (a, b) with the OUTGOING segment flag and its
+// speed. The branch order and the last-point replacement are repeated literally:
+// the flags depend on them, and the rapid/feed stream is later cut by the flags.
 class Emitter {
 public:
     Emitter(std::vector<PathPoint>& ordered, const bool& feedSet, const double& feedVal,
@@ -380,7 +384,7 @@ public:
         return (feedSet_ && feedVal_ > 0.0) ? feedVal_ / 60.0 : defaultFeed_;
     }
 
-    // emit(a, b, is_rapid, decimate=False): без прореживания.
+    // emit(a, b, is_rapid, decimate=False): without decimation.
     void line(const std::array<double, 3>& a, const std::array<double, 3>& b, bool isRapid) const {
         emit(a, b, isRapid, false, 0.0);
     }
@@ -420,8 +424,8 @@ private:
     double decimateTol2_;
 };
 
-// Один кадровый цикл сверления в точке (hx, hy); pos переводится на плоскость
-// возврата (питоновский _run_cycle).
+// One canned drilling cycle at the point (hx, hy); pos is moved to the return
+// plane (the reference _run_cycle).
 void runCycle(const Cycle& cyc, std::array<double, 3>& pos, double hx, double hy,
               const Emitter& emit, bool retractToR) {
     const double z = cyc.hasDepth ? cyc.depth : pos[2];
@@ -429,48 +433,49 @@ void runCycle(const Cycle& cyc, std::array<double, 3>& pos, double hx, double hy
     const int code = cyc.on ? cyc.code : 81;
     const double q = std::fabs(cyc.hasQ ? cyc.q : 0.0);
     std::array<double, 3> start = pos;
-    const double clear = (start[2] >= r) ? start[2] : r;      // уровень выхода
+    const double clear = (start[2] >= r) ? start[2] : r;      // exit level
     if (start[2] < clear) {
         emit.line(start, {start[0], start[1], clear}, true);
         start[2] = clear;
     }
-    emit.line(start, {hx, hy, start[2]}, true);               // выход в XY
+    emit.line(start, {hx, hy, start[2]}, true);               // XY exit
     if (start[2] > r) {
-        emit.line({hx, hy, start[2]}, {hx, hy, r}, true);     // быстрый ход на R
+        emit.line({hx, hy, start[2]}, {hx, hy, r}, true);     // rapid to R
     }
 
     const double retractZ = retractToR ? r : clear;
 
     if ((code == 73 || code == 83) && q > 1e-6 && (r - z) > q + 1e-6) {
-        const double clearance = std::min(1.0, std::max(0.2, q * 0.5));  // зазор над засверлом
-        double bottom = r;                                                // низ текущего засверла
-        double cur = r;                                                   // начало подачи
+        const double clearance = std::min(1.0, std::max(0.2, q * 0.5));  // clearance above the peck bottom
+        double bottom = r;                                                // bottom of the current peck
+        double cur = r;                                                   // start of the feed
         while (true) {
-            bottom = std::max(z, bottom - q);                             // следующий низ (-Q)
-            emit.line({hx, hy, cur}, {hx, hy, bottom}, false);            // подача на засверло
-            if (bottom <= z + 1e-6) { break; }                            // достигли глубины
-            if (code == 83) {                                             // полный выход (G83)
+            bottom = std::max(z, bottom - q);                             // next bottom (-Q)
+            emit.line({hx, hy, cur}, {hx, hy, bottom}, false);            // feed to the peck
+            if (bottom <= z + 1e-6) { break; }                            // reached the depth
+            if (code == 83) {                                             // full retract (G83)
                 emit.line({hx, hy, bottom}, {hx, hy, retractZ}, true);
                 cur = std::min(bottom + clearance, r);
                 emit.line({hx, hy, retractZ}, {hx, hy, cur}, true);
-            } else {                                                      // дробление стружки (G73)
+            } else {                                                      // chip breaking (G73)
                 const double up = std::min(bottom + clearance, r);
                 emit.line({hx, hy, bottom}, {hx, hy, up}, true);
                 emit.line({hx, hy, up}, {hx, hy, bottom}, true);
                 cur = bottom;
             }
         }
-        emit.line({hx, hy, z}, {hx, hy, retractZ}, true);                 // финальный выход
+        emit.line({hx, hy, z}, {hx, hy, retractZ}, true);                 // final retract
     } else {
-        emit.line({hx, hy, r}, {hx, hy, z}, false);                       // сверление на глубину
-        emit.line({hx, hy, z}, {hx, hy, retractZ}, true);                 // выход
+        emit.line({hx, hy, r}, {hx, hy, z}, false);                       // drill to depth
+        emit.line({hx, hy, z}, {hx, hy, retractZ}, true);                 // retract
     }
 
     pos = {hx, hy, retractZ};
 }
 
-// Этапы операций: инструмент операции - первый UI_TOOL внутри её диапазона;
-// операции с прежним инструментом его наследуют (питоновский _ops_with_tools).
+// Operation stages: the tool of an operation is the first UI_TOOL inside its
+// range; operations with the previous tool inherit it (the reference
+// _ops_with_tools).
 std::vector<Stage> opsWithTools(const std::vector<Stage>& opMarks,
                                 const std::vector<Stage>& toolMarks) {
     std::vector<Stage> tmarks = toolMarks;
@@ -493,7 +498,7 @@ std::vector<Stage> opsWithTools(const std::vector<Stage>& opMarks,
             }
         }
         if (info.present) { lastInfo = info; }
-        else { info = lastInfo; }                    // тот же инструмент, что у прошлой операции
+        else { info = lastInfo; }                    // same tool as the previous operation
         std::string label = name;
         if (info.present) { label += " \xC2\xB7 " + stageLabel(info); }
         Stage st;
@@ -518,12 +523,12 @@ ParseResult parseGcode(const std::string& text) {
     const double defaultFeed = envDouble("CNC_DEFAULT_FEED_MMS", 100.0);
 
     std::vector<PathPoint> ordered;
-    std::vector<Stage> uiToolMarks;      // этапы из тегов UI_TOOL
-    std::vector<Stage> uiOpMarks;        // этапы из явных тегов UI_OP
-    std::vector<Stage> opMarks;          // этапы из строк-комментариев операций
-    std::vector<Stage> toolMarks;        // этапы из смен инструмента (запасной путь)
-    bool seenCode = false;               // встретилась строка с движением
-    std::string prevCode;                // последняя строка кода (чтобы пропустить комментарий смены)
+    std::vector<Stage> uiToolMarks;      // stages from UI_TOOL tags
+    std::vector<Stage> uiOpMarks;        // stages from explicit UI_OP tags
+    std::vector<Stage> opMarks;          // stages from operation comment lines
+    std::vector<Stage> toolMarks;        // stages from tool changes (fallback path)
+    bool seenCode = false;               // a line with motion was seen
+    std::string prevCode;                // the last code line (to skip a tool-change comment)
     std::array<double, 3> pos{0.0, 0.0, 0.0};
     Motion motion = Motion::None;
     Plane plane = Plane::XY;
@@ -537,11 +542,11 @@ ParseResult parseGcode(const std::string& text) {
     Emitter emit(ordered, feedSet, feedVal, rapidSpeed, defaultFeed, decimateTol2);
     auto markIndex = [&ordered]() { return std::max(0, static_cast<int>(ordered.size()) - 1); };
 
-    // Строки готовятся один раз на строку УП: срез до ';', снятие комментариев,
-    // обрезка пробелов и верхний регистр. Раньше то же самое считалось дважды -
-    // отдельно для теста «строка-комментарий» и для разбора слов (110585 строк).
+    // Lines are prepared once per NC line: slice up to ';', strip comments, trim
+    // and uppercase. Previously the same was computed twice - separately for the
+    // "comment line" test and for word parsing (110585 lines).
     const std::vector<std::string> lines = splitLines(text);
-    ordered.reserve(lines.size());                 // оценка: около точки пути на строку
+    ordered.reserve(lines.size());                 // estimate: about one path point per line
     for (const std::string& raw : lines) {
         const std::string up = asciiUpper(raw);
         const size_t semi = raw.find(';');
@@ -549,11 +554,11 @@ ParseResult parseGcode(const std::string& text) {
         line = stripComments(line);
         stripInPlace(line);
         line = asciiUpper(line);
-        // Строка-комментарий: кода нет, но '(' в строке есть - весь текст был
-        // комментарием.
+        // A comment line: no code, but '(' is present - the whole text was a
+        // comment.
         const bool standaloneComment = line.empty() && raw.find('(') != std::string::npos;
         if (up.find("UI_TOOL") != std::string::npos) {
-            // Смена инструмента: задаёт геометрию резца для следующей секции.
+            // Tool change: sets the cutter geometry for the next section.
             const ToolInfo info = parseUiTool(raw);
             Stage st;
             st.index = markIndex();
@@ -561,7 +566,7 @@ ParseResult parseGcode(const std::string& text) {
             st.info = info;
             uiToolMarks.push_back(st);
         } else if (up.find("UI_OP") != std::string::npos) {
-            // Явный маркер операции: однозначное начало секции.
+            // An explicit operation marker: an unambiguous section start.
             std::string inner = commentText(raw);
             const size_t innerLen = inner.size();
             size_t p = 0;
@@ -582,8 +587,9 @@ ParseResult parseGcode(const std::string& text) {
                                      : inner;
             uiOpMarks.push_back(st);
         } else if (standaloneComment) {
-            // Голый комментарий после начала программы - комментарий операции
-            // секции. Теги UI_* и комментарий, идущий сразу за сменой, пропускаются.
+            // A bare comment after the program start - the section's operation
+            // comment. UI_* tags and a comment right after a tool change are
+            // skipped.
             if (seenCode) {
                 const std::string inner = commentText(raw);
                 if (!inner.empty() && !startsWithNoCase(inner, "UI_")
@@ -611,7 +617,7 @@ ParseResult parseGcode(const std::string& text) {
         if (!seenCode) {
             for (const Word& w : words) {
                 if (w.letter == 'X' || w.letter == 'Y' || w.letter == 'Z') {
-                    seenCode = true;             // первое осевое движение - начало тела программы
+                    seenCode = true;             // the first axial move is the start of the program body
                     break;
                 }
             }
@@ -619,15 +625,15 @@ ParseResult parseGcode(const std::string& text) {
 
         std::array<double, 3> target = pos;
         bool hasCoord = false;
-        int newCycle = 0;                        // G73/G81/G82/G83 на этой строке
+        int newCycle = 0;                        // G73/G81/G82/G83 on this line
         Ijkr ij;
         bool zGiven = false, rGiven = false, qGiven = false, fGiven = false;
 
         for (const Word& w : words) {
             const char letter = w.letter;
-            // Значение читают только эти буквы. У прочих (M, S, T,...) оно не
-            // используется, и число для них не разбирается - на Test_model.ngc
-            // это 110587 пропусков из 342038 слов.
+            // Only these letters have their value read. For the others (M, S, T,
+            // ...) it is unused, and the number is not parsed - on Test_model.ngc
+            // that is 110587 skips out of 342038 words.
             if (letter != 'G' && letter != 'X' && letter != 'Y' && letter != 'Z'
                     && letter != 'I' && letter != 'J' && letter != 'K'
                     && letter != 'R' && letter != 'Q' && letter != 'F') {
@@ -636,7 +642,7 @@ ParseResult parseGcode(const std::string& text) {
             double val = 0.0;
             if (!toDouble(line.data() + w.valueStart, w.valueLen, val)) { continue; }
             if (letter == 'G') {
-                // Сравнения точные: G91.1 не должен читаться как G91.
+                // Exact comparisons: G91.1 must not read as G91.
                 if (val == 0.0) { motion = Motion::G0; cycle.on = false; }
                 else if (val == 1.0) { motion = Motion::G1; cycle.on = false; }
                 else if (val == 2.0) { motion = Motion::Arc; arcCw = true; cycle.on = false; }
@@ -648,11 +654,11 @@ ParseResult parseGcode(const std::string& text) {
                 else if (val == 73.0 || val == 81.0 || val == 82.0 || val == 83.0) {
                     newCycle = static_cast<int>(val);
                 }
-                else if (val == 98.0) { cycleRetract = false; }   // возврат на исходный уровень
-                else if (val == 99.0) { cycleRetract = true; }    // возврат на плоскость R
+                else if (val == 98.0) { cycleRetract = false; }   // return to the initial level
+                else if (val == 99.0) { cycleRetract = true; }    // return to the R plane
                 else if (val == 90.0) { absolute = true; }
                 else if (val == 91.0) { absolute = false; }
-                // G90.1/G91.1 (дуговой режим расстояний) и прочее - игнорируются
+                // G90.1/G91.1 (arc distance mode) and the rest are ignored
             } else if (letter == 'X' || letter == 'Y' || letter == 'Z') {
                 const int idx = (letter == 'X') ? 0 : ((letter == 'Y') ? 1 : 2);
                 target[idx] = absolute ? val : target[idx] + val;
@@ -676,7 +682,7 @@ ParseResult parseGcode(const std::string& text) {
             }
         }
 
-        // ---- кадровый цикл сверления ------------------------------------
+        // ---- canned drilling cycle --------------------------------------
         if (newCycle != 0 || (cycle.on && hasCoord)) {
             if (newCycle != 0) {
                 cycle.on = true;
@@ -689,7 +695,7 @@ ParseResult parseGcode(const std::string& text) {
             continue;
         }
 
-        // ---- дуги -------------------------------------------------------
+        // ---- arcs -------------------------------------------------------
         if (motion == Motion::Arc && (hasCoord || ij.any())) {
             const std::vector<std::array<double, 3>> pts = arcPoints(pos, target, ij, arcCw, plane);
             for (size_t k = 0; k + 1 < pts.size(); ++k) {
@@ -698,29 +704,29 @@ ParseResult parseGcode(const std::string& text) {
             pos = target;
         } else if (hasCoord && (motion == Motion::G0 || motion == Motion::G1)) {
             const bool isRapid = (motion == Motion::G0);
-            emit.emit(pos, target, isRapid, !isRapid, decimateTol2);   // прореживается только G1
+            emit.emit(pos, target, isRapid, !isRapid, decimateTol2);   // only G1 is decimated
             pos = target;
         } else {
             pos = target;
         }
     }
 
-    // Конец программы сохраняется точно: он мог быть прорежен.
+    // The program end is kept exactly: it may have been decimated.
     if (!ordered.empty() && !samePoint(ordered.back().point, pos)) {
         ordered.push_back(PathPoint{pos, ordered.back().is_rapid, ordered.back().speed_mm_s});
     }
 
-    // Этапы операций: сначала явные UI_OP, затем комментарии секций, затем смены
-    // инструмента, иначе один этап. Инструмент этапа едет вместе с ним.
+    // Operation stages: explicit UI_OP first, then section comments, then tool
+    // changes, otherwise one stage. A stage's tool travels with it.
     std::vector<Stage> stages;
     if (!uiOpMarks.empty()) { stages = opsWithTools(uiOpMarks, uiToolMarks); }
     else if (!opMarks.empty()) { stages = opsWithTools(opMarks, uiToolMarks); }
     else if (!uiToolMarks.empty()) { stages = uiToolMarks; }
     else if (!toolMarks.empty()) { stages = toolMarks; }
-    else { stages.push_back(Stage{0, "\xD0\xA3\xD0\x9F", ToolInfo{}}); }   // "УП"
+    else { stages.push_back(Stage{0, "\xD0\xA3\xD0\x9F", ToolInfo{}}); }   // RU "УП"
 
-    // Первый этап всегда начинается с самого начала программы: подходы в начале
-    // относятся к нему.
+    // The first stage always starts at the very beginning of the program: the
+    // approaches at the start belong to it.
     stages[0] = Stage{0, stages[0].label, stages[0].info};
 
     ParseResult result;

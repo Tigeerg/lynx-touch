@@ -6,11 +6,11 @@
 namespace gv {
 namespace {
 
-constexpr int STRIDE = 5;               // float32 на вершину: позиция 3 + texcoord 2
-constexpr int VERTS_PER_EDGE = 2;       // Lines: две вершины на отрезок
+constexpr int STRIDE = 5;               // float32 per vertex: position 3 + texcoord 2
+constexpr int VERTS_PER_EDGE = 2;       // Lines: two vertices per segment
 
-// float32 из байтов буфера: чтение через memcpy - reinterpret_cast<float*> на
-// байтовый буфер нарушал бы правила совмещения типов.
+// float32 from buffer bytes: read through memcpy - reinterpret_cast<float*> on a
+// byte buffer would break the strict-aliasing rules.
 float readF32(const unsigned char* p) {
     float v = 0.0f;
     std::memcpy(&v, p, sizeof(float));
@@ -23,7 +23,7 @@ PackedEdges packEdgesNp(const std::vector<double>& p0, const std::vector<double>
     PackedEdges out;
     const std::size_t m = p0.size() / 3;
     if (m == 0 || p1.size() / 3 != m) {
-        return out;                     // пустой буфер: raw пуст, nv = 0, габарита нет
+        return out;                     // empty buffer: raw is empty, nv = 0, no bounds
     }
 
     const std::size_t floats = m * VERTS_PER_EDGE * STRIDE;
@@ -33,7 +33,7 @@ PackedEdges packEdgesNp(const std::vector<double>& p0, const std::vector<double>
             buf[i * 10 + k] = static_cast<float>(p0[i * 3 + std::size_t(k)]);
             buf[i * 10 + 5 + k] = static_cast<float>(p1[i * 3 + std::size_t(k)]);
         }
-        buf[i * 10 + 3] = 1.0f;         // texcoord.x = 1.0: отрезок виден целиком
+        buf[i * 10 + 3] = 1.0f;         // texcoord.x = 1.0: the segment is fully visible
         buf[i * 10 + 4] = 0.0f;
         buf[i * 10 + 8] = 1.0f;
         buf[i * 10 + 9] = 0.0f;
@@ -43,7 +43,7 @@ PackedEdges packEdgesNp(const std::vector<double>& p0, const std::vector<double>
     std::memcpy(out.raw.data(), buf.data(), out.raw.size());
     out.nv = static_cast<int>(m * VERTS_PER_EDGE);
 
-    // Габарит - по float64-входу (в эталоне allp = concat([p0, p1])).
+    // Bounds - from the float64 input (in the reference allp = concat([p0, p1])).
     double lo[3] = {p0[0], p0[1], p0[2]};
     double hi[3] = {lo[0], lo[1], lo[2]};
     for (int pass = 0; pass < 2; ++pass) {
@@ -73,7 +73,7 @@ std::vector<float> packedPositions(const PackedEdges& packed) {
     }
     const std::size_t total = packed.raw.size() / sizeof(float);
     const std::size_t verts = static_cast<std::size_t>(packed.nv);
-    // В эталоне stride = f.size // nv; для наших буферов это 5.
+    // In the reference stride = f.size // nv; for our buffers that is 5.
     const std::size_t stride = total / verts;
     if (stride < 3) {
         return out;

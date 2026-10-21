@@ -1,4 +1,4 @@
-// core/text_util.cpp - реализация строковых помощников ядра.
+// core/text_util.cpp - implementation of the core string helpers.
 #include "text_util.h"
 
 #include <cstdlib>
@@ -9,8 +9,8 @@ namespace gv {
 
 namespace {
 
-// float(value) для строки с нулевым терминатором: разбор целиком или отказ.
-// Оба варианта toDouble зовут этот разбор, поэтому значение совпадает бит в бит.
+// float(value) for a null-terminated string: parse in full or fail. Both
+// toDouble overloads call this parse, so the value matches bit for bit.
 bool parseFull(const char *s, double& out) {
     if (s == nullptr || *s == '\0') { return false; }
     char *end = nullptr;
@@ -24,11 +24,11 @@ bool parseFull(const char *s, double& out) {
 
 } // namespace
 
-// Разбор числа по правилам C-локали независимо от LC_NUMERIC процесса. Qt при
-// старте поднимает системную локаль: в ru_RU std::strtod читает "X2.081" как 2
-// и останавливается на точке, разбор УП обрывался на 785 сегментах вместо
-// 70914 (Test_model.ngc). Разбор - тот же strtod, меняется только локаль, так
-// что значения с эталоном сходятся бит в бит.
+// Parse a number by C-locale rules regardless of the process LC_NUMERIC. Qt
+// raises the system locale at start: under ru_RU std::strtod reads "X2.081" as 2
+// and stops at the dot, and NC parsing broke at 785 segments instead of 70914
+// (Test_model.ngc). The parse is the same strtod, only the locale changes, so
+// the values match the reference bit for bit.
 double strtodC(const char *s, char **end) {
 #ifdef _WIN32
     static const _locale_t loc = _create_locale(LC_NUMERIC, "C");
@@ -53,11 +53,11 @@ bool isLetterCh(char c) {
 }
 
 bool isWordCh(char c) {
-    // Граница \b питоновского re в юникодном режиме: буквы, цифры, подчёркивание
-    // и вообще всё, что Python считает словом. В UTF-8 байт >= 0x80 - всегда
-    // часть не-ASCII символа, а на практике это кириллица (буква, а не знак);
-    // однобайтовые знаки вроде '·' дали бы расхождение, но в УП их рядом с T..M6
-    // не бывает.
+    // Word boundary of the reference re in Unicode mode: letters, digits,
+    // underscore and anything else the reference counts as a word. In UTF-8 a
+    // byte >= 0x80 is always part of a non-ASCII character, and in practice that
+    // is Cyrillic (a letter, not a sign); single-byte signs like '·' would
+    // diverge, but they never appear next to T..M6 in an NC program.
     if (static_cast<unsigned char>(c) >= 0x80) { return true; }
     return isLetterCh(c) || isDigitCh(c) || c == '_';
 }
@@ -71,8 +71,8 @@ void stripInPlace(std::string& s) {
     while (b < s.size() && isSpaceCh(static_cast<unsigned char>(s[b]))) { ++b; }
     size_t e = s.size();
     while (e > b && isSpaceCh(static_cast<unsigned char>(s[e - 1]))) { --e; }
-    // Срезать нечего: substr всё равно скопировал бы буфер. В Test_model.ngc
-    // обрезка не нужна ни в одной из 110585 строк.
+    // Nothing to trim: substr would copy the buffer anyway. In Test_model.ngc no
+    // line out of 110585 needs trimming.
     if (b == 0 && e == s.size()) { return; }
     s = s.substr(b, e - b);
 }
@@ -87,9 +87,10 @@ bool toDouble(const std::string& s, double& out) {
     return parseFull(s.c_str(), out);
 }
 
-// Тот же float(value), но байты берутся из среза строки (без создания
-// std::string на каждый токен). Срез короче стекового буфера копируется в буфер
-// и завершается нулём; срез длиннее разбирается через std::string.
+// The same float(value), but the bytes come from a string slice (without
+// creating a std::string per token). A slice shorter than the stack buffer is
+// copied into the buffer and null-terminated; a longer slice is parsed through
+// std::string.
 bool toDouble(const char *first, size_t len, double& out) {
     if (first == nullptr || len == 0) { return false; }
     char buf[64];

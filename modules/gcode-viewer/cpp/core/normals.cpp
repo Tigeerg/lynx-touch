@@ -9,20 +9,20 @@
 #include <unordered_map>
 #include <vector>
 
-// Порядок операций здесь - часть контракта: результат сверяется с эталонными
-// дайджестами бит-в-бит, а не «примерно». Компилируется с /fp:precise
-// (MSVC) и -ffp-contract=off (GCC/Clang): переассоциация и FMA сдвигают младшие
-// биты float32-результата.
+// The order of operations here is part of the contract: the result is checked
+// against the reference digests bit for bit, not "approximately". It is compiled
+// with /fp:precise (MSVC) and -ffp-contract=off (GCC/Clang): reassociation and
+// FMA shift the low bits of the float32 result.
 
 namespace gv {
 namespace {
 
-constexpr double WELD_MM = 1000.0;      // сварка вершин: шаг сетки 1/1000 мм
-constexpr double AREA_EPS = 1e-12;      // ниже - грань вырождена, нормаль (0,0,1)
-constexpr double LEN_EPS = 1e-9;        // ниже - среднее не нормируется
+constexpr double WELD_MM = 1000.0;      // vertex welding: 1/1000 mm grid step
+constexpr double AREA_EPS = 1e-12;      // below this the face is degenerate, normal (0,0,1)
+constexpr double LEN_EPS = 1e-9;        // below this the average is not normalized
 constexpr double DEG_TO_RAD = 3.14159265358979323846 / 180.0;
 
-// Ключ сварки: узел, округлённый до 0.001 мм (np.round(T * 1000.0)).
+// Weld key: a node rounded to 0.001 mm (np.round(T * 1000.0)).
 struct WeldKey {
     std::int64_t v[3] = {0, 0, 0};
 
@@ -41,9 +41,9 @@ struct WeldKeyHash {
     }
 };
 
-// numpy.round: пол-к-чётному (std::nearbyint в режиме по умолчанию) - тот же
-// приём, что у ключей прямых рёбер в stepledgesgeometry.cpp. Тело живёт в
-// core/np_helpers.h, чтобы не копироваться в outline.cpp и silhouette.cpp.
+// numpy.round: round half to even (std::nearbyint in the default mode) - the
+// same trick as the straight-edge keys in stepledgesgeometry.cpp. The body lives
+// in core/np_helpers.h so it is not copied into outline.cpp and silhouette.cpp.
 using gv::np::roundToInt;
 
 using Vec3 = std::array<double, 3>;
@@ -52,13 +52,13 @@ using Vec3 = std::array<double, 3>;
 
 std::vector<float> smoothFaceNormals(const std::vector<double>& soup, double creaseDeg) {
     const std::size_t faces = soup.size() / 9;
-    std::vector<float> out(soup.size(), 0.0f);          // (3F, 3) float32, слот = face*3+corner
+    std::vector<float> out(soup.size(), 0.0f);          // (3F, 3) float32, slot = face*3+corner
     if (faces == 0) {
         return out;
     }
 
-    // Нормаль и площадь грани: cross и корень из суммы квадратов тем же
-    // порядком слагаемых, что numpy (сложение слева направо).
+    // Face normal and area: cross and the square root of the sum of squares in
+    // the same summation order as numpy (left to right).
     std::vector<Vec3> face_n(faces, Vec3{0.0, 0.0, 1.0});
     std::vector<double> area(faces, 0.0);
     for (std::size_t f = 0; f < faces; ++f) {
@@ -75,9 +75,10 @@ std::vector<float> smoothFaceNormals(const std::vector<double>& soup, double cre
         }
     }
 
-    // Сварка вершин: равенство узлов после округления до 0.001 мм. Порядок
-    // групп в таблице не важен: итог группы пишется по своим слотам, а внутри
-    // группы слоты идут по возрастанию - как у устойчивой сортировки в эталоне.
+    // Vertex welding: node equality after rounding to 0.001 mm. The group order
+    // in the table does not matter: a group's result is written to its own slots,
+    // and within a group the slots go in ascending order - like the stable sort
+    // in the reference.
     std::unordered_map<WeldKey, std::vector<int>, WeldKeyHash> welded;
     welded.reserve(faces * 2);
     for (std::size_t f = 0; f < faces; ++f) {
@@ -92,8 +93,8 @@ std::vector<float> smoothFaceNormals(const std::vector<double>& soup, double cre
     }
 
     const double cos_lim = std::cos(creaseDeg * DEG_TO_RAD);
-    std::vector<Vec3> n2;                               // нормали группы в порядке обхода
-    std::vector<double> w2;                             // их площади
+    std::vector<Vec3> n2;                               // group normals in traversal order
+    std::vector<double> w2;                             // their areas
     std::vector<int> perm;
     std::vector<double> neg_w;
     std::vector<char> free_slot;
@@ -104,7 +105,7 @@ std::vector<float> smoothFaceNormals(const std::vector<double>& soup, double cre
         const std::vector<int>& slots = item.second;
         const std::size_t m = slots.size();
 
-        // Сид кластера - грань наибольшей площади: perm = argsort(-gw), устойчивый.
+        // Cluster seed - the largest-area face: perm = argsort(-gw), stable.
         perm.resize(m);
         neg_w.resize(m);
         for (std::size_t k = 0; k < m; ++k) {
@@ -129,7 +130,7 @@ std::vector<float> smoothFaceNormals(const std::vector<double>& soup, double cre
 
         for (std::size_t i = 0; i < m; ++i) {
             if (!free_slot[i]) {
-                continue;                    // слот уже в чужом кластере
+                continue;                    // the slot is already in another cluster
             }
             bool any_sel = false;
             for (std::size_t k = 0; k < m; ++k) {
@@ -141,9 +142,9 @@ std::vector<float> smoothFaceNormals(const std::vector<double>& soup, double cre
             if (!any_sel) {
                 continue;
             }
-            // Среднее по площади: суммирование по слотам группы по возрастанию
-            // номера слота, несмежные дают ровно 0.0 (x + 0.0 точно) - как
-            // np.where(sel, gnn * gw, 0.0).sum(axis=1) в эталоне.
+            // Area-weighted average: summed over the group slots in ascending
+            // slot order, non-adjacent ones give exactly 0.0 (x + 0.0 is exact) -
+            // like np.where(sel, gnn * gw, 0.0).sum(axis=1) in the reference.
             double avg[3] = {0.0, 0.0, 0.0};
             for (std::size_t k = 0; k < m; ++k) {
                 for (int d = 0; d < 3; ++d) {
@@ -151,7 +152,7 @@ std::vector<float> smoothFaceNormals(const std::vector<double>& soup, double cre
                 }
             }
             const double ln = std::sqrt(((avg[0] * avg[0] + avg[1] * avg[1]) + avg[2] * avg[2]));
-            const bool good = ln > LEN_EPS;      // вырожденное среднее остаётся как есть
+            const bool good = ln > LEN_EPS;      // a degenerate average stays as is
             const Vec3 vals{good ? avg[0] / ln : n2[i][0],
                             good ? avg[1] / ln : n2[i][1],
                             good ? avg[2] / ln : n2[i][2]};

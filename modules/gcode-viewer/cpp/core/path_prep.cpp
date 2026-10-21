@@ -1,8 +1,8 @@
-// core/path_prep.cpp - подготовка траектории.
+// core/path_prep.cpp - path preparation.
 //
-// Буферы сверяются с питоновскими побайтово, поэтому повторены порядок
-// суммирования (numpy.sum по трём элементам складывает слева направо, как и
-// цикл здесь) и приведение к float32 (округление к ближайшему чётному у обоих).
+// The buffers are checked against the reference byte for byte, so the summation
+// order is repeated (numpy.sum over three elements adds left to right, like the
+// loop here) as is the conversion to float32 (both round half to even).
 #include "path_prep.h"
 
 #include <cmath>
@@ -11,7 +11,7 @@
 namespace gv {
 namespace {
 
-// double -> float32 -> 4 байта little-endian: формат буфера геометрии.
+// double -> float32 -> 4 little-endian bytes: the geometry buffer format.
 void appendFloat(std::vector<unsigned char>& out, double v) {
     const float f = static_cast<float>(v);
     unsigned char buf[4];
@@ -36,7 +36,7 @@ PackedStream packStream(const std::vector<double>& pts, const std::vector<unsign
     const double inv = (total > 0.0) ? (1.0 / total) : 0.0;
     if (n < 2) { return out; }
 
-    // Отрезок i использует флаг точки i: так же режется питоновский mask.
+    // Segment i uses the flag of point i: the reference mask is cut the same way.
     std::vector<size_t> idx;
     idx.reserve(n - 1);
     for (size_t i = 0; i + 1 < n; ++i) {
@@ -122,7 +122,7 @@ PathData prepareOrdered(const std::vector<PathPoint>& ordered, const std::vector
             const double dx = pts[i * 3 + 0] - pts[(i - 1) * 3 + 0];
             const double dy = pts[i * 3 + 1] - pts[(i - 1) * 3 + 1];
             const double dz = pts[i * 3 + 2] - pts[(i - 1) * 3 + 2];
-            // numpy: (d*d).sum(axis=1) для трёх элементов - слева направо.
+            // numpy: (d*d).sum(axis=1) over three elements - left to right.
             const double d2 = dx * dx + dy * dy + dz * dz;
             acc += std::sqrt(d2);
             out.cum[i] = acc;
@@ -142,7 +142,7 @@ PathData prepareOrdered(const std::vector<PathPoint>& ordered, const std::vector
         }
     }
 
-    // Полилиния анимации в координатах сцены: машинные (X, Y, Z) -> (X, Z, -Y).
+    // Animation polyline in scene coordinates: machine (X, Y, Z) -> (X, Z, -Y).
     out.pts.resize(n * 3);
     for (size_t i = 0; i < n; ++i) {
         out.pts[i * 3 + 0] = pts[i * 3 + 0];
@@ -161,12 +161,12 @@ PathData prepareOrdered(const std::vector<PathPoint>& ordered, const std::vector
     const double cm[3] = {(lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0, (lo[2] + hi[2]) / 2.0};
     out.center = {cm[0], cm[2], -cm[1]};
 
-    // Питоновский sum((hi-lo)**2 для трёх осей): x**2 - это pow(x, 2.0).
+    // Reference sum((hi-lo)**2 over three axes): x**2 is pow(x, 2.0).
     const double len2 = std::pow(hi[0] - lo[0], 2.0) + std::pow(hi[1] - lo[1], 2.0)
                         + std::pow(hi[2] - lo[2], 2.0);
     out.radius = 0.5 * std::sqrt(len2);
 
-    out.min_y = pts[2];                       // минимум машинного Z
+    out.min_y = pts[2];                       // minimum machine Z
     for (size_t i = 1; i < n; ++i) {
         if (pts[i * 3 + 2] < out.min_y) { out.min_y = pts[i * 3 + 2]; }
     }

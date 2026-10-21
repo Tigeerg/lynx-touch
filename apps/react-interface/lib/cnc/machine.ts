@@ -838,7 +838,7 @@ export function reducer(state: MachineState, a: Action): MachineState {
       const step = clamp(s.probe.step + a.dir, 0, PROBE_STEP_MEASURE)
       if (a.dir > 0 && s.probe.step === 1 && s.tool !== PROBE_TOOL)
         return notify(s, 'Установите щуп T99 в шпиндель (F3)', 'warn')
-      if (a.dir > 0 && s.probe.step === PROBE_STEP_MEASURE) return notify(s, '��ажмите ПУСК для измерения', 'warn')
+      if (a.dir > 0 && s.probe.step === PROBE_STEP_MEASURE) return notify(s, 'Нажмите ПУСК для измерения', 'warn')
       const from = s.probe.step === PROBE_STEP_RESULT && a.dir < 0 ? PROBE_STEP_MEASURE : step
       return { ...s, probe: { ...s.probe, step: from } }
     }
@@ -1067,7 +1067,7 @@ export function reducer(state: MachineState, a: Action): MachineState {
       return notify({ ...s, relOrigin: { ...s.machine } }, 'Относительные координаты обнулены')
 
     case 'ZERO_WORK': {
-      if (s.mode !== 'JOG') return notify(s, 'Обнуление рабочих координат — в режиме ��УЧНОЙ', 'warn')
+      if (s.mode !== 'JOG') return notify(s, 'Обнуление рабочих координат — в режиме РУЧНОЙ', 'warn')
       if (isBusy(s)) return notify(s, 'Остановите станок', 'warn')
       const axes = a.axis ? [a.axis] : AXES
       const offsets = s.offsets.map((o, idx) => {

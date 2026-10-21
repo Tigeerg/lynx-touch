@@ -908,7 +908,7 @@ export const MESA_PARAMS: ParamDef[] = [
   p({
     group: 'HOSTMOT2',
     key: 'PWM_FREQUENCY',
-    label: 'Частота ШИМ шпинде��я',
+    label: 'Частота ШИМ шпинделя',
     unit: 'Гц',
     step: 1000,
     min: 1000,

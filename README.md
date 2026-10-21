@@ -1,227 +1,170 @@
-# CNC Панель оператора
+<p align="center">
+  <img src="apps/react-interface/public/lynx-logo.png" alt="Логотип проекта — стилизованная рысь" width="190">
+</p>
 
-Панель оператора ЧПУ. Состоит из четырёх проектов: React-интерфейс, Qt-порт
-интерфейса, 3D-вьювер управляющих программ и тестовые данные/постпроцессор.
+<h1 align="center">CNC Панель оператора</h1>
 
-**Версия продукта:** `0.18.1` (см. [`VERSION`](VERSION)).
-Версии проектов и правила ведения — в [`projects.json`](projects.json) и
-[`VERSIONING.md`](VERSIONING.md).
+<p align="center">
+  Панель оператора ЧПУ с интерактивным 3D-вьювером управляющих программ.<br>
+  Траектория, заготовка и деталь, инструмент и столкновения — до пуска станка.
+</p>
 
-## Проекты
+<p align="center">
+  <img alt="Версия" src="https://img.shields.io/badge/версия-0.18.1-blue">
+  <img alt="Лицензия" src="https://img.shields.io/badge/лицензия-Apache--2.0-green">
+  <img alt="Платформы" src="https://img.shields.io/badge/платформы-Windows%20%7C%20Linux-lightgrey">
+  <img alt="Стек" src="https://img.shields.io/badge/стек-React%20%7C%20Qt%2FQML%20%7C%20C%2B%2B%2FOCCT-informational">
+</p>
 
-### 1. React интерфейс — `react-interface` (`0.12.0`)
-Основной интерфейс панели оператора (Next.js, сгенерирован в v0.dev). Здесь
-отрабатываются отображение и основная логика ЧПУ. Два режима UI: экранная
-панель (softkey) и сенсорный; маршрут `/classic` — классическая панель.
+---
 
-- Экраны/логика: `components/cnc/`, `lib/cnc/` (`machine.ts`, `toolpath.ts`, `probe.ts`, …)
-- Сенсорный режим: `components/cnc/touch/`, переключатель — `ui-mode.tsx`
-- Точка входа: `app/page.tsx`
-- Запуск: `pnpm install && pnpm dev`
+## 🎯 О проекте
 
-### 2. Qt-порт интерфейса — `qt-interface` (`0.5.5`)
-Перенос React-интерфейса на Qt/QML (`apps/qt-interface`).
+**Идея.** Дать оператору ЧПУ наглядный контроль управляющей программы (УП) ещё до пуска станка: увидеть
+траекторию в 3D вместе с заготовкой и деталью, проверить инструмент и оправку на столкновения, оценить
+съём материала. Всё считается локально, без отправки файлов наружу.
 
-- `main.qml` — источник; `preview.qml` — данные (правится руками: генератор удалён
-  вместе с питоновским слоем), ассеты/шрифты
-- Точки запуска в репозитории нет: питоновский предпросмотр удалён, а рантайм `qml`
-  модуль `MockBackend` не грузит (смотреть `main.qml` в Qt Design Studio или QtVCP)
+**Цель.** Единая панель оператора, где интерфейс, машина состояний станка и 3D-вьювер УП развиваются
+вместе. Интерфейс отрабатывается в React и повторяется в Qt/QML; вьювер — самостоятельный C++-модуль на
+QtQuick3D и OpenCASCADE.
 
-### 3. 3D-вьювер УП — `gcode-viewer` (`0.58.3`)
-3D-визуализация управляющей программы (`modules/gcode-viewer`). Всё на C++ и QML:
-питоновского слоя в репозитории нет.
+**Для кого.** Операторы и наладчики фрезерных станков; инженеры, которым нужен разбор УП и постпроцессора.
 
-- `GcodeViewer3D.qml` — сцена/камера/материалы/анимация/панель режимов
-- `cpp/` — точка входа вьювера, QML-модуль контроллера `MockBackend`, ядро (парсер
-  G-кода, геометрии, STEP/STL, инструмент/оправка, этапы, скорости 1:1, анализ
-  столкновений, проверка инструмента, поле съёма) и пробники
-- шейдеры: `toolpath.*` (линии УП), `stepledges.*` (ленточная обводка), `stocksurface.*`
-  (верх поля съёма), `stockshell.*` (стенки и дно заготовки)
-- `oracle_manifest.json` — эталон дайджестов массивов: пробники сверяются с ним
-  ключом `--manifest` (`VERSIONING.md`, раздел 5)
-- Запуск: `build\viewer\gcodeviewer.exe "data\cad-testdata\Test_model.ngc"`
-  (сборка — в разделе «Сборка и запуск вьювера (C++)»)
-- Отказ стадии (УП не прочитана, модель не открылась, поле съёма не посчиталось)
-  печатает контроллер строкой в stderr (`reportRefusal`,
-  `cpp/qmlbackend/gv_toolpath.cpp`); уровня логирования у C++-ядра нет. Модель
-  ищется рядом с УП: `.step`/`.stp`, иначе `.stl`
-- Журнал изменений: [`modules/gcode-viewer/CHANGELOG.md`](modules/gcode-viewer/CHANGELOG.md)
+**Статус.** Вьювер (`gcode-viewer`) — рабочая C++-программа с настоящей геометрией и аналитикой. Панель
+(`react-interface`, `qt-interface`) — проработка интерфейса и логики станка: реального обмена со стойкой
+пока нет, машина состояний локальна.
 
-Возможности вьювера: траектория (G0/G1/G2/G3, циклы сверления), заготовка
-(`UI_STOCK`), модель детали (STEP — skin + настоящие рёбра граней; STL —
-fallback), инструмент по данным УП (`UI_TOOL`), оправка ER20, режимы
-«весь код / ограничить длину», этапы-операции (`UI_OP`), воспроизведение 1:1
-с подачей, анализ столкновений «оправка vs заготовка», проверка соответствия
-инструмента УП и таблицы стойки, съём материала заготовки (поле высот; стекло по
-умолчанию, виды точный/гладкий/скруглённый, палитра пресетов).
+## 🧩 Состав
 
-#### Сборка и запуск вьювера (C++)
+Продукт — четыре независимо версионируемых проекта (манифест — [`projects.json`](projects.json)). Версия
+продукта — `0.18.1` ([`VERSION`](VERSION)); правила ведения — [`VERSIONING.md`](VERSIONING.md).
 
-В рантайме вьювер работает на C++: точка входа — `build/viewer/gcodeviewer`
-(`modules/gcode-viewer/cpp/viewer/main.cpp`), QML-модуль контроллера — `MockBackend`
-из `build/qmlbackend`. Питоновского бэкенда в пути исполнения нет.
+| Проект | Версия | Стек | Что это |
+|---|---|---|---|
+| **react-interface** — [панель оператора](apps/react-interface) | `0.12.0` | Next.js · React · TypeScript | Основной интерфейс: экраны, логика станка, сенсорный и панельный режимы |
+| **qt-interface** — [Qt-порт](apps/qt-interface) | `0.5.5` | QML | Перенос интерфейса на Qt/QML (`main.qml`, данные — `preview.qml`) |
+| **gcode-viewer** — [3D-вьювер УП](modules/gcode-viewer) | `0.58.3` | QtQuick3D · C++ · OCCT | Траектория, деталь, инструмент, коллизии, поле съёма |
+| **cad-testdata** — [тестовые данные](data/cad-testdata) | `0.5.1` | данные · постпроцессор | Тестовые УП/модели и постпроцессор с тегами `UI_*` |
 
-Нужны: Qt 6 (Core, Gui, Qml, Quick, Quick3D), OCCT с CMake-пакетом
-(`lib/cmake/opencascade/OpenCASCADEConfig.cmake`), CMake не ниже 3.16, Ninja и
-компилятор C++17. Проект документирует Qt 6.12.0 и OCCT 8.0.1; коду нужен Qt не ниже
-6.7 (`explicitTextureWidth`/`explicitTextureHeight` в `GcodeViewer3D.qml`). Каталоги
-задают переменные `CNC_QT_DIR` (пример умолчания — `C:\Qt\6.12.0\msvc2022_64`) и
-`CNC_OCC_DIR`; не заданы — сборка ищет их сама.
+## ✨ Возможности
+
+### 3D-вьювер УП (`gcode-viewer`)
+
+- **Траектория.** G0/G1/G2/G3, циклы сверления; режимы «весь код / ограничить длину».
+- **Модель детали.** STEP — `skin` и настоящие B-rep рёбра граней; STL — запасной путь (эвристика по
+  двугранному углу).
+- **Заготовка.** Габарит и поле съёма материала по тегу `UI_STOCK`.
+- **Съём материала.** Поле высот: стекло по умолчанию, виды точный / гладкий / скруглённый, палитра
+  пресетов остатка.
+- **Инструмент.** Профиль по данным УП (`UI_TOOL`), оправка ER20, вылет из `UI_HOLDER`.
+- **Этапы-операции.** Разбиение программы по тегу `UI_OP`, покадровый просмотр.
+- **Воспроизведение 1:1.** Скорость по подаче `F`, быстрые ходы — фиксированная скорость; пройденный
+  участок скрывается по мере движения.
+- **Анализ столкновений.** Оправка против заготовки, с подсветкой опасных участков.
+- **Проверка инструмента.** Сверка инструмента УП с таблицей стоек.
+
+### Панель оператора (`react-interface`, `qt-interface`)
+
+- **Два режима UI.** Экранная панель (softkey) и сенсорный; маршрут `/classic` — классический вариант.
+- **Экраны ЧПУ.** Работа, программа, сервис/параметры, настройка, таблицы, тест.
+- **Логика станка на чистом TypeScript** (`lib/cnc`): машина состояний, зондирование, оффсеты/WCS,
+  инструмент, алармы, MPG.
+- **Сервисные параметры** через единое описание (`ParamDef`).
+
+## 📸 Скриншоты
+
+<p align="center">
+  <img src="img/viewer_solid.png" alt="Вьювер: непрозрачная деталь" width="48%">
+  &nbsp;
+  <img src="img/viewer_xray.png" alt="Вьювер: прозрачная деталь" width="48%">
+</p>
+
+## 🚀 Быстрый старт
+
+### React-интерфейс
+
+```bash
+pnpm install
+pnpm dev
+```
+
+### 3D-вьювер (C++)
+
+Нужны: Qt 6 (Core, Gui, Qml, Quick, Quick3D), OCCT с CMake-пакетом, CMake не ниже 3.16, Ninja и компилятор
+C++17. Каталоги задают переменные `CNC_QT_DIR` и `CNC_OCC_DIR` (не заданы — сборка ищет их сама).
 
 Windows:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
-```
-
-Скрипт снимает окружение MSVC через `vcvars64.bat` и зовёт CMake с генератором Ninja.
-Собранное: `build\edges` (QML-модуль `CNC.Edges` и пробники `stepledges_probe`,
-`gcode_probe`, `geometry_probe`, `step_probe`, `stl_probe`, `silhouette_probe`,
-`tangents_probe`), `build\qmlbackend` (модуль `MockBackend`) и `build\viewer`
-(`gcodeviewer.exe`, `keyprobe.exe`). Сборка не прошла — скрипт печатает `build-viewer: FAIL` и называет
-недостающее: `vcvars64.bat` (`CNC_VCVARS`), `cmake.exe` (`CNC_CMAKE`) или `ninja.exe`
-(`CNC_NINJA`).
-
-Запуск: Qt обязан быть в `PATH` до старта процесса (exe линкуется с `Qt6Core.dll`),
-каталог плагина и DLL OCCT точка входа добавляет себе сама:
-
-```powershell
-$env:PATH = "C:\Qt\6.12.0\msvc2022_64\bin;$env:PATH"
+$env:PATH = "C:\Qt\6.12.0\msvc2022_64\bin;$env:PATH"   # Qt должен быть в PATH до старта
 build\viewer\gcodeviewer.exe data\cad-testdata\Test_model.ngc
 ```
 
-Ключи: `build\viewer\gcodeviewer.exe [--smoke] [--frame <файл.png>] [путь к УП]`
-(`-h`/`--help` печатает строку запуска). Живое окно печатает `loaded g-code from: …
-segments: N` и ни одной строки `[QML warning]`. Offscreen
-(`$env:QT_QPA_PLATFORM = "offscreen"`) печатает `offscreen mode - loaded OK.`; `--smoke`
-— короткая проверка старта: грузит QML вьювера и печатает `RESULT: OK (parse-level)`.
-
-`--frame <файл.png>` снимает кадр `QQuickWindow::grabWindow()` в PNG (для приёмки) и
-печатает размер и число пикселей не-фона. Сцену Quick3D рисует живая платформа:
-`QT_QPA_PLATFORM=offscreen` кадр тоже записывает и выходит с кодом 0, но 3D в нём нет
-(в кадре только элементы интерфейса). Камера съёмки воспроизводима: углы берутся у
-вьювера, дистанция считается его же формулой, панорама обнуляется, а
-`CNC_FRAME_CAMERA="yaw,pitch,dist[,panX,panY]"` перекрывает их явными числами
-(неполная или нечисловая строка — отказ, код 2). Живое окно у вьювера одно: exe
-консольной подсистемы заводит ещё окно консоли, и перед показом точка входа отпускает
-консоль, заведённую для самого процесса (консоль родителя-терминала не трогает);
-число вьюверов и окон печатает сама (`вьюверов создано 1, окон верхнего уровня 6
-(видимых 1)`).
-
-Linux: сборка тем же CMake, без MSVC. Практичный путь — окружение conda-forge из
-[`environment.yml`](environment.yml); всё одним шагом (окружение + сборка, он же
-печатает команды подчистки) — `bash scripts/setup-env.sh`. Вручную:
+Linux (окружение из [`environment.yml`](environment.yml), всё одним шагом — `bash scripts/setup-env.sh`):
 
 ```bash
-conda env create -f environment.yml
-conda activate gcode-cpp
-CNC_QT_DIR="$CONDA_PREFIX" CNC_OCC_DIR="$CONDA_PREFIX" bash scripts/build-viewer.sh
-```
-
-Окружение держит и компилятор (`cxx-compiler`), а не только SDK: conda-сборка
-OCCT линкуется символом `__cxa_call_terminate@CXXABI_1.3.15`, которого нет в GCC 11
-системных Ubuntu 22.04, — системным компилятором сборка падает на линковке.
-Сборка идёт компилятором окружения; после смены компилятора каталог сборки чистят
-(`rm -rf build`), CMake помнит компилятор в кэше.
-
-Вручную то же самое:
-
-```bash
-cmake -S modules/gcode-viewer/cpp -B build/edges -G Ninja -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_PREFIX_PATH="$CONDA_PREFIX;$CONDA_PREFIX"
-cmake --build build/edges
-```
-
-Запуск: Qt и OCCT загрузчик находит по rpath сборки, `LD_LIBRARY_PATH` не нужен (если
-SDK собран нестандартно, каталоги Qt и OCCT можно добавить в `LD_LIBRARY_PATH`):
-
-```bash
+bash scripts/build-viewer.sh
 ./build/viewer/gcodeviewer data/cad-testdata/Test_model.ngc
-QT_QPA_PLATFORM=offscreen ./build/viewer/gcodeviewer --smoke
 ```
 
-Ожидается Qt не ниже 6.7: проект документирует 6.12, conda-forge даёт 6.12.0.
-Путь проверен 2026-10-17 на Ubuntu 22.04 (окружение из `environment.yml`): сборка
-проходит, offscreen-прогон `Test_model.ngc` печатает `segments: 70914` без
-`[QML warning]` (эталон) и завершается кодом 0, `--smoke` — `RESULT: OK
-(parse-level)`. Признаки те же, что на Windows.
+Ключи: `gcodeviewer [--smoke] [--frame <файл.png>] [путь к УП]` (`-h` печатает строку запуска). Признаки
+успеха: живое окно печатает `loaded g-code from: … segments: N` и ни одной строки `[QML warning]`;
+`--smoke` — `RESULT: OK (parse-level)`.
 
-Проверки вьювера: сторож `pnpm guard` (`tools/check.ps1`) зовёт сборку, проверяет
-наличие пробников, гоняет `gcodeviewer.exe` offscreen и `keyprobe.exe`; пробники C++
-сверяют себя с эталоном `modules/gcode-viewer/oracle_manifest.json` (ключ `--manifest`)
-без интерпретатора. Шесть пробников манифеста — `gcode_probe`, `geometry_probe`,
-`step_probe`, `stl_probe`, `silhouette_probe`, `tangents_probe` (`--manifest
-modules\gcode-viewer\oracle_manifest.json`); рядом — `version_probe` (сверяет
-`VERSION`, `projects.json` и `viewerVersion` в QML), `stock_sim_probe` (аналитика поля
-съёма и его рисования), `stock_bind_probe` (привязка поля к траектории), `keyprobe`
-(горячие клавиши на ru/en), `--smoke` и offscreen-прогон. Список прогонов —
-`tools/checks.txt`, полный порядок проверок — `VERSIONING.md`, раздел 5. Кадр для
-приёмки снимает `gcodeviewer.exe --frame frame.png <УП>`: сцену Quick3D рисует живая
-платформа, offscreen отдаёт кадр без 3D.
-
-#### Клавиши и переменные окружения
-
-Клавиши (обработчик — `Keys.onPressed` в `GcodeViewer3D.qml`, кнопки — в панели внизу;
-буквы работают и на русской раскладке — сверяются по скан-коду):
+<details>
+<summary>Клавиши вьювера</summary>
 
 - `Пробел`/`P` — пуск/пауза, `Esc` — в начало, `вверх`/`вниз` — скорость;
-- `S` — габарит заготовки, `M` — вид детали (сплошная -> прозрачная -> скрыта),
-  `K` — skin детали (тело без рёбер), `G` — линии УП;
-- `V` — заготовка стеклом, `B` — прежняя коробка вместо поверхности съёма,
-  `C` — палитра остатка, `R` — вид остатка (точный -> гладкий -> скруглённый);
+- `S` — габарит заготовки, `M` — вид детали (сплошная -> прозрачная -> скрыта), `K` — skin детали, `G` — линии УП;
+- `V` — заготовка стеклом, `B` — прежняя коробка, `C` — палитра остатка, `R` — вид остатка;
 - `L` — весь код / ограничить длину, `T` — этапы, `PgUp`/`PgDn` — кадры этапов;
 - `E` — рёбра B-rep, `D` — касательные, `Q` — уровень качества, `F` — счётчик FPS.
 
-Переменные окружения до старта (те же ручки, что клавиши; читает
-`cpp/viewer/main.cpp` и `cpp/core/quality.h`):
+Буквы работают и на русской раскладке (сверяются по скан-коду). Подробности — [`DESIGN.md`](DESIGN.md).
+</details>
 
-- `CNC_QUALITY` — уровень `low`/`med`/`high`/`safe` (пусто или неизвестно — `med`);
-- `CNC_STOCK_VIEW=exact|smooth|rounded` — вид остатка (умолчание `smooth`);
-  `CNC_STOCK_ROUND=1` — прежнее сокращение для `rounded`;
-- `CNC_STOCK_GHOST` — стекло включено по умолчанию, значение `0`/`false`/`off`/`no`
-  снимает его (сплошная заготовка);
-- `CNC_STOCK_BOX`, `CNC_NO_TOOLPATH`, `CNC_NO_PART_SKIN` — прежняя коробка, снять линии
-  УП, снять skin детали; `CNC_PART_MODE=solid|transparent|hidden` — вид детали;
-- `CNC_STOCK_RAW`/`CNC_STOCK_CUT=#RRGGBB` — цвета палитры остатка;
-- `CNC_STOCK_CELL` — шаг сетки поля съёма в мм (перекрывает пресет);
-- `CNC_FRAME_CAMERA="yaw,pitch,dist[,panX,panY]"` — камера кадра;
-- `CNC_VIEWER_QML` — подменить файл вьювера; `CNC_CPP_QML_DIR` — каталог плагина
-  `MockBackend`; `CNC_OCC_DIR`/`CONDA_PREFIX` — каталог DLL OCCT;
-- `CNC_KEY_DEBUG` — печать нажатий и состояния переключателей (диагностика клавиатуры).
-  Ядро читает ещё набор допусков: `CNC_DECIMATE_TOL`, `CNC_ARC_DECIMATE_TOL`,
-  `CNC_COLLISION_STEP`, `CNC_HOLDER_NUT_D`/`_NUT_H`/`_BODY_D`/`_BODY_H`, `CNC_SILHOUETTE`,
-  `CNC_OFS_MX`/`_MY`/`_MZ`.
+## 🏗️ Архитектура
 
-### 4. Тестовые УП/модели и постпроцессор — `cad-testdata` (`0.5.1`)
-- `data/cad-testdata/Test_model.ngc`, `data/cad-testdata/Test_model.STL` — тестовые УП и модель
-- `data/cad-testdata/linuxcnc_ui.cps` — постпроцессор с тегами `UI_*` (LinuxCNC)
-- `data/cad-testdata/linuxcnc.cps` — базовый постпроцессор
+- **`react-interface`**: `components/cnc/` — представление, `lib/cnc/` — чистая логика станка (без JSX/React/DOM).
+- **`gcode-viewer`**: чистое ядро `cpp/core/` (парсер, геометрия, поле съёма) -> контроллер `MockBackend` ->
+  QML-сцена -> GPU. Разбор УП идёт на рабочем потоке и возвращается сигналами.
+- **Контракт с CAD/постпроцессором** — теги `UI_*` в комментариях УП.
 
-## Быстрый старт
+Полная карта — [`ARCHITECTURE.md`](ARCHITECTURE.md); устройство вьювера — [`DESIGN.md`](DESIGN.md).
 
-```bash
-# React интерфейс
-pnpm install
-pnpm dev
+## 🗺️ Планы на будущее
 
-# 3D-вьювер (сборка - в разделе «Сборка и запуск вьювера (C++)»)
-./build/viewer/gcodeviewer data/cad-testdata/Test_model.ngc
-```
+Бэклог идей функционала — [`docs/IDEAS.md`](docs/IDEAS.md). Основные направления:
 
-## Документация
+- **Интерактив по 3D:** привязка обмера по клику на модель, визуальный diff версий УП, правка перебегов,
+  выборочная обработка по 3D-рамке.
+- **Предиктивная аналитика:** тепловая карта нагрузки, авто-оптимизация подач, учёт ресурса инструмента по
+  снятому объёму.
+- **Симуляция и безопасность:** «призрак» будущего положения инструмента, проверка заметаемого объёма по
+  быстрым ходам, точный предсказатель времени.
+- **Оснастка и измерения (КИМ):** привязка моделей оснастки, карта отклонений по обмеру детали.
+- **Защита от человеческого фактора:** безопасный рестарт «с указанной точки», история оффсетов (Ctrl+Z),
+  мастер выхода из аварии.
 
-- [`VERSIONING.md`](VERSIONING.md) — версионирование и порядок внесения изменений
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) / [`ARCHITECTURE.en.md`](ARCHITECTURE.en.md) — карта модулей и слоёв
-  продукта (русский / английский)
-- [`DESIGN.md`](DESIGN.md) / [`DESIGN.en.md`](DESIGN.en.md) — устройство 3D-вьювера и технический долг
-  (русский / английский)
-- [`CLAUDE.md`](CLAUDE.md) — свод стандартов разработки (роль `PROJECT_STANDARDS.md`)
+## 📚 Документация
+
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — карта модулей и слоёв (есть английское зеркало [`ARCHITECTURE.en.md`](ARCHITECTURE.en.md))
+- [`DESIGN.md`](DESIGN.md) — устройство 3D-вьювера ([`DESIGN.en.md`](DESIGN.en.md))
+- [`VERSIONING.md`](VERSIONING.md) — версии и порядок внесения изменений
+- [`CLAUDE.md`](CLAUDE.md) — стандарты разработки
 - [`AI_WORKFLOW.md`](AI_WORKFLOW.md) — роли ИИ-агентов и цикл задачи
-- [`TODO.md`](TODO.md) — технический долг и открытые задачи
-- [`docs/README.md`](docs/README.md) — планы и исследования
-- [`projects.json`](projects.json) — манифест проектов и версий
-- [`modules/gcode-viewer/CHANGELOG.md`](modules/gcode-viewer/CHANGELOG.md) — журнал вьювера
+- [`TODO.md`](TODO.md) — технический долг
+- [`docs/`](docs/README.md) — планы и исследования; идеи — [`docs/IDEAS.md`](docs/IDEAS.md)
+- [`CHANGELOG.md`](CHANGELOG.md) — журнал изменений
 
-## Лицензия
+## 🧱 Требования
+
+- **React-интерфейс:** Node.js и `pnpm`.
+- **Вьювер:** Qt не ниже 6.7 (проект документирует 6.12.0), OCCT (проект документирует 8.0.1), CMake 3.16+,
+  Ninja, компилятор C++17.
+- **Платформы:** Windows, Linux.
+
+## 📄 Лицензия
 
 Apache License 2.0 — см. [`LICENSE`](LICENSE).

@@ -10,7 +10,7 @@
 #include <QVector3D>
 
 // Отбор и склейка рёбер (обход TopAbs_EDGE, GCPnts_UniformDeflection, шовные
-// линии) вынесены в gvstep: тот же алгоритм нужен C-ABI-мосту gvbridge без Qt.
+// линии) вынесены в gvstep: тот же алгоритм нужен сборке модели без Qt.
 #include "occt/step_edges.h"
 
 // Чтение STEP - общее ядро (occt/step_import): свой разбор здесь был бы второй

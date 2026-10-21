@@ -161,8 +161,6 @@ $origins[[System.IO.Path]::GetFullPath($sys32)] = 'System'
 
 $artifacts = @(
     (Join-Path $BuildDir 'viewer\gcodeviewer.exe'),
-    (Join-Path $BuildDir 'cpp\gvbridge.dll'),
-    (Join-Path $BuildDir 'cpp\gvqtshim.dll'),
     (Join-Path $BuildDir 'edges\CNC\Edges\cncedgesplugin.dll'),
     (Join-Path $BuildDir 'qmlbackend\MockBackend\gvqmlbackend.dll')
 )

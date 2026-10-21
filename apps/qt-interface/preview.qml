@@ -375,7 +375,7 @@ Window {
         serviceSection = serviceIds[i];
     }
 
-    // ---- Сигналы наружу: ТОЛЬКО управление станком (шлются в Python/QtVCP) ----
+    // ---- Сигналы наружу: ТОЛЬКО управление станком (шлются в QtVCP) ----
     signal machineCycleStart()
     signal machineFeedHold()
     signal machineReset()

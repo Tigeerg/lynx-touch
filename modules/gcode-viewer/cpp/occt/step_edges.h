@@ -1,8 +1,8 @@
 // occt/step_edges.h - рёбра B-Rep формы STEP как отрезки. Слой без Qt: тот же
-// алгоритм нужен и QML-плагину CNC.Edges (cpp/stepledgesgeometry.cpp), и мосту
-// gvbridge (cpp/bridge), поэтому он живёт в gvstep одной редакцией.
+// алгоритм нужен и QML-плагину CNC.Edges (cpp/stepledgesgeometry.cpp), и сборке
+// модели (cpp/occt/step_bundle.cpp), поэтому он живёт в gvstep одной редакцией.
 //
-// Повтор питоновского эталона load_step_model(...) по рёбрам
+// Повтор эталонной геометрии рёбер модели
 // (occt/step_import.cpp): обход TopAbs_EDGE в порядке
 // TopExp_Explorer, полилиния каждого ребра - GCPnts_UniformDeflection с линейным
 // допуском 0.05 мм (угловой критерий не используется: эталон его не задаёт),

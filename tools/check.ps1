@@ -1,7 +1,7 @@
 ﻿# tools/check.ps1 — сторож стиля и структуры проекта (правила — CLAUDE.md).
 #
 # Запуск: pnpm guard
-# Текстовые правила проверяются здесь и сейчас. Проверки, которым нужны pnpm/node/python,
+# Текстовые правила проверяются здесь и сейчас. Проверки, которым нужны pnpm/node,
 # выполняются, если инструмент действительно найден, иначе печатают skip.
 #
 # Метки ниже — не цель роста. Метку понижают в том же коммите, в котором её перешагнули.
@@ -18,7 +18,6 @@ $skip = New-Object System.Collections.Generic.List[string]
 
 function Ok([string]$text) { Write-Host "ok    $text" -ForegroundColor Green }
 function Bad([string]$text) { Write-Host "FAIL  $text" -ForegroundColor Red; $script:fail.Add($text) }
-function Warn([string]$text) { Write-Host "warn  $text" -ForegroundColor Yellow }
 function Skipped([string]$text) { Write-Host "skip  $text" -ForegroundColor Yellow; $script:skip.Add($text) }
 
 function Run-Tool([string]$label, [scriptblock]$cmd) {
@@ -36,7 +35,7 @@ Write-Host 'CNC panel — guard' -ForegroundColor Cyan
 $sources = @(
   Get-ChildItem -LiteralPath 'apps/react-interface/app', 'apps/react-interface/components', 'apps/react-interface/lib',
     'apps/qt-interface', 'modules/gcode-viewer' -Recurse -File -ErrorAction SilentlyContinue |
-    Where-Object { $_.Extension -in '.ts', '.tsx', '.js', '.mjs', '.py', '.qml', '.vert', '.frag' }
+    Where-Object { $_.Extension -in '.ts', '.tsx', '.js', '.mjs', '.qml', '.vert', '.frag' }
 )
 
 # 1. В КОММЕНТАРИИ стрелка «ведёт к» — только ASCII '->': '->' читается в консоли распорядителя (cp866) и в логах.
@@ -45,16 +44,9 @@ $arrowHits = New-Object System.Collections.Generic.List[string]
 foreach ($file in $sources) {
   $lines = Get-Content -LiteralPath $file.FullName -Encoding UTF8
   for ($i = 0; $i -lt $lines.Count; $i++) {
-    $line = $lines[$i]
-    $comment = $null
-    if ($file.Extension -eq '.py') {
-      $k = $line.IndexOf('#')
-      if ($k -ge 0) { $comment = $line.Substring($k) }
-    } else {
-      $t = $line.TrimStart()
-      if ($t.StartsWith('//') -or $t.StartsWith('/*') -or $t.StartsWith('*')) { $comment = $line }
-    }
-    if ($comment -and $comment -match '[\u2192\u21d2]') {
+    $t = $lines[$i].TrimStart()
+    if (($t.StartsWith('//') -or $t.StartsWith('/*') -or $t.StartsWith('*')) -and
+        $lines[$i] -match '[\u2192\u21d2]') {
       $arrowHits.Add("$($file.FullName):$($i + 1)")
     }
   }
@@ -87,16 +79,7 @@ foreach ($rel in $marks.Keys) {
   }
 }
 
-# 4. preview.qml — сгенерированный файл: держи его не старее main.qml.
-$mainQml = Get-Item -LiteralPath 'apps/qt-interface/main.qml'
-$previewQml = Get-Item -LiteralPath 'apps/qt-interface/preview.qml'
-if ($mainQml.LastWriteTime -gt $previewQml.LastWriteTime.AddSeconds(1)) {
-  Warn 'apps/qt-interface/main.qml новее preview.qml — перегенерируй: python apps/qt-interface/gen_preview_qml.py'
-} else {
-  Ok 'preview.qml не отстаёт от main.qml'
-}
-
-# 5. Инструментальные проверки — если инструмент настоящий, а не заглушка.
+# 4. Инструментальные проверки — если инструмент настоящий, а не заглушка.
 $pnpmReal = $false
 if (Get-Command pnpm -ErrorAction SilentlyContinue) {
   if ((Get-ToolVersion 'pnpm' @('-v')) -match '^\d+\.') { $pnpmReal = $true }
@@ -109,58 +92,12 @@ if ($pnpmReal) {
   Skipped 'pnpm: typecheck, test, format:check'
 }
 
-$pythonReal = $false
-if (Get-Command python -ErrorAction SilentlyContinue) {
-  if ((Get-ToolVersion 'python' @('-c', "import sys; print('%d.%d' % sys.version_info[:2])")) -match '^3\.\d+$') {
-    $pythonReal = $true
-  }
-}
-if ($pythonReal) {
-  Run-Tool 'py_compile mock_backend.py' { python -m py_compile modules/gcode-viewer/mock_backend.py }
-  # Режим без экрана остаётся на весь прогон сторожа, как было: его наследуют и
-  # прогоны вьювера ниже.
-  $env:QT_QPA_PLATFORM = 'offscreen'
-  Run-Tool 'test_tangent_policy.py' { python modules/gcode-viewer/test_tangent_policy.py }
-  Run-Tool 'test_normals_golden.py' { python modules/gcode-viewer/test_normals_golden.py }
-  Run-Tool 'test_normals_orientation.py' { python modules/gcode-viewer/test_normals_orientation.py }
-  Run-Tool 'test_outline_segments.py' { python modules/gcode-viewer/test_outline_segments.py }
-  Run-Tool 'test_module_names.py' { python modules/gcode-viewer/test_module_names.py }
-  Run-Tool 'test_gcode_parser.py' { python modules/gcode-viewer/test_gcode_parser.py }
-  Run-Tool 'test_drill_cycles.py' { python modules/gcode-viewer/test_drill_cycles.py }
-  Run-Tool 'test_tool_profile.py' { python modules/gcode-viewer/test_tool_profile.py }
-  Run-Tool 'test_collision.py' { python modules/gcode-viewer/test_collision.py }
-  Run-Tool 'oracle_dump.py' { python modules/gcode-viewer/oracle_dump.py }
-} else {
-  Skipped 'python: py_compile, test_tangent_policy.py, test_normals_golden.py, oracle_dump.py'
-}
-
-# 5б. Прогоны вьювера идут только на C++-плагине MockBackend: питоновского бэкенда
-#     в рантайме нет, поэтому оба шага требуют собранного плагина. Плагина нет -
-#     шаг пропускается, как остальные инструментальные проверки: на машине без
-#     тулчейна сторож остаётся зелёным.
-$backendQmldir = 'build/qmlbackend/MockBackend/qmldir'
-if ($pythonReal -and (Test-Path -LiteralPath $backendQmldir)) {
-  $env:QT_QPA_PLATFORM = 'offscreen'
-  Run-Tool 'smoke_test_qml.py' { python modules/gcode-viewer/smoke_test_qml.py }
-  # Кода возврата мало: фоновая трассировка или записанное предупреждение внутри
-  # прогона (например, отказ скана коллизий) код выхода не меняют - прогон всё
-  # равно печатает "loaded OK". Такие отказы обязаны быть видны.
-  Run-Tool 'preview_3d.py offscreen' {
-    $log = python modules/gcode-viewer/preview_3d.py 'data/cad-testdata/Test_model.ngc' 2>&1
-    $code = $LASTEXITCODE
-    if ($code -ne 0 -or ($log | Select-String -Pattern 'Traceback|^(WARNING|ERROR) ' -Quiet)) { cmd /c exit 1 }
-    else { cmd /c exit 0 }
-  }
-} else {
-  Skipped 'smoke_test_qml.py и preview_3d.py offscreen: нет python или собранного плагина MockBackend'
-}
-
-# 6. Сборка QML-плагина CNC.Edges (StepEdges), C-ABI-моста gvbridge, шима
-#    Qt-геометрий gvqtshim, модуля C++-контроллера MockBackend и сверка рёбер STEP,
-#    супа, обводки STL, топологии силуэта, аналитических поверхностей, семейств
-#    касательных, буферов всех шести геометрий Qt и контроллера с питоновским
-#    эталоном. Нужен полный C++-тулчейн: Qt6, OCCT, cmake, ninja, vcvars64.
-#    Тулчейна нет - шаг пропускается, как остальные инструментальные проверки.
+# 5. Сборка C++ (ядро gvcore, геометрии gvqtgeom, слой STEP gvstep, плагин
+#    CNC.Edges, контроллер MockBackend, точка входа gcodeviewer) и прогон
+#    пробников напрямую, ключом --manifest: сверка рёбер STEP, супа, обводки STL,
+#    топологии силуэта, аналитических поверхностей и семейств касательных с
+#    эталоном oracle_manifest.json без интерпретатора. Нужен полный C++-тулчейн:
+#    Qt6, OCCT, cmake, ninja, vcvars64. Тулчейна нет - шаг пропускается.
 $qtDir = if ($env:CNC_QT_DIR) { $env:CNC_QT_DIR } else { 'C:\Qt\6.12.0\msvc2022_64' }
 $occDir = if ($env:CNC_OCC_DIR) { $env:CNC_OCC_DIR }
           elseif ($env:CONDA_PREFIX) { Join-Path $env:CONDA_PREFIX 'Library' }
@@ -181,8 +118,8 @@ $cppReady = (Test-Path -LiteralPath (Join-Path $qtDir 'lib\cmake\Qt6\Qt6Config.c
             (Test-Path -LiteralPath (Join-Path $occDir 'lib\cmake\opencascade\OpenCASCADEConfig.cmake')) -and
             $vcvars -and (Test-Path -LiteralPath $cmakeExe) -and (Test-Path -LiteralPath $ninjaExe)
 
-if ($cppReady -and $pythonReal) {
-  Run-Tool 'build-viewer.ps1 (плагин CNC.Edges, ядро gvcore, геометрии, STEP)' {
+if ($cppReady) {
+  Run-Tool 'build-viewer.ps1 (ядро gvcore, геометрии, STEP, плагин, контроллер, точка входа)' {
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
   }
   if (Test-Path -LiteralPath 'build/edges/CNC/Edges/qmldir') {
@@ -190,73 +127,29 @@ if ($cppReady -and $pythonReal) {
   } else {
     Bad 'модуль CNC.Edges не собран: нет build/edges/CNC/Edges/qmldir'
   }
-  if (Test-Path -LiteralPath 'build/edges/stepledges_probe.exe') {
-    Run-Tool 'test_stepledges_plugin.py' { python modules/gcode-viewer/test_stepledges_plugin.py }
-  } else {
-    Bad 'нет пробника build/edges/stepledges_probe.exe'
-  }
-  if (Test-Path -LiteralPath 'build/edges/gcode_probe.exe') {
-    Run-Tool 'test_gcode_core.py' { python modules/gcode-viewer/test_gcode_core.py }
-  } else {
-    Bad 'нет пробника ядра build/edges/gcode_probe.exe'
-  }
-  if (Test-Path -LiteralPath 'build/edges/geometry_probe.exe') {
-    Run-Tool 'test_geometry_core.py' { python modules/gcode-viewer/test_geometry_core.py }
-  } else {
-    Bad 'нет пробника геометрий build/edges/geometry_probe.exe'
-  }
-  if (Test-Path -LiteralPath 'build/edges/step_probe.exe') {
-    Run-Tool 'test_step_core.py' { python modules/gcode-viewer/test_step_core.py }
-  } else {
-    Bad 'нет пробника STEP и нормалей build/edges/step_probe.exe'
-  }
-  if (Test-Path -LiteralPath 'build/edges/stl_probe.exe') {
-    Run-Tool 'test_stl_core.py' { python modules/gcode-viewer/test_stl_core.py }
-  } else {
-    Bad 'нет пробника STL и обводки build/edges/stl_probe.exe'
-  }
-  if (Test-Path -LiteralPath 'build/edges/silhouette_probe.exe') {
-    Run-Tool 'test_silhouette_core.py' { python modules/gcode-viewer/test_silhouette_core.py }
-  } else {
-    Bad 'нет пробника топологии силуэта build/edges/silhouette_probe.exe'
-  }
-  if (Test-Path -LiteralPath 'build/edges/tangents_probe.exe') {
-    Run-Tool 'test_tangents_core.py' { python modules/gcode-viewer/test_tangents_core.py }
-  } else {
-    Bad 'нет пробника поверхностей и касательных build/edges/tangents_probe.exe'
-  }
-  # C-ABI-мост и флаг CNC_CPP: проверка сама пропускается (код 0), если мост не
-  # собран, но в этом шаге тулчейн есть и сборка уже прошла - значит, моста нет
-  # по другой причине, и это красное.
-  if (Test-Path -LiteralPath 'build/cpp/gvbridge.dll') {
-    Run-Tool 'test_cpp_bridge.py' { python modules/gcode-viewer/test_cpp_bridge.py }
-  } else {
-    Bad 'нет моста build/cpp/gvbridge.dll'
-  }
-  # C++-геометрии Qt и QML-модуль внутри процесса PySide6: буферы всех шести
-  # геометрий против питоновского эталона, переключение классов флагом и загрузка
-  # CNC.Edges при правильной проводке PATH. Та же оговорка: без шима это красное.
-  if (Test-Path -LiteralPath 'build/cpp/gvqtshim.dll') {
-    Run-Tool 'test_qt_bridge.py' { python modules/gcode-viewer/test_qt_bridge.py }
-  } else {
-    Bad 'нет шима Qt-геометрий build/cpp/gvqtshim.dll'
-  }
-  # C++-контроллер вьювера (этап 5.4а): тот же УП грузится питоновским эталоном и
-  # QML-плагином MockBackend (CNC_CPP=controller), сверяются свойства, буферы
-  # траектории и выборка вдоль пути. Та же оговорка: без сборки это красное.
-  if (Test-Path -LiteralPath 'build/qmlbackend/MockBackend/qmldir') {
-    Run-Tool 'test_controller_cpp.py' { python modules/gcode-viewer/test_controller_cpp.py }
-  } else {
-    Bad 'нет QML-модуля контроллера build/qmlbackend/MockBackend/qmldir'
-  }
+  # Пробники линкуются с DLL OCCT и Qt: их каталоги идут в PATH до прогонов.
+  $env:QT_QPA_PLATFORM = 'offscreen'
+  $env:PATH = "$(Join-Path $qtDir 'bin');$(Join-Path $occDir 'bin');$PWD\build\edges;$PWD\build\edges\CNC\Edges;$PWD\build\qmlbackend;" + $env:PATH
+  $manifest = 'modules/gcode-viewer/oracle_manifest.json'
+  Run-Tool 'stepledges_probe (рёбра STEP)' { & 'build/edges/stepledges_probe.exe' 'data/cad-testdata/Test_model.STEP' }
+  Run-Tool 'gcode_probe --manifest' { & 'build/edges/gcode_probe.exe' --manifest $manifest }
+  Run-Tool 'geometry_probe --manifest' { & 'build/edges/geometry_probe.exe' --manifest $manifest }
+  Run-Tool 'step_probe --manifest' { & 'build/edges/step_probe.exe' --manifest $manifest }
+  Run-Tool 'stl_probe --manifest' { & 'build/edges/stl_probe.exe' --manifest $manifest }
+  Run-Tool 'silhouette_probe --manifest' { & 'build/edges/silhouette_probe.exe' --manifest $manifest }
+  Run-Tool 'tangents_probe --manifest' { & 'build/edges/tangents_probe.exe' --manifest $manifest }
+  Run-Tool 'version_probe (VERSION, projects.json, QML)' { & 'build/edges/version_probe.exe' }
+  Run-Tool 'stock_sim_probe (аналитика поля съёма)' { & 'build/edges/stock_sim_probe.exe' }
+  Run-Tool 'gcodeviewer --smoke' { & 'build/viewer/gcodeviewer.exe' --smoke }
+  Run-Tool 'stock_bind_probe (привязка поля к траектории)' { & 'build/viewer/stock_bind_probe.exe' }
 } else {
-  Skipped 'сборка плагина CNC.Edges, ядра gvcore, геометрий, STEP, STL, силуэта, касательных, Qt-геометрий и C++-контроллера: нет тулчейна'
+  Skipped 'сборка C++ и прогоны пробников: нет тулчейна (Qt6, OCCT, cmake, ninja, vcvars64)'
 }
 
-# 7. C++-точка входа вьювера (build/viewer/gcodeviewer.exe, отказ от Python в
-#    рантайме): offscreen-прогон на реальном УП. Нужны собранный exe и Qt в PATH
-#    (exe линкуется с Qt6Core.dll); каталог плагина и DLL OCCT точка входа
-#    добавляет себе сама. Нет exe или Qt - шаг пропускается.
+# 6. C++-точка входа вьювера (build/viewer/gcodeviewer.exe): offscreen-прогон на
+#    реальном УП. Нужны собранный exe и Qt в PATH (exe линкуется с Qt6Core.dll);
+#    каталог плагина и DLL OCCT точка входа добавляет себе сама. Нет exe или Qt -
+#    шаг пропускается.
 $viewerExe = 'build/viewer/gcodeviewer.exe'
 if ((Test-Path -LiteralPath $viewerExe) -and (Test-Path -LiteralPath (Join-Path $qtDir 'bin'))) {
   Run-Tool 'gcodeviewer.exe offscreen' {
@@ -271,7 +164,7 @@ if ((Test-Path -LiteralPath $viewerExe) -and (Test-Path -LiteralPath (Join-Path 
   Skipped 'gcodeviewer.exe offscreen: нет собранной точки входа или Qt'
 }
 
-# 8. Пробник горячих клавиш вьювера (build/viewer/keyprobe.exe): подаёт клавиши с
+# 7. Пробник горячих клавиш вьювера (build/viewer/keyprobe.exe): подаёт клавиши с
 #    признаками настоящего события (скан-код, VK и символ по раскладке) на русской и
 #    английской раскладках и сверяет, что каждая горячая клавиша переключила своё
 #    свойство. Дефект «горячие клавиши требовательны к языку» ловится здесь: до фикса

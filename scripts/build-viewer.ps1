@@ -54,12 +54,6 @@
 # отрезков один, порядок и младшие биты - нет), поэтому оговорка и числа - в
 # cpp/tangents_probe.cpp и cpp/CMakeLists.txt.
 #
-# C-ABI-мост над C++-ядром (этап 5 плана переноса) и шим Qt-геометрий
-# (этап 5.3) собираются той же сборкой в <repo>/build/cpp: gvbridge.dll и
-# gvqtshim.dll. Их единственным потребителем был питоновский шим (ctypes),
-# удалённый вместе с питоновским слоем; цели остались от этапа переноса и ждут
-# решения (в сборку входят, никем не используются).
-#
 # Той же сборкой собирается C++-контроллер вьювера (этап 5.4а плана переноса):
 # QML-модуль MockBackend 1.0 (цель gvqmlbackend) в <repo>/build/qmlbackend/
 # MockBackend - тип GcodeToolpath и шесть геометрий этапа 3. Это единственный
@@ -285,23 +279,9 @@ if (Test-Path -LiteralPath $tanProbe) {
     Fail "поверхности и касательные не собраны: нет $tanProbe"
 }
 
-$bridge = Join-Path $root 'build\cpp\gvbridge.dll'
-if (Test-Path -LiteralPath $bridge) {
-    Write-Host ("build-viewer: мост C-ABI " + $bridge)
-} else {
-    Fail "мост C-ABI не собран: нет $bridge"
-}
-
-$shim = Join-Path $root 'build\cpp\gvqtshim.dll'
-if (Test-Path -LiteralPath $shim) {
-    Write-Host ("build-viewer: шим Qt-геометрий " + $shim)
-} else {
-    Fail "шим эксперимента не собран: нет $shim"
-}
-
 # QML-модуль C++-контроллера (этап 5.4а): каталог модуля - <repo>/build/qmlbackend/
-# MockBackend, импорт-путь - <repo>/build/qmlbackend. Оба знает питоновский шим
-# (gv_cpp.qml_backend_import_path), поэтому каталог и не совпадает с каталогом сборки.
+# MockBackend, импорт-путь - <repo>/build/qmlbackend. Путь предсказуем для точки
+# входа вьювера, поэтому каталог и не совпадает с каталогом сборки.
 $backendImport = Join-Path $root 'build\qmlbackend'
 $backendModule = Join-Path $backendImport 'MockBackend'
 $backendQmldir = Join-Path $backendModule 'qmldir'

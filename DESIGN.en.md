@@ -201,8 +201,6 @@ Remaining after the C++ port (open, with measurements):
 - the C++ entry point `gcodeviewer.exe` does not accept an absolute NC path with Cyrillic characters:
   the arguments are read as `QString::fromLocal8Bit(argv[i])`, so `GetCommandLineW`/`CommandLineToArgvW`
   is needed;
-- the C ABI bridge `gvbridge.dll` and the shim `gvqtshim.dll` still build, but their only consumer (the Python
-  ctypes shim) is gone: the targets await a decision - drop them or keep them as an experiment stub;
 - the optimisations from `PORT-CPP.md` §11: the NC parse (176 ms), the STEP shape cache in the plugin,
   quality presets and level auto-detection, trimming the OCCT build, parallelism of the cold stages.
 

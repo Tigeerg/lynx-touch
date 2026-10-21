@@ -8,13 +8,6 @@
 # gvstep. Аналитические поверхности вращения STEP лежат в gvstep
 # (occt/step_surfaces), семейства касательных - в gvcore (core/tangents), их
 # общий пробник - tangents_probe (этап 4d).
-#
-# Рядом собирается C-ABI-мост gvbridge.dll (этап 5) и шим Qt-геометрий
-# gvqtshim.dll: SHARED-цели над gvcore/gvstep и gvqtgeom. Единственным их
-# потребителем был питоновский шим (ctypes), удалённый вместе с питоновским
-# слоем: цели остались от этапа переноса и ждут решения (в сборку входят, из
-# пробников и вьювера не используются).
-#
 # Пробники сверяются с эталоном сами: ключ --manifest <oracle_manifest.json>
 # считает дайджесты своих массивов и сравнивает с манифестом
 # (cpp/manifest_check.h, без интерпретатора). Питоновского слоя в репозитории нет.
@@ -57,8 +50,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Linux: объекты статических gvcore, gvqtgeom и gvstep попадают в SHARED-библиотеки
-# (gvbridge, gvqtshim, плагины): без PIC линковка кончается отказом GCC "recompile
-# with -fPIC" (у MSVC ключа нет, там свойство ничего не меняет).
+# (плагины): без PIC линковка кончается отказом GCC "recompile with -fPIC" (у MSVC
+# ключа нет, там свойство ничего не меняет).
 #
 # Про rpath ключей нет: CMake по умолчанию кладёт в rpath сборки каталоги связанных
 # библиотек, поэтому Qt и OCCT, лежащие вне каталогов сборки, находятся без
@@ -67,11 +60,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if (UNIX AND NOT APPLE)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 endif()
-
-# Каталог C-ABI-моста gvbridge.dll. Отдельной переменной он вынесен потому, что
-# не совпадает с каталогом сборки плагина.
-set(GV_BRIDGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../build/cpp"
-    CACHE PATH "Каталог, куда кладётся gvbridge.dll")
 
 # Каталог QML-модуля MockBackend (C++-контроллер вьювера, этап 5.4а плана
 # переноса). Каталог модуля лежит по предсказуемому пути <repo>/build/qmlbackend/
@@ -318,72 +306,6 @@ endif()
 target_link_libraries(bench_probe PRIVATE gvstep gvqtgeom Qt6::Core Qt6::Gui Qt6::Quick3D)
 target_include_directories(bench_probe PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 
-# C-ABI-мост над Qt-free слоями (этап 5 плана переноса): нормали кожи и модель
-# STEP одним вызовом, наружу - только C-типы и буферы, выделенные библиотекой.
-# Qt в цели нет; OCCT есть, потому что STEP без него не читается. Библиотеку
-# грузил питоновский шим (ctypes), который удалён вместе с питоновским слоем;
-# цель осталась от этапа переноса и ждёт решения (в сборку входит, никем не
-# используется). Кладётся не в каталог сборки, а по предсказуемому пути
-# <repo>/build/cpp - так её искал шим, не зная о генераторе CMake.
-#
-# /fp:precise обязателен: нормали и суп сверяются с эталонными дайджестами
-# бит-в-бит.
-add_library(gvbridge SHARED bridge/gv_bridge.cpp)
-target_include_directories(gvbridge PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(gvbridge PRIVATE gvstep)
-# Linux: gvbridge.so - LIBRARY-артефакт, поэтому каталог задан и ему: мост лежит
-# в <repo>/build/cpp/libgvbridge.so.
-set_target_properties(gvbridge PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${GV_BRIDGE_DIR}
-    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${GV_BRIDGE_DIR}
-    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${GV_BRIDGE_DIR}
-    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_BRIDGE_DIR}
-    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${GV_BRIDGE_DIR}
-    LIBRARY_OUTPUT_DIRECTORY ${GV_BRIDGE_DIR}
-    LIBRARY_OUTPUT_DIRECTORY_DEBUG ${GV_BRIDGE_DIR}
-    LIBRARY_OUTPUT_DIRECTORY_RELEASE ${GV_BRIDGE_DIR}
-    LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_BRIDGE_DIR}
-    LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL ${GV_BRIDGE_DIR}
-)
-if (MSVC)
-    target_compile_options(gvbridge PRIVATE /utf-8 /fp:precise)
-else()
-    target_compile_options(gvbridge PRIVATE -ffp-contract=off -fno-fast-math)
-endif()
-
-# Эксперимент этапа 5.3 плана переноса: обычная SHARED-библиотека с Qt-объектами
-# (настоящая gvgeom::ToolpathGeometry этапа 3), которую грузил интерпретатор
-# через ctypes. Цель собрана против Qt из CMAKE_PREFIX_PATH, а процесс нёс свою
-# Qt в site-packages: проверялось, разрешит ли загрузчик Windows импорт
-# Qt6Core.dll на уже загруженную DLL и заведётся ли объект. Интерпретатор удалён
-# вместе с питоновским слоем: цель осталась от этапа переноса и ждёт решения (в
-# сборку входит, никем не используется). Кладётся рядом с мостом
-# (GV_BRIDGE_DIR), исходники - в exp/.
-#
-# /fp:precise обязателен: буфер ToolpathGeometry сверялся с эталоном побайтово.
-add_library(gvqtshim SHARED exp/gvqtshim.cpp)
-target_include_directories(gvqtshim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(gvqtshim PRIVATE gvqtgeom Qt6::Core Qt6::Gui Qt6::Quick3D)
-# Linux: тот же LIBRARY-каталог, что у моста:
-# <repo>/build/cpp/libgvqtshim.so.
-set_target_properties(gvqtshim PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${GV_BRIDGE_DIR}
-    RUNTIME_OUTPUT_DIRECTORY_DEBUG ${GV_BRIDGE_DIR}
-    RUNTIME_OUTPUT_DIRECTORY_RELEASE ${GV_BRIDGE_DIR}
-    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_BRIDGE_DIR}
-    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${GV_BRIDGE_DIR}
-    LIBRARY_OUTPUT_DIRECTORY ${GV_BRIDGE_DIR}
-    LIBRARY_OUTPUT_DIRECTORY_DEBUG ${GV_BRIDGE_DIR}
-    LIBRARY_OUTPUT_DIRECTORY_RELEASE ${GV_BRIDGE_DIR}
-    LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO ${GV_BRIDGE_DIR}
-    LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL ${GV_BRIDGE_DIR}
-)
-if (MSVC)
-    target_compile_options(gvqtshim PRIVATE /utf-8 /fp:precise)
-else()
-    target_compile_options(gvqtshim PRIVATE -ffp-contract=off -fno-fast-math)
-endif()
-
 qt_standard_project_setup()
 if(COMMAND qt_policy)
     # Префикс ресурсов QML-модуля ':/qt/qml/' — значение по умолчанию для новых проектов.
@@ -442,7 +364,7 @@ target_include_directories(cncedgesplugin PRIVATE ${OpenCASCADE_INCLUDE_DIR})
 target_link_libraries(cncedgesplugin PRIVATE
     Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Quick3D)
 # Отбор и склейка рёбер лежат в gvstep (cpp/occt/step_edges): одна редакция на
-# плагин и на мост gvbridge.
+# плагин и контроллер.
 target_link_libraries(cncedgesplugin PRIVATE gvstep)
 target_include_directories(cncedgesplugin PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 

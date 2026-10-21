@@ -1,7 +1,7 @@
 #!/bin/sh
 # scripts/build-viewer.sh - сборка вьювера УП на C++ под Linux: QML-плагин CNC.Edges,
-# ядро gvcore, геометрии gvqtgeom, слой STEP gvstep, C-ABI-мост gvbridge, шим
-# Qt-геометрий gvqtshim, QML-модуль MockBackend и точка входа build/viewer/gcodeviewer.
+# ядро gvcore, геометрии gvqtgeom, слой STEP gvstep, QML-модуль MockBackend и точка
+# входа build/viewer/gcodeviewer.
 #
 # Запуск:  bash scripts/build-viewer.sh
 #          CNC_QT_DIR=<каталог Qt6> CNC_OCC_DIR=<каталог OCCT> bash scripts/build-viewer.sh
@@ -24,7 +24,7 @@
 # не трогает.
 #
 # Собранное: <build>/CNC/Edges/ (qmldir, libcncedgesplugin.so,
-# libcncedgespluginplugin.so), <repo>/build/cpp/libgvbridge.so и libgvqtshim.so,
+# libcncedgespluginplugin.so),
 # <repo>/build/qmlbackend/MockBackend/ (libgvqmlbackend.so, libgvqmlbackendplugin.so),
 # <repo>/build/viewer/gcodeviewer.
 #
@@ -153,14 +153,6 @@ for probe_name in stepledges_probe gcode_probe version_probe geometry_probe step
     [ -x "$probe" ] || fail "пробник не собран: нет $probe"
     echo "build-viewer: пробник $probe"
 done
-
-bridge="$root/build/cpp/libgvbridge.so"
-[ -f "$bridge" ] || fail "мост C-ABI не собран: нет $bridge"
-echo "build-viewer: мост C-ABI $bridge"
-
-shim="$root/build/cpp/libgvqtshim.so"
-[ -f "$shim" ] || fail "шим геометрий Qt не собран: нет $shim"
-echo "build-viewer: шим геометрий Qt $shim"
 
 backend_import="$root/build/qmlbackend"
 backend_module="$backend_import/MockBackend"

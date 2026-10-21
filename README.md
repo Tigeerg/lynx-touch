@@ -3,7 +3,7 @@
 Панель оператора ЧПУ. Состоит из четырёх проектов: React-интерфейс, Qt-порт
 интерфейса, 3D-вьювер управляющих программ и тестовые данные/постпроцессор.
 
-**Версия продукта:** `0.18.0` (см. [`VERSION`](VERSION)).
+**Версия продукта:** `0.18.1` (см. [`VERSION`](VERSION)).
 Версии проектов и правила ведения — в [`projects.json`](projects.json) и
 [`VERSIONING.md`](VERSIONING.md).
 
@@ -77,9 +77,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
 Скрипт снимает окружение MSVC через `vcvars64.bat` и зовёт CMake с генератором Ninja.
 Собранное: `build\edges` (QML-модуль `CNC.Edges` и пробники `stepledges_probe`,
 `gcode_probe`, `geometry_probe`, `step_probe`, `stl_probe`, `silhouette_probe`,
-`tangents_probe`), `build\cpp` (мост `gvbridge.dll`, шим `gvqtshim.dll`),
-`build\qmlbackend` (модуль `MockBackend`) и `build\viewer` (`gcodeviewer.exe`,
-`keyprobe.exe`). Сборка не прошла — скрипт печатает `build-viewer: FAIL` и называет
+`tangents_probe`), `build\qmlbackend` (модуль `MockBackend`) и `build\viewer`
+(`gcodeviewer.exe`, `keyprobe.exe`). Сборка не прошла — скрипт печатает `build-viewer: FAIL` и называет
 недостающее: `vcvars64.bat` (`CNC_VCVARS`), `cmake.exe` (`CNC_CMAKE`) или `ninja.exe`
 (`CNC_NINJA`).
 

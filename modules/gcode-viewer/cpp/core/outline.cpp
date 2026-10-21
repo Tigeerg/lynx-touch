@@ -1,11 +1,12 @@
-// core/outline.cpp - обводка меша по двугранному углу (порог 20 градусов,
-// функция featureEdges).
+// core/outline.cpp - mesh outline by dihedral angle (20 degree threshold,
+// featureEdges function).
 //
-// Порядок операций - часть контракта: результат сверяется с питоновским
-// эталоном побайтово (оракул stl.feature_edges), а он зависит
-// от нумерации сваренных вершин, устойчивости сортировки рёбер и порядка
-// цепочек. Компилируется с /fp:precise (MSVC) и -ffp-contract=off (GCC/Clang):
-// переассоциация и FMA сдвинули бы младшие биты нормалей и расстояний.
+// The order of operations is part of the contract: the result is checked against
+// the reference byte for byte (the stl.feature_edges oracle), and it depends on
+// the numbering of welded vertices, the stability of the edge sort and the order
+// of chains. It is compiled with /fp:precise (MSVC) and -ffp-contract=off
+// (GCC/Clang): reassociation and FMA would shift the low bits of the normals and
+// distances.
 #include "core/outline.h"
 
 #include "core/np_helpers.h"
@@ -25,24 +26,24 @@ namespace {
 
 using Vec3 = std::array<double, 3>;
 
-constexpr double WELD_MM = 1000.0;                  // сварка вершин: сетка 1/1000 мм
+constexpr double WELD_MM = 1000.0;                  // vertex welding: 1/1000 mm grid
 constexpr double DEG_TO_RAD = 3.14159265358979323846 / 180.0;
-constexpr double RDP_DEGENERATE = 1e-12;            // короче - отрезок вырожден: мерим расстояние до точки
+constexpr double RDP_DEGENERATE = 1e-12;            // shorter than this the segment is degenerate: measure the distance to the point
 constexpr std::uint32_t NO_VERTEX = 0xffffffffu;
 
-// numpy.round: пол-к-чётному (std::nearbyint в режиме по умолчанию). Тело -
-// общее в core/np_helpers.h.
+// numpy.round: round half to even (std::nearbyint in the default mode). The body
+// is shared in core/np_helpers.h.
 using gv::np::roundToInt;
 
-// Корень из суммы трёх квадратов: тем же порядком слагаемых, что numpy
-// (сложение слева направо, длина вектора мала - парного суммирования нет).
-// Тело - общее в core/np_helpers.h.
+// Square root of the sum of three squares: the same summation order as numpy
+// (addition left to right, the vector length is small - no pairwise summation).
+// The body is shared in core/np_helpers.h.
 inline double norm3(const double v[3]) {
     return gv::np::norm3Sqrt(v);
 }
 
-// Индексы точек, остающихся после упрощения полилинии (Дуглас-Пекер).
-// Итеративный вариант: цепочки рёбер меша насчитывают тысячи точек.
+// Indices of the points kept after polyline simplification (Douglas-Peucker).
+// An iterative variant: mesh edge chains number thousands of points.
 std::vector<std::size_t> rdpIndices(const std::vector<Vec3>& points, double tol) {
     const std::size_t n = points.size();
     if (n < 2) {
@@ -79,7 +80,7 @@ std::vector<std::size_t> rdpIndices(const std::vector<Vec3>& points, double tol)
                                       seg[0] * ab[1] - seg[1] * ab[0]};
                 d = norm3(cr) / ln;
             }
-            if (d > best_d) {                       // np.argmax: первое наибольшее
+            if (d > best_d) {                       // np.argmax: the first maximum
                 best_d = d;
                 best = t;
             }
@@ -99,10 +100,10 @@ std::vector<std::size_t> rdpIndices(const std::vector<Vec3>& points, double tol)
     return idx;
 }
 
-// Склейка цепочек смежных рёбер и их упрощение (зеркало _simplify_edge_chains).
-// Цепочка собирается обходом смежности по свареным вершинам: развилки и концы -
-// начала цепочек, оставшиеся рёбра - замкнутые петли. Возвращает концы
-// упрощённых звеньев как номера вершин.
+// Welding of adjacent edge chains and their simplification (mirrors
+// _simplify_edge_chains). A chain is built by walking the adjacency over welded
+// vertices: junctions and ends start chains, the remaining edges form closed
+// loops. Returns the ends of the simplified links as vertex numbers.
 void simplifyEdgeChains(const std::vector<std::uint32_t>& lo_ids,
                         const std::vector<std::uint32_t>& hi_ids,
                         const std::vector<Vec3>& pos, double tol,
@@ -116,8 +117,9 @@ void simplifyEdgeChains(const std::vector<std::uint32_t>& lo_ids,
             + static_cast<std::uint64_t>(hi);
     };
 
-    // Смежность: у вершины ровно список соседей в порядке появления рёбер.
-    // Порядок ключей важен - обход цепочек идёт по нему, как по dict в эталоне.
+    // Adjacency: each vertex has a list of neighbours in edge-appearance order.
+    // The key order matters - chains are walked by it, like a dict in the
+    // reference.
     std::vector<std::vector<std::uint32_t>> adj(pos.size());
     std::vector<unsigned char> seen(pos.size(), 0);
     std::vector<std::uint32_t> first_seen;
@@ -178,7 +180,7 @@ void simplifyEdgeChains(const std::vector<std::uint32_t>& lo_ids,
             step(chains.back(), v, w);
         }
     }
-    for (std::size_t i = 0; i < lo_ids.size(); ++i) {    // замкнутые петли
+    for (std::size_t i = 0; i < lo_ids.size(); ++i) {    // closed loops
         const std::uint32_t a = lo_ids[i];
         const std::uint32_t b = hi_ids[i];
         if (used.find(pairKey(a, b)) != used.end() || adj[a].size() != 2) {
@@ -217,9 +219,9 @@ PackedEdges featureEdgesNp(const std::vector<double>& soup, double angle_deg,
         return PackedEdges{};
     }
 
-    // Сварка вершин: узел, округлённый до 0.001 мм. Нумерация - по порядку
-    // отсортированных строк (np.unique(q, axis=0)), поэтому она устойчива к
-    // порядку входа и повторяет эталон.
+    // Vertex welding: a node rounded to 0.001 mm. Numbering follows the order of
+    // sorted rows (np.unique(q, axis=0)), so it is stable to the input order and
+    // repeats the reference.
     std::vector<std::int64_t> q(nverts * 3);
     for (std::size_t i = 0; i < q.size(); ++i) {
         q[i] = roundToInt(soup[i] * WELD_MM);
@@ -257,7 +259,7 @@ PackedEdges featureEdgesNp(const std::vector<double>& soup, double angle_deg,
         vid[row] = static_cast<std::uint32_t>(u.size() - 1);
     }
 
-    // Нормали граней: вырожденная грань оставляет нулевую нормаль (ln == 0 -> 1.0).
+    // Face normals: a degenerate face keeps a zero normal (ln == 0 -> 1.0).
     std::vector<Vec3> nrm(faces);
     for (std::size_t f = 0; f < faces; ++f) {
         const double* t = &soup[f * 9];
@@ -273,7 +275,8 @@ PackedEdges featureEdgesNp(const std::vector<double>& soup, double angle_deg,
         nrm[f] = Vec3{fn[0] / ln, fn[1] / ln, fn[2] / ln};
     }
 
-    // Рёбра: слоты идут блоками (a,b), (b,c), (c,a), поэтому грань слота - slot % F.
+    // Edges: slots go in blocks (a,b), (b,c), (c,a), so the face of a slot is
+    // slot % F.
     const std::size_t slots = faces * 3;
     std::vector<std::uint32_t> e0(slots);
     std::vector<std::uint32_t> e1(slots);
@@ -314,17 +317,17 @@ PackedEdges featureEdgesNp(const std::vector<double>& soup, double angle_deg,
         }
         const std::size_t cnt = j - k;
         const std::uint32_t slot = srt[k];
-        if (cnt == 1) {                             // граница: одна смежная грань
+        if (cnt == 1) {                             // boundary: one adjacent face
             bnd_lo.push_back(e0[slot]);
             bnd_hi.push_back(e1[slot]);
-        } else if (cnt > 2) {                       // неразнообразность: больше двух граней
+        } else if (cnt > 2) {                       // non-manifold: more than two faces
             nm_lo.push_back(e0[slot]);
             nm_hi.push_back(e1[slot]);
         } else {
             const Vec3& n0 = nrm[faceOf(srt[k])];
             const Vec3& n1 = nrm[faceOf(srt[k + 1])];
             const double dot = std::fabs((n0[0] * n1[0] + n0[1] * n1[1]) + n0[2] * n1[2]);
-            if (dot < thr) {                        // двугранный угол больше порога
+            if (dot < thr) {                        // dihedral angle above the threshold
                 mn_lo.push_back(e0[slot]);
                 mn_hi.push_back(e1[slot]);
             }

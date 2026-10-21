@@ -1,10 +1,10 @@
-// core/tooling.cpp - инструмент и оправка.
+// core/tooling.cpp - tool and holder.
 //
-// Порядок операций повторяет питоновский: профиль инструмента собирается
-// участками (острие -> фаска или нос -> канавки -> шейка -> тело), затем по нему
-// считаются длина, радиус, обводка и кольца. Числа сверяются с эталоном
-// побайтово, поэтому выражение
-// пишется в том же порядке, что в Python: (pi / 2) * k / k_n, а не k * pi / 2 / k_n.
+// The order of operations repeats the reference: the tool profile is assembled
+// from sections (tip -> chamfer or nose -> flutes -> neck -> body), then the
+// length, radius, outline and rings are computed from it. The numbers are checked
+// against the reference byte for byte, so the expression is written in the same
+// order as the reference: (pi / 2) * k / k_n, not k * pi / 2 / k_n.
 #include "core/tooling.h"
 
 #include "core/text_util.h"
@@ -19,13 +19,13 @@ namespace {
 
 constexpr double PI = 3.14159265358979323846;      // math.pi
 
-// Градусы -> радианы как питоновский math.radians: x * (pi / 180).
+// Degrees -> radians like the reference math.radians: x * (pi / 180).
 double radians(double deg)
 {
     return deg * (PI / 180.0);
 }
 
-// Точное произведение (Деккеровская пара): z + zz равно x * y без округления.
+// Exact product (Dekker pair): z + zz equals x * y without rounding.
 struct DoubleLength {
     double hi = 0.0;
     double lo = 0.0;
@@ -43,8 +43,8 @@ DoubleLength dlFastSum(double a, double b)
     return DoubleLength{x, (a - x) + b};
 }
 
-// Число из окружения с умолчанием: неразобранное значение не отличимо от
-// заданного нуля и было бы молчаливой порчей оправки.
+// A number from the environment with a fallback: an unparsed value would be
+// indistinguishable from a given zero and would silently corrupt the holder.
 double envDouble(const char* name, double fallback)
 {
     const char* raw = std::getenv(name);
@@ -59,9 +59,9 @@ double envDouble(const char* name, double fallback)
     return value;
 }
 
-// Гипотенуза по CPython vector_norm (два аргумента): масштаб на степень двойки,
-// точный квадрат через fma, сумма с компенсацией и дифференциальная поправка.
-// Входные NaN и бесконечности у наших профилей недостижимы: там конечные числа.
+// Hypotenuse by CPython vector_norm (two arguments): scaling by a power of two,
+// an exact square via fma, compensated summation and a differential correction.
+// NaN and infinities are unreachable for our profiles: the numbers are finite.
 double vectorNorm2(double a, double b)
 {
     const double x0 = std::fabs(a);
@@ -82,7 +82,7 @@ double vectorNorm2(double a, double b)
     int max_e = 0;
     std::frexp(max, &max_e);
     if (max_e < -1023) {
-        // Субнормальные значения в профилях не встречаются: масштаб не составить.
+        // Subnormal values do not occur in profiles: the scale cannot be formed.
         return std::sqrt(x0 * x0 + x1 * x1);
     }
     const double scale = std::ldexp(1.0, -max_e);
@@ -91,8 +91,8 @@ double vectorNorm2(double a, double b)
     double frac1 = 0.0;
     double frac2 = 0.0;
     for (int i = 0; i < 2; ++i) {
-        const double x = vals[i] * scale;             // масштаб без потерь
-        const DoubleLength pr = dlMul(x, x);          // квадрат без потерь
+        const double x = vals[i] * scale;             // scaling without loss
+        const DoubleLength pr = dlMul(x, x);          // square without loss
         const DoubleLength sm = dlFastSum(csum, pr.hi);
         csum = sm.hi;
         frac1 += pr.lo;
@@ -105,7 +105,7 @@ double vectorNorm2(double a, double b)
     frac1 += pr.lo;
     frac2 += sm.lo;
     const double rest = csum - 1.0 + (frac1 + frac2);
-    h += rest / (2.0 * h);                            // дифференциальная поправка
+    h += rest / (2.0 * h);                            // differential correction
     return h / scale;
 }
 
@@ -113,7 +113,7 @@ double vectorNorm2(double a, double b)
 
 HolderConstants holderConstants()
 {
-    // Читаются один раз: в Python это значения на момент импорта модуля.
+    // Read once: in the reference these are the values at module import.
     static const HolderConstants values = [] {
         HolderConstants out;
         out.nut_d = envDouble("CNC_HOLDER_NUT_D", out.nut_d);
@@ -137,9 +137,9 @@ double pyRound2(double x)
     }
     const bool negative = x < 0.0;
     const double a = std::fabs(x);
-    // Точное произведение a * 100 = z + zz: zz решает, с какой стороны от
-    // середины лежит значение. std::round(z) / 100 не годится - он уводит
-    // половину от нуля, а питоновский round - к чётному (12.345 -> 12.34).
+    // The exact product a * 100 = z + zz: zz decides on which side of the middle
+    // the value lies. std::round(z) / 100 does not do - it rounds half away from
+    // zero, while the reference round goes half to even (12.345 -> 12.34).
     const double z = a * 100.0;
     const double zz = std::fma(a, 100.0, -z);
     const double fl = std::floor(z);
@@ -173,17 +173,17 @@ std::vector<ProfilePoint> toolProfile(const ToolInfo& info)
     const double sd = info.shank_diameter;
     const double ol = info.overall_length;
     if (typ == "FLAT" && taper > 0.0 && cr <= 0.0) {
-        typ = "DRILL";               // коническое острие: пост не разобрал форму
+        typ = "DRILL";               // conical tip: the postprocessor did not parse the shape
     }
     if (fl <= 0.0) {
-        fl = std::max(2.0 * r, 16.0);  // длины канавок в старых постах нет - держим видимой
+        fl = std::max(2.0 * r, 16.0);  // old posts have no flute length - keep it visible
     }
 
     std::vector<ProfilePoint> prof;
-    prof.push_back({0.0, 0.0});      // ось на острие
+    prof.push_back({0.0, 0.0});      // axis at the tip
     double y_cut = 0.0;
     if (typ == "BALL") {
-        const int k_n = 12;          // полусферическая носовая часть
+        const int k_n = 12;          // hemispherical nose
         for (int k = 1; k <= k_n; ++k) {
             const double phi = -PI / 2.0 + (PI / 2.0) * double(k) / double(k_n);
             prof.push_back({r * std::cos(phi), r + r * std::sin(phi)});
@@ -227,7 +227,7 @@ std::vector<ProfilePoint> toolProfile(const ToolInfo& info)
             y_cut = fl;
         }
     } else {                             // FLAT / BULL / LOLLIPOP / DOVETAIL / PROBE
-        if (cr > 0.0 && cr < r) {        // скруглённый нижний угол (радиусная концевая)
+        if (cr > 0.0 && cr < r) {        // rounded bottom corner (corner-radius end mill)
             prof.push_back({r - cr, 0.0});
             const int k_n = 8;
             for (int k = 1; k <= k_n; ++k) {
@@ -246,30 +246,30 @@ std::vector<ProfilePoint> toolProfile(const ToolInfo& info)
         }
     }
 
-    // ---- канавки -> шейка -> тело (вылет = длина тела) ----
-    // Оправка держит хвостовик на конце тела, поэтому видимая режущая часть идёт
-    // от острия до BL (длина тела), как показывает HSMWorks; OL только
-    // ограничивает её (тело не длиннее инструмента целиком). Радиусы: режущая
-    // часть `r` по канавкам, хвостовик `rb` (SD) по телу.
+    // ---- flutes -> neck -> body (gauge length = body length) ----
+    // The holder grips the shank at the end of the body, so the visible cutting
+    // part runs from the tip to BL (body length), as HSMWorks shows; OL only
+    // limits it (the body is no longer than the whole tool). Radii: the cutting
+    // part `r` along the flutes, the shank `rb` (SD) along the body.
     const double rb = sd > 0.0 ? sd / 2.0 : r;
     const double fl_v = std::max(fl, y_cut);
     const double sl_v = std::max(sl > 0.0 ? sl : fl_v, fl_v);
     double bl_v = bl > 0.0 ? bl : (ol > 0.0 ? ol : sl_v);
     bl_v = std::max(bl_v, sl_v);
     if (ol > 0.0) {
-        bl_v = std::min(bl_v, ol);     // не длиннее инструмента целиком
+        bl_v = std::min(bl_v, ol);     // no longer than the whole tool
     }
     if (fl_v > y_cut) {
-        prof.push_back({r, fl_v});     // прямая канавка
+        prof.push_back({r, fl_v});     // straight flute
     }
     if (sl_v > fl_v) {
-        prof.push_back({r, sl_v});     // шейка держит радиус режущей части
+        prof.push_back({r, sl_v});     // the neck keeps the cutting-part radius
     }
     if (std::fabs(rb - r) > 1e-9) {
-        prof.push_back({rb, sl_v});    // плоская ступень к хвостовику
+        prof.push_back({rb, sl_v});    // flat step to the shank
     }
     if (bl_v > sl_v) {
-        prof.push_back({rb, bl_v});    // тело до вылета
+        prof.push_back({rb, bl_v});    // body up to the gauge length
     }
     prof.push_back({0.0, bl_v});
     return prof;
@@ -281,7 +281,7 @@ std::vector<ProfilePoint> toolOutlineProfile(const std::vector<ProfilePoint>& pr
     if (n < 2) {
         return profile;
     }
-    // Наружная нормаль каждого отрезка в плоскости (r, y): наружу = (ty, -tr) / L.
+    // Outer normal of each segment in the (r, y) plane: outward = (ty, -tr) / L.
     std::vector<std::array<double, 2>> seg(n - 1);
     for (std::size_t i = 0; i + 1 < n; ++i) {
         const double tr = profile[i + 1].radius_mm - profile[i].radius_mm;
@@ -305,7 +305,7 @@ std::vector<ProfilePoint> toolOutlineProfile(const std::vector<ProfilePoint>& pr
         } else if (i == n - 1) {
             nr = seg[n - 2][0];
             ny = seg[n - 2][1];
-        } else {                                       // биссектриса двух смежных рёбер
+        } else {                                       // bisector of two adjacent edges
             nr = seg[i - 1][0] + seg[i][0];
             ny = seg[i - 1][1] + seg[i][1];
             const double L = pyHypot(nr, ny);
@@ -355,14 +355,14 @@ std::vector<ProfilePoint> holderSolidProfile()
     const double hb = c.body_h;
     const double pair[][2] = {
         {0.0, 0.0},
-        {rn - 3.0, 0.0},                     // нижний торец
-        {rn, 3.0},                           // нижняя фаска
-        {rn, std::max(3.0, hn - 6.0)},       // поясок накатанной гайки
-        {rn - 1.0, std::max(3.0, hn - 2.0)}, // верхняя фаска
-        {rn - 5.0, hn},                      // верхний торец гайки
+        {rn - 3.0, 0.0},                     // bottom face
+        {rn, 3.0},                           // bottom chamfer
+        {rn, std::max(3.0, hn - 6.0)},       // knurled nut land
+        {rn - 1.0, std::max(3.0, hn - 2.0)}, // top chamfer
+        {rn - 5.0, hn},                      // nut top face
         {rn - 5.0, hn + 2.0},
-        {rb, hn + 6.0},                      // переход в корпус
-        {rb, hn + hb},                       // корпус (со стороны шпинделя)
+        {rb, hn + 6.0},                      // transition into the body
+        {rb, hn + hb},                       // body (spindle side)
         {0.0, hn + hb},
     };
     std::vector<ProfilePoint> out;
@@ -376,7 +376,7 @@ std::vector<ProfilePoint> holderSolidProfile()
 
 std::vector<ProfilePoint> holderOutlineProfile()
 {
-    // Плоские торцы сняты: увеличенная копия не должна показывать их крышками.
+    // Flat faces are removed: the enlarged copy must not show them as caps.
     const std::vector<ProfilePoint> solid = holderSolidProfile();
     std::vector<ProfilePoint> out;
     out.reserve(solid.size());

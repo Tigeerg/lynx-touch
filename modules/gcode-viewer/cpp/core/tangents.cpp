@@ -1,9 +1,9 @@
-// core/tangents.cpp - семейства касательных STEP и кадровый проход по ним.
+// core/tangents.cpp - STEP tangent families and the per-frame pass over them.
 //
-// Порядок операций - часть контракта с эталоном: массивы семейств и отрезки
-// касательных сверяются с numpy побитово, поэтому файл компилируется с
-// /fp:precise (MSVC) и -ffp-contract=off (GCC/Clang), а суммы, средние и
-// произведения считаются тем же порядком слагаемых, что у numpy.
+// The order of operations is part of the contract with the reference: the family
+// arrays and tangent segments are checked against numpy bit for bit, so the file
+// is compiled with /fp:precise (MSVC) and -ffp-contract=off (GCC/Clang), and the
+// sums, averages and products use the same summation order as numpy.
 #include "core/tangents.h"
 
 #include "core/np_helpers.h"
@@ -19,32 +19,33 @@ namespace gv {
 namespace {
 
 constexpr double PI = 3.14159265358979323846;
-constexpr double TWO_PI = 2.0 * PI;          // как 2 * math.pi в эталоне
-constexpr double DEG_TO_RAD = PI / 180.0;    // как math.radians: x * (pi / 180)
+constexpr double TWO_PI = 2.0 * PI;          // as 2 * math.pi in the reference
+constexpr double DEG_TO_RAD = PI / 180.0;    // as math.radians: x * (pi / 180)
 constexpr double NAN_ = std::numeric_limits<double>::quiet_NaN();
 
-// Скалярное произведение, векторное произведение и остаток по знаку делителя -
-// общие тела в core/np_helpers.h.
+// Dot product, cross product and remainder by divisor sign - the shared bodies
+// are in core/np_helpers.h.
 using gv::np::cross3;
 using gv::np::dot3;
 using gv::np::npMod;
 
-// Норма 3-вектора (np.linalg.norm): корень из суммы квадратов. Тело - общее в
-// core/np_helpers.h.
+// Norm of a 3-vector (np.linalg.norm): the square root of the sum of squares.
+// The body is shared in core/np_helpers.h.
 inline double norm3(const double* v) {
     return gv::np::norm3Sqrt(v);
 }
 
-// Округление пол-к-чётному: np.round(x, n) в numpy умножает на 10^n, округляет
-// rint и делит обратно; builtin round(x, n) в Python даёт тот же результат на
-// нетривиальных значениях (nearbyint в режиме FE_TONEAREST).
+// Round half to even: numpy's np.round(x, n) multiplies by 10^n, rounds with rint
+// and divides back; the reference builtin round(x, n) gives the same result on
+// non-trivial values (nearbyint in FE_TONEAREST mode).
 inline double roundDecimals(double x, double multiplier) {
     return std::nearbyint(x * multiplier) / multiplier;
 }
 
-// Зеркало _pt_tri_dist2: квадрат расстояния от точки p до каждого из k
-// треугольников tri (плоский ряд по 9 координат). Внутри треугольника -
-// проекция по уравнению нормали, снаружи - до ближайшей вершины.
+// Mirrors _pt_tri_dist2: the squared distance from point p to each of the k
+// triangles tri (a flat row of 9 coordinates). Inside the triangle it is the
+// projection by the normal equation, outside - the distance to the nearest
+// vertex.
 void pointTriangleDist2(const double p[3], const double* tri, std::size_t k, double* out) {
     for (std::size_t i = 0; i < k; ++i) {
         const double* t = tri + i * 9;
@@ -83,10 +84,10 @@ void pointTriangleDist2(const double p[3], const double* tri, std::size_t k, dou
     }
 }
 
-// Зеркало _cone_keeps_silhouette: конус получает касательные образующие, если
-// он (1) не короче порога длины образующей пресета и (2) вогнутый (нормали
-// кожи у его поверхности смотрят к оси). Без кожи проверка вогнутости
-// пропускается, остаётся порог длины.
+// Mirrors _cone_keeps_silhouette: a cone gets tangent generators if it (1) is not
+// shorter than the preset's slant length threshold and (2) is concave (the skin
+// normals at its surface point toward the axis). Without skin the concavity check
+// is skipped, only the length threshold remains.
 bool coneKeepsSilhouette(const ConeSurface& cone, const SkinTriangles* skin,
                          const QualityPreset& quality) {
     const double slant = std::fabs(cone.s1 - cone.s0);
@@ -103,7 +104,7 @@ bool coneKeepsSilhouette(const ConeSurface& cone, const SkinTriangles* skin,
     }
     const double apex[3] = {cone.a[0], cone.a[1], cone.a[2]};
     const double psi = cone.psi;
-    // любые два ортогональных к оси орта: проба идёт по обороту конуса
+    // any two unit vectors orthogonal to the axis: the probe goes around the cone
     const double ref[3] = {std::fabs(d[2]) < 0.9 ? 0.0 : 1.0, 0.0,
                            std::fabs(d[2]) < 0.9 ? 1.0 : 0.0};
     const double dref = dot3(d, ref);
@@ -115,9 +116,9 @@ bool coneKeepsSilhouette(const ConeSurface& cone, const SkinTriangles* skin,
     double u2[3];
     cross3(d, u1, u2);
     const double sMid = (cone.s0 + cone.s1) / 2.0;
-    const double side = sMid >= 0.0 ? 1.0 : -1.0;   // вторая полость конуса
-    // numpy.argpartition(dd, 15) на массиве короче 16 элементов бросает
-    // исключение, и оно глотается - конус остаётся. Тот же исход.
+    const double side = sMid >= 0.0 ? 1.0 : -1.0;   // the second cavity of the cone
+    // numpy.argpartition(dd, 15) on an array shorter than 16 elements raises an
+    // exception, and it is swallowed - the cone stays. The same outcome.
     if (skin->count < 16) {
         return true;
     }
@@ -176,7 +177,7 @@ bool coneKeepsSilhouette(const ConeSurface& cone, const SkinTriangles* skin,
             }
         }
         if (!any) {
-            continue;                       // проба упала мимо грани
+            continue;                       // the probe fell past the face
         }
         if (own > 0 && own >= other) {
             return true;
@@ -185,8 +186,8 @@ bool coneKeepsSilhouette(const ConeSurface& cone, const SkinTriangles* skin,
     return false;
 }
 
-// Ключ склейки совпадающих конических поверхностей (_dedupe_cones): вершина,
-// каноническое направление оси, полуугол и отсортированный срез s.
+// Weld key of coincident conical surfaces (_dedupe_cones): apex, canonical axis
+// direction, half-angle and the sorted slice s.
 struct ConeKey {
     double a[3];
     double d[3];
@@ -204,8 +205,8 @@ struct ConeKey {
     }
 };
 
-// Зеркало _dedupe_cones: одна геометрия конуса в STEP кроится несколькими face
-// TShape, и без склейки каждая образующая рисуется дважды в одной точке.
+// Mirrors _dedupe_cones: one cone geometry in STEP is split across several face
+// TShapes, and without welding each generator is drawn twice at one point.
 std::vector<ConeSurface> dedupeCones(const std::vector<ConeSurface>& cones) {
     std::vector<ConeSurface> out;
     std::vector<ConeKey> seen;
@@ -227,7 +228,7 @@ std::vector<ConeSurface> dedupeCones(const std::vector<ConeSurface>& cones) {
             for (int j = 0; j < 3; ++j) {
                 d[j] = -d[j];
             }
-            const double ns0 = -s1;             // при флипе оси диапазон отражается
+            const double ns0 = -s1;             // when the axis flips the range is reflected
             const double ns1 = -s0;
             s0 = ns0;
             s1 = ns1;
@@ -258,8 +259,9 @@ std::vector<ConeSurface> dedupeCones(const std::vector<ConeSurface>& cones) {
     return out;
 }
 
-// Одна запись семейства: ось, базис сечения, пределы вдоль оси, полнота и
-// покрытие дуги. Списки этих записей эталон ведёт раздельно (_tangent_families).
+// One family record: axis, cross-section basis, limits along the axis, fullness
+// and arc coverage. The reference keeps these record lists separately
+// (_tangent_families).
 struct Entry {
     double o[3] = {0.0, 0.0, 0.0};
     double d[3] = {0.0, 0.0, 1.0};
@@ -274,7 +276,7 @@ struct Entry {
     double a1 = 0.0;
 };
 
-// _union_a: объединение дуг двух секций; NaN у любой из них даёт NaN.
+// _union_a: union of the arcs of two sections; NaN in either gives NaN.
 void unionArc(double& a0, double& a1, double c0, double c1) {
     if (!(std::isfinite(a0) && std::isfinite(c0))) {
         a0 = NAN_;
@@ -290,8 +292,9 @@ void unionArc(double& a0, double& a1, double c0, double c1) {
 SkinTriangles buildSkinTriangles(const std::vector<double>& soup,
                                  const std::vector<float>& normals) {
     SkinTriangles out;
-    // asarray(..., float).reshape(-1, 3, 3) в эталоне бросает исключение, если
-    // длина не делится на 9; исключение глотается, и кожи нет вовсе.
+    // asarray(..., float).reshape(-1, 3, 3) in the reference raises an exception
+    // if the length is not divisible by 9; the exception is swallowed, and there
+    // is no skin at all.
     if (soup.size() % 9 != 0 || normals.size() % 9 != 0) {
         return out;
     }
@@ -318,10 +321,10 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
     TangentFamilies out;
     std::vector<ConeSurface> cones;
 
-    // Цилиндры сгруппированы по ключу (ось с округлением, каноническое
-    // направление, радиус); порядок групп - порядок первого появления, как у
-    // словаря Python. Ключ - 180 значений на Test_model, линейный поиск дешевле
-    // хеш-таблицы и не зависит от хеша double.
+    // Cylinders are grouped by key (axis with rounding, canonical direction,
+    // radius); the group order is the order of first appearance, like a Python
+    // dict. The key is 180 values on Test_model, so a linear search is cheaper
+    // than a hash table and does not depend on the hash of a double.
     struct GroupKey {
         double op[3];
         double dr[3];
@@ -352,7 +355,7 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
         double dref[3] = {d[0], d[1], d[2]};
         for (int j = 0; j < 3; ++j) {
             if (std::fabs(d[j]) > 1e-9) {
-                if (d[j] < 0.0) {               // лексикографическое направление
+                if (d[j] < 0.0) {               // lexicographic direction
                     for (int k = 0; k < 3; ++k) {
                         dref[k] = -d[k];
                     }
@@ -385,15 +388,15 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
     std::vector<Entry> entries;
     for (std::size_t g = 0; g < groups.size(); ++g) {
         const std::vector<const CylinderSurface*>& faces = groups[g];
-        // каноническое направление ключа, а не faces[0]: слитые по нему грани
-        // могут смотреть вдоль оси в разные стороны
+        // the canonical direction of the key, not faces[0]: faces merged by it may
+        // look along the axis in different directions
         double d[3] = {keys[g].dr[0], keys[g].dr[1], keys[g].dr[2]};
         const double dlen = std::max(norm3(d), 1e-12);
         for (int j = 0; j < 3; ++j) {
             d[j] /= dlen;
         }
-        // точный след оси, а не округлённый ключ: ключ с шагом 0.1 мм уводил
-        // образующую с истинной оси
+        // the exact axis trace, not the rounded key: a key with a 0.1 mm step
+        // pulled the generator off the true axis
         double o[3] = {0.0, 0.0, 0.0};
         for (const CylinderSurface* s : faces) {
             const double al = dot3(d, s->o);
@@ -415,13 +418,13 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
                 break;
             }
         }
-        // осевые кластеры: разные отверстия на одной оси с одним радиусом не
-        // должны слиться в одну длинную образующую через пустоту
+        // axial clusters: different holes on one axis with one radius must not
+        // merge into one long generator through the void
         std::vector<std::array<double, 2>> tbs;
         for (const CylinderSurface* s : faces) {
             double lo = s->t0;
             double hi = s->t1;
-            if (dot3(d, s->d) < 0.0) {          // ось грани против канонической
+            if (dot3(d, s->d) < 0.0) {          // the face axis is opposite to the canonical one
                 const double nlo = -hi;
                 const double nhi = -lo;
                 lo = nlo;
@@ -445,8 +448,8 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
             rsum += s->r;
         }
         const double rrep = rsum / static_cast<double>(faces.size());
-        // Политика силуэта: порог дуги и минимальный пролёт пресета (у med -
-        // 85 гр и 2.5 мм) оставляют образующую только у настоящих тел вращения.
+        // Silhouette policy: the preset's arc threshold and minimum span (85 deg
+        // and 2.5 mm at med) keep a generator only on real surfaces of revolution.
         double wmax = 0.0;
         for (const CylinderSurface* s : faces) {
             if (!s->has_arc) {
@@ -464,7 +467,7 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
                 }
             }
         }
-        // азимутальное покрытие - из аналитической дуги грани, а не из меша
+        // azimuthal coverage - from the analytic face arc, not from the mesh
         std::array<bool, 64> abins{};
         double fa0 = NAN_;
         double fa1 = NAN_;
@@ -505,9 +508,9 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
         }
     }
 
-    // Слияние семейств на одной оси: шум моделирования делит одно отверстие на
-    // два ключа. Сливаются только равные радиусы - настоящая ступень сохраняет
-    // свой силуэт на истинном радиусе стенки.
+    // Merge families on one axis: modeling noise splits one hole into two keys.
+    // Only equal radii merge - a real step keeps its silhouette at the true wall
+    // radius.
     struct Merged {
         std::size_t idx;
         double t0;
@@ -536,8 +539,8 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
             if (norm3(p) > 0.4) {
                 continue;
             }
-            // пролёты должны касаться или перекрываться: проверка идёт по
-            // исходному пролёту представителя, как в эталоне
+            // the spans must touch or overlap: the check uses the representative's
+            // original span, as in the reference
             if (rep.t1 + 0.5 < entries[i].t0 || entries[i].t1 + 0.5 < rep.t0) {
                 continue;
             }
@@ -573,9 +576,10 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
     }
 
     const std::size_t n = fam.size();
-    // DROP: азимуты генераторов, дублирующих статическую стыковую линию B-rep
-    // (та же ось, тот же радиус, перекрытие по оси больше порога пресета, у med
-    // 2 мм). Ширина строки - (N,8), как в эталоне, поэтому азимутов не больше 8.
+    // DROP: generator azimuths that duplicate a static B-rep seam line (same
+    // axis, same radius, axial overlap above the preset threshold, 2 mm at med).
+    // The row width is (N,8), as in the reference, so there are at most 8
+    // azimuths.
     std::vector<double> drop(n * 8, NAN_);
     if (packedEdges != nullptr && n > 0) {
         const std::size_t floats = packedEdges->raw.size() / sizeof(float);
@@ -635,9 +639,9 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
                 }
                 sel.clear();
                 for (std::size_t k = 0; k < par.size(); ++k) {
-                    // 0.35 мм: только рёбра, лежащие на этом цилиндре; шире
-                    // нельзя - в коаксиальной группе захватывался шов соседней
-                    // ступени
+                    // 0.35 mm: only edges lying on this cylinder; wider is not
+                    // allowed - in a coaxial group it captured the seam of the
+                    // neighbouring step
                     if (std::fabs(rr[k] - fam[i].r) < 0.35) {
                         sel.push_back(k);
                     }
@@ -675,8 +679,8 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
                         uniq.push_back(a);
                     }
                 }
-                // копия того же стыка через ноль (0.001 и 6.283): рантайм
-                // сравнивает по кругу, поэтому остаётся только первая
+                // a copy of the same seam across zero (0.001 and 6.283): the
+                // runtime compares around the circle, so only the first stays
                 if (uniq.size() > 1 && uniq[0] + TWO_PI - uniq.back() < 0.03) {
                     uniq.pop_back();
                 }
@@ -717,9 +721,9 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
         famOut.FULL[i] = fam[i].full ? 1 : 0;
     }
 
-    // Коаксиальные секции ступенчатого отверстия получают общий азимут: их
-    // собственные касательные расходятся на ~0.2 гр, и контур рисовался двумя
-    // смещёнными обрубками. Опорный радиус - наибольший на этой оси.
+    // Coaxial sections of a stepped hole get a common azimuth: their own tangents
+    // diverge by ~0.2 deg, and the contour was drawn as two offset stubs. The
+    // reference radius is the largest on this axis.
     for (std::size_t i = 0; i < n; ++i) {
         double best = -1.0;
         for (std::size_t j = 0; j < n; ++j) {
@@ -742,11 +746,11 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
         famOut.RREF[i] = best;
     }
 
-    // Азимутальное покрытие: маску по мешу ограничиваем аналитической дугой
-    // грани, но только у частичных дуг - полное отверстие не режем.
+    // Azimuthal coverage: the mesh mask is limited by the analytic face arc, but
+    // only for partial arcs - a full hole is not cut.
     if (skin != nullptr && skin->valid && n > 0) {
-        std::vector<double> pp(skin->count * 9);    // (F,3,3): вершина минус осевая часть
-        std::vector<double> alv(skin->count * 3);   // (F,3): те же смещения вдоль оси
+        std::vector<double> pp(skin->count * 9);    // (F,3,3): vertex minus the axial part
+        std::vector<double> alv(skin->count * 3);   // (F,3): the same offsets along the axis
         for (std::size_t i = 0; i < n; ++i) {
             if (!fam[i].full) {
                 continue;
@@ -771,8 +775,8 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
                 double amin = alv[f * 3];
                 double amax = alv[f * 3];
                 for (int c = 0; c < 3; ++c) {
-                    // все три вершины на радиусе этой грани: треугольник лежит
-                    // на самом цилиндре, а не на соседнем
+                    // all three vertices are on this face's radius: the triangle
+                    // lies on the cylinder itself, not on a neighbour
                     if (!(std::fabs(norm3(&pp[f * 9 + std::size_t(c) * 3]) - fam[i].r) < 0.25)) {
                         onTri = false;
                     }
@@ -803,7 +807,7 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
                 asum += fam[i].arc[std::size_t(k)] ? 1 : 0;
             }
             if (msum >= 56) {
-                continue;                       // полное отверстие - не режем
+                continue;                       // a full hole - do not cut
             }
             if (asum >= 4) {
                 int cut = 0;
@@ -820,8 +824,8 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
                 }
             }
         }
-        // непрерывная дуга (a0, a0 + span) для точной обрезки на скользящих
-        // углах; полные отверстия (маска ~360 гр) помечаем NaN - их не режем
+        // a continuous arc (a0, a0 + span) for exact trimming at sliding angles;
+        // full holes (a ~360 deg mask) are marked NaN - they are not cut
         for (std::size_t i = 0; i < n; ++i) {
             int msum = 0;
             for (int k = 0; k < 64; ++k) {
@@ -835,7 +839,8 @@ TangentFamilies buildTangentFamilies(const StepSurfaceList& surfs,
     }
 
     out.cylinders = std::move(famOut);
-    // Политика конусов, затем склейка совпадающих: порядок как в эталоне.
+    // The cone policy, then welding of coincident ones: the order is as in the
+    // reference.
     std::vector<ConeSurface> kept;
     kept.reserve(cones.size());
     for (const ConeSurface& c : cones) {
@@ -853,9 +858,9 @@ TangentFamilies profileTangentFamilies(const std::vector<ProfilePoint>& profile)
     if (profile.size() < 2) {
         return out;
     }
-    // Секция профиля: либо цилиндр (радиус постоянен), либо конус (радиус
-    // меняется линейно). Плоский торец (dy = 0) и участок на оси генераторов не
-    // дают - их рисует кольцо.
+    // A profile section: either a cylinder (constant radius) or a cone (radius
+    // changes linearly). A flat face (dy = 0) and a stretch on the axis give no
+    // generators - the ring draws them.
     struct Section {
         bool cylinder = true;
         double r = 0.0;
@@ -880,8 +885,8 @@ TangentFamilies profileTangentFamilies(const std::vector<ProfilePoint>& profile)
             s.r = r0;
             s.t0 = std::min(y0, y1);
             s.t1 = std::max(y0, y1);
-            // Соседние цилиндры одного радиуса (тело и шейка на одном диаметре)
-            // дают одну общую образующую, а не две наложенные линии.
+            // Adjacent cylinders of one radius (the body and the neck on one
+            // diameter) give one shared generator, not two overlaid lines.
             if (!sections.empty() && sections.back().cylinder
                     && std::fabs(sections.back().r - s.r) < eps
                     && std::fabs(sections.back().t1 - s.t0) < 1e-6) {
@@ -891,8 +896,9 @@ TangentFamilies profileTangentFamilies(const std::vector<ProfilePoint>& profile)
             }
             continue;
         }
-        // Ось конуса смотрит от вершины к секции: радиус вдоль неё растёт, поэтому
-        // параметр s обоих концов положителен, как у ConeSurface из STEP.
+        // The cone axis looks from the apex to the section: the radius grows along
+        // it, so the parameter s of both ends is positive, as in ConeSurface from
+        // STEP.
         const double sgn = dr > 0.0 ? 1.0 : -1.0;
         const double yApex = y0 - r0 * dy / dr;
         const double psi = std::atan(std::fabs(dr / dy));
@@ -902,9 +908,10 @@ TangentFamilies profileTangentFamilies(const std::vector<ProfilePoint>& profile)
         }
         s.cylinder = false;
         s.cone.a[1] = yApex;
-        // Ось задаётся целиком: ConeSurface по умолчанию несёт ось (0, 0, 1), и от
-        // одной записи d[1] ось уезжает в (0, sgn, 1) - образующая встала бы на
-        // радиус ~38 мм вместо настоящих 11.5..23 (замерено на оправке).
+        // The axis is set in full: ConeSurface by default carries the axis
+        // (0, 0, 1), and from a single d[1] record the axis drifts to (0, sgn, 1) -
+        // the generator would land at a radius of ~38 mm instead of the real
+        // 11.5..23 (measured on the holder).
         s.cone.d[0] = 0.0;
         s.cone.d[1] = sgn;
         s.cone.d[2] = 0.0;
@@ -956,8 +963,8 @@ TangentFamilies profileTangentFamilies(const std::vector<ProfilePoint>& profile)
 const std::vector<double>& tangentFromFamilies(const TangentFamilies& fam, const double eyeMm[3],
                                                TangentScratch& scratch) {
     scratch.segments.clear();
-    // Псевдонимы на буферы переживающего кадр объекта: тело ниже не меняется,
-    // меняются только места заведения этих векторов.
+    // Aliases to the buffers of the frame-surviving object: the body below does
+    // not change, only the places where these vectors are created.
     std::vector<double>& along = scratch.along;
     std::vector<double>& perp = scratch.perp;
     std::vector<double>& rp = scratch.rp;
@@ -995,8 +1002,8 @@ const std::vector<double>& tangentFromFamilies(const TangentFamilies& fam, const
         }
         if (anyValid) {
             for (std::size_t i = 0; i < n; ++i) {
-                // азимут касания - по наибольшему радиусу коаксиальной группы:
-                // секции ступенчатого отверстия встают на один контур
+                // the tangency azimuth follows the largest radius of a coaxial
+                // group: the sections of a stepped hole land on one contour
                 const double rref = cyls.RREF[i];
                 const double rpSafe = std::max(rp[i], 1e-9);
                 const double rang = rp[i] > rref ? rref : cyls.R[i];
@@ -1035,8 +1042,8 @@ const std::vector<double>& tangentFromFamilies(const TangentFamilies& fam, const
                 ok.assign(n, 0);
                 for (std::size_t i = 0; i < n; ++i) {
                     ok[i] = cyls.FULL[i];
-                    // обрезка по аналитической дуге (a0..a1): без неё линия
-                    // вылезает за край скругления на плоскую грань
+                    // trimming by the analytic arc (a0..a1): without it the line
+                    // runs past the blend edge onto a flat face
                     const bool part = std::isfinite(cyls.A0[i]);
                     if (part) {
                         const double rel = npMod(phi[i] - cyls.A0[i], TWO_PI);
@@ -1047,8 +1054,8 @@ const std::vector<double>& tangentFromFamilies(const TangentFamilies& fam, const
                         }
                     }
                 }
-                // генератор, дублирующий стыковое ребро B-rep: полоса шириной
-                // ~1.5 мм по радиусу
+                // a generator duplicating a B-rep seam edge: a band about 1.5 mm
+                // wide by radius
                 for (std::size_t i = 0; i < n; ++i) {
                     if (!ok[i]) {
                         continue;
@@ -1159,7 +1166,7 @@ const std::vector<double>& tangentFromFamilies(const TangentFamilies& fam, const
 std::vector<double> tangentFromFamilies(const TangentFamilies& fam, const double eyeMm[3]) {
     TangentScratch scratch;
     tangentFromFamilies(fam, eyeMm, scratch);
-    return std::move(scratch.segments);   // перенос, а не копия: как был возврат segments
+    return std::move(scratch.segments);   // move, not copy: as the former return of segments
 }
 
 } // namespace gv

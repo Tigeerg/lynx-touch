@@ -144,7 +144,7 @@ of positions; the storage is the same nodes, but sparse (tiles), with a "touched
 ### 4.1 Where precision and time are lost
 
 1. A node walked again and again: a node is covered by roughly `4r / node` positions of one move (at
-   `r = 3`, node 0.2 - up to 120 times), and every position recomputes `sqrt`, `heightAt`, `max`. The main
+   `r = 3`, node 0.2 - up to 60 times), and every position recomputes `sqrt`, `heightAt`, `max`. The main
    multiplier.
 2. Discretisation of the move: the step `cell / 2` leaves an uncut strip up to `cell / 4` wide.
 3. Chords instead of arcs: the sagitta of the ball's 12 chords is 0.00835 mm.
@@ -196,7 +196,7 @@ of positions; the storage is the same nodes, but sparse (tiles), with a "touched
 - GPU (option, later): the moves in an SSBO, a gather-min over the capsule in the fragment.
 
 The estimated gain (an order, not a measurement): removing the repeated walk gives about `4r / node`
-(10x at `r = 1.5`, node 0.5; up to 120x at `r = 3`, node 0.2); the sparsity adds a gain over the touched
+(12x at `r = 1.5`, node 0.5; up to 60x at `r = 3`, node 0.2); the sparsity adds a gain over the touched
 area.
 
 ### 4.4 Work plan

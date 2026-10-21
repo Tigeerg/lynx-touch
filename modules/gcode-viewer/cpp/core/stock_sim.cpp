@@ -1,10 +1,12 @@
-// core/stock_sim.cpp - поле высот остатка заготовки: съём минимумом по колонке
-// вдоль пути (DESIGN.md, "Симуляция съёма материала").
+// core/stock_sim.cpp - stock-remainder height field: removal by the column minimum
+// along the path (DESIGN.md, "Симуляция съёма материала").
 //
-// Отрезок обходится положениями с шагом не крупнее половины узла: без этого
-// колонка между двумя положениями осталась бы нетронутой при узле около
-// диаметра инструмента. Диск под инструментом обходится по габариту, а не по
-// всей сетке: цена положения пропорциональна площади следа, а не заготовке.
+// A segment is walked by positions with a step no larger than half a node: without it
+// the column between two positions would stay untouched for a node about the tool
+// diameter. The disc under the tool is walked over the bounds, not over the whole grid:
+// the price of a position is proportional to the trace area, not to the stock. Here too
+// is the t_cut time field, which stores for each node the path length at which it was
+// cut.
 #include "core/stock_sim.h"
 
 #include <algorithm>
@@ -18,11 +20,12 @@ namespace gv {
 
 namespace {
 
-// Локальный допуск сравнения радиусов профиля, мм: вершины toolProfile лежат
-// на окружностях, и разность меньше 1e-9 - это та же окружность.
+// Local tolerance for comparing profile radii, mm: toolProfile vertices lie on circles,
+// and a difference smaller than 1e-9 is the same circle.
 constexpr double RADIUS_EPS_MM = 1e-9;
 
-// Миллисекунды монотонных часов: цена прохода меряется здесь, а не слоем Qt.
+// Milliseconds of the monotonic clock: the price of a pass is measured here, not by the
+// Qt layer.
 double msSince(std::chrono::steady_clock::time_point t0)
 {
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -44,7 +47,7 @@ double StockCutter::heightAt(double radiusAtMm) const
     if (i + 1 >= n) {
         return heightMm[n - 1];
     }
-    // Между вершинами профиль - отрезок: h(r) линейна.
+    // Between the vertices the profile is a segment: h(r) is linear.
     const double span = radiusMm[i + 1] - radiusMm[i];
     if (span <= 0.0) {
         return heightMm[i];
@@ -61,14 +64,14 @@ StockCutter stockCutterFromProfile(const std::vector<ProfilePoint>& profile,
     if (profile.size() < 2) {
         return cutter;
     }
-    // Выше вылета профиль не режет. Нулевой вылет - вылет неизвестен, режет всё.
+    // Above the gauge length the profile does not cut. A zero gauge length means the
+    // gauge length is unknown, and it cuts everything.
     const double topMm = exposedMm > 0.0 ? exposedMm : std::numeric_limits<double>::infinity();
 
-    // Нижняя огибающая: идём от острия, пока радиус растёт. Убывание радиуса -
-    // шейка или хвостовик, они огибающую не понижают. Рост радиуса после
-    // убывания - поднутрение (лоллипоп): картой оно не выражается, флаг для
-    // вызывающего.
-    // toolProfile начинает профиль на оси: точка (0, 0).
+    // Lower envelope: we go from the tip while the radius grows. A falling radius is the
+    // neck or the shank, they do not lower the envelope. A radius growth after a fall is
+    // an undercut (lollipop): it is not expressed by the map, a flag for the caller.
+    // toolProfile starts the profile on the axis: the point (0, 0).
     double maxRadius = 0.0;
     bool shrinking = false;
     cutter.radiusMm.push_back(0.0);
@@ -100,9 +103,9 @@ StockCutter stockCutter(const ToolInfo& info)
     }
     StockCutter cutter = stockCutterFromProfile(toolProfile(info), toolExposedLength(info));
     cutter.number = info.number;
-    // Форма с поднутрением по определению шире кверху. toolProfile строит её
-    // веткой FLAT/BULL/LOLLIPOP/DOVETAIL/PROBE как прямую фрезу, то есть форма
-    // уже потеряна, - поэтому отказ идёт по типу, а не по профилю.
+    // A shape with an undercut is by definition wider at the top. toolProfile builds it
+    // in the FLAT/BULL/LOLLIPOP/DOVETAIL/PROBE branch as a straight end mill, that is,
+    // the shape is already lost, - therefore the refusal goes by type, not by profile.
     const std::string& type = info.type;
     if (type == "LOLLIPOP" || type == "DOVETAIL" || type == "T_SLOT" || type == "TSLOT") {
         cutter.undercut = true;
@@ -144,6 +147,7 @@ void StockField::reset(const StockBounds& bounds, double cellMm)
     nx_ = 0;
     ny_ = 0;
     depth_.clear();
+    depth_time_.clear();
     const double extentX = bounds.xMaxMm - bounds.xMinMm;
     const double extentY = bounds.yMaxMm - bounds.yMinMm;
     if (!(cellMm > 0.0) || !(extentX > 0.0) || !(extentY > 0.0)) {
@@ -151,7 +155,9 @@ void StockField::reset(const StockBounds& bounds, double cellMm)
     }
     nx_ = int(std::floor(extentX / cellMm)) + 1;
     ny_ = int(std::floor(extentY / cellMm)) + 1;
-    depth_.assign(std::size_t(nx_) * std::size_t(ny_), 0.0f);
+    const std::size_t size = std::size_t(nx_) * std::size_t(ny_);
+    depth_.assign(size, 0.0f);
+    depth_time_.assign(size, 0.0f);
 }
 
 double StockField::heightMm(int ix, int iy) const
@@ -159,21 +165,23 @@ double StockField::heightMm(int ix, int iy) const
     return bounds_.zMaxMm - double(depth_[std::size_t(iy) * std::size_t(nx_) + std::size_t(ix)]);
 }
 
-void StockField::setHeightMm(int ix, int iy, double zMm)
+void StockField::setHeightMm(int ix, int iy, double zMm, double timeMm)
 {
     const double thicknessMm = bounds_.zMaxMm - bounds_.zMinMm;
     double depth = bounds_.zMaxMm - zMm;
     depth = std::min(std::max(depth, 0.0), thicknessMm);
-    depth_[std::size_t(iy) * std::size_t(nx_) + std::size_t(ix)] = float(depth);
+    const std::size_t idx = std::size_t(iy) * std::size_t(nx_) + std::size_t(ix);
+    depth_[idx] = float(depth);
+    depth_time_[idx] = float(timeMm);
 }
 
-void StockField::plunge(const StockCutter& cutter, double xMm, double yMm, double tipZMm)
+void StockField::plunge(const StockCutter& cutter, double xMm, double yMm, double tipZMm, double timeMm)
 {
     if (empty() || cutter.maxRadiusMm <= 0.0) {
         return;
     }
-    // Острие - самая низкая точка инструмента, а h(r) >= 0: выше верха заготовки
-    // не режет ничего. Быстрый ход над заготовкой не тратит обход диска.
+    // The tip is the lowest point of the tool, and h(r) >= 0: above the stock top nothing
+    // is cut. A rapid above the stock wastes no disc walk.
     if (tipZMm >= bounds_.zMaxMm) {
         return;
     }
@@ -200,21 +208,21 @@ void StockField::plunge(const StockCutter& cutter, double xMm, double yMm, doubl
             if (!std::isfinite(height)) {
                 continue;
             }
-            // Верх материала над резом снимается; ниже реза материал остаётся.
+            // The material top above the cut is removed; below the cut the material stays.
             double depth = topMm - (tipZMm + height);
             if (!(depth > 0.0)) {
                 continue;
             }
             if (depth > thicknessMm) {
-                depth = thicknessMm;            // ниже дна заготовки материала нет
+                depth = thicknessMm;            // below the stock bottom there is no material
             }
-            // Хранится глубина, поэтому съём - максимум: чем глубже рез, тем
-            // больше число. Сверять высоты здесь значило бы держать минимум
-            // высоты, то есть 0 (нетронутый верх) для любой колонки.
-            float& cell = depth_[row + std::size_t(ix)];
-            const float value = float(depth);
-            if (value > cell) {
-                cell = value;
+            // The depth is what is stored, so the removal is the maximum: the deeper the
+            // cut, the larger the number. Comparing heights would mean keeping the minimum
+            // height, that is 0 (an untouched top) for any column.
+            const std::size_t idx = row + std::size_t(ix);
+            if (float(depth) > depth_[idx]) {
+                depth_[idx] = float(depth);
+                depth_time_[idx] = float(timeMm);
             }
         }
     }
@@ -222,7 +230,8 @@ void StockField::plunge(const StockCutter& cutter, double xMm, double yMm, doubl
 
 void StockField::sweep(const StockCutter& cutter,
                        const std::array<double, 3>& aMm,
-                       const std::array<double, 3>& bMm)
+                       const std::array<double, 3>& bMm,
+                       double timeMm)
 {
     if (empty() || cutter.maxRadiusMm <= 0.0) {
         return;
@@ -232,16 +241,16 @@ void StockField::sweep(const StockCutter& cutter,
     const double dz = bMm[2] - aMm[2];
     const double lengthMm = std::sqrt(dx * dx + dy * dy + dz * dz);
     if (!(lengthMm > 0.0)) {
-        plunge(cutter, aMm[0], aMm[1], aMm[2]);
+        plunge(cutter, aMm[0], aMm[1], aMm[2], timeMm);
         return;
     }
-    const double stepMm = cellMm_ * 0.5;       // предложение DESIGN: половина узла
+    const double stepMm = cellMm_ * 0.5;
     const int steps = (stepMm > 0.0 && lengthMm > stepMm)
             ? int(std::ceil(lengthMm / stepMm))
             : 1;
     for (int k = 0; k <= steps; ++k) {
         const double t = double(k) / double(steps);
-        plunge(cutter, aMm[0] + dx * t, aMm[1] + dy * t, aMm[2] + dz * t);
+        plunge(cutter, aMm[0] + dx * t, aMm[1] + dy * t, aMm[2] + dz * t, timeMm);
     }
 }
 
@@ -252,7 +261,7 @@ StockSurfaceMesh stockSurfaceMesh(const StockBounds& bounds, double cellMm,
     if (countX < 2 || countY < 2 || !(cellMm > 0.0)) {
         return mesh;
     }
-    // Число подклеток на клетку поля: 1 - прежняя сетка по узлам.
+    // Number of subcells per field cell: 1 - the former grid over the nodes.
     const int k = subdiv < 1 ? 1 : subdiv;
     const int drawnX = (countX - 1) * k + 1;
     const int drawnY = (countY - 1) * k + 1;
@@ -263,12 +272,12 @@ StockSurfaceMesh stockSurfaceMesh(const StockBounds& bounds, double cellMm,
 
     mesh.vertices.reserve(std::size_t(drawnX) * std::size_t(drawnY) * 5);
     for (int jy = 0; jy < drawnY; ++jy) {
-        // Координата в узлах поля: целая часть - номер узла, дробная - доля
-        // клетки. При k = 1 это ровно номер узла, поэтому прежний буфер
-        // воспроизводится бит в бит.
+        // Coordinate in field nodes: the integer part is the node number, the fraction is
+        // the cell fraction. At k = 1 this is exactly the node number, so the former buffer
+        // is reproduced bit for bit.
         const double ty = double(jy) / double(k);
-        // Узел поля, а в последней строке - растянутый до габарита (см.
-        // заголовок): иначе верх не дошёл бы до стенки коробки.
+        // A field node, and in the last row - stretched to the bounds (see the header):
+        // otherwise the top would not reach the box wall.
         const double nodeY = bounds.yMinMm + ty * cellMm;
         const double y = (jy == drawnY - 1) ? std::min(nodeY, bounds.yMaxMm) : nodeY;
         const float v = float((ty + 0.5) / double(countY));
@@ -313,9 +322,9 @@ std::vector<float> stockShellVertices(const StockBounds& bounds, double cellMm,
     if (countX < 2 || countY < 2 || !(cellMm > 0.0)) {
         return vertices;
     }
-    // Край коробки - габарит: последний узел поля растянут до него, поэтому
-    // верх и стенка сходятся. Верх материала стенка перекрывает на gapTopMm -
-    // так же, как перекрывала прежняя коробка.
+    // The edge of the box is the bounds: the last field node is stretched to it, so the top
+    // and the wall meet. The wall overlaps the material top by gapTopMm - just as the former
+    // box overlapped it.
     const double x0 = bounds.xMinMm - gapSideMm;
     const double x1 = bounds.xMaxMm + gapSideMm;
     const double y0 = bounds.yMinMm - gapSideMm;
@@ -323,7 +332,7 @@ std::vector<float> stockShellVertices(const StockBounds& bounds, double cellMm,
     const double z0 = bounds.zMinMm - gapBottomMm;
     const double z1 = bounds.zMaxMm + gapTopMm;
 
-    // Четыре угла одной грани парами треугольников: 0-1-2, 0-2-3.
+    // Four corners of one face as triangle pairs: 0-1-2, 0-2-3.
     const auto face = [&vertices](const std::array<double, 3>& p0,
                                   const std::array<double, 3>& p1,
                                   const std::array<double, 3>& p2,
@@ -336,11 +345,11 @@ std::vector<float> stockShellVertices(const StockBounds& bounds, double cellMm,
         }
     };
 
-    face({x0, y0, z0}, {x1, y0, z0}, {x1, y1, z0}, {x0, y1, z0});   // дно
-    face({x0, y0, z0}, {x0, y1, z0}, {x0, y1, z1}, {x0, y0, z1});   // стенка -X
-    face({x1, y0, z0}, {x1, y0, z1}, {x1, y1, z1}, {x1, y1, z0});   // стенка +X
-    face({x0, y0, z0}, {x0, y0, z1}, {x1, y0, z1}, {x1, y0, z0});   // стенка -Y
-    face({x0, y1, z0}, {x1, y1, z0}, {x1, y1, z1}, {x0, y1, z1});   // стенка +Y
+    face({x0, y0, z0}, {x1, y0, z0}, {x1, y1, z0}, {x0, y1, z0});   // bottom
+    face({x0, y0, z0}, {x0, y1, z0}, {x0, y1, z1}, {x0, y0, z1});   // wall -X
+    face({x1, y0, z0}, {x1, y0, z1}, {x1, y1, z1}, {x1, y1, z0});   // wall +X
+    face({x0, y0, z0}, {x0, y0, z1}, {x1, y0, z1}, {x1, y0, z0});   // wall -Y
+    face({x0, y1, z0}, {x1, y1, z0}, {x1, y1, z1}, {x0, y1, z1});   // wall +Y
     return vertices;
 }
 
@@ -352,8 +361,8 @@ bool StockWalk::start(const PathData& data, const StockBounds& bounds, double ce
     refused_stage_ = -1;
     refused_tool_ = 0;
     cutters_ = std::move(cutters);
-    // Отказ считается до аллокации поля: для такого инструмента поля нет вовсе,
-    // а не пустое поле.
+    // The refusal is evaluated before the field allocation: for such a tool there is no
+    // field at all, rather than an empty field.
     const int refused = stockUndercutStage(cutters_);
     if (refused >= 0) {
         refused_stage_ = refused;
@@ -362,13 +371,13 @@ bool StockWalk::start(const PathData& data, const StockBounds& bounds, double ce
     }
     const std::size_t n = data.pts.size() / 3;
     if (n < 2 || data.cum.size() != n || !(data.total > 0.0) || cutters_.empty()) {
-        return false;                      // проходить нечего
+        return false;                      // there is nothing to walk
     }
     data_ = &data;
     bounds_ = bounds;
     cellMm_ = cellMm;
-    // Начало этапа по накопленной длине пути: тем же выражением, что у скана
-    // коллизий (доля этапа умножается на полную длину).
+    // Start of a stage along the accumulated path length: by the same expression as in the
+    // collision scan (the stage fraction is multiplied by the full length).
     starts_.clear();
     starts_.reserve(data.stages.size());
     for (const StageRange& stage : data.stages) {
@@ -398,8 +407,8 @@ bool StockWalk::advanceTo(double targetMm, const std::function<bool(double)>& ca
     if (!started_ || data_ == nullptr) {
         return true;
     }
-    // Перемотка: поле снова целая заготовка, курсор в начало. Прежнее поле
-    // живёт до этого вызова - публикует его вызывающий, а не обход.
+    // Rewind: the field is a whole stock again, the cursor is at the start. The previous
+    // field lives until this call - the caller publishes it, not the walk.
     if (targetMm < cursor_mm_) {
         restart();
     }
@@ -411,26 +420,26 @@ bool StockWalk::advanceTo(double targetMm, const std::function<bool(double)>& ca
     for (std::size_t i = next_; i < n; ++i) {
         const double d = data_->cum[i];
         if (d > targetMm) {
-            break;                         // ход кончается позже цели: не трогаем
+            break;                         // the move ends later than the target: leave it
         }
         if (cancelled && cancelled(d)) {
             advance_ms_ += msSince(t0);
             return false;
         }
-        // Этап определяется длиной пути до начала хода: d не убывает, поэтому
-        // указатель двигается только вперёд и переживает тики.
+        // The stage is determined by the path length before the move start: d does not
+        // decrease, so the pointer only moves forward and survives ticks.
         const double d0 = data_->cum[i - 1];
         while (stage_ + 1 < starts_.size() && starts_[stage_ + 1] <= d0) {
             ++stage_;
         }
-        // PathData хранит точки сцены (X, Z, -Y): обратно в машинные.
+        // PathData stores scene points (X, Z, -Y): back to machine ones.
         const std::array<double, 3> a{data_->pts[(i - 1) * 3], -data_->pts[(i - 1) * 3 + 2],
                                       data_->pts[(i - 1) * 3 + 1]};
         const std::array<double, 3> b{data_->pts[i * 3], -data_->pts[i * 3 + 2],
                                       data_->pts[i * 3 + 1]};
         const StockCutter& cutter = cutters_[std::min(stage_, cutters_.size() - 1)];
         if (cutter.maxRadiusMm > 0.0) {
-            field_.sweep(cutter, a, b);
+            field_.sweep(cutter, a, b, d);
         }
         const double dx = b[0] - a[0];
         const double dy = b[1] - a[1];
@@ -458,7 +467,7 @@ StockRunResult simulateStock(const PathData& data, const StockBounds& bounds, do
         out.refused = walk.refusedStage() >= 0;
         out.refusedStage = walk.refusedStage();
         out.refusedTool = walk.refusedTool();
-        return out;                        // поля нет: причина в refusedStage
+        return out;                        // there is no field: the reason is in refusedStage
     }
     const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
     out.cancelled = !walk.advanceTo(data.total, cancelled, progress);

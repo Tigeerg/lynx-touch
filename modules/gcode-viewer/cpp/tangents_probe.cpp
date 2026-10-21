@@ -1,55 +1,59 @@
-// cpp/tangents_probe.cpp - пробник совпадения C++-аналитических поверхностей STEP
-// и семейств касательных (этап 4d плана переноса) с питоновским эталоном
-// occt/step_surfaces.cpp и core/tangents.cpp.
+// cpp/tangents_probe.cpp - probe of the match between C++ analytical STEP
+// surfaces and tangent families (stage 4d of the port plan) against the Python
+// oracle occt/step_surfaces.cpp and core/tangents.cpp.
 //
-// Пробник не входит ни в плагин, ни в ядро: отдельная цель CMake. Он проходит
-// тот же путь, что питоновский load_step_model + load_step_surfaces +
+// The probe is part of neither the plugin nor the core: a separate CMake target.
+// It follows the same path as the Python load_step_model + load_step_surfaces +
 // _tangent_families:
-// * STEPControl_Reader -> суп вершин через gvstep (кожа для политики конусов);
-// * аналитические поверхности вращения из той же формы (gvstep);
-// * упакованные рёбра STEP (float32 по 5 на вершину) пробник строит сам из той
-// же формы тем же путём, что рантайм (cpp/qmlbackend/gv_toolpath.cpp,
+// * STEPControl_Reader -> vertex soup via gvstep (skin for the cone policy);
+// * analytical surfaces of revolution from the same shape (gvstep);
+// * packed STEP edges (float32, 5 per vertex) are built by the probe itself from
+// the same shape along the same path as the runtime (cpp/qmlbackend/gv_toolpath.cpp,
 // packStepEdges): gvstep::stepRawSegments -> coalesceStepSegments ->
-// gvcore::packEdgesNp. Числа самих рёбер уже сверены с эталоном
-//. Рядом в дампе лежит packed_edges.f32
-// питоновской проверки, и пока файл есть, семейства берут его - так сверка
-// остаётся независимой; свой буфер пробник печатает и
-// сбрасывает рядом (packed_self.f32), чтобы оба sha256 были видны в одном
-// прогоне;
-// * семейства касательных (gvcore) и отрезки на пяти фиксированных глазах.
+// gvcore::packEdgesNp. The numbers of the edges themselves have already been
+// verified against the oracle
+//. Next to it in the dump lies packed_edges.f32
+// of the Python check, and while the file exists the families take it - so the
+// comparison stays independent; the probe prints its own buffer and
+// dumps it next to it (packed_self.f32), so that both sha256 are visible in one
+// run;
+// * tangent families (gvcore) and segments on five fixed eyes.
 //
-// Печатает числа и sha256 тех же сериализаций, что считает Python
-// (numpy.tobytes): float64 LE у массивов чисел, uint8 LE у булевых масок,
-// int32 LE у вида поверхности. Те же массивы пишутся дампом; сверку ведут
-// дайджесты tangents.* оракула (ключ --manifest).
+// Prints the numbers and sha256 of the same serializations that Python computes
+// (numpy.tobytes): float64 LE for the number arrays, uint8 LE for the boolean
+// masks, int32 LE for the surface kind. The same arrays are written as a dump;
+// the oracle's tangents.* digests drive the comparison (--manifest key).
 //
-// Запуск: tangents_probe <файл.step> <каталог-дампа> (нужны DLL OCCT в PATH)
-// tangents_probe --manifest <oracle_manifest.json> [<файл.step>]
-// tangents_probe --check [<файл.step>]
-// Код возврата: 0 - посчитано и записано (или дайджесты сошлись с оракулом);
-// 1 - файл не прочитан или дамп не записан; 2 - аргументы не разобраны.
+// Usage: tangents_probe <file.step> <dump-dir> (OCCT DLLs must be in PATH)
+// tangents_probe --manifest <oracle_manifest.json> [<file.step>]
+// tangents_probe --check [<file.step>]
+// Return code: 0 - computed and written (or digests matched the oracle);
+// 1 - file not read or dump not written; 2 - arguments not parsed.
 //
-// Режим --manifest/--check сверяет дайджесты своих массивов (записи tangents.*)
-// с oracle_manifest.json без Python и без каталога-дампа: печатает строку на
-// запись и "RESULT: OK" / "RESULT: FAIL (n)". Путь к тестовым данным по
-// умолчанию берётся от корня репозитория (путь пробника).
+// The --manifest/--check mode compares the digests of its arrays (tangents.*
+// entries) with oracle_manifest.json without Python and without the dump
+// directory: prints one line per entry and "RESULT: OK" / "RESULT: FAIL (n)".
+// The default path to the test data is taken from the repository root (the probe
+// path).
 //
-// Оговорка о входе этой сверки: семейства считаются от собственного буфера
-// рёбер, а он не совпадает с питоновским packed_edges.f32 байт в байт. На
-// Test_model.STEP: из 24260 значений float32 расходятся 276, различающихся
-// позиций-отрезков 80 - 64 отрезка стоят на чужой позиции (набор отрезков один
-// и тот же), 16 расходятся в младших битах (значения порядка 5.7e-14, максимум
-// |dx| = 1.8e-15 мм). Поэтому значения записей берутся от питоновского входа
-//, а пробник сверяет с ними свой: все 22 массива дают один и
-// тот же sha256 при любом из двух буферов. Равенство входов проверяет отдельно
-// - он кладёт рядом свой packed_edges.f32.
-// sha256 буферов (полные значения): питоновский
+// Caveat about the input of this comparison: the families are computed from the
+// probe's own edge buffer, and it does not match the Python packed_edges.f32
+// byte for byte. On Test_model.STEP: of 24260 float32 values, 276 differ, the
+// number of differing segment positions is 80 - 64 segments sit at a foreign
+// position (the set of segments is the same), 16 differ in the low bits (values
+// of order 5.7e-14, maximum |dx| = 1.8e-15 mm). Therefore the values of the
+// entries are taken from the Python input
+//, and the probe compares its own against them: all 22 arrays give one and
+// the same sha256 with either of the two buffers. The equality of the inputs is
+// checked separately
+// - it puts its own packed_edges.f32 next to it.
+// sha256 of the buffers (full values): the Python one
 // 4eff01c23ff4a1fbe8058db6bc2f425efe294408d7ebc55e3e7e7eb651a988fb,
-// свой 926b383602ee6c08bc546ed8ad99b334fe33a25ca5cf75b5b389d1b9d64f857f.
+// its own 926b383602ee6c08bc546ed8ad99b334fe33a25ca5cf75b5b389d1b9d64f857f.
 
-// windows.h идёт до заголовков OCCT: цепочка OCCT объявляет _WINDOWS_ своим
-// стражем, и включённый после неё windows.h не даёт ни одной своей функции.
-// NOMINMAX обязателен: min/max макросами ломают std::min и std::max.
+// windows.h goes before the OCCT headers: the OCCT chain declares _WINDOWS_ as
+// its guard, and windows.h included after it exposes none of its functions.
+// NOMINMAX is required: the min/max macros break std::min and std::max.
 #ifdef _WIN32
 #  ifndef NOMINMAX
 #    define NOMINMAX
@@ -79,8 +83,8 @@
 
 namespace {
 
-// Фиксированные глаза - те же пять, что в silhouette_probe:
-// расхождение здесь сдвинуло бы эталон кадрового прохода.
+// Fixed eyes - the same five as in silhouette_probe:
+// a discrepancy here would shift the oracle of the frame pass.
 const double EYES[5][3] = {{100.0, 150.0, 300.0},
                            {-200.0, 40.0, 260.0},
                            {60.0, -180.0, 120.0},
@@ -89,9 +93,9 @@ const double EYES[5][3] = {{100.0, 150.0, 300.0},
 
 const double NAN_ = std::numeric_limits<double>::quiet_NaN();
 
-// Путь к тестовым данным лежит в каталоге с кириллицей ("Проект по умолчанию"),
-// а OCCT принимает путь в UTF-8: аргументы командной строки берутся в широком
-// виде и переводятся в UTF-8. Иначе файл не нашёлся бы вовсе.
+// The path to the test data lies in a directory with Cyrillic ("Проект по умолчанию"),
+// and OCCT accepts the path in UTF-8: command-line arguments are taken in wide
+// form and converted to UTF-8. Otherwise the file would not be found at all.
 std::string toUtf8(const std::wstring& w) {
 #ifdef _WIN32
     const int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
@@ -125,8 +129,8 @@ std::vector<std::string> probeArgs(int argc, char** argv) {
 #endif
 }
 
-// Дамп сырыми байтами: путь в UTF-8, открывается как wide на Windows - иначе
-// кириллица в каталоге не доехала бы до файловой системы.
+// Dump as raw bytes: the path in UTF-8, opened as wide on Windows - otherwise
+// the Cyrillic in the directory would not reach the filesystem.
 bool writeBytes(const std::string& utf8Path, const std::vector<unsigned char>& bytes) {
     std::ofstream fh(std::filesystem::u8path(utf8Path), std::ios::binary | std::ios::trunc);
     if (!fh) {
@@ -148,9 +152,9 @@ std::vector<unsigned char> asBytes(const void* data, std::size_t count, std::siz
     return out;
 }
 
-// Вход проверки: упакованные рёбра STEP (float32 по 5 на вершину, пары вершин -
-// отрезки). Файла нет - пробник работает без пометок DROP, как эталон с
-// packed_edges=None.
+// Input of the check: packed STEP edges (float32, 5 per vertex, vertex pairs -
+// segments). If the file is absent, the probe runs without DROP marks, like the
+// oracle with packed_edges=None.
 bool readPackedEdges(const std::string& utf8Path, gv::PackedEdges& out) {
     std::ifstream fh(std::filesystem::u8path(utf8Path), std::ios::binary);
     if (!fh) {
@@ -160,7 +164,7 @@ bool readPackedEdges(const std::string& utf8Path, gv::PackedEdges& out) {
     const std::streamoff size = fh.tellg();
     fh.seekg(0, std::ios::beg);
     if (size <= 0) {
-        return true;                 // пустой файл - пустой буфер
+        return true;                 // empty file - empty buffer
     }
     out.raw.assign(static_cast<std::size_t>(size), 0);
     fh.read(reinterpret_cast<char*>(out.raw.data()), size);
@@ -168,12 +172,13 @@ bool readPackedEdges(const std::string& utf8Path, gv::PackedEdges& out) {
     return true;
 }
 
-// Упакованные рёбра STEP из самой формы: повтор packStepEdges рантайма
-// (cpp/qmlbackend/gv_toolpath.cpp) - сырые рёбра B-rep, склейка и упаковка.
-// Допуски - умолчания пресета med (0.05 мм по образующей, склейка 0.12 и
-// 0.5 мм): те же числа, что у умолчаний питоновской _coalesce_segments. Пресет
-// берётся умолчанием, а не из CNC_QUALITY: иначе манифест зависел бы от
-// окружения прогона.
+// Packed STEP edges from the shape itself: a repeat of the runtime's
+// packStepEdges (cpp/qmlbackend/gv_toolpath.cpp) - raw B-rep edges, coalescing
+// and packing. The tolerances are the defaults of the med preset (0.05 mm along
+// the generatrix, coalescing 0.12 and 0.5 mm): the same numbers as the defaults
+// of the Python _coalesce_segments. The preset is taken as the default rather
+// than from CNC_QUALITY: otherwise the manifest would depend on the run
+// environment.
 gv::PackedEdges packedFromStep(const TopoDS_Shape& shape) {
     const gv::QualityPreset quality{};
     const std::vector<gv::EdgeSegment> raw =
@@ -191,9 +196,10 @@ gv::PackedEdges packedFromStep(const TopoDS_Shape& shape) {
     return gv::packEdgesNp(p0, p1);
 }
 
-// Дамп: ключ в выводе, байты, имя файла и сериализация. dtype и shape нужны
-// режиму сверки: запись манифеста - это "tangents." + key, dtype и форма
-// массива. Буфер рёбер в манифест не входит: он вход, а не результат.
+// Dump: key in the output, bytes, file name and serialization. dtype and shape
+// are needed by the check mode: a manifest entry is "tangents." + key, the dtype
+// and the array shape. The edge buffer is not part of the manifest: it is the
+// input, not the result.
 struct Dump {
     std::string key;
     std::string dtype;
@@ -244,7 +250,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // -- поверхности вращения --------------------------------------------------
+    // -- surfaces of revolution --------------------------------------------------
     std::vector<std::int32_t> kind;
     std::vector<double> cylRows;      // (NC,17): o, d, e1, e2, r, t0, t1, a0, a1
     std::vector<double> coneRows;     // (CK,9): a, d, psi, s0, s1
@@ -275,12 +281,13 @@ int main(int argc, char** argv) {
         static_cast<std::size_t>(std::count(kind.begin(), kind.end(), std::int32_t(1)));
     const std::size_t nCylSurf = kind.size() - nConeSurf;
 
-    // -- упакованные рёбра STEP и семейства касательных ------------------------
-    // Буфер рёбер пробник строит сам из той же формы: им он сравнивается с
-    // packed_edges.f32 питоновской проверки. Входом семейств в режиме дампа
-    // остаётся файл проверки, если он есть (иначе пометок DROP нет вовсе); в
-    // режиме сверки с манифестом вход - собственный буфер (почему он годится,
-    // хотя байт в байт не совпадает, - оговорка в шапке файла).
+    // -- packed STEP edges and tangent families --------------------------------
+    // The probe builds the edge buffer itself from the same shape: it uses it to
+    // compare against the Python check's packed_edges.f32. In dump mode the input
+    // of the families remains the check file, if it exists (otherwise there are
+    // no DROP marks at all); in manifest check mode the input is its own buffer
+    // (why it is suitable even though it does not match byte for byte is the
+    // caveat in the file header).
     const gv::PackedEdges selfPacked = packedFromStep(shape);
     gv::PackedEdges filePacked;
     const bool haveFile = !dumpDir.empty()
@@ -296,7 +303,7 @@ int main(int argc, char** argv) {
         nfull += f ? 1 : 0;
     }
 
-    // столбцы конуса: a(3), d(3), psi, s0, s1 - девять чисел на конус
+    // cone columns: a(3), d(3), psi, s0, s1 - nine numbers per cone
     std::vector<double> famCone(fam.cones.size() * 9);
     for (std::size_t i = 0; i < fam.cones.size(); ++i) {
         const gv::ConeSurface& c = fam.cones[i];
@@ -330,10 +337,11 @@ int main(int argc, char** argv) {
         std::printf("tangent_cones: %zu\n", fam.cones.size());
     }
 
-    // Дампы: те же сериализации, что у оракула (numpy.tobytes) - float64 LE у
-    // чисел, uint8 LE у булевых масок, int32 LE у вида поверхности. Форма записи
-    // та же, что в: список поверхностей (N,), столбцы (NC,17) и
-    // (CK,9), семейства (count,3)/(count,)/(count,8)/(count,64), отрезки (M,2,3).
+    // Dumps: the same serializations as the oracle's (numpy.tobytes) - float64 LE
+    // for the numbers, uint8 LE for the boolean masks, int32 LE for the surface
+    // kind. The record shape is the same as in: the list of surfaces (N,), the
+    // columns (NC,17) and (CK,9), the families
+    // (count,3)/(count,)/(count,8)/(count,64), the segments (M,2,3).
     std::vector<Dump> dumps;
     auto addDump = [&dumps](const std::string& key, const std::string& file, const char* dtype,
                             std::vector<long long> shape, const void* data, std::size_t count,
@@ -386,9 +394,9 @@ int main(int argc, char** argv) {
     addDump("cone", "cone.f64", "float64", {coneFamCount, 9},
             famCone.data(), famCone.size(), sizeof(double));
 
-    // Буфер рёбер, собранный самим пробником: по нему питоновская сторона
-    // сверяет его с packed_edges.f32 побайтово (sha256). В манифест не входит:
-    // это вход сверки, а не её результат.
+    // The edge buffer built by the probe itself: the Python side uses it to
+    // compare against packed_edges.f32 byte by byte (sha256). It is not part of
+    // the manifest: it is the input of the check, not its result.
     addDump("packed_self", "packed_self.f32", "uint8",
             {static_cast<long long>(selfPacked.raw.size())},
             selfPacked.raw.data(), selfPacked.raw.size(), 1);
@@ -404,8 +412,8 @@ int main(int argc, char** argv) {
                 tangentSegs[i].data(), tangentSegs[i].size(), sizeof(double));
     }
 
-    // Режим сверки: те же сериализации против oracle_manifest.json, без записи
-    // файлов. Записи - "tangents." + key; буфер рёбер пропускается.
+    // Check mode: the same serializations against oracle_manifest.json, without
+    // writing files. Entries - "tangents." + key; the edge buffer is skipped.
     if (checkMode) {
         gv::manifest::Manifest manifest;
         std::string error;

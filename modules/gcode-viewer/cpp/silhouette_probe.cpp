@@ -1,39 +1,39 @@
-// cpp/silhouette_probe.cpp - пробник совпадения C++-топологии силуэта и силуэта
-// на фиксированных глазах (этап 4c плана переноса) с питоновским эталоном
-// core/silhouette.cpp.
+// cpp/silhouette_probe.cpp - probe of the match between the C++ silhouette
+// topology and the silhouette on fixed eyes (stage 4c of the port plan) against
+// the Python oracle core/silhouette.cpp.
 //
-// Пробник не входит ни в плагин, ни в ядро: отдельная цель CMake. Он берёт суп
-// вершин из STEP тем же путём gvstep (loadStepModel), что питоновский
-// load_step_model, строит топологию (сварка вершин по сетке 1e-4 мм, рёбра ровно
-// с двумя гранями, отсев острых кромок и вырожденных граней) и считает силуэт на
-// пяти фиксированных глазах из. Печатает:
+// The probe is part of neither the plugin nor the core: a separate CMake target.
+// It takes the vertex soup from STEP along the same gvstep path (loadStepModel)
+// as the Python load_step_model, builds the topology (vertex welding on a 1e-4 mm
+// grid, edges with exactly two faces, rejection of sharp edges and degenerate
+// faces) and computes the silhouette on the five fixed eyes from. Prints:
 //
-// verts: N вершин супа (эталон Test_model.STEP - 136194)
-// triangles: F треугольников (эталон - 45398)
-// candidates: K кандидатных силуэтных рёбер (эталон - 57842)
-// sha256_<ключ>: H sha256 массивов топологии: n, d, f0, f1, ea, eb
-// eye<i>: M рёбер силуэта на глазу i (эталон - 245, 224, 251, 509, 185)
-// sha256_eye<i>: H sha256 float32 (M,2,3) - тот же байтовый вид, что у numpy
+// verts: N vertices of the soup (oracle Test_model.STEP - 136194)
+// triangles: F triangles (oracle - 45398)
+// candidates: K candidate silhouette edges (oracle - 57842)
+// sha256_<key>: H sha256 of the topology arrays: n, d, f0, f1, ea, eb
+// eye<i>: M silhouette edges on eye i (oracle - 245, 224, 251, 509, 185)
+// sha256_eye<i>: H sha256 float32 (M,2,3) - the same byte view as numpy
 //
-// Те же массивы пишутся в каталог-дамп файлами topo_*.f32/i32 и
-// silhouette_eye<i>.f32: питоновская проверка читает их numpy и сверяет и
-// поэлементно, и по хэшу. Сверку ведёт.
+// The same arrays are written to the dump directory as files topo_*.f32/i32 and
+// silhouette_eye<i>.f32: the Python check reads them with numpy and compares both
+// elementwise and by hash. It drives the comparison.
 //
-// Запуск: silhouette_probe <файл.step> <каталог-дампа> (нужны DLL OCCT в PATH)
-// silhouette_probe --manifest <oracle_manifest.json> [<файл.step>]
-// silhouette_probe --check [<файл.step>]
-// Код возврата: 0 - посчитано и записано (или дайджесты сошлись с оракулом);
-// 1 - файл не прочитан или дамп не записан; 2 - аргументы не разобраны.
+// Usage: silhouette_probe <file.step> <dump-dir> (OCCT DLLs must be in PATH)
+// silhouette_probe --manifest <oracle_manifest.json> [<file.step>]
+// silhouette_probe --check [<file.step>]
+// Return code: 0 - computed and written (or digests matched the oracle);
+// 1 - file not read or dump not written; 2 - arguments not parsed.
 //
-// Режим --manifest/--check сверяет дайджесты своих массивов (topo.n, topo.d,
-// topo.f0, topo.f1, topo.ea, topo.eb, silhouette.eye0..eye4) с oracle_manifest.json
-// без Python и без каталога-дампа: печатает строку на запись и "RESULT: OK" /
-// "RESULT: FAIL (n)". Путь к тестовым данным по умолчанию берётся от корня
-// репозитория (путь пробника).
+// The --manifest/--check mode compares the digests of its arrays (topo.n, topo.d,
+// topo.f0, topo.f1, topo.ea, topo.eb, silhouette.eye0..eye4) with oracle_manifest.json
+// without Python and without the dump directory: prints one line per entry and
+// "RESULT: OK" / "RESULT: FAIL (n)". The default path to the test data is taken
+// from the repository root (the probe path).
 
-// windows.h идёт до заголовков OCCT: цепочка OCCT объявляет _WINDOWS_ своим
-// стражем, и включённый после неё windows.h не даёт ни одной своей функции.
-// NOMINMAX обязателен: min/max макросами ломают std::min и std::max.
+// windows.h goes before the OCCT headers: the OCCT chain declares _WINDOWS_ as
+// its guard, and windows.h included after it exposes none of its functions.
+// NOMINMAX is required: the min/max macros break std::min and std::max.
 #ifdef _WIN32
 #  ifndef NOMINMAX
 #    define NOMINMAX
@@ -55,17 +55,17 @@
 
 namespace {
 
-// Фиксированные глаза - те же пять, что в: расхождение здесь
-// сдвинуло бы эталон.
+// Fixed eyes - the same five as in: a discrepancy here
+// would shift the oracle.
 const double EYES[5][3] = {{100.0, 150.0, 300.0},
                            {-200.0, 40.0, 260.0},
                            {60.0, -180.0, 120.0},
                            {240.0, 300.0, -60.0},
                            {0.0, 0.0, 400.0}};
 
-// Путь к тестовым данным лежит в каталоге с кириллицей ("Проект по умолчанию"),
-// а OCCT принимает путь в UTF-8: аргументы командной строки берутся в широком
-// виде и переводятся в UTF-8. Иначе файл не нашёлся бы вовсе.
+// The path to the test data lies in a directory with Cyrillic ("Проект по умолчанию"),
+// and OCCT accepts the path in UTF-8: command-line arguments are taken in wide
+// form and converted to UTF-8. Otherwise the file would not be found at all.
 std::string toUtf8(const std::wstring& w) {
 #ifdef _WIN32
     const int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
@@ -99,8 +99,8 @@ std::vector<std::string> probeArgs(int argc, char** argv) {
 #endif
 }
 
-// Дамп сырыми байтами: путь в UTF-8, открывается как wide на Windows - иначе
-// кириллица в каталоге не доехала бы до файловой системы.
+// Dump as raw bytes: the path in UTF-8, opened as wide on Windows - otherwise
+// the Cyrillic in the directory would not reach the filesystem.
 bool writeBytes(const std::string& utf8Path, const std::vector<unsigned char>& bytes) {
     std::ofstream fh(std::filesystem::u8path(utf8Path), std::ios::binary | std::ios::trunc);
     if (!fh) {
@@ -163,17 +163,18 @@ int main(int argc, char** argv) {
     const gv::MeshTopology topo = gv::buildSilhouetteTopology(model.verts);
     const std::size_t k = topo.edgeCount();
 
-    // Сериализации те же, что у оракула (numpy.tobytes): float32 LE у n, d, ea,
-    // eb и силуэтов, int32 LE у f0/f1. x86 хранит их little-endian.
+    // The serializations are the same as the oracle's (numpy.tobytes): float32 LE
+    // for n, d, ea, eb and the silhouettes, int32 LE for f0/f1. x86 stores them
+    // little-endian.
     struct Dump {
-        const char* key;        // имя ключа в выводе, в манифесте и имени файла
+        const char* key;        // key name in the output, in the manifest and in the file name
         const void* data;
         std::size_t count;
         std::size_t elem;
         const char* suffix;
-        const char* dtype;      // dtype сериализации, как в oracle_manifest.json
-        long long rows;         // строк в форме массива
-        int cols;               // столбцов: 0 - одномерный массив
+        const char* dtype;      // serialization dtype, as in oracle_manifest.json
+        long long rows;         // rows in the array shape
+        int cols;               // columns: 0 - one-dimensional array
     };
     const Dump dumps[6] = {
         {"n", topo.n.data(), topo.n.size(), sizeof(float), "f32", "float32",
@@ -190,8 +191,8 @@ int main(int argc, char** argv) {
          static_cast<long long>(k), 3},
     };
 
-    // Сверка с оракулом: те же дайджесты, что печатает режим дампа, но против
-    // oracle_manifest.json и без записи файлов.
+    // Comparison with the oracle: the same digests that the dump mode prints, but
+    // against oracle_manifest.json and without writing files.
     if (checkMode) {
         gv::manifest::Manifest manifest;
         std::string error;

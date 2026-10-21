@@ -1,42 +1,42 @@
-// cpp/stock_sim_probe.cpp - пробник поля высот остатка заготовки.
+// cpp/stock_sim_probe.cpp - probe of the stock-remainder height field.
 //
-// Пробник не входит ни в плагин, ни в ядро: отдельная цель CMake над gvcore,
-// как stl_probe. Он делает две вещи.
+// The probe is part of neither the plugin nor the core: a separate CMake target over gvcore,
+// like stl_probe. It does two things.
 //
-// 1. Аналитика. Поле режется синтетической заготовкой и сверяется с формулой,
-// посчитанной здесь же по геометрии инструмента и пути, - не кодом поля. Случаи:
-// плоская концевая по плоскому верху (глубина постоянна везде, где прошёл
-// инструмент), шаровая (круглая долина - истинная сфера), конус/V-бита (конус
-// долины), рез выше заготовки (поле не меняется) и колонка, которую ловит только
-// шаг в половину узла (шаг в целый узел её пропускает - это и есть довод за
-// правило шага). У плоского прохода узел у самой стенки следа может остаться
-// нетронутым: шаг гарантирует только узлы ближе r - шаг/2, внешняя полоса
-// шириной шаг/2 - цена дискретизации, а не ошибка. Поэтому сравниваются узлы
-// вне этой полосы, а узел внутри неё, но вне радиуса, обязан остаться на верху.
+// 1. Analysis. The field is cut by a synthetic stock and checked against a formula
+// computed right here from tool and path geometry, - not by the field code. Cases:
+// flat end mill over a flat top (depth is constant everywhere the
+// tool passed), ball (round valley - a true sphere), cone/V-bit (cone
+// of the valley), cut above the stock (the field does not change) and a column caught only
+// by a half-cell step (a full-cell step misses it - that is the argument for the
+// step rule). In a flat pass a node at the very wall of the trace may stay
+// untouched: the step only guarantees nodes closer than r - step/2, the outer band
+// of width step/2 is the price of discretization, not an error. Therefore nodes
+// outside this band are compared, while a node inside it but outside the radius must stay on top.
 //
-// Там же рисуемая часть: случай stocksurface строит меш верха поля
-// (stockSurfaceMesh) и повторяет вершинный шейдер (texcoord -> узел поля, высота
-// = верх заготовки минус глубина, кадр сцены - поворот узла), случай stockshell
-// проверяет форму оболочки коробки: стенки и дно без верхней грани, а случай
-// stocksurface_fine - рисование гладкого вида: дроблённую сетку (подузел на
-// сетке узла, texcoord - его доля клетки), билинейную высоту подузла и правило
-// уступа (на плоской клетке у кромки нормаль плоская, на клетке-стенке - наклон
-// стенки). Случай stockshell_trim проверяет обрезку верха стенки по полю
-// (правило stockshell.frag): на кромке габарита есть и снятые, и нетронутые узлы,
-// углы кромки нетронуты, и обрезка опускает верх стенки ровно на глубину поля.
-// Случай holder_rings - кольца обводки тела вращения (profileRingPoints):
-// высоты колец оправки и отсутствие колец на звеньях дуг шара и скругления.
-// Поле во всех случаях одно и то же: рисование его не трогает.
+// The drawn part is there too: the stocksurface case builds the mesh of the field top
+// (stockSurfaceMesh) and repeats the vertex shader (texcoord -> field node, height
+// = stock top minus depth, the scene frame is the node rotation), the stockshell case
+// checks the shape of the box shell: walls and bottom without a top face, while the
+// stocksurface_fine case covers smooth-view drawing: the subdivided grid (a subnode on
+// the node grid, texcoord is its cell fraction), the bilinear height of the subnode and the
+// ledge rule (on a flat cell at the edge the normal is flat, on a wall cell it is the wall
+// slope). The stockshell_trim case checks trimming of the wall top by the field
+// (the stockshell.frag rule): on the bounds edge there are both cut and untouched nodes,
+// the edge corners are untouched, and trimming lowers the wall top exactly by the field depth.
+// The holder_rings case covers the outline rings of a solid of revolution (profileRingPoints):
+// the heights of the holder rings and the absence of rings on the arc segments of the ball and the corner round.
+// The field is the same in all cases: drawing does not touch it.
 //
-// 2. Замер. Время одного прохода длиной 50 мм и время всего Test_model.ngc
-// (все ходы, включая быстрые, инструмент этапа, габарит из UI_STOCK) при узле
-// 0.5 и 0.2 мм - это предложения пресетов из DESIGN.md. Печатаются строки
-// "phase <имя> <мс>", как у bench_probe; разбор УП в замер не входит.
+// 2. Measurement. The time of one 50 mm pass and the time of the whole Test_model.ngc
+// (all moves, including rapid ones, the stage tool, the bounds from UI_STOCK) at a cell of
+// 0.5 and 0.2 mm - these are the preset proposals from DESIGN.md. Lines
+// "phase <name> <ms>" are printed, like in bench_probe; parsing of the NC program is not part of the measurement.
 //
-// Запуск: stock_sim_probe [файл.ngc]
-// без аргумента берётся data/cad-testdata/Test_model.ngc от текущего каталога
-// или от каталога сборки.
-// Код возврата: 0 - все случаи сошлись; 1 - есть расхождение или УП не найдена.
+// Run: stock_sim_probe [file.ngc]
+// without an argument data/cad-testdata/Test_model.ngc is taken from the current directory
+// or from the build directory.
+// Return code: 0 - all cases matched; 1 - there is a mismatch or the NC program was not found.
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -76,7 +76,7 @@ double msSince(Clock::time_point t0)
     return std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
 }
 
-// Общий сток: не даёт оптимизатору выбросить посчитанное.
+// Shared sink: keeps the optimizer from discarding what was computed.
 volatile std::size_t g_sink = 0;
 
 double median(std::vector<double> v)
@@ -128,14 +128,14 @@ void printPhase(const char* name, double ms)
     std::printf("phase %-26s %9.3f\n", name, ms);
 }
 
-// Инструмент для синтетических случаев: те поля UI_TOOL, что нужны профилю.
+// Tool for the synthetic cases: those UI_TOOL fields that the profile needs.
 struct ToolSpec {
     const char* type = "FLAT";
     double diameterMm = 0.0;
     double taperDeg = 0.0;
     double fluteMm = 10.0;
     double bodyMm = 20.0;
-    double cornerMm = 0.0;             // радиус скругления нижнего угла
+    double cornerMm = 0.0;             // bottom-corner rounding radius
 };
 
 gv::ToolInfo makeTool(const ToolSpec& spec)
@@ -154,7 +154,7 @@ gv::ToolInfo makeTool(const ToolSpec& spec)
     return info;
 }
 
-// Расстояние от точки до отрезка в плоскости XY, мм.
+// Distance from a point to a segment in the XY plane, mm.
 double segmentDistanceMm(double px, double py,
                          double ax, double ay, double bx, double by)
 {
@@ -168,9 +168,9 @@ double segmentDistanceMm(double px, double py,
     return std::hypot(px - (ax + dx * t), py - (ay + dy * t));
 }
 
-// Дайджест поля (FNV-1a 64 по сырым float32): прогоны одного пути, инструмента
-// и узла обязаны дать одно и то же поле бит в бит. Порядок узлов - порядок
-// depthMm (строка по Y), он же порядок буфера R32F.
+// Field digest (FNV-1a 64 over raw float32): runs of the same path, tool
+// and cell must give the same field bit for bit. The node order is the
+// depthMm order (row by Y), which is also the R32F buffer order.
 std::uint64_t fieldDigest(const std::vector<float>& depth)
 {
     std::uint64_t hash = 1469598103934665603ULL;
@@ -185,17 +185,17 @@ std::uint64_t fieldDigest(const std::vector<float>& depth)
     return hash;
 }
 
-// Истинная сфера радиуса r с остриём в tipZ: верх материала в колонке.
+// True sphere of radius r with the tip at tipZ: the material top in the column.
 double ballHeightMm(double radiusMm, double rMm, double tipZMm)
 {
     if (radiusMm >= rMm) {
-        return 0.0;                    // вне инструмента верх не тронут
+        return 0.0;                    // outside the tool the top is untouched
     }
     const double cut = tipZMm + rMm - std::sqrt(rMm * rMm - radiusMm * radiusMm);
     return std::min(0.0, cut);
 }
 
-// Конус с образующей под 45 градусов (включённый угол 90): рез на высоте tipZ + r.
+// Cone with a 45-degree generatrix (included angle 90): the cut is at height tipZ + r.
 double coneHeightMm(double radiusMm, double tipZMm)
 {
     return std::min(0.0, tipZMm + radiusMm);
@@ -239,7 +239,7 @@ bool fileExists(const std::string& utf8Path)
     return bool(fh);
 }
 
-// Ход программы с номером инструмента этапа.
+// A program move with the stage tool number.
 struct Move {
     std::array<double, 3> aMm{0.0, 0.0, 0.0};
     std::array<double, 3> bMm{0.0, 0.0, 0.0};
@@ -269,9 +269,9 @@ ProgramTiming runProgram(const std::vector<Move>& moves,
         const double dz = move.bMm[2] - move.aMm[2];
         const double length = std::sqrt(dx * dx + dy * dy + dz * dz);
         out.lengthMm += length;
-        // Число положений считает пробник по своему правилу, а не ядро: это
-        // проверка цены, а не повтор внутренней арифметики поля. Правило то же:
-        // отрезок короче шага даёт два положения (начало и конец).
+        // The probe counts the number of positions by its own rule, not the core: this is
+        // a cost check, not a repetition of the field's internal arithmetic. The rule is the same:
+        // a segment shorter than the step gives two positions (start and end).
         const long long steps = length > step ? (long long)std::ceil(length / step) : 1;
         out.positions += steps + 1;
     }
@@ -304,9 +304,9 @@ int main(int argc, char** argv)
     const std::vector<std::string> args = probeArgs(argc, argv);
     int failures = 0;
 
-    // ---- аналитические случаи ----------------------------------------------
-    // 1. Плоская концевая D6 по плоскому верху: рез -1 мм везде, где прошёл
-    // инструмент. Проход 4 мм по X, узел 0.5, шаг 0.25.
+    // ---- analytic cases ----------------------------------------------------
+    // 1. Flat end mill D6 over a flat top: the cut is -1 mm everywhere the
+    // tool passed. A 4 mm pass along X, cell 0.5, step 0.25.
     {
         const double cell = 0.5;
         const double r = 3.0;
@@ -323,7 +323,7 @@ int main(int argc, char** argv)
         const gv::StockCutter cutter = gv::stockCutter(makeTool(ToolSpec{"FLAT", 6.0}));
         field.sweep(cutter, {-2.0, 0.0, tipZ}, {2.0, 0.0, tipZ});
 
-        const double halfStep = cell * 0.25;   // шаг = cell/2, половина шага
+        const double halfStep = cell * 0.25;   // step = cell/2, half a step
         int checked = 0;
         double maxDev = 0.0;
         bool deeper = false;
@@ -335,9 +335,9 @@ int main(int argc, char** argv)
                 const double analytic = (d <= r) ? tipZ : 0.0;
                 const double height = field.heightMm(ix, iy);
                 if (height < analytic - 1e-6) {
-                    deeper = true;             // поле ниже истинного съёма
+                    deeper = true;             // the field is lower than the true cut
                 }
-                // Вне полосы шаг/2 у стенки следа значение обязано быть точным.
+                // Outside the step/2 band at the trace wall the value must be exact.
                 if (d <= r - halfStep || d >= r + halfStep) {
                     maxDev = std::max(maxDev, std::fabs(height - analytic));
                     ++checked;
@@ -347,11 +347,11 @@ int main(int argc, char** argv)
         reportCase("flat_sweep", checked, maxDev, 1e-5, !deeper);
     }
 
-    // 2. Шаровая D6 по плоскому верху: долина радиуса 3 мм, профиль - истинная
-    // сфера. Профиль инструмента - 12 отрезков (core/tooling.cpp), поэтому
-    // допуск = сагитта хорды 7.5 градуса, усиленная на 1.5 у стенки, где
-    // уклон сферы наибольший в срезанной зоне (срез не глубже 1 мм -> не
-    // круче 48 градусов, 1/cos = 1.5).
+    // 2. Ball D6 over a flat top: a valley of radius 3 mm, the profile is a true
+    // sphere. The tool profile is 12 segments (core/tooling.cpp), so the
+    // tolerance = the sagitta of a 7.5 degree chord, amplified by 1.5 at the wall, where
+    // the sphere slope is greatest in the cut zone (the cut is no deeper than 1 mm -> no
+    // steeper than 48 degrees, 1/cos = 1.5).
     {
         const double cell = 0.5;
         const double r = 3.0;
@@ -384,8 +384,8 @@ int main(int argc, char** argv)
         reportCase("ball_plunge", checked, maxDev, tol);
     }
 
-    // 3. Конус (V-бита, включённый угол 90) по плоскому верху: рез tipZ + r,
-    // долина с прямыми стенками. Профиль CHAMFER с TAPER=45 даёт ровно это.
+    // 3. Cone (V-bit, included angle 90) over a flat top: the cut is tipZ + r,
+    // a valley with straight walls. The CHAMFER profile with TAPER=45 gives exactly this.
     {
         const double cell = 0.5;
         const double tipZ = -1.0;
@@ -419,8 +419,8 @@ int main(int argc, char** argv)
         reportCase("cone_plunge", checked, maxDev, 1e-5, !deeper);
     }
 
-    // 4. Рез выше заготовки: острие на +2 мм, шар D6. Поле не меняется ни в
-    // одном узле.
+    // 4. Cut above the stock: the tip at +2 mm, a ball D6. The field does not change in
+    // a single node.
     {
         const double cell = 0.5;
         gv::StockBounds bounds;
@@ -446,11 +446,11 @@ int main(int argc, char** argv)
         reportCase("no_reach", checked, maxDev, 1e-9);
     }
 
-    // 5. Колонка, которую ловит только шаг в половину узла. Узел 1 мм, фреза D1
-    // (r = 0.5), проход по X на y = 0.3 от x = 0.5 до 3.5. Колонка (1, 0)
-    // отстоит от линии на 0.3 < r и попадает ровно на положение шага 0.5 мм;
-    // при шаге в целый узел положения 0.5, 1.5, 2.5, 3.5 дают 0.583 > r, и
-    // колонка осталась бы на верху.
+    // 5. A column caught only by the half-cell step. Cell 1 mm, cutter D1
+    // (r = 0.5), a pass along X at y = 0.3 from x = 0.5 to 3.5. The column (1, 0)
+    // is 0.3 < r away from the line and lands exactly on a 0.5 mm step position;
+    // with a full-cell step the positions 0.5, 1.5, 2.5, 3.5 give 0.583 > r, and
+    // the column would stay on top.
     {
         const double cell = 1.0;
         const double r = 0.5;
@@ -474,7 +474,7 @@ int main(int argc, char** argv)
         const double outsideHeight = field.heightMm(ix, iyOutside);
 
         double fullCellDistance = 1e9;
-        const double fullStep = cell;              // шаг, который дал бы узел
+        const double fullStep = cell;              // the step a full cell would give
         for (int k = 0; k <= 3; ++k) {
             const double sx = 0.5 + fullStep * double(k);
             fullCellDistance = std::min(fullCellDistance, std::hypot(1.0 - sx, 0.0 - 0.3));
@@ -490,11 +490,11 @@ int main(int argc, char** argv)
         reportCase("near_miss_step", 2, maxDev, 1e-5, fullCellWouldMiss && outsideOk);
     }
 
-    // 6. Привязка поля к траектории. Короткая программа разбирается тем же
-    // путём, что у вьювера (parseGcode + prepareOrdered), и проходит через
-    // simulateStock - тот же проход по PathData, что зовёт фоновый рабочий
-    // backend'а. Сверка - с аналитикой плоского прохода, как в случае 1;
-    // дайджест поля обязан совпасть у двух прогонов (детерминизм).
+    // 6. Binding of the field to the trajectory. A short program is parsed the same
+    // way as in the viewer (parseGcode + prepareOrdered) and goes through
+    // simulateStock - the same pass over PathData that the backend's background worker
+    // calls. The check is against the flat-pass analytic solution, as in case 1;
+    // the field digest must match between two runs (determinism).
     {
         const std::string program =
             "G21 G90\n"
@@ -550,16 +550,16 @@ int main(int argc, char** argv)
                    !deeper && digest_a == digest_b && first.moves > 0);
     }
 
-    // 7. Рисование верха: меш поля плюс высота из поля. Случай повторяет
-    // рисование целиком, кроме самой выборки на GPU: сетка строится по узлам
-    // поля (stockSurfaceMesh), texcoord вершины переводится в узел (так же
-    // читает поле nearest-выборка stocksurface.vert), высота берётся
-    // вычитанием глубины из верха заготовки, а точка переводится в кадр сцены
-    // тем же поворотом узла: машинные (x, y, z) -> (x, z, -y). Сверка - с
-    // аналитикой плоского врезания, посчитанной здесь же: дно реза обязано
-    // встать на высоту острия инструмента, а нетронутые узлы - на верх
-    // заготовки. Верх заготовки взят не в нуле (z = 5): так проверка ловит и
-    // подмену оси, и потерю слагаемого zMax.
+    // 7. Drawing of the top: the field mesh plus the height from the field. The case repeats
+    // the drawing in full, except the GPU sampling itself: the grid is built from the field
+    // nodes (stockSurfaceMesh), the vertex texcoord is mapped to a node (the same way
+    // the nearest sampling of stocksurface.vert reads the field), the height is taken
+    // by subtracting the depth from the stock top, and the point is mapped into the scene frame
+    // by the same node rotation: machine (x, y, z) -> (x, z, -y). The check is against the
+    // analytic solution of a flat plunge computed right here: the cut bottom must
+    // land at the tool tip height, and untouched nodes must land at the stock
+    // top. The stock top is taken not at zero (z = 5): that way the check catches both
+    // an axis swap and a lost zMax term.
     {
         const double cell = 0.5;
         const double r = 3.0;
@@ -581,10 +581,10 @@ int main(int argc, char** argv)
         const int nx = field.countX();
         const int ny = field.countY();
         const gv::StockSurfaceMesh mesh = gv::stockSurfaceMesh(bounds, cell, nx, ny);
-        // Допуск: и глубина, и позиция вершины хранятся float32; на 100 мм шаг
-        // float32 около 7.6e-6 мм, отсюда 1e-5 мм. Узел ровно на границе радиуса
-        // (|d - r| < 1e-6 мм) в сверку не идёт: там разошлись бы последние биты
-        // разного порядка сложения, а не съём.
+        // Tolerance: both the depth and the vertex position are stored as float32; at 100 mm the
+        // float32 step is about 7.6e-6 mm, hence 1e-5 mm. A node exactly on the radius boundary
+        // (|d - r| < 1e-6 mm) is not included in the check: there the last bits of a different
+        // summation order would diverge, not the cut.
         const double tol = 1e-5;
         bool geometryOk = mesh.countX == nx && mesh.countY == ny
                 && int(mesh.vertices.size()) == 5 * nx * ny
@@ -595,8 +595,8 @@ int main(int argc, char** argv)
             for (int ix = 0; ix < nx; ++ix) {
                 const std::size_t v = std::size_t(iy) * std::size_t(nx) + std::size_t(ix);
                 const float* vertex = &mesh.vertices[v * 5];
-                // Texcoord - центр текселя этого узла: выборка nearest возвращает
-                // ровно его.
+                // The texcoord is the texel center of this node: the nearest sampling returns
+                // exactly that node.
                 const int tx = int(double(vertex[3]) * double(nx));
                 const int ty = int(double(vertex[4]) * double(ny));
                 const double x = field.nodeXMm(ix);
@@ -605,7 +605,7 @@ int main(int argc, char** argv)
                         && std::fabs(double(vertex[0]) - std::min(x, bounds.xMaxMm)) < 1e-4
                         && std::fabs(double(vertex[1]) - std::min(y, bounds.yMaxMm)) < 1e-4
                         && double(vertex[2]) == bounds.zMaxMm;
-                // Высота, как её считает вершинный шейдер: z = верх - глубина.
+                // The height as the vertex shader computes it: z = top - depth.
                 const double drawnZ = double(vertex[2] - field.depthMm()[v]);
                 const double d = std::hypot(x - tipX, y - tipY);
                 const double analytic = (d <= r) ? tipZ : bounds.zMaxMm;
@@ -615,9 +615,9 @@ int main(int argc, char** argv)
                 }
             }
         }
-        // Узел под остриём: его дно в кадре сцены (x, z, -y) обязано совпасть с
-        // остриём (X и Z сцены - с точностью до половины узла, ось сцены Y -
-        // точно: острие режет на своей высоте).
+        // The node under the tip: its bottom in the scene frame (x, z, -y) must match the
+        // tip (scene X and Z - up to half a cell, scene axis Y -
+        // exactly: the tip cuts at its own height).
         const int ixTip = int(std::lround((tipX - bounds.xMinMm) / cell));
         const int iyTip = int(std::lround((tipY - bounds.yMinMm) / cell));
         const std::size_t vTip = std::size_t(iyTip) * std::size_t(nx) + std::size_t(ixTip);
@@ -637,14 +637,14 @@ int main(int argc, char** argv)
                    geometryOk && planeDev <= tol && posDev <= cell * 0.5 + 1e-6);
     }
 
-    // 7б. Гладкий вид: дроблённая сетка рисования и правило уступа. Поле при
-    // этом не трогается - случай 7 сверяет его по узлам (и только его числа
-    // держат манифест), а здесь проверяется то, что видно на экране: подузлы
-    // стоят на сетке узла поля, texcoord - их доля клетки, высота подузла
-    // билинейна (её считает вершинный шейдер, stocksurface.vert), а нормаль на
-    // клетке со уступом берётся наклоном самой стенки, а не полусуммой с плоским
-    // верхом. Проверка красна до правки: полусумма даёт на плоской клетке у
-    // кромки полклетки наклона стенки - ту самую полосу, что видна глазом.
+    // 7b. Smooth view: the subdivided drawing grid and the ledge rule. The field is
+    // not touched here - case 7 checks it by nodes (and only its numbers
+    // hold the manifest), while here what is visible on screen is checked: subnodes
+    // sit on the field node grid, the texcoord is their cell fraction, the subnode height
+    // is bilinear (the vertex shader computes it, stocksurface.vert), and the normal on a
+    // cell with a ledge is taken as the slope of the wall itself, not as the half-sum with the flat
+    // top. The check is red before the fix: the half-sum gives, on a flat cell at the
+    // edge, half a cell of wall slope - that very band visible to the eye.
     {
         const double cell = 0.5;
         const int subdiv = 2;
@@ -674,8 +674,8 @@ int main(int argc, char** argv)
             for (int jx = 0; jx < drawnX; ++jx) {
                 const float* vertex = &mesh.vertices[(std::size_t(jy) * std::size_t(drawnX)
                                                       + std::size_t(jx)) * 5];
-                // Подузел - доля клетки поля: он обязан лечь на сетку узла
-                // (шаг клетка / subdiv), а texcoord - в ту же долю клетки.
+                // A subnode is a fraction of the field cell: it must land on the node grid
+                // (step cell / subdiv), and the texcoord must be at the same cell fraction.
                 const double tx = double(jx) / double(subdiv);
                 const double ty = double(jy) / double(subdiv);
                 const double x = bounds.xMinMm + tx * cell;
@@ -691,8 +691,8 @@ int main(int argc, char** argv)
             }
         }
 
-        // Ожидаемая высота нарисованной поверхности в подузле: билинейная по
-        // узлам клетки - то же, что считает fieldSample в stocksurface.vert.
+        // The expected height of the drawn surface at a subnode: bilinear over the
+        // cell nodes - the same as fieldSample computes in stocksurface.vert.
         const std::vector<float>& depth = field.depthMm();
         const auto nodeDepth = [&depth, nx, ny](int ix, int iy) {
             ix = std::max(0, std::min(nx - 1, ix));
@@ -712,9 +712,9 @@ int main(int argc, char** argv)
             const double d1 = nodeDepth(ix, iy + 1) * (1.0 - fx) + nodeDepth(ix + 1, iy + 1) * fx;
             return d0 * (1.0 - fy) + d1 * fy;
         };
-        // Подузел в середине клетки поля обязан дать полусумму её узлов по
-        // дробной оси и узел - по целой: это и есть билинейная высота, которой
-        // шейдер опускает вершину.
+        // A subnode at the middle of a field cell must give the half-sum of its nodes along
+        // the fractional axis and a node along the integer one: that is the bilinear height by
+        // which the shader lowers the vertex.
         int bilinearChecked = 0;
         double bilinearDev = 0.0;
         for (int iy = 0; iy + 1 < ny; ++iy) {
@@ -732,10 +732,10 @@ int main(int argc, char** argv)
             }
         }
 
-        // Наклон по X в подузле, как его считает шейдер: разности соседних узлов
-        // ловят уступ, на клетке со уступом наклон - собственный градиент клетки,
-        // иначе - центральная разность через 2 * NORMAL_SPAN клетки. Здесь
-        // повторена только ось X и только те точки, где ответ различает правила.
+        // The slope along X at a subnode as the shader computes it: differences of neighboring
+        // nodes catch the ledge, on a cell with a ledge the slope is the cell's own gradient,
+        // otherwise it is the central difference over 2 * NORMAL_SPAN cells. Here
+        // only the X axis is repeated and only those points where the answer distinguishes the rules.
         const auto shaderSlopeX = [&nodeDepth, nx, ny, cell](double u, double v) {
             const double stepMm = cell;                   // STEP_CELLS = 1
             const double du = 1.0 / double(nx);
@@ -757,7 +757,7 @@ int main(int argc, char** argv)
             const double l1 = sample(u - du, v);
             const double r2 = sample(u + 2.0 * du, v);
             const double l2 = sample(u - 2.0 * du, v);
-            const double span = 4.0 * cell;               // 2 * NORMAL_SPAN клетки
+            const double span = 4.0 * cell;               // 2 * NORMAL_SPAN cells
             const bool jr = std::max(std::fabs(r1 - depth), std::fabs(r2 - r1)) > stepMm;
             const bool jl = std::max(std::fabs(depth - l1), std::fabs(l1 - l2)) > stepMm;
             if (!jr && !jl)
@@ -772,26 +772,26 @@ int main(int argc, char** argv)
             return g / cell;
         };
 
-        // Клетка со уступом по X: справа на много клеток глубже, слева плоско.
-        // Ряд по Y берётся тот, где стенка прямая (соседние узлы равны): тогда
-        // ответ не зависит от доли внутри клетки по Y и сверка точная.
+        // A cell with a ledge along X: to the right it is many cells deeper, to the left it is flat.
+        // The Y row is taken where the wall is straight (neighboring nodes are equal): then
+        // the answer does not depend on the fraction inside the cell along Y and the check is exact.
         int wallCells = 0;
         double ruleDev = 0.0;
         for (int iy = 0; iy + 1 < ny; ++iy) {
             for (int ix = 1; ix + 1 < nx; ++ix) {
                 const double step = nodeDepth(ix + 1, iy) - nodeDepth(ix, iy);
-                if (std::fabs(step) < 2.0 * cell)          // не уступ, а склон
+                if (std::fabs(step) < 2.0 * cell)          // not a ledge but a slope
                     continue;
                 if (std::fabs(nodeDepth(ix, iy) - nodeDepth(ix - 1, iy)) > 1e-6)
-                    continue;                              // слева не плоско
+                    continue;                              // not flat on the left
                 if (nodeDepth(ix, iy) != nodeDepth(ix, iy + 1)
                         || nodeDepth(ix + 1, iy) != nodeDepth(ix + 1, iy + 1))
-                    continue;                              // стенка не прямая по Y
-                // Плоская клетка слева: наклон обязан быть нулевым - полосы у
-                // кромки нет. Полусумма здесь давала бы полклетки наклона.
+                    continue;                              // the wall is not straight along Y
+                // The flat cell on the left: the slope must be zero - there is no band at
+                // the edge. The half-sum here would give half a cell of slope.
                 const double flat = shaderSlopeX(double(ix) / double(nx),
                                                  (double(iy) + 0.5) / double(ny));
-                // Клетка-стенка: наклон обязан быть наклоном самой стенки.
+                // The wall cell: the slope must be the slope of the wall itself.
                 const double wall = shaderSlopeX(double(ix + 1) / double(nx),
                                                  (double(iy) + 0.5) / double(ny));
                 ruleDev = std::max(ruleDev, std::fabs(flat));
@@ -807,11 +807,11 @@ int main(int argc, char** argv)
                    geometryOk && wallCells > 0);
     }
 
-    // 8. Оболочка коробки: пять прямоугольников без верхней грани. Проверяется
-    // форма, а не буфер: вершин 30, каждая - угол габарита, увеличенного на
-    // зазоры; у каждого треугольника одна координата постоянна (грани
-    // плоские); дно есть, верхней грани нет - иначе она спорила бы с полем за
-    // одну плоскость, а микро-сдвиг на верху соврал бы о глубине реза.
+    // 8. Box shell: five rectangles without a top face. What is checked is the
+    // shape, not the buffer: 30 vertices, each one a corner of the bounds expanded by
+    // the gaps; for every triangle one coordinate is constant (the faces are
+    // flat); the bottom exists, the top face does not - otherwise it would fight with the field over
+    // one plane, and a micro-shift at the top would lie about the cut depth.
     {
         gv::StockBounds bounds;
         bounds.xMinMm = -5.0;
@@ -849,8 +849,8 @@ int main(int argc, char** argv)
                 const double px = double(p[0]);
                 const double py = double(p[1]);
                 const double pz = double(p[2]);
-                // Отклонение от ближайшего угла габарита: ноль, если вершина
-                // стоит точно на нём.
+                // Deviation from the nearest bounds corner: zero if the vertex
+                // sits exactly on it.
                 const double dx = std::min(std::fabs(px - x0), std::fabs(px - x1));
                 const double dy = std::min(std::fabs(py - y0), std::fabs(py - y1));
                 const double dz = std::min(std::fabs(pz - z0), std::fabs(pz - z1));
@@ -862,8 +862,8 @@ int main(int argc, char** argv)
                     || (a[1] == b[1] && b[1] == c[1])
                     || (a[2] == b[2] && b[2] == c[2]);
             shapeOk = shapeOk && flat;
-            // Грань целиком на верху или на дне: верхней быть не должно, дно - два
-            // треугольника.
+            // A face entirely on the top or on the bottom: there must be no top face, the bottom is two
+            // triangles.
             const bool onBottom = a[2] == float(z0) && b[2] == float(z0) && c[2] == float(z0);
             const bool onTop = a[2] == float(z1) && b[2] == float(z1) && c[2] == float(z1);
             if (onBottom) {
@@ -881,17 +881,17 @@ int main(int argc, char** argv)
                    shapeOk && bottomFaces == 2 && topFaces == 0);
     }
 
-    // 8б. Обрезка верха стенки по полю: правило stockshell.frag. Стенка стоит на
-    // габарите, её верх - на верху заготовки, а узел поля на кромке опускается
-    // там, где инструмент снял металл через кромку (поле режется и за габаритом
-    // пути). Сверяется, что (1) на кромке есть и снятые, и нетронутые узлы, (2)
-    // правило обрезки опускает верх стенки ровно на глубину поля плюс зазор
-    // верха, (3) углы кромки при этом остаются нетронутыми - то есть линейная
-    // интерполяция между углами (обрезка вершиной) верх стенки в середине реза не
-    // опустила бы, и обрезка обязана быть попиксельной.
+    // 8b. Trimming of the wall top by the field: the stockshell.frag rule. The wall stands on
+    // the bounds, its top is at the stock top, and the field node at the edge is lowered
+    // where the tool removed metal across the edge (the field is cut beyond the path
+    // bounds too). It is checked that (1) on the edge there are both cut and untouched nodes, (2)
+    // the trimming rule lowers the wall top exactly by the field depth plus the top
+    // gap, (3) the edge corners stay untouched - that is, linear
+    // interpolation between corners (per-vertex trimming) would not have lowered the wall top in the middle of the cut,
+    // and trimming must be per-pixel.
     {
         const double cell = 0.5;
-        const double gapTop = 0.5;                 // как shellGapTopMm в QML
+        const double gapTop = 0.5;                 // same as shellGapTopMm in QML
         gv::StockBounds bounds;
         bounds.xMinMm = -10.0;
         bounds.xMaxMm = 10.0;
@@ -902,10 +902,10 @@ int main(int argc, char** argv)
         gv::StockField field;
         field.reset(bounds, cell);
         const gv::StockCutter cutter = gv::stockCutter(makeTool(ToolSpec{"FLAT", 6.0}));
-        // Рез вдоль кромки y = yMax: фреза D6 идёт по самой стенке, глубина 2 мм.
+        // Cut along the edge y = yMax: the D6 cutter goes right along the wall, depth 2 mm.
         field.sweep(cutter, {-5.0, bounds.yMaxMm, -2.0}, {5.0, bounds.yMaxMm, -2.0});
 
-        const int iyEdge = field.countY() - 1;     // узел на кромке yMax
+        const int iyEdge = field.countY() - 1;     // node on the yMax edge
         const int ixMid = int((0.0 - bounds.xMinMm) / cell + 0.5);
         int cutNodes = 0;
         int untouchedNodes = 0;
@@ -922,9 +922,9 @@ int main(int argc, char** argv)
         const double cornerLeft = bounds.zMaxMm - field.heightMm(0, iyEdge);
         const double cornerRight = bounds.zMaxMm - field.heightMm(field.countX() - 1, iyEdge);
         const double midDepth = bounds.zMaxMm - field.heightMm(ixMid, iyEdge);
-        // Правило шейдера: верх стенки = верх заготовки минус глубина поля. У
-        // нетронутого узла это ровно верх (щели нет), у снятого стенка уходит
-        // вниз на глубину, а необрезанная стояла бы выше на зазор плюс глубину.
+        // The shader rule: wall top = stock top minus field depth. For an
+        // untouched node this is exactly the top (no gap), for a cut one the wall goes
+        // down by the depth, while untrimmed it would stand higher by the gap plus the depth.
         const double trimGapMm = gapTop + midDepth;
         const bool ok = cutNodes > 0 && untouchedNodes > 0
                 && cornerLeft == 0.0 && cornerRight == 0.0
@@ -938,12 +938,12 @@ int main(int argc, char** argv)
         reportCase("stockshell_trim", field.countX(), 0.0, 0.0, ok);
     }
 
-    // 8г. Обрезка верха стенки берёт глубину ТОЙ ЖЕ выборкой, что нарисованный
-    // верх (stockshell.frag, edgeDepth): билинейно по узлам клетки. Прежнее
-    // правило брало ближайший узел - ступеньку по узлам, - и на кромке со снятым
-    // металлом верх стенки расходился с кромкой нарисованного верха на половину
-    // перепада соседних узлов. Случай держит обе половины правила: у ближайшего
-    // узла расхождение есть, у билинейной выборки его нет.
+    // 8d. Trimming of the wall top takes the depth with the SAME sampling as the drawn
+    // top (stockshell.frag, edgeDepth): bilinear over the cell nodes. The previous
+    // rule took the nearest node - a staircase by nodes - and on an edge with removed
+    // metal the wall top diverged from the drawn top edge by half the
+    // difference of neighboring nodes. The case holds both halves of the rule: with the nearest
+    // node there is a divergence, with the bilinear sampling there is none.
     {
         const double cell = 0.5;
         gv::StockBounds bounds;
@@ -956,16 +956,16 @@ int main(int argc, char** argv)
         gv::StockField field;
         field.reset(bounds, cell);
         const gv::StockCutter cutter = gv::stockCutter(makeTool(ToolSpec{"FLAT", 6.0}));
-        // Кромка y = yMax снимается на разную глубину по x: у ближайшего узла
-        // обрезка идёт ступенькой, у билинейной выборки - линейно между узлами.
+        // The edge y = yMax is cut to different depths along x: with the nearest node
+        // the trimming is a staircase, with the bilinear sampling it is linear between nodes.
         field.sweep(cutter, {-8.0, bounds.yMaxMm, -3.0}, {-1.0, bounds.yMaxMm, -3.0});
         field.sweep(cutter, { 1.0, bounds.yMaxMm, -1.0}, { 8.0, bounds.yMaxMm, -1.0});
 
         const int iyEdge = field.countY() - 1;
         const int nx = field.countX();
-        // Правило шейдера (stockshell.frag, edgeDepth): глубина в точке кромки
-        // берётся билинейно по четырём узлам клетки - на габарите это прямая
-        // между соседними узлами кромки.
+        // The shader rule (stockshell.frag, edgeDepth): the depth at an edge point
+        // is taken bilinearly over the four cell nodes - on the bounds that is a straight line
+        // between neighboring edge nodes.
         const auto trimDepth = [&](double xMm) {
             const double hi = double(nx - 1);
             const double q = std::min(std::max((xMm - bounds.xMinMm) / cell, 0.0), hi);
@@ -976,9 +976,9 @@ int main(int argc, char** argv)
             const double d1 = bounds.zMaxMm - field.heightMm(i1, iyEdge);
             return d0 + (d1 - d0) * f;
         };
-        // Край нарисованного верха на кромке - прямая между соседними узлами
-        // (core/stock_sim, stockSurfaceMesh: последний ряд прижат к габариту, а
-        // между узлами меш линеен).
+        // The edge of the drawn top at the bounds is a straight line between neighboring nodes
+        // (core/stock_sim, stockSurfaceMesh: the last row is clamped to the bounds, and
+        // between nodes the mesh is linear).
         double worstNearestMm = 0.0;
         double worstBilinearMm = 0.0;
         for (int ix = 0; ix + 1 < nx; ++ix) {
@@ -996,11 +996,11 @@ int main(int argc, char** argv)
         reportCase("stockshell_trim_interp", nx - 1, worstBilinearMm, 1e-6, ok);
     }
 
-    // 8в. Кольца обводки оправки и резца: порог перепада profileRingPoints.
-    // Кольцо рисуется на настоящем перепаде профиля, но не на звене дуги - иначе
-    // каркас тела вращения превращается в клетку. Порог обязан лежать между
-    // шагом дуги и самой пологой фаской: проверяются оба края - кольца оправки с
-    // высотами, кольца на дугах шара и скругления (их быть не должно).
+    // 8c. Outline rings of the holder and the cutter: the profileRingPoints jump threshold.
+    // A ring is drawn at a real profile jump, but not on an arc segment - otherwise
+    // the wireframe of the solid of revolution turns into a grid. The threshold must lie between
+    // the arc step and the shallowest chamfer: both edges are checked - the holder rings with
+    // their heights, and the rings on the ball and corner-round arcs (there must be none).
     {
         const std::vector<gv::ProfilePoint> holder = gv::holderSolidProfile();
         const std::vector<gv::ProfilePoint> holderRings = gv::profileRingPoints(holder);
@@ -1016,15 +1016,15 @@ int main(int argc, char** argv)
             }
         }
 
-        // Дуга шара: 12 отрезков на 90 градусов, 7.5 на звено. Кольца на дуге -
-        // клетка, поэтому на ней их быть не должно; у полюса дуги кольца нет и
-        // по другой причине: хорда там почти вертикальна (3.8 градуса до
-        // цилиндра), а не 90. Настоящее ребро у шара одно - шейка.
+        // The ball arc: 12 segments over 90 degrees, 7.5 per segment. Rings on the arc are a
+        // grid, so there must be none on it; at the arc pole there is no ring for
+        // another reason as well: the chord there is almost vertical (3.8 degrees to the
+        // cylinder), not 90. The ball has exactly one real edge - the neck.
         const std::vector<gv::ProfilePoint> ball = gv::toolProfile(makeTool(ToolSpec{"BALL", 6.0}));
         const std::vector<gv::ProfilePoint> ballRings = gv::profileRingPoints(ball);
-        // Дуга скругления нижнего угла: 8 отрезков на 90, 11.25 на звено - самый
-        // близкий к порогу шаг, им порог и проверяется снизу: порог ниже 11.25
-        // дал бы восемь колец на дуге, и число колец это покажет.
+        // The bottom-corner rounding arc: 8 segments over 90, 11.25 per segment - the step
+        // closest to the threshold, and it is what checks the threshold from below: a threshold below 11.25
+        // would give eight rings on the arc, and the ring count would show it.
         const std::vector<gv::ProfilePoint> bull =
                 gv::toolProfile(makeTool(ToolSpec{"FLAT", 6.0, 0.0, 10.0, 20.0, 1.0}));
         const std::vector<gv::ProfilePoint> bullRings = gv::profileRingPoints(bull);
@@ -1041,12 +1041,12 @@ int main(int argc, char** argv)
         reportCase("holder_rings", expectCount + 2, maxDev, 1e-9, ok);
     }
 
-    // 9. Поднутрение: карта высот его не выражает, и обход обязан отказаться, а
-    // не нарисовать срез, которого на станке не будет. Проверяются оба входа:
-    // готовый профиль (лоллипоп: радиус растёт, падает и снова растёт - такую
-    // форму UI_TOOL не описывает) и тип UI_TOOL LOLLIPOP, для которого профиль
-    // строится как прямая фреза и форма уже потеряна. Поля в обоих случаях нет:
-    // не пустое, а не созданное вовсе.
+    // 9. Undercut: the height map does not express it, and the walk must refuse rather than
+    // draw a cut that would not happen on the machine. Both inputs are checked:
+    // a ready-made profile (a lollipop: the radius grows, drops and grows again - UI_TOOL does
+    // not describe such a shape) and the UI_TOOL type LOLLIPOP, for which the profile
+    // is built as a flat cutter and the shape is already lost. There is no field in either case:
+    // not empty, but not created at all.
     {
         const std::string program =
             "(UI_TOOL: T=7 TYPE=LOLLIPOP D=10. CR=0. TIPD=0. FL=5. SL=5. BL=20. OL=20. NF=2)\n"
@@ -1065,7 +1065,7 @@ int main(int argc, char** argv)
         bounds.zMaxMm = 0.0;
         const double cell = 0.5;
 
-        // Готовый профиль лоллипопа: рост радиуса, шейка, снова рост.
+        // A ready-made lollipop profile: radius growth, neck, growth again.
         const std::vector<gv::ProfilePoint> profile{
             {0.0, 0.0}, {1.0, 1.0}, {2.0, 2.0}, {3.0, 3.0}, {1.5, 5.0}, {4.0, 7.0}};
         const gv::StockCutter cutter = gv::stockCutterFromProfile(profile, 8.0);
@@ -1074,7 +1074,7 @@ int main(int argc, char** argv)
         const bool profileEmpty = walk.field().empty();
         const bool profileRefused = walk.refusedStage() == 0;
 
-        // Тип UI_TOOL: отказ идёт по типу, до профиля.
+        // UI_TOOL type: the refusal comes from the type, before the profile.
         const gv::StockRunResult byTag =
             gv::simulateStock(data, bounds, cell, gv::ToolInfo{});
         const gv::StockCutter byType = gv::stockCutter(parsed.stages.front().info);
@@ -1090,7 +1090,7 @@ int main(int argc, char** argv)
         reportCase("stock_undercut", 8, 0.0, 0.0, ok);
     }
 
-    // ---- замер: один проход ------------------------------------------------
+    // ---- measurement: one pass ---------------------------------------------
     {
         const double cell = 0.5;
         const double r = 3.0;
@@ -1111,7 +1111,7 @@ int main(int argc, char** argv)
                     cell, r, reps);
     }
 
-    // ---- замер: весь Test_model.ngc ---------------------------------------
+    // ---- measurement: the whole Test_model.ngc -----------------------------
     std::string ngcPath;
     if (args.size() >= 2) {
         ngcPath = args[1];
@@ -1121,7 +1121,7 @@ int main(int argc, char** argv)
         candidates.push_back(ngcPath);
     } else {
         candidates.push_back("data/cad-testdata/Test_model.ngc");
-        // Второй путь - от каталога сборки (<репо>/build/edges): три уровня вверх.
+        // The second path is from the build directory (<repo>/build/edges): three levels up.
 #ifdef _WIN32
         wchar_t buf[4096];
         const DWORD n = GetModuleFileNameW(nullptr, buf, static_cast<DWORD>(sizeof(buf) / sizeof(buf[0])));
@@ -1148,8 +1148,8 @@ int main(int argc, char** argv)
         const gv::ParseResult parsed = gv::parseGcode(text);
         const double parseMs = msSince(tParse);
 
-        // Габарит заготовки - из УП, как у рантайма (parseUiStock). Без тега
-        // берётся габарит пути: замер тогда грубее жизни, и это сказано.
+        // The stock bounds come from the NC program, as at runtime (parseUiStock). Without the tag
+        // the path bounds are taken: the measurement is then cruder than reality, and that is stated.
         gv::StockBounds bounds;
         const std::optional<std::array<double, 6>> stock = gv::parseUiStock(text);
         if (stock) {
@@ -1160,7 +1160,7 @@ int main(int argc, char** argv)
             bounds.zMinMm = (*stock)[4];
             bounds.zMaxMm = (*stock)[5];
         } else {
-            // Тега нет: габарит по пути, верх на 1 мм выше самой верхней точки.
+            // No tag: bounds by the path, the top 1 mm above the highest point.
             bool first = true;
             for (const gv::PathPoint& p : parsed.ordered) {
                 if (first) {
@@ -1180,8 +1180,8 @@ int main(int argc, char** argv)
             bounds.zMaxMm += 1.0;
         }
 
-        // Инструмент этапа: у этапа без UI_TOOL остаётся предыдущий - на станке
-        // инструмент меняется только по M6.
+        // Stage tool: a stage without UI_TOOL keeps the previous one - on the machine
+        // the tool changes only on M6.
         std::vector<gv::StockCutter> cutters;
         gv::ToolInfo carried;
         for (const gv::Stage& stage : parsed.stages) {
@@ -1229,14 +1229,14 @@ int main(int argc, char** argv)
                         timing.sweepMs, timing.resetMs + timing.sweepMs);
         }
 
-        // ---- живой обход: тики 10 Гц, перемотка, дайджест -------------------
-        // Поле, накопленное тиками, обязано совпасть бит в бит с полем одного
-        // прохода до той же длины пути, а после перемотки - с проходом с начала
-        // до цели перемотки. Тик - 100 мс машинного времени: цель растёт на путь,
-        // который станок проходит на запрограммированной подаче (speedAt, мм/с),
-        // как на проигрывании 1:1 в QML. Сверка побитовая (FNV-1a по float32):
-        // здесь важен тот же порядок накопления минимумов, а допуск в мм скрыл
-        // бы разошедшийся съём.
+        // ---- live walk: 10 Hz ticks, rewind, digest -------------------------
+        // The field accumulated by ticks must match bit for bit the field of a single
+        // pass up to the same path length, and after a rewind - the pass from the start
+        // to the rewind target. A tick is 100 ms of machine time: the target grows by the path
+        // the machine covers at the programmed feed (speedAt, mm/s), as in
+        // 1:1 playback in QML. The check is bitwise (FNV-1a over float32):
+        // here the same order of accumulating minima matters, while a tolerance in mm would hide
+        // a diverged cut.
         {
             const gv::PathData data = gv::prepareOrdered(parsed.ordered, parsed.stages);
             const gv::ToolInfo initial = gv::parseUiTool(text);
@@ -1244,10 +1244,10 @@ int main(int argc, char** argv)
             const gv::StockRunResult full = gv::simulateStock(data, bounds, cell, initial);
             const std::uint64_t digestFull = fieldDigest(full.field.depthMm());
 
-            // Что поле говорит на кромке габарита: сколько узлов периметра снято,
-            // насколько глубоко и остались ли нетронутые. Это те числа, с
-            // которыми на кадре спорит верх стенки: снятый узел кромки - верх
-            // стенки ниже верхнего габарита, и без обрезки там читается щель.
+            // What the field says at the bounds edge: how many perimeter nodes are cut,
+            // how deep, and whether any are untouched. These are the numbers
+            // that the wall top fights with in the frame: a cut edge node means the wall
+            // top is below the top bounds, and without trimming a gap is visible there.
             if (!full.field.empty()) {
                 const gv::StockField& f = full.field;
                 int edgeCut = 0;
@@ -1282,8 +1282,8 @@ int main(int argc, char** argv)
                             f.bounds().yMinMm, f.bounds().yMaxMm);
             }
 
-            // Скорость исходящего сегмента под курсором: тот же выбор сегмента,
-            // что у path.speedAt в QML (верхняя граница по накопленной длине).
+            // The speed of the outgoing segment under the cursor: the same segment choice
+            // as path.speedAt in QML (upper bound by accumulated length).
             const std::vector<double>& cum = data.cum;
             const auto speedAt = [&cum, &data](double d) {
                 const std::size_t n = cum.size();
@@ -1304,7 +1304,7 @@ int main(int argc, char** argv)
             while (started && target < data.total) {
                 double v = speedAt(target);
                 if (!(v > 0.0)) {
-                    v = 10.0;              // как QML: без подачи 10 мм/с
+                    v = 10.0;              // as in QML: 10 mm/s without feed
                 }
                 target = std::min(data.total, target + v * 0.1);
                 const Clock::time_point t0 = Clock::now();
@@ -1314,20 +1314,20 @@ int main(int argc, char** argv)
             const double cursorAfterTicks = walk.cursorMm();
             const std::uint64_t digestLive = fieldDigest(walk.field().depthMm());
 
-            // Перемотка: цель позади курсора, обход сбрасывает поле и идёт с
-            // начала. Меряется вместе со сбросом, трижды, на половине программы.
+            // Rewind: the target is behind the cursor, the walk resets the field and goes from
+            // the start. It is measured together with the reset, three times, at half the program.
             const double rewindTarget = data.total * 0.5;
             std::vector<double> rewindMs;
             std::uint64_t digestRewind = 0;
             for (int rep = 0; rep < 3; ++rep) {
-                walk.advanceTo(data.total);          // поле снова полное
+                walk.advanceTo(data.total);          // the field is full again
                 const Clock::time_point t0 = Clock::now();
                 walk.advanceTo(rewindTarget);
                 rewindMs.push_back(msSince(t0));
                 digestRewind = fieldDigest(walk.field().depthMm());
             }
-            // Поле с начала до цели перемотки - отдельным обходом: с ним и
-            // сверяется поле после перемотки.
+            // The field from the start to the rewind target - with a separate walk: it is what
+            // the field after the rewind is checked against.
             gv::StockWalk prefix;
             const bool prefixStarted = prefix.start(data, bounds, cell,
                                                     gv::stockCutterPlan(data, initial));
@@ -1348,8 +1348,8 @@ int main(int argc, char** argv)
                         tickMs.size(), tickMs.empty() ? 0.0 : tickTotal / double(tickMs.size()),
                         median(tickMs), tickMax, tickBusy, tickTotal, cursorAfterTicks,
                         data.total, rewindTarget, median(rewindMs), rewindMs.size());
-            // Память поля: ядро, копия QByteArray для текстуры и копия в GPU -
-            // три буфера, как считает DESIGN.md.
+            // Field memory: the core, the QByteArray copy for the texture and the copy in the GPU -
+            // three buffers, as DESIGN.md counts.
             std::printf("note stock_live field_bytes=%zu peak_bytes=%zu nodes=%dx%d "
                         "digest_full=%016llx digest_live=%016llx digest_rewind=%016llx "
                         "digest_prefix=%016llx\n",

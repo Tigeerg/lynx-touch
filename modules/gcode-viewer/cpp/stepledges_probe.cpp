@@ -1,26 +1,28 @@
-// cpp/stepledges_probe.cpp — пробник совпадения рёбер STEP-модели с питоновским
-// эталоном occt/step_import.cpp::load_step_model.
+// cpp/stepledges_probe.cpp - probe of the match between the edges of a STEP model
+// and the Python oracle occt/step_import.cpp::load_step_model.
 //
-// Пробник не входит в плагин: отдельная цель CMake. Он читает STEP штатным путём
-// плагина (свойство source -> STEPControl_Reader -> setShape) и печатает:
+// The probe is not part of the plugin: a separate CMake target. It reads STEP along
+// the plugin's regular path (the source property -> STEPControl_Reader -> setShape)
+// and prints:
 //
-// segments: N число отрезков в буфере (эталон Test_model.STEP — 2426)
-// raw_segments: M число отрезков до склейки (эталон — 4884)
-// sha256_order: H sha256 байтов буфера: float32 little-endian, порядок сборки
-// sha256_set: H sha256 тех же 24-байтовых кусков, отсортированных по байтам
+// segments: N the number of segments in the buffer (oracle Test_model.STEP - 2426)
+// raw_segments: M the number of segments before coalescing (oracle - 4884)
+// sha256_order: H sha256 of the buffer bytes: float32 little-endian, assembly order
+// sha256_set: H sha256 of the same 24-byte chunks sorted by bytes
 //
-// Хэши печатаются как улика и считаются по сырым байтам: побайтовое совпадение с
-// эталоном недостижимо (кластеры склейки в эталоне упорядочены неустойчивым
-// numpy.argsort, а у 16 отрезков из 2426 numpy оставляет в младших битах double
-// остаток 1e-15 там, где плагин даёт нуль). Сверку ведёт
-//: он сравнивает число отрезков и
-// набор точек с точностью 1e-4 мм. Третий аргумент — необязательный дамп буфера
-// сырыми float32 для этого сравнения (numpy.fromfile).
+// The hashes are printed as evidence and are computed over the raw bytes: a
+// byte-for-byte match with the oracle is unreachable (the coalescing clusters in the
+// oracle are ordered by an unstable numpy.argsort, and for 16 segments out of 2426
+// numpy leaves a double remainder of 1e-15 in the low bits where the plugin gives
+// zero). The comparison is driven by
+//: it compares the number of segments and
+// the set of points to a precision of 1e-4 mm. The third argument is an optional
+// dump of the buffer as raw float32 for that comparison (numpy.fromfile).
 //
-// Запуск: stepledges_probe.exe <файл.step> [дамп.bin] (числа и хэши рёбер)
-// stepledges_probe.exe --repeat <N> <файл.step> (замер смены свойства)
-// stepledges_probe.exe --qml <import-path> (видит ли модуль движок QML)
-// (нужны DLL OCCT и Qt в PATH)
+// Usage: stepledges_probe.exe <file.step> [dump.bin] (edge numbers and hashes)
+// stepledges_probe.exe --repeat <N> <file.step> (property change measurement)
+// stepledges_probe.exe --qml <import-path> (does the QML engine see the module)
+// (OCCT and Qt DLLs must be in PATH)
 
 #include "stepledgesgeometry.h"
 
@@ -47,8 +49,8 @@ QByteArray sha256(const QByteArray &bytes)
     return QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex();
 }
 
-// Отпечаток набора кусков: сортировка кусков по байтам делает хэш независимым от
-// порядка обхода. Python сравнивает байты так же (sorted по bytes).
+// Digest of a set of chunks: sorting the chunks by bytes makes the hash independent
+// of the traversal order. Python compares the bytes the same way (sorted over bytes).
 QByteArray setDigest(const QByteArray &bytes, int chunkSize)
 {
     const int count = int(bytes.size()) / chunkSize;
@@ -73,8 +75,8 @@ QByteArray setDigest(const QByteArray &bytes, int chunkSize)
 
 } // namespace
 
-// Проверка, что движок QML действительно видит модуль: import CNC.Edges 1.0 и
-// создание элемента StepEdges. Импорт-путь — каталог сборки (build/edges).
+// Check that the QML engine really sees the module: import CNC.Edges 1.0 and
+// creating a StepEdges item. The import path is the build directory (build/edges).
 int runQmlImport(const QString &importPath)
 {
     QQmlEngine engine;
@@ -91,10 +93,10 @@ int runQmlImport(const QString &importPath)
     return 0;
 }
 
-// Замер цены смены свойства на уже открытой модели: файл читается один раз
-// (setSource), затем N раз меняется deflection (0.05 -> 0.06 ->...), так что
-// видно, перечитывает ли StepEdgesGeometry STEP на каждое изменение свойства.
-// Чётное N возвращает 0.05 в конце - числа рёбер остаются эталонными.
+// Measuring the cost of a property change on an already opened model: the file is
+// read once (setSource), then deflection is changed N times (0.05 -> 0.06 ->...), so
+// it is visible whether StepEdgesGeometry re-reads STEP on every property change.
+// An even N returns 0.05 at the end - the edge numbers stay at the oracle values.
 int runRepeat(const QString &path, int repeats)
 {
     StepEdgesGeometry geometry;
@@ -152,14 +154,14 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // 24 байта на отрезок: две точки по три float32, порядок сборки.
+    // 24 bytes per segment: two points of three float32 each, assembly order.
     const QByteArray bytes(reinterpret_cast<const char *>(points.constData()),
                            int(points.size() * sizeof(float)));
     std::printf("sha256_order: %s\n", sha256(bytes).constData());
     std::printf("sha256_set: %s\n", setDigest(bytes, 24).constData());
 
-    // Необязательный третий аргумент: дамп буфера сырыми float32 для разбора
-    // расхождений с эталоном (питоновская сторона читает его numpy.fromfile).
+    // Optional third argument: a dump of the buffer as raw float32 for analysing
+    // discrepancies with the oracle (the Python side reads it with numpy.fromfile).
     if (args.size() >= 3) {
         QFile dump(args.at(2));
         if (!dump.open(QIODevice::WriteOnly)) {

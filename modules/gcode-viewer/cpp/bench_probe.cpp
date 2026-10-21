@@ -1,33 +1,35 @@
-// cpp/bench_probe.cpp - замер фаз холодной загрузки и цены кадра на C++-пути.
+// cpp/bench_probe.cpp - measuring the cold-load phases and the frame cost on the
+// C++ path.
 //
-// Пробник не входит ни в плагин, ни в ядро: отдельная цель CMake (как
-// silhouette_probe). Он проходит тот же путь, что рантайм вьювера, по шагам и
-// печатает время каждого шага в миллисекундах (std::chrono::steady_clock):
+// The probe is part of neither the plugin nor the core: a separate CMake target
+// (like silhouette_probe). It walks the same path as the viewer runtime, step by
+// step, and prints the time of each step in milliseconds (std::chrono::steady_clock):
 //
-// * фазы модели STEP: чтение формы, тесселяция (и её разбивка на мешер OCCT и
-// сборку супа по граням), ориентация оболочки, нормали кожи, рёбра B-Rep,
-// поверхности вращения, топология силуэта, семейства касательных, упаковка
-// обводки;
-// * фазы УП: разбор G-кода, подготовка траектории, профиль инструмента с
-// оправкой, скан коллизий, сверка инструмента;
-// * цена кадра: meshSilhouetteSegments и tangentFromFamilies (по много прогонов
-// на уже построенной топологии/семействах), перевод float64 -> float32 и
-// установка буферов HLRLineGeometry (hlrTangents, hlrEdges).
+// * STEP model phases: shape read, tessellation (and its split into the OCCT
+// mesher and the per-face soup assembly), shell orientation, skin normals,
+// B-Rep edges, surfaces of revolution, silhouette topology, tangent families,
+// outline packing;
+// * NC program phases: G-code parsing, path preparation, tool profile with
+// holder, collision scan, tool check;
+// * frame cost: meshSilhouetteSegments and tangentFromFamilies (over many runs
+// on the already built topology/families), float64 -> float32 conversion and
+// setting the HLRLineGeometry buffers (hlrTangents, hlrEdges).
 //
-// Каждая фаза модели меряется на СВЕЖЕЙ форме: тесселяция идёт только на
-// неразмещённой форме, а BRep_Mesh кэширует сетку на форме. Поэтому перед каждой
-// фазой форма читается заново, а время чтения печатается отдельной строкой.
+// Every model phase is measured on a FRESH shape: tessellation runs only on an
+// unmeshed shape, and BRep_Mesh caches the mesh on the shape. So the shape is read
+// again before every phase, and the read time is printed on a separate line.
 //
-// Запуск: bench_probe <файл.step> <файл.ngc> [повторы фаз] [повторы кадров] [уровень]
-// уровень - low|med|high|safe; без аргумента берётся CNC_QUALITY, иначе med
-// (нужны DLL OCCT и Qt в PATH)
-// Вывод: строки "quality..." с уровнем и его допусками, "phase <имя> <мс>" и
-// "frame <имя> <мс>", затем "RESULT: OK".
-// Код возврата: 0 - замер сделан; 1 - файл не прочитан или аргументов мало.
+// Usage: bench_probe <file.step> <file.ngc> [phase_reps] [frame_reps] [level]
+// level - low|med|high|safe; without the argument CNC_QUALITY is taken, otherwise med
+// (OCCT and Qt DLLs must be in PATH)
+// Output: "quality..." lines with the level and its tolerances, "phase <name> <ms>"
+// and "frame <name> <ms>", then "RESULT: OK".
+// Return code: 0 - the measurement was made; 1 - the file was not read or there
+// are too few arguments.
 
-// windows.h идёт до заголовков Qt и OCCT: цепочка OCCT объявляет _WINDOWS_ своим
-// стражем, а включённый после Qt windows.h не даёт ни одной своей функции.
-// NOMINMAX обязателен: min/max макросами ломают std::min и std::max.
+// windows.h goes before the Qt and OCCT headers: the OCCT chain declares _WINDOWS_
+// as its guard, and windows.h included after Qt exposes none of its functions.
+// NOMINMAX is required: the min/max macros break std::min and std::max.
 #ifdef _WIN32
 #  ifndef NOMINMAX
 #    define NOMINMAX
@@ -71,7 +73,7 @@
 
 namespace {
 
-// Глаз кадра - тот же, что у контроллера: числа сопоставимы.
+// The frame eye - the same as in the controller: the numbers are comparable.
 const double EYE[3] = {120.0, 90.0, 140.0};
 
 using Clock = std::chrono::steady_clock;
@@ -80,7 +82,7 @@ double msSince(Clock::time_point t0) {
     return std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
 }
 
-// Общий сток: не даёт оптимизатору выбросить посчитанное.
+// Common sink: it does not let the optimizer throw away what was computed.
 volatile std::size_t g_sink = 0;
 
 double median(std::vector<double> v) {
@@ -154,12 +156,13 @@ int main(int argc, char** argv) {
     const std::string ngcPath = args[2];
     const int phaseReps = args.size() > 3 ? std::max(1, std::atoi(args[3].c_str())) : 3;
     const int frameReps = args.size() > 4 ? std::max(1, std::atoi(args[4].c_str())) : 30;
-    // Уровень: пятый аргумент, иначе CNC_QUALITY, иначе med (у med числа те же,
-    // что были до пресетов).
+    // Level: the fifth argument, otherwise CNC_QUALITY, otherwise med (for med the
+    // numbers are the same as before the presets).
     const gv::QualityPreset quality =
         args.size() > 5 ? gv::presetFor(args[5].c_str()) : gv::presetFromEnv();
 
-    // Уровень и его допуски - до замеров: по этой строке видно, чем измеряли.
+    // The level and its tolerances - before the measurements: this line shows what
+    // was used to measure.
     std::printf("quality level=%s step_deflection=%.4g edge_deflection=%.4g "
                 "coalesce_dist=%.4g coalesce_gap=%.4g weld=%.4g crease=%.4g "
                 "silhouette_max_edge=%.4g silhouette_min_area=%.4g "
@@ -176,8 +179,8 @@ int main(int argc, char** argv) {
                 quality.dropOverlapMm, quality.decimateTolMm,
                 quality.arcDecimateTolMm, quality.collisionStepMm);
 
-    // ---- фазы модели STEP ---------------------------------------------------
-    // Храним последний результат, чтобы кадровые замеры шли на нём же.
+    // ---- STEP model phases --------------------------------------------------
+    // Keep the last result so that the frame measurements run on it as well.
     std::vector<double> soup;
     std::vector<double> verts;
     std::vector<float> normals;
@@ -259,9 +262,9 @@ int main(int argc, char** argv) {
     printPhase("step_topo", median(tTopo));
     printPhase("step_families", median(tFamilies));
 
-    // loadStepSurfaces на СВЕЖЕЙ (неразмещённой) форме: разница с step_surfaces
-    // показывает, сколько в той фазе стоила бы тесселяция. Путь loadStepBundleAll
-    // её пропускает (shapeAlreadyMeshed=true).
+    // loadStepSurfaces on a FRESH (unmeshed) shape: the difference with step_surfaces
+    // shows what tessellation would have cost in that phase. The loadStepBundleAll
+    // path skips it (shapeAlreadyMeshed=true).
     {
         std::vector<double> tCold;
         for (int r = 0; r < phaseReps; ++r) {
@@ -275,10 +278,10 @@ int main(int argc, char** argv) {
         printPhase("step_surfaces_cold", median(tCold));
     }
 
-    // Разбивка тесселяции: сколько в ней стоит мешер OCCT и сколько - сборка супа
-    // по граням (tessellateSoup). Мешер меряется на свежей форме, сборка - тем же
-    // вызовом на уже размеченной форме (shapeAlreadyMeshed), поэтому
-    // step_mesh + step_soup = step_tessellate.
+    // Tessellation split: how much of it is the OCCT mesher and how much is the
+    // per-face soup assembly (tessellateSoup). The mesher is measured on a fresh
+    // shape, the assembly - by the same call on an already meshed shape
+    // (shapeAlreadyMeshed), so step_mesh + step_soup = step_tessellate.
     {
         std::vector<double> tMesh;
         std::vector<double> tSoup;
@@ -299,8 +302,8 @@ int main(int argc, char** argv) {
         printPhase("step_soup", median(tSoup));
     }
 
-    // Цена одной материализации супа и нормалей: столько копий (2b) убрано с
-    // пути STEP -> суп -> нормали -> буферы.
+    // Cost of one materialization of the soup and the normals: that many copies
+    // (2b) were removed from the STEP -> soup -> normals -> buffers path.
     {
         std::vector<double> tCopySoup;
         std::vector<double> tCopyNormals;
@@ -320,7 +323,7 @@ int main(int argc, char** argv) {
                     normals.size() * sizeof(float), median(tCopyNormals));
     }
 
-    // ---- фазы УП ------------------------------------------------------------
+    // ---- NC program phases --------------------------------------------------
     const std::string text = readText(ngcPath);
     if (text.empty()) {
         std::fprintf(stderr, "bench_probe: УП не прочитана: %s\n", ngcPath.c_str());
@@ -341,8 +344,8 @@ int main(int argc, char** argv) {
     printPhase("ngc_parse", median(tParse));
     printPhase("ngc_prepare_path", median(tPrep));
 
-    // Инструмент/оправка: профиль, обводка, кольца (постоянная оправка + первый
-    // инструмент этапа), затем скан коллизий и сверка инструмента.
+    // Tool/holder: profile, outline, rings (constant holder + the first tool of the
+    // stage), then the collision scan and the tool check.
     std::vector<double> tTool;
     for (int r = 0; r < phaseReps; ++r) {
         Clock::time_point t0 = Clock::now();
@@ -405,10 +408,10 @@ int main(int argc, char** argv) {
     printPhase("collision_scan", median(tCollision));
     printPhase("tool_check", median(tToolCheck));
 
-    // ---- цена кадра ---------------------------------------------------------
-    // mesh-силуэт: на уже построенной топологии повторяем refreshTangents-часть
-    // (только meshSilhouetteSegments). Буферы кадра те же, что у контроллера:
-    // силуэт заполняется в переиспользуемый scratch, а не заводится заново.
+    // ---- frame cost ---------------------------------------------------------
+    // mesh silhouette: on the already built topology we repeat the refreshTangents
+    // part (only meshSilhouetteSegments). The frame buffers are the same as in the
+    // controller: the silhouette is filled into a reusable scratch, not allocated anew.
     const double eye[3] = {EYE[0], EYE[1], EYE[2]};
     std::vector<float> silSegs;
     {
@@ -421,12 +424,12 @@ int main(int argc, char** argv) {
         g_sink += (sil != nullptr) ? sil->size() : 0;
         printFrame("refresh_mesh_silhouette", msSince(t0) / frameReps);
         if (sil != nullptr) {
-            silSegs = *sil;               // вне замера: содержимое нужно буферу лент
+            silSegs = *sil;               // not timed: the ribbon buffer needs the content
         }
     }
 
-    // analytic: tangentFromFamilies + перевод float64 -> float32 (как контроллер),
-    // тоже в переиспользуемых буферах кадра.
+    // analytic: tangentFromFamilies + float64 -> float32 conversion (like the
+    // controller), also in reusable frame buffers.
     {
         gv::TangentScratch scratch;
         std::vector<float> segs;
@@ -443,7 +446,7 @@ int main(int argc, char** argv) {
         printFrame("refresh_analytic", msSince(t0) / frameReps);
     }
 
-    // Установка буфера hlrTangents (ленты силуэта, stride 48).
+    // Setting the hlrTangents buffer (silhouette ribbons, stride 48).
     {
         gvgeom::HLRLineGeometry hlr;
         const double center[3] = {0.0, 0.0, 0.0};
@@ -457,7 +460,7 @@ int main(int argc, char** argv) {
         printFrame("setSegments_tangents", msSince(t0) / frameReps);
     }
 
-    // Установка буфера hlrEdges: positions = packedPositions(обводка) + setSegments.
+    // Setting the hlrEdges buffer: positions = packedPositions(outline) + setSegments.
     {
         const std::vector<float> positions = gv::packedPositions(packed);
         const int count = int(positions.size() / 6);
@@ -478,7 +481,7 @@ int main(int argc, char** argv) {
         }
         printFrame("packedPositions", msSince(t1) / frameReps);
 
-        // Копия segs -> a, убранная из HLRLineGeometry::setSegments (2c).
+        // The segs -> a copy removed from HLRLineGeometry::setSegments (2c).
         std::vector<double> tCopy;
         for (int r = 0; r < frameReps; ++r) {
             Clock::time_point t2 = Clock::now();

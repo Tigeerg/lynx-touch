@@ -1,18 +1,19 @@
-// manifest_check.h - сверка дайджестов пробников с оракулом oracle_manifest.json.
+// manifest_check.h - checking probe digests against the oracle oracle_manifest.json.
 //
-// Оракул (modules/gcode-viewer/) считает промежуточные массивы
-// питоновского пути и записывает их sha256 в oracle_manifest.json. Этот заголовок
-// даёт пробникам режим сверки с ним напрямую, без Python: пробник считает свой
-// массив и отдаёт сюда (имя записи, dtype, sha256, форма), а получает обратно
-// строку "ok"/"FAIL" на запись и общий итог "RESULT: OK" / "RESULT: FAIL (n)".
+// The oracle (modules/gcode-viewer/) computes the intermediate arrays of the Python
+// path and writes their sha256 into oracle_manifest.json. This header gives the probes
+// a mode that checks against it directly, without Python: a probe computes its own
+// array and hands it over (entry name, dtype, sha256, shape), and gets back a line
+// "ok"/"FAIL" per entry and an overall result "RESULT: OK" / "RESULT: FAIL (n)".
 //
-// Qt здесь не тянется: пробники сверки собраны без Qt (см. sha256.h о том же
-// решении), а разбор манифеста узкий - верхний объект, у каждого значения поля
-// dtype, sha256 и shape. Полный JSON не нужен и не поддерживается.
+// Qt is not pulled in here: the check probes are built without Qt (see sha256.h about
+// the same decision), and the manifest parsing is narrow - the top-level object, each
+// value having the fields dtype, sha256 and shape. Full JSON is not needed and not
+// supported.
 //
-// Сверка идёт по трём полям записи: sha256 байтов, форма массива и dtype
-// сериализации. Расхождение dtype - такая же находка, как расхождение хэша:
-// манифест записан меняется только осознанно.
+// The check goes over three fields of an entry: the sha256 of the bytes, the array
+// shape and the serialization dtype. A dtype mismatch is as much a finding as a hash
+// mismatch: the written manifest changes only deliberately.
 #pragma once
 
 #include <cstdio>
@@ -34,7 +35,7 @@
 namespace gv {
 namespace manifest {
 
-// Запись манифеста: поля те же, что пишет::_digest.
+// A manifest entry: the same fields as written by _digest.
 struct Entry {
     std::string dtype;
     std::string sha256;
@@ -43,7 +44,7 @@ struct Entry {
 
 namespace detail {
 
-// Разборщик JSON манифеста: позиция в тексте и операции над ней.
+// Manifest JSON reader: a position in the text and operations on it.
 struct Reader {
     const std::string& text;
     std::size_t pos = 0;
@@ -67,7 +68,7 @@ struct Reader {
         return false;
     }
 
-    // Строка JSON; экранирование \u переводится в UTF-8.
+    // A JSON string; \u escapes are converted to UTF-8.
     bool readString(std::string& out) {
         out.clear();
         if (!eat('"')) {
@@ -151,8 +152,8 @@ struct Reader {
         }
     }
 
-    // Пропуск значения неизвестного ключа: манифест пишется с известными полями,
-    // но лишнее поле не должно ломать разбор.
+    // Skipping the value of an unknown key: the manifest is written with known
+    // fields, but an extra field must not break the parsing.
     bool skipValue() {
         skipWs();
         if (pos >= text.size()) {
@@ -327,11 +328,11 @@ inline bool parseManifest(const std::string& text, std::map<std::string, Entry>&
 
 } // namespace detail
 
-// Манифест: имя записи -> её поля.
+// The manifest: entry name -> its fields.
 class Manifest {
 public:
-    // Чтение манифеста: путь в UTF-8 и открывается через std::filesystem::u8path -
-    // каталог репозитория может содержать кириллицу.
+    // Reading the manifest: the path is UTF-8 and is opened via std::filesystem::u8path -
+    // the repository directory may contain Cyrillic.
     bool load(const std::string& utf8Path, std::string& error) {
         std::ifstream fh(std::filesystem::u8path(utf8Path), std::ios::binary);
         if (!fh) {
@@ -360,7 +361,7 @@ private:
     std::map<std::string, Entry> entries_;
 };
 
-// Форма массива в том же виде, что печатает: [245, 2, 3].
+// The array shape in the same form as printed: [245, 2, 3].
 inline std::string shapeText(const std::vector<long long>& shape) {
     std::string out = "[";
     for (std::size_t i = 0; i < shape.size(); ++i) {
@@ -373,14 +374,14 @@ inline std::string shapeText(const std::vector<long long>& shape) {
     return out;
 }
 
-// Сверка дайджестов с манифестом и накопление расхождений.
+// Checking digests against the manifest and accumulating mismatches.
 class Checker {
 public:
     explicit Checker(const Manifest& manifest) : manifest_(manifest) {}
 
-    // Одна запись: имя в манифесте, dtype сериализации, sha256 байтов и форма.
-    // Печатает строку на запись; расхождение считается один раз, даже если не
-    // сошлись и хэш, и форма, и dtype.
+    // One entry: the name in the manifest, the serialization dtype, the sha256 of the
+    // bytes and the shape. Prints one line per entry; a mismatch is counted once, even
+    // if the hash, the shape and the dtype all disagree.
     void check(const std::string& name, const std::string& dtype,
                const std::string& sha256, const std::vector<long long>& shape) {
         const Entry* want = manifest_.find(name);
@@ -411,7 +412,7 @@ public:
 
     int failures() const { return failures_; }
 
-    // Итог в форме остальных проверок проекта.
+    // The result in the form used by the project's other checks.
     void printResult() const {
         if (failures_ == 0) {
             std::printf("RESULT: OK\n");
@@ -425,7 +426,7 @@ private:
     int failures_ = 0;
 };
 
-// Путь в UTF-8 из широкого представления (Windows).
+// A UTF-8 path from a wide representation (Windows).
 inline std::string wideToUtf8(const std::wstring& w) {
 #ifdef _WIN32
     if (w.empty()) {
@@ -445,10 +446,10 @@ inline std::string wideToUtf8(const std::wstring& w) {
 #endif
 }
 
-// Корень репозитория по пути пробника: <репо>/build/edges/<пробник>.exe - три
-// уровня вверх (файл, build/edges, build). Догадка проверяется каталогом
-// тестовых данных: сборка в другом каталоге не должна уводить поиск в чужое
-// дерево. Возврат - путь в UTF-8, пусто при неудаче.
+// The repository root from the probe path: <repo>/build/edges/<probe>.exe - three
+// levels up (the file, build/edges, build). The guess is verified with the test data
+// directory: a build in another directory must not lead the search into a foreign
+// tree. Returns a UTF-8 path, empty on failure.
 inline std::string repoRoot() {
 #ifdef _WIN32
     wchar_t buf[4096];
@@ -459,15 +460,15 @@ inline std::string repoRoot() {
     std::filesystem::path dir(std::wstring(buf, static_cast<std::size_t>(n)));
     dir = dir.parent_path();          // build/edges
     dir = dir.parent_path();          // build
-    dir = dir.parent_path();          // корень репозитория
+    dir = dir.parent_path();          // repository root
     if (!std::filesystem::exists(dir / L"data" / L"cad-testdata")) {
         return {};
     }
     return wideToUtf8(dir.wstring());
 #else
-    // Linux: путь процесса читается через /proc/self/exe (симлинк на
-    // исполняемый файл), далее та же догадка про build/edges и та же проверка
-    // каталога тестовых данных.
+    // Linux: the process path is read via /proc/self/exe (a symlink to the
+    // executable), then the same guess about build/edges and the same check of the
+    // test data directory.
     std::error_code ec;
     const std::filesystem::path exe = std::filesystem::read_symlink("/proc/self/exe", ec);
     if (ec) {
@@ -475,7 +476,7 @@ inline std::string repoRoot() {
     }
     std::filesystem::path dir = exe.parent_path();
     dir = dir.parent_path();          // build
-    dir = dir.parent_path();          // корень репозитория
+    dir = dir.parent_path();          // repository root
     if (!std::filesystem::exists(dir / "data" / "cad-testdata")) {
         return {};
     }
@@ -483,9 +484,9 @@ inline std::string repoRoot() {
 #endif
 }
 
-// Разбор аргументов режима сверки: --manifest <файл> [<файл-данных>] или
-// --check [<файл-данных>]. Умолчания берутся от корня репозитория (путь
-// пробника). Возврат false - аргументы не разобраны, причина напечатана.
+// Parsing the arguments of the check mode: --manifest <file> [<data-file>] or
+// --check [<data-file>]. The defaults are taken from the repository root (the probe
+// path). Returning false -> the arguments were not parsed, the reason is printed.
 inline bool resolveCheckArgs(const std::vector<std::string>& args,
                              const std::string& dataName,
                              std::string& manifestPath, std::string& dataPath) {

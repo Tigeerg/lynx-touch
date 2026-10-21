@@ -7,24 +7,26 @@
 #include <TopoDS_Shape.hxx>
 
 // =============================================================================
-// StepEdgesGeometry — рёбра B-Rep модели STEP как Lines-геометрия QML
-// (QQuick3DGeometry, примитив Lines, порядок пар как у GL_LINES).
+// StepEdgesGeometry — B-Rep edges of a STEP model as QML Lines geometry
+// (QQuick3DGeometry, Lines primitive, pair order as in GL_LINES).
 //
-// Повторяет эталонную геометрию рёбер модели
-// (occt/step_import.cpp): обход TopAbs_EDGE в порядке
-// TopExp_Explorer, полилиния каждого ребра - GCPnts_UniformDeflection с линейным
-// допуском 0.05 мм (угловой критерий не используется: эталон его не задаёт),
-// затем склейка почти совпадающих отрезков (_coalesce_segments,
-// core/packing.cpp). Шовные линии криволинейных граней (прямое
-// ребро, у которого все смежные грани криволинейны) отбрасываются: SolidWorks
-// их тоже не рисует. Сам отбор и склейка лежат в gvstep (cpp/occt/step_edges):
-// слой без Qt нужен и сборке модели (cpp/occt/step_bundle.cpp). Совпадение с
-// эталоном проверяет cpp/stepledges_probe.cpp.
+// Repeats the reference edge geometry of the model
+// (occt/step_import.cpp): traversal of TopAbs_EDGE in
+// TopExp_Explorer order, the polyline of each edge - GCPnts_UniformDeflection with a
+// linear deflection of 0.05 mm (the angular criterion is not used: the reference does
+// not set one), then coalescing of nearly coincident segments (_coalesce_segments,
+// core/packing.cpp). Seam lines of curved faces (a straight
+// edge whose adjacent faces are all curved) are dropped: SolidWorks
+// does not draw them either. The selection and coalescing themselves live in gvstep
+// (cpp/occt/step_edges): the layer without Qt is also needed by the model assembly
+// (cpp/occt/step_bundle.cpp). Agreement with the reference is checked by
+// cpp/stepledges_probe.cpp.
 //
-// Скрытие невидимых линий делает GPU, а не постобработка: геометрия рисуется
-// парным материалом (stepledges.vert), который подтягивает линии к камере в
-// clip space (z *= depthBias), а обычный тест глубины LESS/LESS_EQUAL отсекает
-// линии за телом. Тело обязано быть непрозрачным (пишет в буфер глубины).
+// Hidden line removal is done by the GPU, not by post-processing: the geometry is
+// drawn with a paired material (stepledges.vert) that pulls the lines toward the
+// camera in clip space (z *= depthBias), and the ordinary LESS/LESS_EQUAL depth test
+// culls lines behind the body. The body must be opaque (it writes to the depth
+// buffer).
 // =============================================================================
 
 class StepEdgesGeometry : public QQuick3DGeometry
@@ -33,16 +35,16 @@ class StepEdgesGeometry : public QQuick3DGeometry
     QML_NAMED_ELEMENT(StepEdges)
     QML_ADDED_IN_VERSION(1, 0)
 
-    // Путь к файлу STEP (.step/.stp). Смена пути перечитывает файл; deflection и
-    // hideFormEdges пересчитывают рёбра по уже прочитанной форме.
+    // Path to the STEP file (.step/.stp). Changing the path re-reads the file;
+    // deflection and hideFormEdges recompute the edges from the already read shape.
     Q_PROPERTY(QString source READ source WRITE setSource NOTIFY sourceChanged)
-    // Дискретизация криволинейных рёбер: линейный допуск, мм.
+    // Discretization of curved edges: linear deflection, mm.
     Q_PROPERTY(qreal deflection READ deflection WRITE setDeflection NOTIFY deflectionChanged)
-    // Скрывать шовные линии криволинейных граней (по умолчанию включено).
+    // Hide seam lines of curved faces (enabled by default).
     Q_PROPERTY(bool hideFormEdges READ hideFormEdges WRITE setHideFormEdges NOTIFY hideFormEdgesChanged)
-    // Диагностика: число отрезков в построенном буфере.
+    // Diagnostics: number of segments in the built buffer.
     Q_PROPERTY(int segmentCount READ segmentCount NOTIFY sourceChanged)
-    // Диагностика переноса: число отрезков до склейки.
+    // Port diagnostics: number of segments before coalescing.
     Q_PROPERTY(int rawSegmentCount READ rawSegmentCount NOTIFY sourceChanged)
 
 public:
@@ -60,12 +62,12 @@ public:
     int segmentCount() const { return m_segmentCount; }
     int rawSegmentCount() const { return m_rawSegmentCount; }
 
-    // Хост на C++ (без QML): построение по уже прочитанной форме.
-    // false — форма не дала ни одного отрезка.
+    // C++ host (without QML): building from an already read shape.
+    // false — the shape produced no segments at all.
     bool setShape(const TopoDS_Shape &shape);
 
-    // Диагностика переноса: точки отрезков подряд парами (x, y, z), float32.
-    // Порядок — порядок построения, тот же, что у эталонного массива.
+    // Port diagnostics: segment points in a row, in pairs (x, y, z), float32.
+    // The order is the build order, the same as in the reference array.
     QVector<float> segmentPoints() const { return m_points; }
 
 signals:
@@ -74,13 +76,13 @@ signals:
     void hideFormEdgesChanged();
 
 private:
-    void rebuild();                       // source -> буферы геометрии
+    void rebuild();                       // source -> geometry buffers
 
     QString m_source;
-    TopoDS_Shape m_shape;                 // разобранный STEP; пуста до первого чтения
-    qreal m_deflection = 0.05;            // мм
+    TopoDS_Shape m_shape;                 // parsed STEP; null until the first read
+    qreal m_deflection = 0.05;            // mm
     bool m_hideFormEdges = true;
     int m_segmentCount = 0;
     int m_rawSegmentCount = 0;
-    QVector<float> m_points;              // диагностика и буфер вершин
+    QVector<float> m_points;              // diagnostics and vertex buffer
 };

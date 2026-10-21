@@ -10,25 +10,25 @@ import MockBackend 1.0
  *   RMB drag = pan the camera (moves the orbit center)
  *   wheel    = zoom
  *
- * Раскладка клавиш (обработчик - Keys.onPressed ниже, кнопки - в панели внизу):
- *   Пробел/P - пуск/пауза, Esc - в начало, вверх/вниз - скорость;
- *   S - заготовка (габарит), M - вид детали по кругу (сплошная -> прозрачная ->
- *   скрыта), K - кожа детали (тело без рёбер), G - линии УП, B - прежняя коробка
- *   вместо поверхности съёма, V - заготовка полупрозрачной;
- *   C - палитра остатка материала (пресеты), R - вид остатка по кругу
- *   (точный -> гладкий -> скруглённый);
- *   L - длина, T - этапы, PgUp/PgDn - кадры этапов;
- *   E - рёбра, D - касательные, Q - качество, F - fps.
- * Вид детали - один переключатель на три положения, и прозрачная кожа на нём же
- * и есть прежний рентген-вид: отдельной клавиши X у вьювера больше нет
- * (разбор - у свойства partMode).
- * Те же переключатели чистого вида доступны до старта переменными окружения
+ * Key layout (handler - Keys.onPressed below, buttons - in the bottom panel):
+ *   Space/P - play/pause, Esc - to start, Up/Down - speed;
+ *   S - stock (bounding box), M - part view cycle (solid -> transparent ->
+ *   hidden), K - part skin (body without edges), G - toolpath lines, B - the former
+ *   box instead of the cut surface, V - stock translucent;
+ *   C - material stock palette (presets), R - stock view cycle
+ *   (exact -> smooth -> rounded);
+ *   L - length, T - stages, PgUp/PgDn - stage frames;
+ *   E - edges, D - tangents, Q - quality, F - fps.
+ * Part view - one switch with three positions, and the transparent skin on it is
+ * the former x-ray view: the viewer no longer has a separate X key
+ * (analysis - at the partMode property).
+ * The same clean-view toggles are available before start via environment variables
  * (cpp/viewer/main.cpp): CNC_STOCK_BOX, CNC_NO_TOOLPATH, CNC_NO_PART_SKIN,
- * CNC_STOCK_GHOST (заготовка полупрозрачной, умолчание; =0 или false - сплошная),
- * CNC_PART_MODE (solid/transparent/hidden - тот же один переключатель вида детали),
- * вид остатка - CNC_STOCK_VIEW (exact/smooth/rounded, умолчание smooth) и
- * прежнее сокращение CNC_STOCK_ROUND=1 для rounded, а цвета палитры -
- * CNC_STOCK_RAW и CNC_STOCK_CUT (по "#RRGGBB").
+ * CNC_STOCK_GHOST (stock translucent, default; =0 or false - solid),
+ * CNC_PART_MODE (solid/transparent/hidden - the same single part-view switch),
+ * stock view - CNC_STOCK_VIEW (exact/smooth/rounded, default smooth) and
+ * the former shorthand CNC_STOCK_ROUND=1 for rounded, and the palette colors -
+ * CNC_STOCK_RAW and CNC_STOCK_CUT (as "#RRGGBB").
  */
 Item {
     id: root
@@ -47,47 +47,48 @@ Item {
     property real panY: 0          // pan offset along camera-up
     property bool invertX: false   // invert horizontal orbit (false = natural)
 
-    // ---- качество рендера: уровень low/med/high/safe (DESIGN.md, разд. 13) ----
-    // Уровень задаёт точку входа (CNC_QUALITY) или клавиша Q. Числа уровня med
-    // повторяют значения, действовавшие до пресетов, поэтому без CNC_QUALITY
-    // картинка та же; уровень влияет на рендер, геометрию разбирает ядро.
+    // ---- render quality: level low/med/high/safe (DESIGN.md, sec. 13) ----
+    // The level is set by the entry point (CNC_QUALITY) or the Q key. The med
+    // level numbers repeat the values in effect before the presets, so without
+    // CNC_QUALITY the picture is the same; the level affects the render, the
+    // geometry is parsed by the core.
     property string quality: "med"
     readonly property bool qualityReduced: root.quality === "low" || root.quality === "safe"
     readonly property bool qualitySafe: root.quality === "safe"
-    // MSAA View3D: med - 4x (сегодня), high - 8x, low/safe - выкл (главный
-    // тормоз кадра, см. комментарий у environment).
+    // MSAA View3D: med - 4x (today), high - 8x, low/safe - off (the main
+    // frame-rate bottleneck, see the comment at environment).
     readonly property int msaaMode: root.qualityReduced ? SceneEnvironment.NoAA
                                                         : SceneEnvironment.MSAA
     readonly property int msaaQuality: root.quality === "high" ? SceneEnvironment.High
                                         : SceneEnvironment.Medium
-    // Обводка: safe тоньше (0.8 px против 1.5) и смещение глубже - дешевле на
-    // программном растеризаторе; med/high/low держат сегодняшние числа.
-    // Ширина снижена с 2.0/1.0 (замер: рёбра детали, касательные и рёбра
-    // инструмента с оправкой читаются 1.5 px, а на safe 0.8 px - лента с
-    // distance-field AA остаётся резкой). На safe картинка к тому же дороже
-    // читается толще: сцена там рисуется в логических пикселях (DPR 1,
-    // renderTextureWidth ниже) и растягивается на экран, поэтому одна и та же
-    // ширина ложится на больше физических пикселей и выглядит грубее.
+    // Outline: safe is thinner (0.8 px vs 1.5) and the offset is deeper - cheaper
+    // on the software rasterizer; med/high/low keep today's numbers.
+    // Width reduced from 2.0/1.0 (measurement: part edges, tangents and
+    // tool-with-holder edges read as 1.5 px, and on safe 0.8 px - the ribbon with
+    // distance-field AA stays crisp). On safe the picture moreover reads thicker:
+    // there the scene is drawn in logical pixels (DPR 1, renderTextureWidth below)
+    // and stretched to the screen, so the same width lands on more physical pixels
+    // and looks coarser.
     readonly property real edgeLineWidthPx: root.qualitySafe ? 0.8 : 1.5
-    // Смещение обводки к глазу в clip z (stepledges.vert, polyOffset): оно
-    // держит ленту перед кожей, но теперь под обводкой идёт ещё и сдвинутый
-    // к глазу остаток материала (stockDepthOffset, 3e-5 NDC). Пока смещение
-    // обводки было равно сдвигу остатка (3e-5), сдвинутая поверхность съедала
-    // половину обводки: замер на кадре 1024x600 (Test_model, область слитка
-    // 66126 px) - чёрных пикселей лент 1347 против 2866 без сдвига остатка.
-    // 6e-5 - вдвое больше сдвига остатка, и потому одно на всех уровнях: прежнее
-    // 6e-5 было у safe, теперь оно у всех. Обводка остаётся на месте по экрану
-    // (сдвиг только по глубине) и читается теми же 2900 пикселями, что и до
-    // сдвига остатка.
+    // Outline offset toward the eye in clip z (stepledges.vert, polyOffset): it
+    // holds the ribbon in front of the skin, but now under the outline there is
+    // also the material stock shifted toward the eye (stockDepthOffset, 3e-5 NDC).
+    // While the outline offset equalled the stock offset (3e-5), the shifted
+    // surface ate half the outline: measurement on a 1024x600 frame (Test_model,
+    // billet area 66126 px) - ribbon black pixels 1347 vs 2866 without the stock
+    // offset. 6e-5 is twice the stock offset, and therefore the same at all levels:
+    // the former 6e-5 was on safe, now it is on all. The outline stays in place on
+    // screen (offset in depth only) and reads as the same 2900 pixels as before the
+    // stock offset.
     readonly property real edgePolyOffset: 0.00006
     readonly property real edgeDepthBias: root.qualitySafe ? -1500 : -1000
-    // Шаг пересчёта силуэта: low/safe - каждый 4-й кадр, med/high - каждый.
+    // Silhouette recompute step: low/safe - every 4th frame, med/high - every.
     readonly property int silhouetteStep: root.qualityReduced ? 4 : 1
-    // Сетка пола: low/safe грубее - реже линии и шире затухание.
+    // Floor grid: low/safe coarser - fewer lines and wider feathering.
     readonly property int gridStep: root.qualityReduced ? 40 : 20
     readonly property int gridFeather: root.qualityReduced ? 48 : 24
-    // Ограничение DPR: low/safe рендерят сцену в логических пикселях (DPR 1)
-    // вместо логический размер * DPR; 0 - размер следует за элементом (сегодня).
+    // DPR limiting: low/safe render the scene in logical pixels (DPR 1) instead of
+    // logical size * DPR; 0 - the size follows the element (today).
     readonly property int renderTextureWidth: root.qualityReduced ? Math.round(view3d.width) : 0
     readonly property int renderTextureHeight: root.qualityReduced ? Math.round(view3d.height) : 0
 
@@ -96,11 +97,12 @@ Item {
     property bool showTangentLines: true   // view-dependent tangent contour
 
     // ---- FPS counter (F) ----
-    // Экспоненциальное среднее кадровой частоты: мгновенное 1/frameTime на
-    // vsync-мониторах стоит ровно и читать нечего, единичный дроп кадра
-    // не должен бросать цифру. Коэффициент 0.9 -> скачок виден за ~10 кадров.
+    // Exponential average of the frame rate: the instantaneous 1/frameTime sits
+    // still on vsync monitors and there is nothing to read, while a single dropped
+    // frame must not throw the number. Factor 0.9 -> a jump is visible over
+    // ~10 frames.
     property bool showFps: false
-    property real fpsSmoothed: 0            // среднее, кадр/с
+    property real fpsSmoothed: 0            // average, frames/s
     FrameAnimation {
         running: root.showFps
         onTriggered: {
@@ -116,7 +118,7 @@ Item {
     // The silhouette rim is drawn in world units, so its on-screen width would
     // change with zoom (too thin / invisible when zoomed out). We instead scale
     // the outline radially so the rim stays ~outlinePx pixels at any distance.
-    // Ширина снижена с 1.0: контур детали, резца и оправки читается 0.8 px.
+    // Width reduced from 1.0: the part, cutter and holder outline reads as 0.8 px.
     property real outlinePx: 0.8
     readonly property real outlineMmPerPx: (2.0 * root.dist * 0.5773503) / Math.max(240, view3d.height)
     function outlineScale(radius) {
@@ -145,16 +147,17 @@ Item {
     readonly property real visibleWindow: Math.min(1.0, root.maxVisibleT + root.fadeBandT)
     readonly property real pathEndT: (path && path.moveLength > 0)
                                      ? Math.min(1.0, root.pathDist / path.moveLength + root.visibleWindow) : 1.0
-    // Полоса затухания - принадлежность режима ограничения длины: когда показан
-    // весь код, затухать нечему, и хвост пути рисовался полупрозрачными линиями.
-    // На слитке это читалось светлыми потёками поверх кармана: замер на кадре
-    // 1024x600 (Test_model, сплошная кожа, стекло снято, камера yaw 35 pitch -32
-    // dist 341) - точки 484,290 и 476,294 в кармане давали #1576CF и #3192EB
-    // (синий #0162BB, разбавленный фоном) при полосе 0.1 и чистый #0162BB при
-    // полосе 0.0001, то есть бледные полосы были хвостом пути, а не спором
-    // поверхностей. Видны они были на глубине кармана, где хвост программы
-    // (сверление) ложится плотными кадрами. Условие то же, что у pathEndT:
-    // видимое окно меньше целого - полоса есть, окно целое - её нет.
+    // The fade band belongs to the length-limiting mode: when the whole code is
+    // shown there is nothing to fade, and the path tail was drawn as translucent
+    // lines. On the billet this read as light streaks over the pocket: measurement
+    // on a 1024x600 frame (Test_model, solid skin, glass off, camera yaw 35
+    // pitch -32 dist 341) - points 484,290 and 476,294 in the pocket gave #1576CF
+    // and #3192EB (blue #0162BB diluted by the background) with a band of 0.1 and
+    // pure #0162BB with a band of 0.0001, that is, the pale bands were the path
+    // tail, not a fight between surfaces. They were visible at the depth of the
+    // pocket, where the program tail (drilling) lands in dense frames. The condition
+    // is the same as at pathEndT: the visible window is less than whole - the band
+    // exists, the window is whole - it does not.
     readonly property real fadeStartT: root.visibleWindow < 1.0
                                        ? Math.max(root.pathEndT - root.fadeBandT, 0.0) : 1.0
 
@@ -304,12 +307,13 @@ Item {
         }
     }
 
-    // Живая публикация поля: пока программа играет, поле догоняет pathDist раз
-    // в 100 мс - каденция из DESIGN.md (чаще нельзя: обновление текстуры - целый
-    // буфер; на заготовке Test_model 150x100 мм это 242 КиБ на тик при узле
-    // 0.5 мм и 1.44 МиБ при 0.2 мм). Вне проигрывания таймера нет: остановка и
-    // перемотка догоняются одним вызовом на изменение pathDist/playing, а первый
-    // проход считается и без них.
+    // Live field publication: while the program plays, the field catches up with
+    // pathDist once per 100 ms - the cadence from DESIGN.md (more often is not
+    // allowed: updating the texture is a whole buffer; on the Test_model stock
+    // 150x100 mm this is 242 KiB per tick at a 0.5 mm node and 1.44 MiB at 0.2 mm).
+    // Outside playback there is no timer: stop and seek are caught up by a single
+    // call on a pathDist/playing change, and the first pass is computed without them
+    // anyway.
     Timer {
         interval: 100
         repeat: true
@@ -341,7 +345,7 @@ Item {
         size: root.floorSize
         // Fixed cell/feather like the original layout (the field got wider,
         // the fade band must not grow with it - it was shrinking the visible
-        // area at the edges). low/safe - грубее (quality).
+        // area at the edges). low/safe - coarser (quality).
         step: root.gridStep
         // Dipped ~1 px below the true floor: the part bottom and the billet
         // bottom lie exactly in this plane; coplanar surfaces z-fight.
@@ -363,35 +367,35 @@ Item {
         shaftWidth: 0.7
     }
 
-    // ---- Остаток материала: сетка верха поля и оболочка коробки ----
-    // Обе строятся в МАШИННЫХ миллиметрах, из тех же чисел, что публикует
-    // контроллер о поле (stockBounds/stockCellMm/stockCountX/Y): сетка верха -
-    // вершина на узел поля, поэтому второго уровня сэмплирования нет, а высоту
-    // вершины вычитает вершинный шейдер stocksurface.vert по текстуре поля.
-    // Оболочка - та же коробка без верхней грани (верх рисует поле), с прежним
-    // микро-сдвигом против z-fighting: он двигает только стенки, физический
-    // габарит заготовки не меняется.
-    // Границы стенок (габарит плюс зазоры) стоят здесь, а не у материала: ими
-    // собрана геометрия оболочки, и из них же вершинный шейдер стенок
-    // (stockshell.vert) выбирает, на какой грани стоит вершина - одно число,
-    // один источник.
-    // Боковой зазор стенок - НОЛЬ: стенка стоит на габарите поля, а не сдвинута
-    // наружу. Прежние 1.5 пикселя были сдвигом коробки против z-fighting, когда
-    // коробка несла и верх; с полем верх рисует сетка, а сдвинутая наружу стенка
-    // оставляла вдоль всего верхнего ребра горизонтальную полку шириной 1.5 px
-    // (замер: 0.64 мм на дистанции 220 мм при 0.42 мм/px, 0.87 мм на 300 мм) -
-    // сквозь неё на ребре читались фон и нутро слитка. Верх сетки доходит ровно
-    // до габарита (stockSurfaceMesh прижимает крайний узел), поэтому при нулевом
-    // зазоре верх и стенка сходятся в том же ребре, что обещал комментарий ядра
-    // (core/stock_sim, stockShellVertices).
+    // ---- Material stock: the top field mesh and the box shell ----
+    // Both are built in MACHINE millimeters, from the same numbers the controller
+    // publishes about the field (stockBounds/stockCellMm/stockCountX/Y): the top
+    // mesh - one vertex per field node, so there is no second sampling level, and
+    // the vertex shader stocksurface.vert subtracts the vertex height from the field
+    // texture.
+    // The shell is the same box without the top face (the field draws the top), with
+    // the former micro-offset against z-fighting: it moves only the walls, the
+    // physical stock bounding box does not change.
+    // The wall bounds (bounding box plus gaps) live here, not at the material: the
+    // shell geometry is built from them, and from them the wall vertex shader
+    // (stockshell.vert) picks which face a vertex stands on - one number, one source.
+    // The side wall gap is ZERO: the wall stands on the field bounding box and is not
+    // shifted outward. The former 1.5 pixels were a box offset against z-fighting
+    // when the box carried the top too; with the field the top is drawn by the mesh,
+    // and a wall shifted outward left a horizontal shelf 1.5 px wide along the whole
+    // top edge (measurement: 0.64 mm at a distance of 220 mm at 0.42 mm/px, 0.87 mm
+    // at 300 mm) - through it the background and the billet interior read at the
+    // edge. The mesh top reaches exactly the bounding box (stockSurfaceMesh clamps
+    // the outermost node), so with a zero gap the top and the wall meet in the same
+    // edge the core comment promised (core/stock_sim, stockShellVertices).
     readonly property real shellGapSideMm: 0
     readonly property real shellGapTopMm: 1.0 * root.outlineMmPerPx
     readonly property real shellGapBottomMm: 1.0 * root.outlineMmPerPx
-    // Габарит поля в машинных мм [xmin, xmax, ymin, ymax, zmin, zmax] для
-    // материалов остатка (fieldMin/fieldTopMm/fieldCount у стенок). Пустой список
-    // (поля ещё нет) даёт нули, а не undefined: на undefined QML отвечает
-    // предупреждением, а прогон обязан быть без "[QML warning]". Один источник и
-    // на верх поля, и на стенки.
+    // Field bounding box in machine mm [xmin, xmax, ymin, ymax, zmin, zmax] for the
+    // stock materials (fieldMin/fieldTopMm/fieldCount at the walls). An empty list
+    // (no field yet) gives zeros, not undefined: on undefined QML answers with a
+    // warning, and the run must be free of "[QML warning]". One source for both the
+    // field top and the walls.
     readonly property var stockFieldBounds: (path && path.stockBounds.length >= 6)
         ? path.stockBounds : [0, 0, 0, 0, 0, 0]
     readonly property vector3d shellCenter: path
@@ -412,8 +416,8 @@ Item {
         cellMm: path ? path.stockCellMm : 0.5
         countX: path ? path.stockCountX : 0
         countY: path ? path.stockCountY : 0
-        // Дробление клетки поля в рисуемом меше (гладкий вид). Поле, его текстура
-        // и сверки считаются по узлам: дробление живёт только здесь.
+        // Subdivision of the field cell in the drawn mesh (smooth view). The field, its
+        // texture and the checks are computed by nodes: subdivision lives only here.
         subdiv: root.stockSubdiv
     }
     StockShellGeometry {
@@ -463,24 +467,24 @@ Item {
     View3D {
         id: view3d
         anchors.fill: parent
-        // Ограничение DPR (quality): 0 - размер текстуры следует за элементом
-        // (логический размер * DPR, сегодняшнее поведение), low/safe - логические
-        // пиксели (DPR 1). Размеры меняются только на этих уровнях.
+        // DPR limiting (quality): 0 - the texture size follows the element (logical
+        // size * DPR, today's behavior), low/safe - logical pixels (DPR 1). The sizes
+        // change only at these levels.
         explicitTextureWidth: root.renderTextureWidth
         explicitTextureHeight: root.renderTextureHeight
 
         environment: SceneEnvironment {
             clearColor: root.backgroundColor
             backgroundMode: SceneEnvironment.Color
-            // MSAA держит сплошными тонкие рёбра и линии УП (иначе пунктир).
-            // High (8x) стоит почти вдвое дороже кадра; на слабом GPU это
-            // главный тормоз (см. DESIGN.md, разд. 12). Линиям лент он не
-            // нужен - у них свой distance-field AA в stepledges.frag, Medium
-            // (4x) их держит так же (замер render_probe: тёмная обводка
-            // 10062 px при Medium против 11324 px при High - один порядок,
-            // разница в пределах семантики режима кожи, не разрывов нет).
-            // На быстрой карте кадровая цена не видна: QSG_RENDER_TIMING
-            // даёт render=0 мс при swap=16 мс - упор в vsync, не в растер.
+            // MSAA keeps thin edges and toolpath lines solid (otherwise dotted).
+            // High (8x) costs almost twice per frame; on a weak GPU this is the main
+            // bottleneck (see DESIGN.md, sec. 12). The ribbon lines do not need it -
+            // they have their own distance-field AA in stepledges.frag, Medium (4x)
+            // holds them the same (render_probe measurement: dark outline 10062 px at
+            // Medium vs 11324 px at High - one order of magnitude, the difference is
+            // within the skin-mode semantics, and there are no gaps).
+            // On a fast card the frame cost is invisible: QSG_RENDER_TIMING gives
+            // render=0 ms at swap=16 ms - limited by vsync, not the rasterizer.
             antialiasingMode: root.msaaMode
             antialiasingQuality: root.msaaQuality
         }
@@ -558,79 +562,84 @@ Item {
             ]
         }
 
-        // ---- Остаток материала: поле высот (верх) плюс стенки и дно ----
-        // Кадр. Меш поля и текстура - в МАШИННЫХ миллиметрах, а сцена - (X, Z,
-        // -Y): поворот узла на -90 по X переводит машинные (x, y, z) в (x, z,
-        // -y) - та же замена, что делает бэкенд, обходя путь
-        // (core/stock_sim.cpp, simulateStock). Ось выдавливания - машинный Z,
-        // в кадре он уходит вверх; узел поля (x, y) с глубиной d стоит в (x,
-        // zMax - d, -y), и это же число сверяет случай stocksurface пробника
-        // stock_sim_probe.
-        // Правило «всегда вперёд» (depthBias -50000) у поверхности нет: этот
-        // bias есть только у резца, который стоит ВНУТРИ материала; поверхность
-        // съёма и есть материал, и с ним она перестала бы прятать путь под
-        // собой, а резаная стенка врала бы о геометрии.
-        // За кем право при совпадении: у готовой программы снятая поверхность и
-        // есть кожа детали, и в местах касания они спорят за один пиксель.
-        // Право отдано ПОВЕРХНОСТИ СЪЁМА: во время симуляции предмет - снятый
-        // металл, а кожа детали - эталон (в том числе сплошной, partMode 0), и
-        // совпавший пиксель она уступает. Спор решается сдвигом ТОЛЬКО ГЛУБИНЫ в
-        // вершинном шейдере (stocksurface.vert и stockshell.vert, свойство
-        // stockDepthOffset): позиции вершин не двигаются, поэтому габарит и
-        // глубина реза не врут, а совпавшие поверхности выигрывает снятый металл.
-        // Сдвиг назад (как было до правки) давал обратное: на совпавшем верху
-        // была видна кожа, а не поверхность.
-        // Сплошная кожа глубину пишет, поэтому право на совпавшем пикселе решает
-        // не она, а поле со знаком своего сдвига (замеры - у partMode и у
-        // stockDepthOffset: у знака обратного съём уходит под кожу).
-        // Где заготовка ЕЩЁ ВЫШЕ детали, спора нет вовсе: снятый металл закрывает
-        // кожу собой, и это правильный вид - материал над деталью не снят.
+        // ---- Material stock: height field (top) plus walls and bottom ----
+        // Frame. The field mesh and texture are in MACHINE millimeters, while the
+        // scene is (X, Z, -Y): rotating the node by -90 about X turns machine
+        // (x, y, z) into (x, z, -y) - the same substitution the backend does when
+        // walking the path (core/stock_sim.cpp, simulateStock). The extrusion axis
+        // is machine Z, in the frame it goes up; a field node (x, y) with depth d
+        // stands at (x, zMax - d, -y), and it is this same number that the
+        // stock_sim_probe case stocksurface checks.
+        // The "always forward" rule (depthBias -50000) is not applied to the surface:
+        // this bias belongs only to the cutter, which stands INSIDE the material;
+        // the cut surface is the material itself, and with it the surface would stop
+        // hiding the path under itself, and a cut wall would lie about the geometry.
+        // Who wins on a coincidence: in a finished program the cut surface is the
+        // part skin, and where they touch they fight over one pixel.
+        // The right is given to the CUT SURFACE: during simulation the subject is the
+        // cut metal, and the part skin is the reference (including solid, partMode 0),
+        // and on a coinciding pixel it yields. The fight is settled by an offset of
+        // DEPTH ONLY in the vertex shader (stocksurface.vert and stockshell.vert, the
+        // stockDepthOffset property): vertex positions do not move, so the bounding
+        // box and the cut depth do not lie, and the cut metal wins the coinciding
+        // surfaces.
+        // An offset backward (as it was before the change) gave the opposite: on a
+        // coinciding top the skin was visible, not the surface.
+        // Solid skin writes depth, so the right on a coinciding pixel is decided not
+        // by it, but by the field with the sign of its offset (measurements - at
+        // partMode and at stockDepthOffset: with the opposite sign the cut goes under
+        // the skin).
+        // Where the stock is STILL HIGHER than the part, there is no fight at all: the
+        // cut metal covers the skin with itself, and this is the correct look - the
+        // material above the part is not cut.
         Node {
             visible: root.showStockVisible && root.stockFieldDrawn
             eulerRotation: Qt.vector3d(-90, 0, 0)
 
-            // Верх поля: непрозрачный и пишет глубину - он и есть материал.
-            // Светлота - своя, от нормали (stockTone/stockLamp, разбор -
-            // stocksurface.vert): свет сцены давал дну кармана светлоту меньше
-            // стенки, и снятый металл читался конусом, а стенки - почти одним
-            // цветом.
-            // Цвет - палитра пресетов (клавиша C, CNC_STOCK_RAW/CNC_STOCK_CUT):
-            // нетронутый верх (глубина 0) одним цветом, снятый металл другим.
-            // Порог 0.05 мм отсекает задиры на десятые доли узла 0.5 мм.
-            // Текстура поля - nearest: узел сетки стоит в центре своего текселя,
-            // линейная выборка R32F на ветке OpenGL 3.3 не гарантирована и
-            // смазала бы стенку реза на полклетки. Гладкий вид интерполирует
-            // поле сам, четырьмя nearest-выборками (stocksurface.vert): своей
-            // интерполяции фильтр драйвера не касается.
-            // Полупрозрачный вид (клавиша V, CNC_STOCK_GHOST) - тот же материал с
-            // плотностью stockAlpha и со смешением: снятый металл читается сквозь
-            // стенку, а сама стенка не бросает тень на то, что за ней. Пишет
-            // глубину и при смешении (AlwaysDepthDraw): без записи дальние грани
-            // и справочная кожа шли бы поверх слитка, и вместо полупрозрачной
-            // заготовки была бы мешанина скрытых граней - та самая жалоба, которую
-            // вылечила обратная сторона отсечения у сплошной оболочки.
-            // Смешение - состояние растеризатора, а не код шейдера, поэтому вид
-            // переключается свойствами материала (у alphaMode кожи так не выходит:
-            // он вшит в шейдер, и там режимы разведены двумя моделями).
+            // The field top: opaque and writes depth - it is the material.
+            // The tone is its own, from the normal (stockTone/stockLamp, analysis -
+            // stocksurface.vert): the scene light gave the pocket bottom a lower tone
+            // than the wall, and the cut metal read as a cone, while the walls read as
+            // almost one color.
+            // The color is the preset palette (key C, CNC_STOCK_RAW/CNC_STOCK_CUT):
+            // the untouched top (depth 0) in one color, the cut metal in another.
+            // The 0.05 mm threshold cuts off burrs at tenths of the 0.5 mm node.
+            // The field texture is nearest: a grid node stands at the center of its
+            // texel, linear R32F sampling on the OpenGL 3.3 branch is not guaranteed
+            // and would blur the cut wall by half a cell. The smooth view interpolates
+            // the field itself, with four nearest samples (stocksurface.vert): the
+            // driver filter does not touch its own interpolation.
+            // The translucent view (key V, CNC_STOCK_GHOST) - the same material with
+            // the stockAlpha density and with blending: the cut metal reads through
+            // the wall, and the wall itself does not cast a shadow on what is behind
+            // it. It writes depth even when blending (AlwaysDepthDraw): without the
+            // write, the far faces and the reference skin would go over the billet,
+            // and instead of a translucent stock there would be a mess of hidden
+            // faces - the very complaint that the reversed cull side of the solid
+            // shell cured.
+            // Blending is rasterizer state, not shader code, so the view is switched
+            // by material properties (with the skin alphaMode this does not work: it
+            // is baked into the shader, and there the modes are split into two models).
             Model {
                 geometry: stockSurface
                 materials: CustomMaterial {
                     shadingMode: CustomMaterial.Unshaded
                     property real cellMm: path ? path.stockCellMm : 0.5
-                    // Сдвиг глубины к глазу от кожи детали: величину, знак и
-                    // замеры держит свойство узла (stockDepthOffset, там же -
-                    // почему сдвиг один на верх и стенки). Сдвигается только clip
-                    // z, позиции вершин не двигаются, поэтому габарит заготовки и
-                    // глубина реза не врут (ср. stocksurface пробника:
-                    // высота вершины - верх минус поле).
+                    // Depth offset toward the eye relative to the part skin: the
+                    // magnitude, sign and measurements live at the node property
+                    // (stockDepthOffset, and there too - why the offset is the same
+                    // for the top and the walls). Only clip z is shifted, vertex
+                    // positions do not move, so the stock bounding box and the cut
+                    // depth do not lie (cf. the stocksurface case of the probe:
+                    // vertex height - top minus field).
                     property real depthOffset: root.stockDepthOffset
                     property color stockRawColor: root.stockRawColor
                     property color stockCutColor: root.stockCutColor
                     property real cutMm: 0.05
                     property real stockAlpha: root.stockGhost ? root.stockGhostAlpha : 1.0
-                    // Вид остатка: свойство узла (клавиша R, CNC_STOCK_VIEW,
-                    // CNC_STOCK_ROUND). Разбор видов и их цена - в
-                    // stocksurface.vert.
+                    // Stock view: the node property (key R, CNC_STOCK_VIEW,
+                    // CNC_STOCK_ROUND). The breakdown of the views and their cost -
+                    // in stocksurface.vert.
                     property int stockView: root.stockView
                     property vector3d stockLamp: root.stockLamp
                     property real stockTone: root.stockTone
@@ -653,44 +662,46 @@ Item {
                 }
             }
 
-            // Стенки и дно: СПЛОШНОЕ тело - непрозрачные и пишут глубину, поэтому
-            // сквозь них не видно ни дальней стенки, ни дна, ни детали внутри:
-            // заготовка читается слитком, как в симуляторе обработки. Верхней
-            // грани у них нет - её рисует поле.
+            // Walls and bottom: a SOLID body - opaque and writing depth, so through them
+            // neither the far wall, nor the bottom, nor the part inside is visible:
+            // the stock reads as a billet, as in a machining simulator. They have no
+            // top face - the field draws it.
             //
-            // Сторона отсечения здесь ОБРАТНАЯ обычной. Оболочку собирает ядро
-            // (core/stock_sim, stockShellVertices), и намотка её пятиугольников
-            // такова, что правая нормаль смотрит ВНУТРЬ коробки; этот буфер
-            // сверяет случай stockshell пробника stock_sim_probe и менять его
-            // нельзя. При BackFaceCulling отсекались не дальние стенки, а
-            // БЛИЖНИЕ: три грани, смотрящие на камеру, исчезали, и сквозь них
-            // читались пол, справочная кожа детали и линии УП - та самая жалоба
-            // на просвет боковой грани слитка. Замер по кадрам 1024x600
-            // (Test_model, вид с полем съёма, ни линий УП, ни кожи):
-            // BackFaceCulling против FrontFaceCulling - 13990 пикселей по стенке
-            // слитка, то есть ближняя стенка была снята целиком, и на её месте
-            // читались пол и справочная кожа детали. FrontFaceCulling снимает
-            // дальние грани (их и так прячет буфер глубины) и оставляет ближние.
-            // Если намотку в ядре однажды поправят, эту строку надо вернуть на
-            // BackFaceCulling.
+            // The cull side here is the OPPOSITE of the usual. The shell is built by
+            // the core (core/stock_sim, stockShellVertices), and the winding of its
+            // pentagons is such that the right normal points INTO the box; this buffer
+            // is checked by the stockshell case of the stock_sim_probe probe and must
+            // not be changed. With BackFaceCulling it was not the far walls that were
+            // culled but the NEAR ones: the three faces looking at the camera
+            // disappeared, and through them the floor, the reference part skin and the
+            // toolpath lines read - the very complaint about the see-through side face
+            // of the billet. Measurement on 1024x600 frames (Test_model, view with the
+            // cut field, neither toolpath lines nor skin): BackFaceCulling vs
+            // FrontFaceCulling - 13990 pixels on the billet wall, that is, the near
+            // wall was removed entirely, and in its place the floor and the reference
+            // part skin read. FrontFaceCulling removes the far faces (the depth buffer
+            // hides them anyway) and keeps the near ones. If the winding in the core is
+            // ever fixed, this line must go back to BackFaceCulling.
             //
-            // Цвет и светлота - те же, что у верха поля: тот же необработанный
-            // металл (stockRawColor) и та же лампа слитка, но нормаль грани
-            // считается здесь, в вершинном шейдере, из положения вершины
-            // (stockshell.vert): буфер оболочки - одни позиции, его сверяет
-            // случай stockshell пробника (30 вершин по три числа), менять его
-            // нельзя. Прежде оболочка шла совсем без света (у материала не было
-            // нормали) и все стенки были залиты одним #B79A55 - отсюда и жалоба
-            // на странный цвет боковых граней.
-            // Верх стенки обрезается по полю высот (stockshell.frag): стенка
-            // стоит на габарите и не знала бы, что инструмент снял металл через
-            // кромку. Поле и его габарит приходят сюда теми же числами, что у
-            // верха: габарит (fieldMin - низ угла, fieldTopMm - верх заготовки),
-            // шаг (fieldCellMm), узлы (fieldCount) и сама текстура (stockField).
-            // Полупрозрачный вид (V, CNC_STOCK_GHOST) - как у верха поля
-            // (комментарий там): та же плотность и та же запись глубины.
-            // Инструмент внутри виден и так: резец, оправка и линии УП идут
-            // «всегда вперёд» (depthBias -50000) и рисуются поверх слитка.
+            // Color and tone are the same as at the field top: the same raw metal
+            // (stockRawColor) and the same billet lamp, but the face normal is computed
+            // here, in the vertex shader, from the vertex position (stockshell.vert):
+            // the shell buffer is positions only, it is checked by the stockshell case
+            // of the probe (30 vertices of three numbers each), and must not be
+            // changed. Formerly the shell went with no light at all (the material had
+            // no normal) and all walls were flooded with one #B79A55 - hence the
+            // complaint about the strange color of the side faces.
+            // The wall top is clipped by the height field (stockshell.frag): the wall
+            // stands on the bounding box and would not know that the tool removed metal
+            // over the edge. The field and its bounding box arrive here with the same
+            // numbers as at the top: the bounding box (fieldMin - the corner bottom,
+            // fieldTopMm - the stock top), the step (fieldCellMm), the nodes
+            // (fieldCount) and the texture itself (stockField).
+            // The translucent view (V, CNC_STOCK_GHOST) - as at the field top (the
+            // comment there): the same density and the same depth write.
+            // The tool inside is visible anyway: the cutter, the holder and the
+            // toolpath lines go "always forward" (depthBias -50000) and are drawn over
+            // the billet.
             Model {
                 geometry: stockShell
                 materials: CustomMaterial {
@@ -699,11 +710,11 @@ Item {
                     property vector3d stockLamp: root.stockLamp
                     property real stockTone: root.stockTone
                     property real stockAlpha: root.stockGhost ? root.stockGhostAlpha : 1.0
-                    // Тот же сдвиг глубины к глазу, что у верха поля: наружные
-                    // стенки слитка совпадают с наружными гранями детали, и без
-                    // сдвига совпавший пиксель решал шум растеризатора - стенка
-                    // уходила в кожу детали, а вдоль её верха шла полоса
-                    // (разбор и замеры - у свойства stockDepthOffset).
+                    // The same depth offset toward the eye as at the field top: the outer
+                    // walls of the billet coincide with the outer faces of the part, and
+                    // without the offset the coinciding pixel was decided by rasterizer
+                    // noise - the wall went into the part skin, and along its top a band
+                    // ran (analysis and measurements - at the stockDepthOffset property).
                     property real depthOffset: root.stockDepthOffset
                     property vector3d fieldMin: Qt.vector3d(root.stockFieldBounds[0],
                                                             root.stockFieldBounds[2],
@@ -712,8 +723,8 @@ Item {
                     property real fieldCellMm: path ? path.stockCellMm : 0.5
                     property vector2d fieldCount: Qt.vector2d(path ? path.stockCountX : 0,
                                                              path ? path.stockCountY : 0)
-                    // Вид остатка: обрезка верха стенки берёт глубину той же
-                    // выборкой, что и нарисованный верх (stockshell.frag).
+                    // Stock view: the wall-top clipping takes the depth with the same
+                    // sample as the drawn top (stockshell.frag).
                     property int stockView: root.stockView
                     property TextureInput stockField: TextureInput {
                         texture: Texture {
@@ -723,9 +734,9 @@ Item {
                             mipFilter: Texture.None
                         }
                     }
-                    // Границы стенок в машинных мм (габарит плюс зазоры): те же
-                    // числа, из которых собрана геометрия оболочки, стоят рядом
-                    // с ней - у узла остатка материала.
+                    // Wall bounds in machine mm (bounding box plus gaps): the same
+                    // numbers the shell geometry is built from stand next to it - at the
+                    // material stock node.
                     property vector3d shellCenter: root.shellCenter
                     property vector3d shellHalf: root.shellHalf
                     sourceBlend: root.stockGhost ? CustomMaterial.SrcAlpha : CustomMaterial.NoBlend
@@ -740,20 +751,22 @@ Item {
             }
         }
 
-        // ---- Прежняя коробка: сравнение с полем и вид, пока поля нет ----
-        // Видна, когда поля нет (состояние не ready или уровень safe) либо её
-        // включили нарочно (клавиша B, CNC_STOCK_BOX). Прежний вид: приподнята
-        // против детали на доли пикселя (иначе совпадающие грани мерцают при
-        // облёте), полупрозрачная (opacity 0.2) и глубину не пишет, поэтому по
-        // ней видно траекторию внутри.
+        // ---- The former box: comparison with the field and the view while there
+        // is no field ----
+        // Visible when there is no field (state not ready or safe level) or it was
+        // turned on deliberately (key B, CNC_STOCK_BOX). The former look: raised
+        // against the part by fractions of a pixel (otherwise coinciding faces
+        // flicker while orbiting), translucent (opacity 0.2) and not writing depth,
+        // so the trajectory inside is visible through it.
         Model {
             visible: root.showStockVisible && (path !== null) && path.hasStock
                      && !root.stockFieldDrawn
             source: "#Cube"
-        // Микро-сдвиг против z-fighting (только порядок глубины, около 1.5 px):
-        // грани заготовки совпадают с необработанными гранями детали, а верх и
-        // низ лежат в её плоскостях - совпадающие поверхности мерцают при облёте.
-        // Габарит заготовки (коллизии, зазоры) от этого не меняется, он точный.
+        // Micro-offset against z-fighting (depth order only, about 1.5 px): the
+        // stock faces coincide with the raw faces of the part, and the top and
+        // bottom lie in its planes - coinciding surfaces flicker while orbiting.
+        // The stock bounding box (collisions, gaps) does not change from this, it is
+        // exact.
         readonly property real gapMm: 1.5 * root.outlineMmPerPx
         readonly property real topGapMm: 1.0 * root.outlineMmPerPx
         readonly property real botGapMm: 1.0 * root.outlineMmPerPx
@@ -769,10 +782,10 @@ Item {
                : Qt.vector3d(0.001, 0.001, 0.001)
             opacity: 0.2
             materials: [
-                // Габаритная оболочка, а не геометрия: коробка охватывает
-                // деталь, поэтому с непрозрачной кожей её дальние грани теряли
-                // тест глубины и обводка тускнела. Как и линии УП, она
-                // собирается всегда вперёд (глубину не пишет).
+                // A bounding shell, not geometry: the box encloses the part, so with
+                // an opaque skin its far faces lost the depth test and the outline
+                // dimmed. Like the toolpath lines, it is always composited forward
+                // (does not write depth).
                 DefaultMaterial {
                     lighting: DefaultMaterial.NoLighting
                     diffuseColor: "#8A93A0"
@@ -792,16 +805,16 @@ Item {
             visible: root.showPartVisible
             rotation: path ? path.partRotation : Qt.quaternion(1, 0, 0, 0)
             position: path ? path.partPosition : Qt.vector3d(0, 0, 0)
-            // Сплошная кожа - вид детали по умолчанию (partMode 0). Материал
-            // строго Opaque и пишет глубину: только тогда растеризатор закрывает
-            // СКРЫТЫЕ рёбра и задние грани. Прежний Blend с opacity 1.0 шёл в
-            // прозрачную очередь, глубину не писал - задние грани и скрытые
-            // кромки просвечивали серым. alphaMode в рантайме не
-            // перекомпилируется, поэтому режимы разведены двумя моделями
-            // (visible), а не сменой свойства на одном материале.
-            // Клавиша K снимает кожу целиком (тело), оставляя рёбра и
-            // касательные: так на снятом металле остаётся только справочный
-            // каркас детали.
+            // Solid skin - the default part view (partMode 0). The material is
+            // strictly Opaque and writes depth: only then does the rasterizer hide the
+            // HIDDEN edges and back faces. The former Blend with opacity 1.0 went to
+            // the transparent queue and did not write depth - back faces and hidden
+            // edges showed through as gray. alphaMode is not recompiled at runtime, so
+            // the modes are split into two models (visible), not by changing a property
+            // on one material.
+            // Key K removes the skin entirely (the body), leaving the edges and
+            // tangents: that way on the cut metal only the reference part wireframe
+            // remains.
             Model {
                 visible: root.partSkinSolid
                 geometry: path ? path.partGeometry : null
@@ -816,13 +829,13 @@ Item {
                     }
                 ]
             }
-            // Прозрачная деталь (partMode 1): та же кожа полупрозрачной, глубину
-            // не пишет - сквозь неё видны снятый металл, скрытые кромки и то, что
-            // за деталью. Плотность - свойство partSkinOpacity. Прежний рентген
-            // (клавиша X) и справочная кожа симуляции слились сюда: тот же вид,
-            // одна клавиша, одна плотность (разбор - у partMode). Цена названа
-            // прямо: смешение идёт вне очереди по глубине и стоит кадра, поэтому
-            // это вид «посмотреть внутрь», а не рабочий.
+            // Transparent part (partMode 1): the same skin translucent, it does not
+            // write depth - through it the cut metal, hidden edges and what is behind
+            // the part are visible. Density - the partSkinOpacity property. The former
+            // x-ray (key X) and the simulation's reference skin merged here: the same
+            // view, one key, one density (analysis - at partMode). The cost is named
+            // directly: blending happens out of depth order and costs a frame, so this
+            // is a "look inside" view, not a working one.
             Model {
                 visible: root.partSkinClear
                 geometry: path ? path.partGeometry : null
@@ -841,10 +854,10 @@ Item {
             Model {
                 visible: root.showBrepEdges
                 geometry: path ? path.hlrEdges : null
-                // Малый bias + cam-float (смещение к глазу в set_segments):
-                // видимые рёбра чёткие, скрытые отсекаются кожей.
-                // -50000 (передний слой) давал ложный «рентген» детали.
-                // safe - глубже (quality): coarse-точность программного растра.
+                // Small bias + cam-float (offset toward the eye in set_segments):
+                // visible edges are crisp, hidden ones are culled by the skin.
+                // -50000 (front layer) gave a false "x-ray" of the part.
+                // safe - deeper (quality): coarse precision of the software rasterizer.
                 depthBias: root.edgeDepthBias
                 // Constant-width screen-space ribbons (1.5 px, distance-field AA):
                 // crisp at any zoom (three.js LineMaterial style: alpha falls off
@@ -857,7 +870,7 @@ Item {
                     property real viewportH: view3d.height
                     property color edgeColor: "#000000"
                     property vector3d eyeRaw: path ? path.eyeRaw : Qt.vector3d(0, 0, 0)
-                    property real camFloatMm: 0.0   // сдвиг к глазу в stepledges.vert
+                    property real camFloatMm: 0.0   // offset toward the eye in stepledges.vert
                     cullMode: Material.NoCulling
                     vertexShader: "stepledges.vert"
                     fragmentShader: "stepledges.frag"
@@ -866,10 +879,10 @@ Item {
             Model {
                 visible: root.showTangentLines
                 geometry: path ? path.hlrTangents : null
-                // Силуэт по мешу (ребро на горизонте поверхности): нужен тест
-                // глубины, иначе дальние участки горизонта рисуются сквозь тело
-                // и сдваиваются со швами. Малый bias + cam-float держат их
-                // чёткими на видимых стенках; safe - глубже (quality).
+                // Silhouette from the mesh (an edge at the surface horizon): a depth
+                // test is needed, otherwise the far parts of the horizon are drawn
+                // through the body and double with the seams. A small bias + cam-float
+                // keep them crisp on visible walls; safe - deeper (quality).
                 depthBias: root.edgeDepthBias
                 // Constant-width screen-space ribbons (1.5 px, distance-field AA):
                 // crisp at any zoom (three.js LineMaterial style: alpha falls off
@@ -882,7 +895,7 @@ Item {
                     property real viewportH: view3d.height
                     property color edgeColor: "#000000"
                     property vector3d eyeRaw: path ? path.eyeRaw : Qt.vector3d(0, 0, 0)
-                    property real camFloatMm: 0.0   // сдвиг к глазу в stepledges.vert
+                    property real camFloatMm: 0.0   // offset toward the eye in stepledges.vert
                     cullMode: Material.NoCulling
                     vertexShader: "stepledges.vert"
                     fragmentShader: "stepledges.frag"
@@ -910,11 +923,12 @@ Item {
         // ---- G0 rapids (green); traversed part hidden during playback, far
         // part clipped and faded out when length limiting is on.
         // depthBias -50000: composite last, above the translucent part ----
-        // Ширины у линий УП нет: геометрия - аппаратные GL_LINES (cpp/qt/gv_geometry,
-        // PrimitiveType::Lines), то есть ровно 1 px, и ручки вроде lineWidthPx у
-        // них не завести, не переведя траекторию в ленты. Толще они читаются на
-        // low/safe: там сцена рисуется в логических пикселях (renderTextureWidth)
-        // и растягивается на экран, и один пиксель ложится на больше физических.
+        // The toolpath lines have no width: the geometry is hardware GL_LINES
+        // (cpp/qt/gv_geometry, PrimitiveType::Lines), that is exactly 1 px, and a
+        // lineWidthPx-like knob cannot be added to them without turning the
+        // trajectory into ribbons. They read thicker on low/safe: there the scene is
+        // drawn in logical pixels (renderTextureWidth) and stretched to the screen, so
+        // one pixel lands on more physical ones.
         Model {
             visible: root.showToolpath
             geometry: path ? path.rapidGeometry : null
@@ -975,12 +989,12 @@ Item {
             // the cutter stick-out (toolLen).
             readonly property real holderBase: (path && path.holderGauge > 0) ? path.holderGauge : toolLen
 
-            // Резец собран из UI_TOOL (плоский / сферический / радиусный / фаска / сверло...)
+            // The cutter is assembled from UI_TOOL (flat / ball / bull-nose / chamfer / drill...)
             Model {
-                // depthBias -50000 (всегда вперёд) оставлен намеренно: резец стоит
-                // ВНУТРИ заготовки и детали, и тест глубины спрятал бы его за их
-                // кожей. Уровень материала (PrincipledMaterial) при этом тот же,
-                // что у детали, - резец читается её металлом под тем же светом.
+                // depthBias -50000 (always forward) is kept deliberately: the cutter
+                // stands INSIDE the stock and the part, and the depth test would hide it
+                // behind their skin. The material level (PrincipledMaterial) is the same
+                // as at the part - the cutter reads as its metal under the same light.
                 depthBias: -50000
                 geometry: path ? path.toolGeometry : null
                 materials: [
@@ -1014,10 +1028,10 @@ Item {
                     }
                 ]
             }
-            // Рёбра резца: кольца профиля и продольные образующие - те же ленты
-            // stepledges, что у детали (постоянная ширина в px, AA, depth-тест).
-            // depthBias -50000: резец внутри заготовки и детали, depth-тест его
-            // скрыл бы (см. комментарий у тела).
+            // Cutter edges: profile rings and longitudinal generatrices - the same
+            // stepledges ribbons as at the part (constant width in px, AA, depth test).
+            // depthBias -50000: the cutter is inside the stock and the part, the depth
+            // test would hide it (see the comment at the body).
             Model {
                 depthBias: -50000
                 geometry: path ? path.toolProfileEdges : null
@@ -1056,8 +1070,9 @@ Item {
                     }
                 ]
             }
-            // Рёбра оправки: кольца профиля и продольные образующие - лентами
-            // stepledges, как у детали и резца (см. комментарий у toolProfileEdges).
+            // Holder edges: profile rings and longitudinal generatrices - with
+            // stepledges ribbons, as at the part and the cutter (see the comment at
+            // toolProfileEdges).
             Model {
                 depthBias: -50000
                 geometry: path ? path.holderProfileEdges : null
@@ -1077,10 +1092,10 @@ Item {
                 }
             }
             Model {
-                // depthBias -50000 (всегда вперёд): оправка стоит внутри
-                // заготовки; тест глубины скрыл бы её за кожей. Материал - как у
-                // детали, тот же свет сцены (PrincipledMaterial сам берёт
-                // DirectionalLight'ы сцены).
+                // depthBias -50000 (always forward): the holder stands inside the
+                // stock; the depth test would hide it behind the skin. The material is as
+                // at the part, the same scene light (PrincipledMaterial picks up the
+                // scene DirectionalLights itself).
                 depthBias: -50000
                 geometry: path ? path.holderGeometry : null
                 position: Qt.vector3d(0, toolNode.holderBase, 0)
@@ -1182,51 +1197,55 @@ Item {
     }
 
     // ---- display modes ----
-    property bool showStockVisible: true     // показывать заготовку
-    // Чем рисуется заготовка. Поле - когда контроллер опубликовал готовое поле
-    // (stockHasField) и уровень не safe: у safe поле рисуется грубейшим узлом и
-    // дороже всего кадра (DESIGN.md, разд. 13). Признак поля, а не состояние
-    // stockSimState: пока считается новое поле (тик, перемотка), на экране
-    // остаётся прежнее целое, и рисование не должно на это время пропадать.
-    // Коробка - пока поля нет (первый проход), после отказа (инструмент картой
-    // не выражается) и по клавише B / CNC_STOCK_BOX=1 для сравнения.
-    property bool stockPlainBox: false       // коробка вместо поля (B, CNC_STOCK_BOX)
-    // Заготовка полупрозрачной: клавиша V, CNC_STOCK_GHOST до старта (те же две
-    // ручки, что у прочих видов). По умолчанию ВКЛЮЧЕНО - так просил оператор
-    // (дважды): стеклянный слиток читается как материал, сквозь него видны
-    // карман, деталь и инструмент. Плата: по цвету слитка снятое и нетронутое
-    // металл различают хуже, чем у сплошного (смешение с фоном), поэтому
-    // плотность поднята с 0.35 до 0.90 - это доля цвета материала в пикселе;
-    // замер на кадре 1024x600 (Test_model, кожа и линии сняты): медный съём
-    // #BD5215 под стеклом читается как #DA7A44, нетронутая охра #BEA05C как
-    // #D3B87C при 0.90, а при 0.62 те же точки давали #FFCFAA и #F2DFB5 -
-    // почти фон. Сквозь 0.90 видно нутро и инструмент, то есть вид остался
-    // стеклом, а не сплошным. Сплошной вид - на той же клавише V и через
-    // CNC_STOCK_GHOST=0 до старта.
-    // Плотность одна на верх поля и на стенки: слиток читается одним телом.
-    // Сравнение с коробкой (B, CNC_STOCK_BOX) не путать: там материал уходил в
-    // коробку без поля, здесь - тот же снятый металл, но сквозь него видно.
+    property bool showStockVisible: true     // show the stock
+    // What the stock is drawn with. The field - when the controller has published a
+    // ready field (stockHasField) and the level is not safe: on safe the field is
+    // drawn with the coarsest node and costs the most per frame (DESIGN.md, sec. 13).
+    // The field's own flag, not the stockSimState state: while a new field is
+    // computed (tick, seek), the former whole stays on screen, and the drawing must
+    // not disappear for that time.
+    // The box - while there is no field (first pass), after a refusal (the tool
+    // cannot be expressed by the map) and via key B / CNC_STOCK_BOX=1 for comparison.
+    property bool stockPlainBox: false       // box instead of the field (B, CNC_STOCK_BOX)
+    // Stock translucent: key V, CNC_STOCK_GHOST before start (the same two knobs as
+    // the other views). ON by default - the operator asked for it (twice): the glass
+    // billet reads as material, through it the pocket, the part and the tool are
+    // visible. The price: by the billet color, cut and untouched metal are
+    // distinguished worse than with solid (blending with the background), so the
+    // density is raised from 0.35 to 0.90 - this is the share of the material color
+    // in a pixel; measurement on a 1024x600 frame (Test_model, skin and lines off):
+    // copper cut #BD5215 under glass reads as #DA7A44, untouched ochre #BEA05C as
+    // #D3B87C at 0.90, while at 0.62 the same points gave #FFCFAA and #F2DFB5 -
+    // almost the background. Through 0.90 the interior and the tool are visible, that
+    // is, the view stayed glass, not solid. The solid view - on the same key V and via
+    // CNC_STOCK_GHOST=0 before start.
+    // One density for the field top and the walls: the billet reads as one body.
+    // Do not confuse with the box comparison (B, CNC_STOCK_BOX): there the material
+    // went into the box without a field, here it is the same cut metal, but it is
+    // visible through it.
     property bool stockGhost: true
     readonly property real stockGhostAlpha: 0.90
-    // Вид остатка заготовки: 0 - точный по узлам поля, 1 - гладкий (меш
-    // дроблённый, высота билинейная), 2 - скруглённый (глубина узла - среднее по
-    // окрестности). Один переключатель на все три: клавиша R листает по кругу,
-    // CNC_STOCK_VIEW ставит вид до старта, а CNC_STOCK_ROUND=1 остаётся
-    // сокращением для третьего (прежняя ручка скругления).
-    // По умолчанию гладкий: им сняты обе жалобы на рваность - полоса вдоль
-    // кромки ступени и мозаика мелких граней на стенке. Цены: у точного вида
-    // полоса в клетку на верху у кромки и грани меша; у скруглённого кромка реза
-    // уезжает вглубь до узла (0.5 мм) и мелкое окно теряет до половины глубины;
-    // у гладкого нарисованная поверхность расходится с полем до четверти
-    // кручения клетки, кромка реза скругляется на полклетки, а меш крупнее в
-    // subdiv^2 раз. Разбор - в stocksurface.vert.
+    // Stock view: 0 - exact by the field nodes, 1 - smooth (mesh subdivided, height
+    // bilinear), 2 - rounded (the node depth is the average over its neighborhood).
+    // One switch for all three: key R cycles, CNC_STOCK_VIEW sets the view before
+    // start, and CNC_STOCK_ROUND=1 remains a shorthand for the third (the former
+    // rounding knob).
+    // Smooth by default: it removed both complaints about raggedness - the band along
+    // the step edge and the mosaic of small facets on the wall. Costs: with the exact
+    // view, a checkered band at the top near the edge and mesh facets; with the
+    // rounded one, the cut edge goes deep up to a node (0.5 mm) and a small window
+    // loses up to half its depth; with the smooth one, the drawn surface diverges from
+    // the field by up to a quarter of the cell twist, the cut edge rounds by half a
+    // cell, and the mesh is larger by subdiv^2 times. The breakdown - in
+    // stocksurface.vert.
     property int stockView: 1
-    // Дробление клетки поля в рисуемом меше: только у гладкого вида. 2 - потому
-    // что полосы и мозаика живут на масштабе клетки, и вдвое мелкой клетки
-    // хватает: вершина встаёт и в середине клетки, где и решается спор о стороне
-    // уступа (stocksurface.vert). Цена - вчетверо больше вершин и треугольников
-    // (замер: 60501 узел поля и 120000 треугольников против 241001 вершины и
-    // 480000 треугольников; поле, его текстура и сверки не меняются).
+    // Subdivision of the field cell in the drawn mesh: only for the smooth view. 2 -
+    // because the bands and the mosaic live at the cell scale, and a twice finer cell
+    // is enough: a vertex also lands in the middle of the cell, where the fight over
+    // the side of the step is decided (stocksurface.vert). The cost is four times more
+    // vertices and triangles (measurement: 60501 field nodes and 120000 triangles vs
+    // 241001 vertices and 480000 triangles; the field, its texture and the checks do
+    // not change).
     readonly property int stockSubdiv: root.stockView === 1 ? 2 : 1
     readonly property var stockViewNames: ["точный", "гладкий", "скруглённый"]
     readonly property string stockViewName: root.stockViewNames[root.stockView]
@@ -1234,44 +1253,45 @@ Item {
     readonly property bool stockFieldDrawn: !root.stockPlainBox && !root.qualitySafe
         && path !== null && path.hasStock && path.stockHasField
 
-    // Сдвиг глубины остатка к глазу: и верх поля (stocksurface.vert), и стенки с
-    // дном (stockshell.vert) уводятся к камере на эту долю NDC
-    // (clip.z += offset * clip.w). Знак минус - снятый металл выигрывает
-    // совпавший пиксель у кожи детали: у готовой программы снятая поверхность и
-    // есть кожа, а кожа - эталон, по которому читают съём.
-    // Одна ручка на верх и стенки, потому что у заготовки габарит равен габариту
-    // детали: совпадают не только дно кармана с кожей, но и наружные стенки
-    // слитка с наружными гранями детали. Сдвиг был только у верха, и стенки
-    // решал шум растеризатора - наружная стенка уходила в кожу детали целиком, а
-    // полоса вдоль её верха шла полосами.
-    // Величина 3e-5 NDC. Замер на кадре 1024x600 (Test_model, сплошная кожа,
-    // линии УП сняты, камера yaw 35 pitch -32), область слитка 66126 px,
-    // пиксели спора (кожа видна там, где её нет без кожи): 1e-6 - 803, 1e-5 -
-    // 365, 3e-5 - 7, 1e-4 - 7. То есть спор кончается между 1e-5 и 3e-5: это и
-    // есть его размах. Размах не в шуме float32, а в геометрии: стенка реза в
-    // поле - наклон в полклетки (0.5 мм при узле 0.5 мм), а стенка детали
-    // вертикальна, и они пересекаются. 3e-5 на дистанции облёта 341 мм - около
-    // 1.0 мм (341^2 / 3.41 * 3e-5), то есть 1 % габарита слитка 100x160x30 мм.
-    // Больше не берут, потому что сдвиг здесь постоянен в NDC, а значит в
-    // миллиметрах растёт с дистанцией: 3e-5 - 1.0 мм на 341 и 2.7 мм на 900, а
-    // 1e-4 - 3.4 мм на 341 без выигрыша в споре (те же 7 px). Сдвиг экранную
-    // позицию не меняет (только clip z), поэтому видно его лишь там, где он
-    // решает спор, - обводка детали под сдвинутый остаток не уходит (её ленты
-    // сдвинуты сильнее, edgePolyOffset 6e-5).
+    // Depth offset of the stock toward the eye: both the field top
+    // (stocksurface.vert) and the walls with the bottom (stockshell.vert) are moved
+    // toward the camera by this fraction of NDC (clip.z += offset * clip.w). The minus
+    // sign - the cut metal wins the coinciding pixel from the part skin: in a finished
+    // program the cut surface is the skin, and the skin is the reference by which the
+    // cut is read.
+    // One knob for the top and the walls, because the stock bounding box equals the
+    // part bounding box: not only the pocket bottom coincides with the skin, but also
+    // the outer walls of the billet with the outer faces of the part. The offset was
+    // only at the top, and the walls were decided by rasterizer noise - the outer wall
+    // went entirely into the part skin, and the band along its top ran in stripes.
+    // The magnitude is 3e-5 NDC. Measurement on a 1024x600 frame (Test_model, solid
+    // skin, toolpath lines off, camera yaw 35 pitch -32), billet area 66126 px,
+    // contested pixels (the skin is visible where it would not be without the skin):
+    // 1e-6 - 803, 1e-5 - 365, 3e-5 - 7, 1e-4 - 7. That is, the fight ends between 1e-5
+    // and 3e-5: that is its span. The span is not in float32 noise but in the geometry:
+    // the cut wall in the field is inclined by half a cell (0.5 mm at a 0.5 mm node),
+    // while the part wall is vertical, and they intersect. 3e-5 at an orbit distance of
+    // 341 mm is about 1.0 mm (341^2 / 3.41 * 3e-5), that is, 1 % of the 100x160x30 mm
+    // billet bounding box. No more is taken, because the offset here is constant in
+    // NDC, and hence in millimeters grows with distance: 3e-5 - 1.0 mm at 341 and
+    // 2.7 mm at 900, while 1e-4 - 3.4 mm at 341 with no gain in the fight (the same
+    // 7 px). The offset does not change the screen position (clip z only), so it is
+    // visible only where it settles the fight - the part outline does not go under the
+    // shifted stock (its ribbons are offset more, edgePolyOffset 6e-5).
     readonly property real stockDepthOffset: -3e-5
 
-    // ---- Палитра остатка материала: два цвета и пресеты для подбора контраста ----
-    // Поле отвечает на один вопрос - "где уже снято": нетронутый верх одним
-    // цветом, снятый металл другим. Пресеты подобраны под соседей по экрану -
-    // кожу детали #B9BEC4 (светлеет светом до #E5E6E5), зелёный быстрый ход
-    // #1D9247, синий рабочий #0362BB, чёрные рёбра, серо-синюю сетку пола
-    // #C9CED4 и белый фон #FCFDFF, - и друг под друга: у "светлое-тёмное"
-    // ступени разведены по светлоте (верх почти белый, снятый металл почти
-    // чёрный), у "жёлтый-фиолетовый" и "бирюза-киноварь" - по дополнительному
-    // тону (верх и снятый металл на противоположных сторонах круга).
-    // Клавиша C листает пресеты вживую; CNC_STOCK_RAW и CNC_STOCK_CUT ставят
-    // свои цвета до старта (cpp/viewer/main.cpp): цвета тогда стоят как заданы,
-    // а пресет остаётся тем, что был.
+    // ---- Material stock palette: two colors and presets for tuning contrast ----
+    // The field answers one question - "where it is already cut": the untouched top
+    // in one color, the cut metal in another. The presets are tuned to their on-screen
+    // neighbors - the part skin #B9BEC4 (brightened by light to #E5E6E5), the green
+    // rapid #1D9247, the blue feed #0362BB, the black edges, the gray-blue floor grid
+    // #C9CED4 and the white background #FCFDFF - and to each other: in "light-dark" the
+    // steps are separated by tone (the top is almost white, the cut metal almost
+    // black), in "yellow-violet" and "turquoise-cinnabar" by the complementary hue
+    // (the top and the cut metal on opposite sides of the wheel).
+    // Key C cycles the presets live; CNC_STOCK_RAW and CNC_STOCK_CUT set their own
+    // colors before start (cpp/viewer/main.cpp): the colors then stand as given, and
+    // the preset stays what it was.
     property int stockPreset: 0
     readonly property var stockPresets: [
         { name: "охра-медь",          raw: "#C3A45E", cut: "#C9571A" },
@@ -1282,23 +1302,24 @@ Item {
     property color stockRawColor: stockPresets[stockPreset].raw
     property color stockCutColor: stockPresets[stockPreset].cut
 
-    // ---- Лампа слитка: своя светлота вместо света сцены ----
-    // Свет сцены настроен под кожу детали (грани почти вертикальные), и на
-    // слитке дно кармана выходило темнее стенки (замер в stocksurface.vert:
-    // #B34B10 против #C75414, 0.88) - карман читался конусом. Поэтому светлота
-    // слитка (верх поля и стенки - stocksurface.vert и stockshell.vert) берётся
-    // от нормали: ступень тона плюс одно направление. Лампа - в машинных осях
-    // (X, Y, Z): сверху и со стороны камеры (машинные +X, -Y), поэтому видимые
-    // стенки светлее невидимых; тон 0.35 - ступень невидимой стенки, верх
-    // получает 0.95. Замер по кадру 1024x600 (Test_model, линии УП и кожа
-    // сняты, пресет по умолчанию): нетронутый верх #BEA05C, дно кармана
-    // #C45516, ближняя стенка кармана #7D330A, стенки слитка #907944 и #967E47
-    // - дно светлее ближней стенки в 1.57 раза. Плоский верх и плоское дно
-    // кармана получают ровно одну светлоту: их различает цвет палитры.
+    // ---- Billet lamp: its own tone instead of the scene light ----
+    // The scene light is tuned for the part skin (faces almost vertical), and on the
+    // billet the pocket bottom came out darker than the wall (measurement in
+    // stocksurface.vert: #B34B10 vs #C75414, 0.88) - the pocket read as a cone.
+    // Therefore the billet tone (field top and walls - stocksurface.vert and
+    // stockshell.vert) is taken from the normal: a tone step plus one direction. The
+    // lamp is in machine axes (X, Y, Z): from above and from the camera side (machine
+    // +X, -Y), so visible walls are lighter than invisible ones; tone 0.35 - the step
+    // of the invisible wall, the top gets 0.95. Measurement on a 1024x600 frame
+    // (Test_model, toolpath lines and skin off, default preset): untouched top
+    // #BEA05C, pocket bottom #C45516, near pocket wall #7D330A, billet walls #907944
+    // and #967E47 - the bottom is 1.57 times lighter than the near wall. A flat top
+    // and a flat pocket bottom get exactly one tone: the palette color distinguishes
+    // them.
     property vector3d stockLamp: Qt.vector3d(0.9, -0.55, 2.4)
     property real stockTone: 0.35
 
-    // Пресет задаёт оба цвета сразу.
+    // The preset sets both colors at once.
     function applyStockPreset(index) {
         var count = root.stockPresets.length
         root.stockPreset = ((index % count) + count) % count
@@ -1307,64 +1328,68 @@ Item {
     }
     function cycleStockPreset() { root.applyStockPreset(root.stockPreset + 1) }
 
-    // ---- Деталь: сплошная -> прозрачная -> скрыта (клавиша M) ----
-    // Вид детали: 0 - сплошная кожа, 1 - прозрачная кожа, 2 - деталь скрыта
-    // целиком (и кожа, и рёбра, и касательные). Один переключатель на три
-    // положения: клавиша M листает по кругу, CNC_PART_MODE ставит вид до старта
-    // (cpp/viewer/main.cpp). Это ЕДИНСТВЕННЫЙ переключатель вида детали: прежний
-    // рентген (клавиша X, свойство xray) и справочная кожа симуляции
-    // (partSkinGhost) сведены сюда - по ним нельзя было понять, какой вид сейчас
-    // и чем он отличается от соседнего, а прозрачная кожа делает то же, что делал
-    // рентген.
-    // По умолчанию сплошная - и это не вкус: деталь - эталон, по которому читают
-    // снятый металл, а прозрачная кожа смешивает его цвет со своим и глубину реза
-    // по картинке уже не измерить. Вид детали не зависит ни от заготовки, ни от
-    // поля съёма: правило «кожа уходит в призрак, пока на экране поле» отменено,
-    // потому что оно делало деталь полупрозрачной без спроса, а снятый металл и без
-    // него читается - поверхность съёма идёт к глазу на 3e-5 NDC
-    // (stocksurface.vert, свойство stockDepthOffset): совпавший пиксель
-    // выигрывает снятый металл, а не кожа. Замер при прежней величине сдвига
-    // 1e-6 (кадр 1024x600, Test_model, стеклянная заготовка, линии УП сняты,
-    // камера yaw 35 pitch -32 dist 341): медного съёма 11967 пикселей со
-    // сплошной кожей против 12323 без кожи вовсе, нетронутого верха 9924 против
-    // 10678 - призрак для читаемости съёма не нужен. Знак сдвига при сплошной
-    // коже решает всё: с обратным знаком кожа выигрывает совпавший пиксель, верх
-    // уходит в неё, и медного съёма остаётся 4578 пикселей - поэтому сдвиг
-    // остаётся минусом (числа и их разбор - у stockDepthOffset).
-    // Прежний запрет рентгена на уровнях low/safe снят вместе с ним: прозрачную
-    // деталь ставит оператор, и молчащее нажатие читалось бы как поломка. Цена
-    // названа: полупрозрачная кожа - Blend-overdraw, на слабом GPU кадр дороже
-    // сплошного, поэтому это вид «посмотреть внутрь», а не рабочий.
+    // ---- Part: solid -> transparent -> hidden (key M) ----
+    // Part view: 0 - solid skin, 1 - transparent skin, 2 - the part is hidden
+    // entirely (both the skin and the edges and the tangents). One switch with three
+    // positions: key M cycles, CNC_PART_MODE sets the view before start
+    // (cpp/viewer/main.cpp). This is the ONLY part-view switch: the former x-ray
+    // (key X, the xray property) and the simulation's reference skin (partSkinGhost)
+    // are merged here - from them it was impossible to tell which view is current and
+    // how it differs from the neighboring one, while the transparent skin does what
+    // the x-ray did.
+    // Solid by default - and this is not taste: the part is the reference by which the
+    // cut metal is read, and the transparent skin blends its color with its own, and
+    // the cut depth can no longer be measured from the picture. The part view depends
+    // neither on the stock nor on the cut field: the rule "the skin goes to ghost while
+    // the field is on screen" is revoked, because it made the part translucent without
+    // asking, while the cut metal reads even without it - the cut surface goes toward
+    // the eye by 3e-5 NDC (stocksurface.vert, the stockDepthOffset property): the
+    // coinciding pixel is won by the cut metal, not by the skin. Measurement at the
+    // former offset magnitude 1e-6 (frame 1024x600, Test_model, glass stock, toolpath
+    // lines off, camera yaw 35 pitch -32 dist 341): copper cut 11967 pixels with the
+    // solid skin vs 12323 with no skin at all, untouched top 9924 vs 10678 - the ghost
+    // is not needed for the cut to be readable. The sign of the offset with the solid
+    // skin decides everything: with the opposite sign the skin wins the coinciding
+    // pixel, the top goes into it, and the copper cut is left with 4578 pixels -
+    // therefore the offset stays negative (the numbers and their breakdown - at
+    // stockDepthOffset).
+    // The former x-ray ban at the low/safe levels is lifted together with it: the
+    // transparent part is set by the operator, and a silent keypress would read as
+    // breakage. The cost is named: the translucent skin is Blend-overdraw, on a weak
+    // GPU the frame is more expensive than solid, so this is a "look inside" view, not
+    // a working one.
     property int partMode: 0
     readonly property var partModeNames: ["сплошная", "прозрачная", "скрыта"]
     readonly property string partModeName: root.partModeNames[root.partMode]
     function cyclePartMode() { root.partMode = (root.partMode + 1) % root.partModeNames.length }
-    // Прежний тумблер видимости детали: производное от вида, а не отдельное
-    // свойство - иначе два источника одного состояния могли бы разойтись.
+    // The former part visibility toggle: derived from the view, not a separate
+    // property - otherwise two sources of one state could diverge.
     readonly property bool showPartVisible: root.partMode < 2
-    // Кожа детали отдельно от рёбер: клавиша K (CNC_NO_PART_SKIN) снимает тело
-    // детали, оставляя справочный каркас - на снятом металле видно только его.
+    // The part skin separately from the edges: key K (CNC_NO_PART_SKIN) removes the
+    // part body, leaving the reference wireframe - on the cut metal only it is
+    // visible.
     property bool showPartSkin: true
-    // Какую из двух моделей кожи рисует узел детали. Правило одно - вид детали
-    // (partMode) и клавиша K: заготовка, поле съёма и уровень качества на него не
-    // влияют. Свойства вынесены наружу, потому что по ним вид и проверяют
-    // (keyprobe): сцена и проверка смотрят на одно, а не на два похожих условия.
+    // Which of the two skin models the part node draws. One rule - the part view
+    // (partMode) and key K: the stock, the cut field and the quality level do not
+    // affect it. The properties are exposed because it is them that the view is
+    // checked by (keyprobe): the scene and the check look at one thing, not at two
+    // similar conditions.
     readonly property bool partSkinSolid: root.showPartSkin && root.partMode === 0
     readonly property bool partSkinClear: root.showPartSkin && root.partMode === 1
-    // Плотность кожи: сплошная непрозрачна (1.0), прозрачная - 0.35. Замер по
-    // кадру 1024x600 (Test_model, медный съём без кожи #CA5614): при 0.22 он
-    // читается как #C37E53 - серый налёт съедал цвет, при 0.35 как #C57241;
-    // прежняя плотность призрака 0.15 осталась бы незамеченной нажатием, и вид
-    // выглядел бы молчащим.
+    // Skin density: solid is opaque (1.0), transparent - 0.35. Measurement on a
+    // 1024x600 frame (Test_model, copper cut without skin #CA5614): at 0.22 it reads as
+    // #C37E53 - a gray film ate the color, at 0.35 as #C57241; the former ghost density
+    // 0.15 would have gone unnoticed by a keypress, and the view would have looked
+    // silent.
     readonly property real partSkinOpacity: root.partMode === 1 ? 0.35 : 1.0
     property bool showAllCode: true          // true = whole code at once, false = limit draw distance
-    property bool showCollisions: true    // красные диски столкновений;
-                                          // off в render_probe - не
-                                          // заслоняют контур
-    // Линии УП отдельно от материала: клавиша G (CNC_NO_TOOLPATH) и кнопка
-    // «Линии УП» - чистый вид слитка, без траектории поверх него. Линии идут
-    // «всегда вперёд» (depthBias -50000), поэтому на сплошной заготовке они
-    // видны и сквозь неё; снятие линий и есть ответ на это.
+    property bool showCollisions: true    // red collision disks;
+                                          // off in render_probe - they do
+                                          // not obscure the outline
+    // Toolpath lines separately from the material: key G (CNC_NO_TOOLPATH) and the
+    // "Toolpath lines" button - a clean view of the billet, without the trajectory over
+    // it. The lines go "always forward" (depthBias -50000), so on a solid stock they
+    // are visible through it too; removing the lines is the answer to that.
     property bool showToolpath: true
 
     function togglePlay() {
@@ -1376,17 +1401,17 @@ Item {
     }
     function resetPath() { root.playing = false; root.pathDist = 0 }
 
-    // Силуэт детали и тела вращения (инструмент, оправка) пересчитывается по
-    // готовности детали и раз в отрисованный кадр при движении камеры (события
-    // копятся); скрытую деталь отсекает тест глубины GPU, а не этот слой.
-    // low/safe пересчитывают силуэт каждый silhouetteStep-й кадр (quality).
+    // The silhouette of the part and the solids of revolution (tool, holder) is
+    // recomputed on part readiness and once per rendered frame while the camera moves
+    // (events accumulate); the hidden part is culled by the GPU depth test, not by this
+    // layer. low/safe recompute the silhouette every silhouetteStep-th frame (quality).
     property bool tangentsPending: false
     property int silhouetteFrame: 0
     function refreshTangents() {
         if (!path)
             return
-        // Острие инструмента в кадре сцены: от него отсчитывается глаз силуэта
-        // тела вращения, поэтому оно идёт вместе с глазом камеры.
+        // The tool tip in the scene frame: the silhouette eye of the solid of
+        // revolution is measured from it, so it goes together with the camera eye.
         path.setToolTip(toolNode.position)
         path.refreshTangents(camera.position)
     }
@@ -1413,51 +1438,52 @@ Item {
     }
 
     // ---- Playback: Space = play/pause, Esc = reset to start ----
-    // ---- Hotkeys: S stock, M part view - один переключатель на три положения
-    // ----          (сплошная -> прозрачная -> скрыта; он же прежний рентген),
-    // ----          K part skin (тело детали без рёбер),
-    // ----          G toolpath lines (линии УП), L limit length, T stages,
+    // ---- Hotkeys: S stock, M part view - one switch with three positions
+    // ----          (solid -> transparent -> hidden; it is also the former x-ray),
+    // ----          K part skin (part body without edges),
+    // ----          G toolpath lines, L limit length, T stages,
     // ----          PgUp/PgDn switch stage, P play, E edges, D tangents,
-    // ----          F fps, Q - цикл качества (med -> low -> high -> safe),
-    // ----          B - прежняя коробка заготовки вместо поверхности съёма,
-    // ----          C - палитра слитка, R - вид остатка (точный/гладкий/скруглённый),
-    // ----          V - заготовка полупрозрачной (CNC_STOCK_GHOST).
-    // Раскладка не должна гасить горячие клавиши: на русской раскладке Qt сообщает
-    // для физической X код Key_Ch, а не Key_X, и буквенные ветки ниже не работают.
-    // Буквы сверяются по nativeScanCode - скан-коду физической клавиши, он от
-    // раскладки не зависит. nativeVirtualKey для этого не годится: QML-тип KeyEvent
-    // (QtQuick, qquickevents_p_p.h, класс QQuickKeyEvent) его не отдаёт вовсе, в
-    // обработчике Keys он всегда undefined.
-    // Измерено при CNC_KEY_DEBUG=1 (живой вьювер и проба build/viewer/keyprobe.exe),
-    // клавиши P S M L T E D F (X вьювер больше не обрабатывает - вид детали один):
-    //   русская раскладка: sc 25 31 50 38 20 18 32 33, key 1047 1067 1068 1044
-    //                      1045 1059 1042 1040 (символы з ы ь д е у в а);
-    //   латиница:          те же sc, key 80 83 77 76 84 69 68 70.
-    // Клавиши G и K сверены той же пробой (она печатает sc/key/cp/vk каждой) и
-    // берутся по физическому скан-коду, как остальные буквы: 0x22 и 0x25.
-    // Второе слагаемое - Qt.Key: клавиша без скан-кода и раскладки, где буква стоит
-    // на другом месте. Сочетания с Ctrl/Alt/Meta пропускаются только у букв: для них
-    // это команды приложения и переключатель раскладки, а не горячая клавиша вьювера;
-    // служебные клавиши (Space, Esc, стрелки, PgUp/PgDn) остаются как были - от
-    // раскладки они не зависят и сверяются по Qt.Key.
+    // ----          F fps, Q - quality cycle (med -> low -> high -> safe),
+    // ----          B - the former stock box instead of the cut surface,
+    // ----          C - billet palette, R - stock view (exact/smooth/rounded),
+    // ----          V - stock translucent (CNC_STOCK_GHOST).
+    // The layout must not kill the hotkeys: on the Russian layout Qt reports the code
+    // Key_Ch for the physical X, not Key_X, and the letter branches below do not work.
+    // The letters are matched by nativeScanCode - the scan code of the physical key, it
+    // does not depend on the layout. nativeVirtualKey is not suitable for this: the QML
+    // type KeyEvent (QtQuick, qquickevents_p_p.h, class QQuickKeyEvent) does not provide
+    // it at all, in the Keys handler it is always undefined.
+    // Measured with CNC_KEY_DEBUG=1 (the live viewer and the build/viewer/keyprobe.exe
+    // probe), keys P S M L T E D F (the viewer no longer handles X - the part view is
+    // one):
+    //   Russian layout: sc 25 31 50 38 20 18 32 33, key 1047 1067 1068 1044
+    //                   1045 1059 1042 1040 (symbols z y ' d e u v a);
+    //   Latin:          the same sc, key 80 83 77 76 84 69 68 70.
+    // The G and K keys are verified with the same probe (it prints sc/key/cp/vk of each)
+    // and are taken by physical scan code, like the other letters: 0x22 and 0x25.
+    // The second term is Qt.Key: a key without a scan code and a layout where the letter
+    // is in another place. Combinations with Ctrl/Alt/Meta are skipped only for letters:
+    // for them these are application commands and the layout switcher, not a viewer
+    // hotkey; service keys (Space, Esc, arrows, PgUp/PgDn) stay as they were - they do
+    // not depend on the layout and are matched by Qt.Key.
     function keyIs(ev, scan, qtkey) {
         if (ev.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))
             return false
         return ev.nativeScanCode === scan || ev.key === qtkey
     }
 
-    // Клавиша Q: цикл уровней med -> low -> high -> safe -> med. Механизм тот
-    // же, что у прочих букв: физический скан-код 0x10 или Qt.Key_Q на раскладке,
-    // где Q стоит в другом месте.
+    // Key Q: cycle of the levels med -> low -> high -> safe -> med. The mechanism is
+    // the same as for the other letters: the physical scan code 0x10 or Qt.Key_Q on a
+    // layout where Q is in another place.
     function cycleQuality() {
         var order = ["med", "low", "high", "safe"]
         var i = order.indexOf(root.quality)
         root.quality = order[(i + 1) % order.length]
     }
 
-    // Диагностика клавиатуры: печатает признаки события и состояние переключателей
-    // после обработки. По умолчанию молчит (строка на каждое нажатие - шум), включает
-    // точка входа переменной окружения CNC_KEY_DEBUG (cpp/viewer/main.cpp).
+    // Keyboard diagnostics: prints the event attributes and the toggle states after
+    // handling. Silent by default (a line per keypress is noise), enabled by the entry
+    // point via the CNC_KEY_DEBUG environment variable (cpp/viewer/main.cpp).
     property bool keyDebug: false
     function keyLogRaw(ev) {
         var cp = ev.text.length > 0 ? ev.text.codePointAt(0) : -1
@@ -1500,26 +1526,26 @@ Item {
             root.showStockVisible = !root.showStockVisible
             event.accepted = true
         } else if (root.keyIs(event, 0x32, Qt.Key_M)) {
-            // Вид детали по кругу: сплошная -> прозрачная -> скрыта. Тот же
-            // переключатель, что CNC_PART_MODE во входе (viewer/main.cpp), и
-            // единственный: прозрачная кожа и есть прежний рентген (клавиши X
-            // у вьювера больше нет).
+            // Part view cycle: solid -> transparent -> hidden. The same switch as
+            // CNC_PART_MODE at the entry (viewer/main.cpp), and the only one: the
+            // transparent skin is the former x-ray (the viewer has no X key any more).
             root.cyclePartMode()
             event.accepted = true
         } else if (root.keyIs(event, 0x2F, Qt.Key_V)) {
-            // Заготовка полупрозрачной: тот же переключатель, что CNC_STOCK_GHOST
-            // во входе (viewer/main.cpp).
+            // Stock translucent: the same switch as CNC_STOCK_GHOST at the entry
+            // (viewer/main.cpp).
             root.stockGhost = !root.stockGhost
             event.accepted = true
         } else if (root.keyIs(event, 0x25, Qt.Key_K)) {
-            // Кожа детали отдельно от рёбер: снятое тело оставляет на снятом
-            // металле один справочный каркас. Тот же переключатель, что
-            // CNC_NO_PART_SKIN во входе (viewer/main.cpp).
+            // The part skin separately from the edges: removing the body leaves on
+            // the cut metal just the reference wireframe. The same switch as
+            // CNC_NO_PART_SKIN at the entry (viewer/main.cpp).
             root.showPartSkin = !root.showPartSkin
             event.accepted = true
         } else if (root.keyIs(event, 0x22, Qt.Key_G)) {
-            // Линии УП поверх слитка: снять их - и остаётся только снятый металл.
-            // Тот же переключатель, что CNC_NO_TOOLPATH во входе (viewer/main.cpp).
+            // Toolpath lines over the billet: remove them - and only the cut metal
+            // remains. The same switch as CNC_NO_TOOLPATH at the entry
+            // (viewer/main.cpp).
             root.showToolpath = !root.showToolpath
             event.accepted = true
         } else if (root.keyIs(event, 0x26, Qt.Key_L)) {
@@ -1548,20 +1574,20 @@ Item {
             if (!root.showFps) root.fpsSmoothed = 0
             event.accepted = true
         } else if (root.keyIs(event, 0x30, Qt.Key_B)) {
-            // Сравнение: прежняя коробка вместо поверхности съёма. Тот же
-            // переключатель, что CNC_STOCK_BOX во входе (viewer/main.cpp).
+            // Comparison: the former box instead of the cut surface. The same switch
+            // as CNC_STOCK_BOX at the entry (viewer/main.cpp).
             root.stockPlainBox = !root.stockPlainBox
             event.accepted = true
         } else if (root.keyIs(event, 0x2E, Qt.Key_C)) {
-            // Палитра остатка материала: пресеты один за другим (подбор контраста
-            // на живом кадре). Цвета до старта ставят CNC_STOCK_RAW/CNC_STOCK_CUT
-            // (cpp/viewer/main.cpp).
+            // Material stock palette: presets one after another (tuning contrast on
+            // a live frame). The colors before start are set by
+            // CNC_STOCK_RAW/CNC_STOCK_CUT (cpp/viewer/main.cpp).
             root.cycleStockPreset()
             event.accepted = true
         } else if (root.keyIs(event, 0x13, Qt.Key_R)) {
-            // Вид остатка заготовки: точный -> гладкий -> скруглённый (цена
-            // каждого - в комментарии свойства). Тот же переключатель, что
-            // CNC_STOCK_VIEW и CNC_STOCK_ROUND во входе (cpp/viewer/main.cpp).
+            // Stock view: exact -> smooth -> rounded (the cost of each - in the
+            // property comment). The same switch as CNC_STOCK_VIEW and CNC_STOCK_ROUND
+            // at the entry (cpp/viewer/main.cpp).
             root.cycleStockView()
             event.accepted = true
         }
@@ -1569,9 +1595,9 @@ Item {
             root.keyLogState()
     }
 
-    // Счётчик кадров: правый верхний угол. Строки подсказок во всю ширину окна
-    // больше нет (подсказка - колонка в левом углу), поэтому счётчик вернулся на
-    // верхний отступ, а z держит его поверх сцены.
+    // Frame counter: top right corner. The full-window-width hint line is gone (the
+    // hint is a column in the left corner), so the counter is back at the top margin,
+    // and z keeps it above the scene.
     Text {
         visible: root.showFps
         z: 1
@@ -1585,14 +1611,15 @@ Item {
         font.bold: true
     }
 
-    // ---- Подсказка горячих клавиш: компактная колонка в левом верхнем углу ----
-    // Прежде это была одна строка во всю ширину окна: она длиннее 1024 px, лезла
-    // через весь верх сцены и мешала смотреть слиток. Колонка занимает ~210x150 px
-    // в углу, где сцена пуста, и не задевает ни заготовку, ни счётчик кадров.
-    // Клавиши названы латиницей, как на клавиатуре: обработчик Keys сверяет буквы
-    // по физическому скан-коду, поэтому они работают и на русской раскладке
-    // (keyprobe гоняет обе). Состояния (деталь, палитра, скорость, процент и
-    // переключатели) стоят там же, в тех же словах, что у кнопок панели внизу.
+    // ---- Hotkey hint: a compact column in the top left corner ----
+    // Formerly this was one line across the whole window width: it is longer than
+    // 1024 px, ran across the whole top of the scene and got in the way of looking at
+    // the billet. The column takes ~210x150 px in the corner where the scene is empty,
+    // and touches neither the stock nor the frame counter.
+    // The keys are named in Latin, as on the keyboard: the Keys handler matches letters
+    // by physical scan code, so they work on the Russian layout too (keyprobe runs
+    // both). The states (part, palette, speed, percent and toggles) stand there too, in
+    // the same words as at the bottom panel buttons.
     Rectangle {
         id: hintPanel
         anchors.left: parent.left
@@ -1602,8 +1629,9 @@ Item {
         width: hintCol.implicitWidth + 16
         height: hintCol.implicitHeight + 12
         radius: 6
-        // Фон полупрозрачный, а текст - нет: opacity на прямоугольнике погасил бы
-        // и глифы, и на белом фоне подсказка стала бы бледной.
+        // The background is translucent while the text is not: opacity on the
+        // rectangle would dim the glyphs too, and on a white background the hint would
+        // go pale.
         color: Qt.rgba(0.96, 0.97, 0.98, 0.90)
         border.color: "#D7DBE0"
         border.width: 1
@@ -1613,9 +1641,10 @@ Item {
             x: 8
             y: 6
             spacing: 2
-            // Строки - по группам: сверху ход и состояние, ниже клавиши по одной.
-            // Глиф паузы (\u23F8) шрифт не рисует - в кадре на его месте пустой
-            // квадрат, поэтому ход назван словом, как у кнопки панели внизу.
+            // The lines are grouped: on top the run state and status, below the keys
+            // one by one. The font does not draw the pause glyph (\u23F8) - in a frame it
+            // is an empty square, so the run is named with a word, as at the bottom panel
+            // button.
             Text {
                 text: "v" + root.viewerVersion + "   "
                       + (root.playing ? "идёт" : "пауза") + " "
@@ -1691,49 +1720,49 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 6
 
-            // "Играть / Пауза" — playback is always manual now (no auto-play)
+            // "Play / Pause" - playback is always manual now (no auto-play)
             ViewButton {
                 checked: root.playing
                 text: root.playing ? "\u23F8 Пауза" : "\u25B6 Играть"
                 onClicked: root.togglePlay()
             }
 
-            // "Габарит заготовки" toggle
+            // "Stock bounding box" toggle
             ViewButton {
                 checked: root.showStockVisible
                 text: "Габарит заготовки"
                 onClicked: root.showStockVisible = !root.showStockVisible
             }
 
-            // Вид детали (клавиша M): по кругу - сплошная, прозрачная, скрыта.
-            // Кнопка называет ТЕКУЩИЙ вид словами, а не действие: состояний три,
-            // и по надписи «Модель детали» не понять, какое следующее, а слово
-            // «прозрачная» рядом с прежним рентгеном не говорило, чем эти два
-            // вида отличаются. Имя положения - общее с подсказкой на экране
-            // (partModeNames), поэтому надписи не расходятся.
+            // Part view (key M): cycle - solid, transparent, hidden.
+            // The button names the CURRENT view in words, not the action: there are three
+            // states, and from the "Part model" label it is impossible to tell which one
+            // is next, while the word "transparent" next to the former x-ray did not say
+            // how these two views differ. The position name is shared with the on-screen
+            // hint (partModeNames), so the labels do not diverge.
             ViewButton {
                 checked: root.partMode !== 2
                 text: "Деталь: " + root.partModeName
                 onClicked: root.cyclePartMode()
             }
 
-            // "Кожа детали" toggle (клавиша K): тело детали без рёбер - чистый
-            // вид снятого металла, поверх него только справочный каркас.
+            // "Part skin" toggle (key K): the part body without edges - a clean view
+            // of the cut metal, with only the reference wireframe over it.
             ViewButton {
                 checked: root.showPartSkin
                 text: "Кожа детали"
                 onClicked: root.showPartSkin = !root.showPartSkin
             }
 
-            // "Линии УП" toggle (клавиша G): линии идут всегда вперёд и видны
-            // поверх сплошной заготовки; снятие линий оставляет голый слиток.
+            // "Toolpath lines" toggle (key G): the lines always go forward and are
+            // visible over a solid stock; removing the lines leaves a bare billet.
             ViewButton {
                 checked: root.showToolpath
                 text: "Линии УП"
                 onClicked: root.showToolpath = !root.showToolpath
             }
 
-            // "Весь код" vs "Ограничить длину": limit mode draws only the part
+            // "Whole code" vs "Limit length": limit mode draws only the part
             // near the tool and fades the far part smoothly.
             ViewButton {
                 checked: !root.showAllCode
@@ -1781,7 +1810,7 @@ Item {
             }
         }
 
-        // Row 2: stages ("по этапам") + frame (stage) switching
+        // Row 2: stages ("by stages") + frame (stage) switching
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 6
@@ -1794,7 +1823,7 @@ Item {
             }
             ViewButton { text: "\u25C0"; onClicked: root.prevStage() }
 
-            // Current stage label (e.g. "T1 фреза D4   (2/4)")
+            // Current stage label (e.g. "T1 cutter D4   (2/4)")
             Rectangle {
                 height: 30
                 radius: 6

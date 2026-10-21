@@ -1,34 +1,34 @@
-// cpp/stl_probe.cpp - пробник C++-слоя STL (этап 4b плана переноса):
-// дайджесты сверяются с оракулом (stl.soup, stl.feature_edges).
+// cpp/stl_probe.cpp - probe of the C++ STL layer (stage 4b of the port plan):
+// digests are checked against the oracle (stl.soup, stl.feature_edges).
 //
-// Пробник не входит ни в плагин, ни в ядро: отдельная цель CMake. Он проходит
-// тот же путь, что load_stl_vertices -> _feature_edges_np: чтение STL (бинарного
-// или ASCII) в суп треугольников, сварка вершин по сетке 0.001 мм, отбор рёбер по
-// двугранному углу, склейка цепочек и упрощение по Дугласу-Пекеру (0.15 мм).
-// Печатает:
+// The probe belongs to neither the plugin nor the core: a separate CMake target. It takes
+// the same path as load_stl_vertices -> _feature_edges_np: reading the STL (binary
+// or ASCII) into a triangle soup, welding vertices on a 0.001 mm grid, selecting edges by
+// dihedral angle, gluing chains and Douglas-Peucker simplification (0.15 mm).
+// It prints:
 //
-// verts: N строк супа (эталон Test_model.STL - 562776)
-// triangles: F треугольников (эталон - 187592)
-// sha256_soup: H sha256 тех же байтов, что считает Python: float64 LE, (N,3)
-// segments: M отрезков обводки после упрощения (эталон - 1435)
+// verts: N rows of the soup (reference Test_model.STL - 562776)
+// triangles: F triangles (reference - 187592)
+// sha256_soup: H sha256 of the same bytes that Python computes: float64 LE, (N,3)
+// segments: M outline segments after simplification (reference - 1435)
 // sha256_feature_edges: H sha256 float32 LE (M,2,3)
-// bounds_lo / bounds_hi габарит супа (_verts_bounds), мм: в оракул не входит,
-// но сверяется с питоновским габаритом
+// bounds_lo / bounds_hi - soup bounds (_verts_bounds), mm: not part of the oracle,
+// but checked against the Python bounds
 //
-// Те же массивы пишутся в каталог-дамп файлами stl_soup.f64 и
-// stl_feature_edges.f32: питоновская проверка читает их numpy и сверяет
-// поэлементно, а не только по хэшу. Сверку ведёт.
+// The same arrays are written to the dump directory as the files stl_soup.f64 and
+// stl_feature_edges.f32: the Python check reads them with numpy and compares them
+// element-wise, not only by hash. The Python check drives it.
 //
-// Запуск: stl_probe <файл.stl> <каталог-дампа> (DLL не нужны: Qt и OCCT в цели нет)
-// stl_probe --manifest <oracle_manifest.json> [<файл.stl>]
-// stl_probe --check [<файл.stl>]
-// Код возврата: 0 - посчитано и записано (или дайджесты сошлись с оракулом);
-// 1 - файл не прочитан или дамп не записан; 2 - аргументы не разобраны.
+// Run: stl_probe <file.stl> <dump-dir> (no DLLs needed: Qt and OCCT are not in the target)
+// stl_probe --manifest <oracle_manifest.json> [<file.stl>]
+// stl_probe --check [<file.stl>]
+// Return code: 0 - computed and written (or the digests matched the oracle);
+// 1 - the file was not read or the dump was not written; 2 - the arguments were not parsed.
 //
-// Режим --manifest/--check сверяет дайджесты своих массивов (stl.soup,
-// stl.feature_edges) с oracle_manifest.json без Python и без каталога-дампа:
-// печатает строку на запись и "RESULT: OK" / "RESULT: FAIL (n)". Путь к тестовым
-// данным по умолчанию берётся от корня репозитория (путь пробника).
+// The --manifest/--check mode compares the digests of its arrays (stl.soup,
+// stl.feature_edges) with oracle_manifest.json without Python and without a dump directory:
+// it prints one line per entry and "RESULT: OK" / "RESULT: FAIL (n)". The path to the test
+// data by default is taken from the repository root (the probe path).
 
 #include "core/outline.h"
 #include "core/packing.h"
@@ -53,9 +53,9 @@
 
 namespace {
 
-// Путь к тестовым данным лежит в каталоге с кириллицей ("Проект по умолчанию"):
-// аргументы берутся в широком виде и переводятся в UTF-8, а файлы открываются
-// через std::filesystem::u8path. Иначе файл не нашёлся бы.
+// The path to the test data lives in a directory with Cyrillic ("Проект по умолчанию"):
+// arguments are taken in wide form and converted to UTF-8, and files are opened
+// via std::filesystem::u8path. Otherwise the file would not be found.
 std::string toUtf8(const std::wstring& w) {
 #ifdef _WIN32
     const int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
@@ -148,15 +148,15 @@ int main(int argc, char** argv) {
     const gv::PackedEdges packed = gv::featureEdgesNp(soup, 20.0);
     const std::vector<float> segs = gv::packedPositions(packed);
 
-    // Сериализации те же, что у оракула (numpy.tobytes): float64 LE (N,3) и
-    // float32 LE (M,2,3). x86 хранит их little-endian, порядок байтов не меняется.
+    // Serializations are the same as the oracle's (numpy.tobytes): float64 LE (N,3) and
+    // float32 LE (M,2,3). x86 stores them little-endian, the byte order does not change.
     const std::vector<unsigned char> soupBytes =
         asBytes(soup.data(), soup.size(), sizeof(double));
     const std::vector<unsigned char> edgeBytes =
         asBytes(segs.data(), segs.size(), sizeof(float));
 
-    // Сверка с оракулом: те же дайджесты, что печатает режим дампа, но против
-    // oracle_manifest.json и без записи файлов.
+    // Oracle check: the same digests that the dump mode prints, but against
+    // oracle_manifest.json and without writing files.
     if (checkMode) {
         gv::manifest::Manifest manifest;
         std::string error;

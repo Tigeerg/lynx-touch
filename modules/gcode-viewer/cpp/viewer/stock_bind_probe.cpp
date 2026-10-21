@@ -1,28 +1,28 @@
-// viewer/stock_bind_probe.cpp - проба привязки поля съёма к траектории в
-// C++-контроллере (этапы 2-4 симуляции съёма).
+// viewer/stock_bind_probe.cpp - probe of the binding of the removal field to the
+// path in the C++ controller (stages 2-4 of the removal simulation).
 //
-// Проба грузит настоящий QML-модуль MockBackend и создаёт GcodeToolpath, затем
-// зовёт load_gcode_async на реальной УП. Для пресетов med и high печатает узел,
-// время фонового прохода, число узлов и размер поля, а для med ещё сверяет
-// текстуру рисования (stockField) с опубликованным полем: размер, формат R32F и
-// байты обязаны совпасть.
+// The probe loads the real QML module MockBackend and creates a GcodeToolpath, then
+// calls load_gcode_async on a real NC program. For the med and high presets it
+// prints the node, the time of the background pass, the number of nodes and the
+// size of the field, and for med it also compares the drawing texture (stockField)
+// with the published field: the size, the R32F format and the bytes must match.
 //
-// Живой съём (этап 4). После полного поля программа перематывается на четверть
-// пути: пока тик считается, состояние computing, а опубликованное поле обязано
-// остаться прежним целым (этап 1: поле не снимается на время счёта). Затем тик
-// доходит, поле - до четверти пути, и вперёд до конца: дайджест (FNV-1a по
-// байтам) обязан совпасть с полным проходом - инкрементальный обход не имеет
-// права отличаться от одного прохода. Отмена живого тика публикует не новое
-// поле, а последнее целое; отмена первого прохода (поля ещё нет) не публикует
-// ничего.
+// Live removal (stage 4). After the full field the program is rewound to a quarter
+// of the path: while the tick is computed the state is computing, and the published
+// field must stay the previous whole one (stage 1: the field is not dropped while
+// computing). Then the tick finishes, the field reaches a quarter of the path, and
+// forward to the end: the digest (FNV-1a over the bytes) must match the full pass -
+// the incremental walk has no right to differ from a single pass. Cancelling a live
+// tick publishes not a new field but the last whole one; cancelling the first pass
+// (there is no field yet) publishes nothing.
 //
-// Отказ (этап 2). УП с инструментом TYPE=LOLLIPOP: карта высот поднутрения не
-// выражает, поэтому состояние refused, поле пусто (stockHasField ложь, узлов 0),
-// а причина - строкой отказа в stderr.
+// Refusal (stage 2). An NC program with a TYPE=LOLLIPOP tool: a height map does not
+// express the undercut, so the state is refused, the field is empty (stockHasField
+// false, 0 nodes), and the reason is a refusal line on stderr.
 //
-// Запуск (Qt в PATH; платформа offscreen ставится сама):
-// build\viewer\stock_bind_probe.exe [путь к файлу УП]
-// Код возврата: 0 - все проверки прошли, 1 - нет.
+// Usage (Qt in PATH; the offscreen platform is set automatically):
+// build\viewer\stock_bind_probe.exe [path to the NC program file]
+// Return code: 0 - all checks passed, 1 - not.
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -86,8 +86,8 @@ QString occtBinDir()
     return occ + QStringLiteral("/bin");
 }
 
-// Тот же порядок поиска зависимостей плагина, что у точки входа вьювера:
-// каталог модуля и DLL OCCT идут в PATH до создания движка.
+// The same plugin dependency search order as in the viewer entry point:
+// the module directory and the OCCT DLLs go into PATH before the engine is created.
 void prependPath(const QStringList &dirs)
 {
     const QChar separator = QDir::listSeparator();
@@ -111,8 +111,8 @@ void prependPath(const QStringList &dirs)
     qputenv("PATH", add.join(separator).toLocal8Bit());
 }
 
-// Ожидание свойства контроллера с прокруткой очереди событий: сигналы Qt
-// доставляются только в цикле, а проба живёт без app.exec.
+// Waiting for a controller property with event queue pumping: Qt signals are
+// delivered only in a loop, and the probe lives without app.exec.
 bool waitUntil(QObject *object, const std::function<bool()> &done, int timeoutMs,
                const QString &what)
 {
@@ -135,8 +135,8 @@ QString stateOf(QObject *controller)
     return controller->property("stockSimState").toString();
 }
 
-// FNV-1a 64 по байтам поля: живой обход обязан дать тот же буфер, что и полный
-// проход, байт в байт (та же сверка, что case stock_live в stock_sim_probe).
+// FNV-1a 64 over the field bytes: the live walk must give the same buffer as the
+// full pass, byte for byte (the same check as case stock_live in stock_sim_probe).
 std::uint64_t bytesDigest(const QByteArray &bytes)
 {
     std::uint64_t hash = 1469598103934665603ULL;
@@ -153,8 +153,8 @@ bool startLoad(QObject *controller, const QString &path)
                                      Q_ARG(QString, path));
 }
 
-// Новый проход начинается только после разбора УП: прежнее состояние ready
-// держится до onToolpathReady, поэтому сначала ждём computing.
+// A new pass starts only after the NC program is parsed: the previous ready state
+// is held until onToolpathReady, so we first wait for computing.
 bool waitComputing(QObject *controller, int timeoutMs)
 {
     return waitUntil(controller,
@@ -169,8 +169,8 @@ bool waitReady(QObject *controller, int timeoutMs)
                      timeoutMs, QStringLiteral("state ready"));
 }
 
-// Состояние computing: либо полный проход, либо живой тик. Поле при этом уже
-// опубликовано прежнее целое - это и проверяется.
+// The computing state: either a full pass or a live tick. The field is already
+// published as the previous whole one - that is what is checked.
 bool waitState(QObject *controller, const char *state, int timeoutMs)
 {
     return waitUntil(controller,
@@ -205,10 +205,10 @@ void reportRun(QObject *controller, const char *quality)
             .arg(progress, 0, 'f', 2));
 }
 
-// Текстура рисования обязана нести то же поле: шаг 3 берёт высоту вершинного
-// шейдера из неё, и разошедшаяся копия нарисовала бы не то, что посчитано.
-// Сверяются размер (число узлов), формат (R32F) и байты - копия контроллера
-// против опубликованного stockDepth.
+// The drawing texture must carry the same field: stage 3 takes the vertex shader
+// height from it, and a diverged copy would draw something other than what was
+// computed. The size (number of nodes), the format (R32F) and the bytes are
+// compared - the controller copy against the published stockDepth.
 bool textureMatchesField(QObject *controller, QString *detail)
 {
     auto *data = qobject_cast<QQuick3DTextureData *>(
@@ -275,8 +275,8 @@ int main(int argc, char *argv[])
 
     int failures = 0;
 
-    // Пресеты: med (0.5 мм) и high (0.2 мм). Уровень читается при запуске
-    // прохода, поэтому qputenv перед load_gcode_async достаточно.
+    // Presets: med (0.5 mm) and high (0.2 mm). The level is read when the pass
+    // starts, so qputenv before load_gcode_async is enough.
     qputenv("CNC_QUALITY", "med");
     if (!startLoad(controller, program) || !waitComputing(controller, 120000)
         || !waitReady(controller, 120000)) {
@@ -310,11 +310,12 @@ int main(int argc, char *argv[])
                 .arg(totalMm, 0, 'f', 1));
     }
 
-    // Точка 1 и точка 4 сразу: перемотка на четверть пути. Пока тик считается,
-    // на экране обязано остаться прежнее целое поле (состояние computing, байты
-    // не изменились), а после тика - поле до четверти, побайтово отличное от
-    // полного. Затем вперёд до конца: живой обход обязан дать ровно полный
-    // буфер (дайджест равен), иначе инкрементальный съём врёт.
+    // Point 1 and point 4 at once: a rewind to a quarter of the path. While the tick
+    // is computed, the previous whole field must stay on screen (the computing state,
+    // the bytes unchanged), and after the tick - the field up to a quarter, byte-wise
+    // different from the full one. Then forward to the end: the live walk must give
+    // exactly the full buffer (the digest is equal), otherwise the incremental
+    // removal lies.
     if (totalMm > 0.0 && !fullField.isEmpty()) {
         const double quarter = totalMm * 0.25;
         if (!follow(controller, quarter)) {
@@ -374,8 +375,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Отмена живого тика: новое поле не публикуется, последнее целое остаётся
-    // как было (байты не изменились), состояние cancelled, задержка измерена.
+    // Cancelling a live tick: no new field is published, the last whole one stays as
+    // it was (the bytes are unchanged), the state is cancelled, the latency is measured.
     if (totalMm > 0.0 && !fullField.isEmpty()) {
         if (!follow(controller, totalMm * 0.5)
             || stateOf(controller) != QLatin1String("computing")
@@ -405,8 +406,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Отмена первого прохода: прежнего поля у новой программы нет, поэтому
-    // отменять нечего - на экране коробка, байтов нет.
+    // Cancelling the first pass: the new program has no previous field, so there is
+    // nothing to cancel - the box is on screen, there are no bytes.
     qputenv("CNC_QUALITY", "med");
     if (!startLoad(controller, program)) {
         ++failures;
@@ -448,9 +449,10 @@ int main(int argc, char *argv[])
         }
     }
 
-    // Отказ: инструмент с поднутрением (лоллипоп) картой высот не выражается.
-    // UI_TOOL проверяется целиком - разбор, этап, отказ; поля не публикуется,
-    // состояние refused, причина - строкой отказа в stderr (её видно в выводе).
+    // Refusal: a tool with an undercut (lollipop) is not expressible by a height map.
+    // UI_TOOL is checked as a whole - parse, stage, refusal; no field is published,
+    // the state is refused, the reason is a refusal line on stderr (it is visible in
+    // the output).
     {
         const QString undercutProgram = QStringLiteral(
             "(UI_STOCK: XMIN=-20. XMAX=20. YMIN=-20. YMAX=20. ZMIN=-10. ZMAX=0.)\n"

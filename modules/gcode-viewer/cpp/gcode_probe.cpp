@@ -1,30 +1,30 @@
-// cpp/gcode_probe.cpp - пробник совпадения C++-ядра с питоновским эталоном
+// cpp/gcode_probe.cpp - probe of coincidence between the C++ core and the Python reference
 // (core/gcode_parser.cpp, core/gv_types.h).
 //
-// Пробник не входит ни в плагин, ни в ядро: отдельная цель CMake. Он читает
-// управляющую программу, считает ядро (gvcore) и печатает:
+// The probe is part of neither the plugin nor the core: a separate CMake target. It reads
+// the control program, computes the core (gvcore) and prints:
 //
-// points / flags / stages / seg_count - размеры массивов path.* из оракула
-// last: x y z - последняя машинная точка
-// sha256_points/flags/last/segments/stages - sha256 тех же сериализаций, что
-// считает Python (float64 LE, int64 LE,
-// numpy U64 = UTF-32LE по 64 знака)
-// tag_* - разобранные теги UI_* (улика по ui_tags)
+// points / flags / stages / seg_count - sizes of the oracle's path.* arrays
+// last: x y z - the last machine point
+// sha256_points/flags/last/segments/stages - sha256 of the same serializations that
+// Python computes (float64 LE, int64 LE,
+// numpy U64 = UTF-32LE, 64 chars)
+// tag_* - parsed UI_* tags (evidence via ui_tags)
 //
-// Те же массивы пишутся во второй аргумент-каталог файлами core_points.f64,
-// core_flags.f64, core_last.f64, core_segments.i64, core_stages.u64: питоновская
-// проверка читает их numpy и сравнивает поэлементно, а не только по хэшу.
+// The same arrays are written to the second argument directory as files core_points.f64,
+// core_flags.f64, core_last.f64, core_segments.i64, core_stages.u64: the Python
+// check reads them with numpy and compares element by element, not just by hash.
 //
-// Запуск: gcode_probe <файл.ngc> <каталог-дампа>
-// gcode_probe --manifest <oracle_manifest.json> [<файл.ngc>]
-// gcode_probe --check [<файл.ngc>]
-// Код возврата: 0 - посчитано и записано (или дайджесты сошлись с оракулом);
-// 1 - файл или каталог недоступны; 2 - аргументы не разобраны.
+// Usage: gcode_probe <file.ngc> <dump-dir>
+// gcode_probe --manifest <oracle_manifest.json> [<file.ngc>]
+// gcode_probe --check [<file.ngc>]
+// Return code: 0 - computed and written (or digests matched the oracle);
+// 1 - file or directory unavailable; 2 - arguments not parsed.
 //
-// Режим --manifest/--check сверяет дайджесты своих массивов (path.*, pd.* и
-// tag.*) с oracle_manifest.json без Python и без каталога-дампа: печатает строку
-// на запись и "RESULT: OK" / "RESULT: FAIL (n)". Путь к тестовым данным по
-// умолчанию берётся от корня репозитория (путь пробника).
+// The --manifest/--check mode compares the digests of its own arrays (path.*, pd.* and
+// tag.*) with oracle_manifest.json without Python and without a dump directory: prints a line
+// per record and "RESULT: OK" / "RESULT: FAIL (n)". The default test-data path is
+// taken from the repository root (the probe's path).
 
 #include "core/gcode_parser.h"
 #include "core/gv_types.h"
@@ -44,8 +44,8 @@
 #include <string>
 #include <vector>
 
-// windows.h нужен для широкого разбора аргументов: путь к тестовым данным лежит в
-// каталоге с кириллицей, а узкий argv несёт её в кодировке консоли.
+// windows.h is needed for wide argument parsing: the test-data path lies in
+// a directory with Cyrillic, and the narrow argv carries it in the console encoding.
 #ifdef _WIN32
 #  ifndef NOMINMAX
 #    define NOMINMAX
@@ -53,13 +53,13 @@
 #  include <windows.h>
 #endif
 
-using gv::sha256Hex;          // хэш в sha256.h: общий с остальными пробниками сверки
+using gv::sha256Hex;          // hash in sha256.h: shared with the other check probes
 
 namespace {
 
-// Путь к тестовым данным лежит в каталоге с кириллицей ("Проект по умолчанию"):
-// аргументы берутся в широком виде и переводятся в UTF-8, а файлы открываются
-// через std::filesystem::u8path. Иначе файл не нашёлся бы.
+// The test-data path lies in a directory with Cyrillic ("Проект по умолчанию"):
+// the arguments are taken in wide form and converted to UTF-8, and files are opened
+// via std::filesystem::u8path. Otherwise the file would not be found.
 std::string toUtf8(const std::wstring& w) {
 #ifdef _WIN32
     const int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
@@ -93,14 +93,14 @@ std::vector<std::string> probeArgs(int argc, char** argv) {
 #endif
 }
 
-// double -> 8 байт little-endian (как numpy float64.tobytes).
+// double -> 8 bytes little-endian (like numpy float64.tobytes).
 void appendDouble(std::vector<unsigned char>& out, double v) {
     unsigned char buf[8];
     std::memcpy(buf, &v, 8);
     out.insert(out.end(), buf, buf + 8);
 }
 
-// UTF-8 -> кодпоинты; numpy str хранит UCS-4 little-endian.
+// UTF-8 -> code points; numpy str stores UCS-4 little-endian.
 std::vector<unsigned int> utf8ToCodePoints(const std::string& s) {
     std::vector<unsigned int> out;
     size_t i = 0;
@@ -112,7 +112,7 @@ std::vector<unsigned int> utf8ToCodePoints(const std::string& s) {
         else if ((c & 0xe0) == 0xc0) { cp = c & 0x1fU; extra = 1; }
         else if ((c & 0xf0) == 0xe0) { cp = c & 0x0fU; extra = 2; }
         else if ((c & 0xf8) == 0xf0) { cp = c & 0x07U; extra = 3; }
-        else { cp = 0xfffdU; }                       // битый байт: как замена в Python
+        else { cp = 0xfffdU; }                       // broken byte: like the replacement in Python
         ++i;
         for (size_t k = 0; k < extra && i < s.size(); ++k, ++i) {
             cp = (cp << 6) | (static_cast<unsigned char>(s[i]) & 0x3fU);
@@ -122,8 +122,8 @@ std::vector<unsigned int> utf8ToCodePoints(const std::string& s) {
     return out;
 }
 
-// numpy U64: кодпоинты UCS-4 little-endian, до 64 знаков, далее нули. Так же
-// сериализуются подписи этапов и имя оправки.
+// numpy U64: UCS-4 little-endian code points, up to 64 chars, then zeros. Stage
+// signatures and the holder name are serialized the same way.
 void appendU64(std::vector<unsigned char>& out, const std::string& s) {
     std::vector<unsigned int> cps = utf8ToCodePoints(s);
     if (cps.size() > 64) { cps.resize(64); }
@@ -135,8 +135,8 @@ void appendU64(std::vector<unsigned char>& out, const std::string& s) {
     }
 }
 
-// Необязательный тег одним массивом: ведущий флаг присутствия 1.0/0.0, далее
-// значения (нули, когда тега нет) - так None из Python кодируется однозначно.
+// Optional tag as a single array: leading presence flag 1.0/0.0, then the
+// values (zeros when the tag is absent) - this is how Python's None is encoded unambiguously.
 template <std::size_t N>
 void appendOptional(std::vector<unsigned char>& out,
                     const std::optional<std::array<double, N>>& v) {
@@ -214,14 +214,14 @@ int main(int argc, char **argv) {
         segBytes.push_back(static_cast<unsigned char>((static_cast<unsigned long long>(segCount) >> (8 * i)) & 0xffU));
     }
     for (const gv::Stage& st : res.stages) {
-        // Подпись этапа - та же строка, что numpy U64 у Python.
+        // Stage signature - the same string as numpy U64 in Python.
         appendU64(stageBytes, "(" + std::to_string(st.index) + ", '" + st.label + "')");
     }
 
-    // Подготовка траектории (core/path_prep.cpp): буферы потоков lines и метрики.
-    // Буферы - те же байты, что принимает геометрия на GPU, поэтому они и есть
-    // предмет сверки этапа 2. Считается один раз: тот же результат идёт и в
-    // режим дампа, и в сверку с оракулом.
+    // Toolpath preparation (core/path_prep.cpp): the lines stream buffers and metrics.
+    // The buffers are the same bytes the GPU geometry accepts, so they are the
+    // subject of the stage 2 check. Computed once: the same result goes both to
+    // the dump mode and to the oracle check.
     const gv::PathData pd = gv::prepareOrdered(res.ordered, res.stages);
     std::vector<unsigned char> pdScene;
     std::vector<unsigned char> pdCum;
@@ -233,7 +233,7 @@ int main(int argc, char **argv) {
     pdRapid.assign(pd.rapid.begin(), pd.rapid.end());
     for (double v : pd.speeds) { appendDouble(pdSpeeds, v); }
 
-    // Теги UI_*: улика по ui_tags.cpp (их разбирает не только подпись этапа).
+    // UI_* tags: evidence via ui_tags.cpp (not only the stage signature parses them).
     const std::array<double, 3> rot = gv::parseUiRotation(text);
     const std::array<double, 3> org = gv::parseUiOrigin(text);
     const std::optional<std::array<double, 6>> stock = gv::parseUiStock(text);
@@ -241,8 +241,8 @@ int main(int argc, char **argv) {
     const std::optional<std::array<double, 3>> cadMatrixOrigin = gv::parseUiCadMatrixOrigin(text);
     const std::optional<gv::HolderTag> holder = gv::parseUiHolder(text);
 
-    // Сверка с оракулом: те же дайджесты, что печатает режим дампа, но против
-    // oracle_manifest.json и без записи файлов.
+    // Oracle check: the same digests the dump mode prints, but against
+    // oracle_manifest.json and without writing files.
     if (checkMode) {
         gv::manifest::Manifest manifest;
         std::string error;
@@ -260,9 +260,9 @@ int main(int argc, char **argv) {
         checker.check("path.stages", "<U64", sha256Hex(stageBytes),
                       {static_cast<long long>(res.stages.size())});
 
-        // pd.*: подготовка траектории (path_prep._prepare_ordered) - те же
-        // массивы, что сверяет. Числовые метрики записаны
-        // массивами формы (1,).
+        // pd.*: toolpath preparation (path_prep._prepare_ordered) - the same
+        // arrays it checks. Numeric metrics are recorded
+        // as arrays of shape (1,).
         const long long pdPoints = static_cast<long long>(pd.pts.size() / 3);
         checker.check("pd.pts", "float64", sha256Hex(pdScene), {pdPoints, 3});
         checker.check("pd.cum", "float64", sha256Hex(pdCum),
@@ -320,8 +320,8 @@ int main(int argc, char **argv) {
         checker.check("pd.stage_end", "float64", sha256Hex(pdStageEnd), {pdStageCount});
         checker.check("pd.stage_label", "<U64", sha256Hex(pdStageLabel), {pdStageCount});
 
-        // tag.*: разбор тегов UI_* (core/ui_tags.cpp). Необязательный тег - ведущий
-        // флаг присутствия 1.0/0.0, далее значения (нули, когда тега нет).
+        // tag.*: parsing of UI_* tags (core/ui_tags.cpp). An optional tag is a leading
+        // presence flag 1.0/0.0, then the values (zeros when the tag is absent).
         std::vector<unsigned char> tagRotation;
         std::vector<unsigned char> tagOrigin;
         std::vector<unsigned char> tagStock;
@@ -366,7 +366,7 @@ int main(int argc, char **argv) {
         std::printf("stage_%zu: (%d, '%s')\n", i, res.stages[i].index, res.stages[i].label.c_str());
     }
 
-    // Теги UI_*: улика по ui_tags.cpp (их разбирает не только подпись этапа).
+    // UI_* tags: evidence via ui_tags.cpp (not only the stage signature parses them).
     printDoubles("tag_rotation", rot.data(), rot.size());
     printDoubles("tag_origin", org.data(), org.size());
     if (stock) {

@@ -9,12 +9,13 @@
 #include <QFileInfo>
 #include <QVector3D>
 
-// Отбор и склейка рёбер (обход TopAbs_EDGE, GCPnts_UniformDeflection, шовные
-// линии) вынесены в gvstep: тот же алгоритм нужен сборке модели без Qt.
+// Edge selection and coalescing (TopAbs_EDGE traversal, GCPnts_UniformDeflection,
+// seam lines) are moved out to gvstep: the same algorithm is needed by the model
+// assembly without Qt.
 #include "occt/step_edges.h"
 
-// Чтение STEP - общее ядро (occt/step_import): свой разбор здесь был бы второй
-// редакцией того же пути.
+// The STEP read is the shared core (occt/step_import): a parser of its own here would
+// be a second copy of the same path.
 #include "occt/step_import.h"
 
 StepEdgesGeometry::StepEdgesGeometry(QQuick3DObject *parent)
@@ -27,7 +28,7 @@ void StepEdgesGeometry::setSource(const QString &path)
     if (m_source == path)
         return;
     m_source = path;
-    m_shape = TopoDS_Shape();             // другой файл - кэш формы не годится
+    m_shape = TopoDS_Shape();             // another file - the shape cache is no good
     rebuild();
     emit sourceChanged();
 }
@@ -76,14 +77,14 @@ bool StepEdgesGeometry::setShape(const TopoDS_Shape &shape)
             const std::array<double, 3> &p = e ? s.b : s.a;
             for (int k = 0; k < 3; ++k) {
                 const float v = float(p[k]);
-                m_points.append(v);                  // пара точек: LINES
+                m_points.append(v);                  // a pair of points: LINES
                 lo[k] = std::min(lo[k], v);
                 hi[k] = std::max(hi[k], v);
             }
         }
     }
 
-    setPrimitiveType(PrimitiveType::Lines);              // семантика GL_LINES
+    setPrimitiveType(PrimitiveType::Lines);              // GL_LINES semantics
     setStride(3 * sizeof(float));
     setVertexData(QByteArray(reinterpret_cast<const char *>(m_points.constData()),
                              int(m_points.size() * sizeof(float))));
@@ -105,12 +106,12 @@ void StepEdgesGeometry::rebuild()
         return;
     }
 
-    // Форма читается один раз и живёт в объекте. Смена deflection или
-    // hideFormEdges пересчитывает рёбра, а STEP заново не читается: на
-    // Test_model.STEP повторное чтение - 466 мс из 550 мс на смену свойства.
+    // The shape is read once and lives in the object. Changing deflection or
+    // hideFormEdges recomputes the edges while STEP is not read again: on
+    // Test_model.STEP a second read is 466 ms out of 550 ms per property change.
     if (m_shape.IsNull()) {
         try {
-            // OCCT принимает путь в UTF-8: кириллица в пути иначе теряется.
+            // OCCT accepts a UTF-8 path: Cyrillic in the path is otherwise lost.
             m_shape = gv::readStepShape(m_source.toUtf8().constData());
         } catch (const std::exception &e) {
             qWarning("StepEdgesGeometry: %s", e.what());

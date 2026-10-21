@@ -1,53 +1,53 @@
-// cpp/geometry_probe.cpp - пробник совпадения геометрий Qt Quick 3D (этап 3 плана
-// переноса): дайджесты буферов сверяются с оракулом.
+// cpp/geometry_probe.cpp - probe of coincidence between Qt Quick 3D geometries (stage 3 of the
+// migration plan): buffer digests are checked against the oracle.
 //
-// Пробник не входит в плагин: отдельная цель CMake. На каждый случай он печатает
-// состояние геометрии и sha256 буфера вершин, а сам буфер пишет файлом
-// <случай>.bin:
+// The probe is not part of the plugin: a separate CMake target. For each case it prints
+// the geometry state and the sha256 of the vertex buffer, and writes the buffer itself as
+// file <case>.bin:
 //
-// <случай>.vertexCount: N число вершин
-// <случай>.triangleCount: N число треугольников
-// <случай>.stride: N шаг вершины, байт
-// <случай>.primitiveType: N Lines=2, Triangles=5
-// <случай>.attributeCount: N число атрибутов
-// <случай>.attributeK: <semantic> <offset> <componentType> атрибут K
-// <случай>.boundsMin: 0x... 0x... 0x... габарит побитно (float32, три слова)
-// <случай>.boundsMax: 0x... 0x... 0x...
-// <случай>.bytes: N длина буфера вершин, байт
-// <случай>.sha256: H sha256 буфера вершин
+// <case>.vertexCount: N number of vertices
+// <case>.triangleCount: N number of triangles
+// <case>.stride: N vertex stride, bytes
+// <case>.primitiveType: N Lines=2, Triangles=5
+// <case>.attributeCount: N number of attributes
+// <case>.attributeK: <semantic> <offset> <componentType> attribute K
+// <case>.boundsMin: 0x... 0x... 0x... bounds bitwise (float32, three words)
+// <case>.boundsMax: 0x... 0x... 0x...
+// <case>.bytes: N vertex buffer length, bytes
+// <case>.sha256: H sha256 of the vertex buffer
 //
-// Случаи - те же, что перебирает питоновская проверка: траектория с габаритом, без
-// габарита и пустая; контур лентами с опорной точкой, без неё и пустой; сетка с
-// растворением и с нулевым растворением; указатель оси и указатель короче головы;
-// меш, меш после reset и тело вращения по профилю (48 делений и 3 деления).
+// The cases are the same ones the Python check iterates: toolpath with bounds, without
+// bounds and empty; contour as strips with a reference point, without it and empty; grid with
+// feather and with zero feather; axis arrow and an arrow shorter than the head;
+// mesh, mesh after reset and a solid of revolution by profile (48 divisions and 3 divisions).
 //
-// Запуск: geometry_probe <каталог-входа> <каталог-дампа>
-// geometry_probe --self [<файл.ngc>]
-// geometry_probe --manifest <oracle_manifest.json> [<файл.ngc>]
-// geometry_probe --check [<файл.ngc>]
-// Код возврата: 0 - построено и записано (или дайджесты сошлись с оракулом);
-// 1 - вход, файл данных или манифест недоступны; 2 - аргументы не
-// разобраны.
+// Usage: geometry_probe <input-dir> <dump-dir>
+// geometry_probe --self [<file.ngc>]
+// geometry_probe --manifest <oracle_manifest.json> [<file.ngc>]
+// geometry_probe --check [<file.ngc>]
+// Return code: 0 - built and written (or digests matched the oracle);
+// 1 - input, data file or manifest unavailable; 2 - arguments not
+// parsed.
 //
-// Два набора входных данных:
-// * <каталог-входа> <каталог-дампа> - вход пишет питоновская проверка
-//, поэтому обе стороны считают на
-// одних числах, а не на «похожих»;
-// * --self и --manifest/--check - вход пробник строит сам, без Python: траектория
-// читается из УП тем же путём, что рантайм (gvcore: parseGcode +
-// prepareOrdered), остальное - те же числа, что и в питоновской проверке.
+// Two sets of input data:
+// * <input-dir> <dump-dir> - the input is written by the Python check
+//, so both sides compute on the
+// same numbers, and not on "similar" ones;
+// * --self and --manifest/--check - the probe builds the input itself, without Python: the
+// toolpath is read from the control program the same way the runtime does (gvcore: parseGcode +
+// prepareOrdered), the rest is the same numbers as in the Python check.
 //
-// Режим --manifest/--check сверяет sha256 буферов (записи geom.*) с
-// oracle_manifest.json без Python и без каталога-дампа: печатает строку на запись
-// и "RESULT: OK" / "RESULT: FAIL (n)". Путь к УП по умолчанию берётся от корня
-// репозитория (путь пробника). Режим --self печатает то же состояние с дайджестами,
-// но не пишет дамп: им сверяют свой вход с питоновским вручную.
+// The --manifest/--check mode compares the sha256 of the buffers (geom.* records) with
+// oracle_manifest.json without Python and without a dump directory: prints a line per record
+// and "RESULT: OK" / "RESULT: FAIL (n)". The default control-program path is taken from the
+// repository root (the probe's path). The --self mode prints the same state with digests,
+// but writes no dump: it is used to compare one's own input with the Python one by hand.
 //
-// Оговорка о входе сверки: профиль инструмента (случай tool) пробник строит
-// gvcore::toolProfile по тем же метаданным UI_TOOL, что и питоновский
-// mb._tool_profile, а траекторию - по самой УП. Совпадение входов доказывает
-// равенство дайджестов geom.*: сверка ловит и расхождение геометрии, и расхождение
-// входа (см. - он строит вход питоновской стороной).
+// A caveat about the check input: the tool profile (case tool) is built by the probe
+// via gvcore::toolProfile from the same UI_TOOL metadata as the Python
+// mb._tool_profile, and the toolpath - from the control program itself. Coincidence of
+// the inputs proves equality of the geom.* digests: the check catches both a geometry
+// divergence and an input divergence (see - it builds the input on the Python side).
 
 #include "manifest_check.h"
 #include "sha256.h"
@@ -76,31 +76,31 @@
 
 namespace {
 
-// Входные данные всех случаев. Файловый режим наполняет его из каталога-входа,
-// режим --self - из УП и тех же чисел, что у питоновской проверки.
+// Input data of all cases. The file mode fills it from the input directory,
+// the --self mode - from the control program and the same numbers as the Python check.
 struct Inputs {
-    QByteArray tpRaw;                      // упакованный буфер подачи (stride 20)
-    int tpNv = 0;                          // число вершин буфера подачи
-    bool tpHasBounds = false;              // габарит сцены задан
-    gv::Aabb tpBounds;                     // габарит сцены
-    std::vector<float> hlrSegs32;          // звенья контура, 6 float32 на звено
-    double hlrRef[3] = {0.0, 0.0, 0.0};    // опорная точка кадра модели
+    QByteArray tpRaw;                      // packed feed buffer (stride 20)
+    int tpNv = 0;                          // number of feed buffer vertices
+    bool tpHasBounds = false;              // scene bounds are set
+    gv::Aabb tpBounds;                     // scene bounds
+    std::vector<float> hlrSegs32;          // contour segments, 6 float32 per segment
+    double hlrRef[3] = {0.0, 0.0, 0.0};    // reference point of the model frame
     std::vector<double> grid;              // size, step, level, cx, cz, feather
-    std::vector<double> gridFlat;          // то же с нулевым растворением
+    std::vector<double> gridFlat;          // same with zero feather
     std::vector<double> axis;              // length, headLength, headWidth, shaftWidth
-    std::vector<double> axisShort;         // голова длиннее указателя
-    std::vector<double> meshVerts;         // float64, кратно 9 (треугольники)
-    std::vector<double> toolProfile;       // пары (radius, height)
-    int toolSegments = 48;                 // деления тела вращения
-    std::vector<double> toolLowProfile;    // короткий профиль (3 деления)
+    std::vector<double> axisShort;         // head longer than the arrow
+    std::vector<double> meshVerts;         // float64, multiple of 9 (triangles)
+    std::vector<double> toolProfile;       // pairs (radius, height)
+    int toolSegments = 48;                 // divisions of the solid of revolution
+    std::vector<double> toolLowProfile;    // short profile (3 divisions)
     int toolLowSegments = 3;
 };
 
-// Разобранный случай: имя и байты буфера вершин (запись манифеста geom.<имя>).
+// Parsed case: name and bytes of the vertex buffer (manifest record geom.<name>).
 using CaseBuffers = std::vector<std::pair<std::string, QByteArray>>;
 
-// Входные файлы пишет питоновская сторона: float64 little-endian (порядок байтов
-// тот же, что у буферов на GPU: x86 - little-endian).
+// The input files are written by the Python side: float64 little-endian (the byte order
+// same as the GPU buffers: x86 - little-endian).
 bool readBytes(const QString &path, QByteArray *out)
 {
     QFile file(path);
@@ -133,8 +133,8 @@ double at(const std::vector<double> &v, std::size_t i)
     return i < v.size() ? v[i] : 0.0;
 }
 
-// Побитовая запись float32: питоновская сторона сравнивает не «примерно равные»
-// числа, а те же самые биты.
+// Bitwise float32 output: the Python side compares not "approximately equal"
+// numbers, but the very same bits.
 unsigned int bits(float value)
 {
     unsigned int raw = 0;
@@ -149,8 +149,8 @@ QString hex32(float value)
     return QString::fromLatin1(text);
 }
 
-// Состояние одной геометрии: печать в stdout, дамп буфера файлом и сбор байтов
-// для сверки с манифестом.
+// State of one geometry: printing to stdout, dumping the buffer to a file and collecting bytes
+// for the manifest check.
 void report(const QString &name, QQuick3DGeometry *geo, int vertexCount, int triangleCount,
             const QString &dumpDir, bool printReport, CaseBuffers *collect)
 {
@@ -192,10 +192,10 @@ void report(const QString &name, QQuick3DGeometry *geo, int vertexCount, int tri
     }
 }
 
-// Все 14 случаев на одном входе: тот же порядок, что у питоновской проверки.
+// All 14 cases on one input: the same order as the Python check.
 void runCases(const Inputs &in, const QString &dumpDir, bool printReport, CaseBuffers *collect)
 {
-    // ---- ToolpathGeometry: stride 20, контракт toolpath.vert/.frag ----
+    // ---- ToolpathGeometry: stride 20, contract toolpath.vert/.frag ----
     gv::Aabb tpBox = in.tpBounds;
     gvgeom::ToolpathGeometry toolpath;
     toolpath.setPacked(in.tpRaw, in.tpHasBounds ? &tpBox : nullptr, in.tpNv);
@@ -212,7 +212,7 @@ void runCases(const Inputs &in, const QString &dumpDir, bool printReport, CaseBu
     report(QStringLiteral("toolpath_empty"), &toolpathEmpty, toolpathEmpty.vertexCount(), 0, dumpDir,
            printReport, collect);
 
-    // ---- HLRLineGeometry: stride 48, контракт stepledges.vert ----
+    // ---- HLRLineGeometry: stride 48, contract stepledges.vert ----
     const int hlrCount = int(in.hlrSegs32.size()) / 6;
 
     gvgeom::HLRLineGeometry hlr;
@@ -295,7 +295,7 @@ void runCases(const Inputs &in, const QString &dumpDir, bool printReport, CaseBu
            dumpDir, printReport, collect);
 }
 
-// Файловый вход: каталог пишет питоновская проверка.
+// File input: the directory is written by the Python check.
 bool loadInputs(const QString &inDir, Inputs *out, std::string *error)
 {
     const auto file = [&inDir](const char *name) {
@@ -343,8 +343,8 @@ bool loadInputs(const QString &inDir, Inputs *out, std::string *error)
     return true;
 }
 
-// Свой вход: траектория - из УП тем же путём, что рантайм (gvcore), остальное -
-// те же числа, что пишет питоновская проверка (см. оговорку в шапке).
+// Own input: the toolpath - from the control program the same way the runtime does (gvcore),
+// the rest - the same numbers the Python check writes (see the caveat in the header).
 bool buildInputs(const std::string &ngcPath, Inputs *out, std::string *error)
 {
     std::ifstream fh(std::filesystem::u8path(ngcPath), std::ios::binary);
@@ -362,7 +362,7 @@ bool buildInputs(const std::string &ngcPath, Inputs *out, std::string *error)
     out->tpHasBounds = pd.has_bounds;
     out->tpBounds = pd.bounds;
 
-    // Контур: 7 обычных звеньев, вырожденное (ветка ln == 0) и вдоль оси Y.
+    // Contour: 7 ordinary segments, one degenerate (branch ln == 0) and one along the Y axis.
     const auto addSeg = [out](double ax, double ay, double az, double bx, double by, double bz) {
         const float v[6] = {float(ax), float(ay), float(az), float(bx), float(by), float(bz)};
         out->hlrSegs32.insert(out->hlrSegs32.end(), v, v + 6);
@@ -380,9 +380,9 @@ bool buildInputs(const std::string &ngcPath, Inputs *out, std::string *error)
     out->axis = {12.0, 3.5, 2.0, 0.7};
     out->axisShort = {3.0, 4.0, 2.0, 0.7};
 
-    // Меш: куб из 12 треугольников плюс вырожденный (ветка ln == 0 в нормалях).
-    // Координаты не целые нарочно: на целых нормали совпали бы и при ошибке
-    // округления.
+    // Mesh: a cube of 12 triangles plus a degenerate one (branch ln == 0 in the normals).
+    // The coordinates are non-integer on purpose: with integers the normals would coincide
+    // even with a rounding error.
     static const double kCube[8][3] = {{0.0, 0.0, 0.0},    {12.7, 0.0, 0.0},   {12.7, 12.7, 0.0},
                                       {0.0, 12.7, 0.0},   {0.0, 0.0, 6.3},    {12.7, 0.0, 6.3},
                                       {12.7, 12.7, 6.3},  {0.0, 12.7, 6.3}};
@@ -401,8 +401,8 @@ bool buildInputs(const std::string &ngcPath, Inputs *out, std::string *error)
         out->meshVerts.push_back(3.3);
     }
 
-    // Профиль инструмента: концевой фрез с радиусом скругления (BULL) - обе ветки
-    // веера и четырёхугольники; те же метаданные UI_TOOL, что у проверки.
+    // Tool profile: a bull-nose end mill with a corner radius (BULL) - both branches of the
+    // fan and the quads; the same UI_TOOL metadata as in the check.
     gv::ToolInfo info;
     info.present = true;
     info.type = "BULL";
@@ -424,7 +424,7 @@ bool buildInputs(const std::string &ngcPath, Inputs *out, std::string *error)
     return true;
 }
 
-// УП по умолчанию от корня репозитория (путь пробника); пусто при неудаче.
+// Default control program from the repository root (the probe's path); empty on failure.
 std::string defaultNgcPath()
 {
     const std::string root = gv::manifest::repoRoot();
@@ -469,7 +469,7 @@ int main(int argc, char **argv)
             return 1;
         }
         if (manifestMode) {
-            // Сверка с оракулом: буферы своих геометрий против oracle_manifest.json.
+            // Oracle check: the buffers of its own geometries against oracle_manifest.json.
             CaseBuffers collect;
             runCases(inputs, QString(), false, &collect);
             gv::manifest::Manifest manifest;

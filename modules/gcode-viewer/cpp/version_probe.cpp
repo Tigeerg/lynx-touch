@@ -1,20 +1,20 @@
-// cpp/version_probe.cpp - сверка версии вьювера в трёх файлах.
+// cpp/version_probe.cpp - checking the viewer version in three files.
 //
-// Версия вьювера живёт в трёх местах (VERSIONING.md, раздел 3):
-// modules/gcode-viewer/VERSION, projects.json (поле version проекта с id
-// gcode-viewer) и свойство viewerVersion в GcodeViewer3D.qml - его печатает точка
-// входа и показывает панель вьювера. Забытая правка одного из трёх не видна ни
-// сборке, ни прогону: этот пробник читает все три и требует равенства.
+// The viewer version lives in three places (VERSIONING.md, section 3):
+// modules/gcode-viewer/VERSION, projects.json (the version field of the project with id
+// gcode-viewer) and the viewerVersion property in GcodeViewer3D.qml - the entry
+// point prints it and the viewer panel shows it. A forgotten edit of one of the three is
+// invisible both to the build and to a run: this probe reads all three and requires equality.
 //
-// Проверка тривиальная, но её не заменяет ни один пробник геометрии. Питоновской
-// проверки имён модулей (test_module_names.py) больше нет: она стерегла границы
-// питоновских модулей, а их в репозитории не осталось.
+// The check is trivial, but no geometry probe replaces it. The Python
+// module-name check (test_module_names.py) no longer exists: it guarded the boundaries of
+// Python modules, and none of them remain in the repository.
 //
-// Пробнику не нужны ни Qt, ни OCCT: только стандартная библиотека.
+// The probe needs neither Qt nor OCCT: only the standard library.
 //
-// Запуск: version_probe            (корень репозитория берётся от пути пробника)
-//         version_probe <корень>   (явный корень репозитория)
-// Код возврата: 0 - все три версии совпали; 1 - расхождение или файл не прочитан.
+// Run: version_probe            (the repository root is taken from the probe path)
+//      version_probe <root>     (explicit repository root)
+// Return code: 0 - all three versions matched; 1 - a mismatch or the file was not read.
 
 #include <cstdio>
 #include <filesystem>
@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-#include "manifest_check.h"   // gv::manifest::repoRoot: тот же поиск корня, что у пробников сверки
+#include "manifest_check.h"   // gv::manifest::repoRoot: the same root search as in the check probes
 
 namespace {
 
@@ -39,8 +39,8 @@ std::string readText(const std::string& utf8Path, bool& ok)
 
 std::string trimmed(const std::string& text)
 {
-    // VERSION записан с BOM (UTF-8): без снятия метки версия не равна строке из
-    // projects.json, хотя на глаз они одинаковы.
+    // VERSION is written with a BOM (UTF-8): without stripping the mark the version does not
+    // equal the string from projects.json, although to the eye they look the same.
     const std::string bom = "\xEF\xBB\xBF";
     const std::string body = text.compare(0, bom.size(), bom) == 0 ? text.substr(bom.size()) : text;
     const std::size_t first = body.find_first_not_of(" \t\r\n");
@@ -51,8 +51,8 @@ std::string trimmed(const std::string& text)
     return body.substr(first, last - first + 1);
 }
 
-// Версия из текста: значение ключа "key": "…" начиная с позиции from. Пусто -
-// ключа нет.
+// Version from text: the value of the "key": "…" entry starting at position from. Empty -
+// the key is absent.
 std::string quotedValueAfter(const std::string& text, const std::string& key, std::size_t from)
 {
     const std::size_t key_pos = text.find("\"" + key + "\"", from);
@@ -70,8 +70,8 @@ std::string quotedValueAfter(const std::string& text, const std::string& key, st
     return text.substr(open + 1, close - open - 1);
 }
 
-// Версия проекта gcode-viewer из projects.json: поле version ближайшего объекта
-// после "id": "gcode-viewer".
+// The version of the gcode-viewer project from projects.json: the version field of the nearest
+// object after "id": "gcode-viewer".
 std::string versionFromProjects(const std::string& text)
 {
     const std::size_t id_pos = text.find("\"gcode-viewer\"");
@@ -81,7 +81,7 @@ std::string versionFromProjects(const std::string& text)
     return quotedValueAfter(text, "version", id_pos);
 }
 
-// Свойство viewerVersion в GcodeViewer3D.qml: строка после двоеточия.
+// The viewerVersion property in GcodeViewer3D.qml: the string after the colon.
 std::string versionFromQml(const std::string& text)
 {
     const std::size_t key_pos = text.find("viewerVersion:");

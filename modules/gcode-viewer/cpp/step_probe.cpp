@@ -1,40 +1,40 @@
-// cpp/step_probe.cpp - пробник совпадения C++-слоя STEP и нормалей (этап 4a
-// плана переноса): дайджесты сверяются с оракулом (step.*), а
-// нормали — с дайджестом step.normals.
+// cpp/step_probe.cpp - probe of the C++ STEP layer and normals match (stage 4a
+// of the port plan): digests are checked against the oracle (step.*), and the
+// normals - against the step.normals digest.
 //
-// Пробник не входит ни в плагин, ни в ядро: отдельная цель CMake. Он проходит
-// тот же путь, что питоновский load_step_model по сетке и нормалям:
-// STEPControl_Reader -> BRepMesh_IncrementalMesh(0.05, угловой 0.1, параллельно)
-// -> суп вершин с учётом локации грани -> разворот оболочки наружу ->
-// crease-aware нормали. Печатает:
+// The probe belongs to neither the plugin nor the core: a separate CMake target. It takes
+// the same path as the Python load_step_model over the soup and normals:
+// STEPControl_Reader -> BRepMesh_IncrementalMesh(0.05, angular 0.1, parallel)
+// -> vertex soup taking the face location into account -> shell flip outward ->
+// crease-aware normals. It prints:
 //
-// verts: N строк супа вершин (эталон Test_model.STEP - 136194)
-// triangles: F треугольников (эталон - 45398)
-// sha256_verts: H sha256 тех же байтов, что считает Python: float64 LE, (N,3)
-// sha256_tri: H то же для (F,3,3): байты те же, другое чтение
+// verts: N rows of the vertex soup (reference Test_model.STEP - 136194)
+// triangles: F triangles (reference - 45398)
+// sha256_verts: H sha256 of the same bytes that Python computes: float64 LE, (N,3)
+// sha256_tri: H the same for (F,3,3): the bytes are the same, a different read
 // sha256_normals: H sha256 float32 LE (F,3,3)
 //
-// Те же массивы пишутся в каталог-дамп файлами step_verts.f64, step_tri.f64,
-// step_normals.f32: питоновская проверка читает их numpy и сверяет поэлементно,
-// а не только по хэшу. Сверку ведёт.
+// The same arrays are written to the dump directory as the files step_verts.f64, step_tri.f64,
+// step_normals.f32: the Python check reads them with numpy and compares element-wise,
+// not only by hash. The Python check drives it.
 //
-// Рёбра STEP пробник не считает: они в плагине CNC.Edges (cpp/stepledgesgeometry.cpp)
-// и сверяются отдельно.
+// The STEP probe does not compute edges: they live in the CNC.Edges plugin
+// (cpp/stepledgesgeometry.cpp) and are checked separately.
 //
-// Запуск: step_probe <файл.step> <каталог-дампа> (нужны DLL OCCT в PATH)
-// step_probe --manifest <oracle_manifest.json> [<файл.step>]
-// step_probe --check [<файл.step>]
-// Код возврата: 0 - посчитано и записано (или дайджесты сошлись с оракулом);
-// 1 - файл не прочитан или дамп не записан; 2 - аргументы не разобраны.
+// Run: step_probe <file.step> <dump-dir> (OCCT DLLs must be in PATH)
+// step_probe --manifest <oracle_manifest.json> [<file.step>]
+// step_probe --check [<file.step>]
+// Return code: 0 - computed and written (or the digests matched the oracle);
+// 1 - the file was not read or the dump was not written; 2 - the arguments were not parsed.
 //
-// Режим --manifest/--check сверяет дайджесты своих массивов (step.verts,
-// step.tri, step.normals) с oracle_manifest.json без Python и без каталога-дампа:
-// печатает строку на запись и "RESULT: OK" / "RESULT: FAIL (n)". Путь к тестовым
-// данным по умолчанию берётся от корня репозитория (путь пробника).
+// The --manifest/--check mode compares the digests of its arrays (step.verts,
+// step.tri, step.normals) with oracle_manifest.json without Python and without a dump directory:
+// it prints one line per entry and "RESULT: OK" / "RESULT: FAIL (n)". The path to the test
+// data by default is taken from the repository root (the probe path).
 
-// windows.h идёт до заголовков OCCT: цепочка OCCT объявляет _WINDOWS_ своим
-// стражем, и включённый после неё windows.h не даёт ни одной своей функции.
-// NOMINMAX обязателен: min/max макросами ломают std::min и std::max.
+// windows.h comes before the OCCT headers: the OCCT chain declares _WINDOWS_ as its
+// guard, and windows.h included after it exposes none of its own functions.
+// NOMINMAX is required: the min/max macros break std::min and std::max.
 #ifdef _WIN32
 #  ifndef NOMINMAX
 #    define NOMINMAX
@@ -55,9 +55,9 @@
 
 namespace {
 
-// Путь к тестовым данным лежит в каталоге с кириллицей ("Проект по умолчанию"),
-// а OCCT принимает путь в UTF-8: аргументы командной строки берутся в широком
-// виде и переводятся в UTF-8. Иначе файл не нашёлся бы вовсе.
+// The path to the test data lives in a directory with Cyrillic ("Проект по умолчанию"),
+// while OCCT accepts the path in UTF-8: command-line arguments are taken in wide
+// form and converted to UTF-8. Otherwise the file would not be found at all.
 std::string toUtf8(const std::wstring& w) {
 #ifdef _WIN32
     const int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
@@ -91,8 +91,8 @@ std::vector<std::string> probeArgs(int argc, char** argv) {
 #endif
 }
 
-// Дамп сырыми байтами: путь в UTF-8, открывается как wide на Windows - иначе
-// кириллица в каталоге не доехала бы до файловой системы.
+// Dump as raw bytes: the path is UTF-8 and is opened as wide on Windows - otherwise
+// the Cyrillic in the directory would not reach the file system.
 bool writeBytes(const std::string& utf8Path, const std::vector<unsigned char>& bytes) {
     std::ofstream fh(std::filesystem::u8path(utf8Path), std::ios::binary | std::ios::trunc);
     if (!fh) {
@@ -114,9 +114,9 @@ std::vector<unsigned char> asBytes(const void* data, std::size_t count, std::siz
     return out;
 }
 
-// Чтение модели тем же путём, что питоновский load_step_model: суп вершин,
-// треугольники и нормали. Печатает причину отказа и возвращает false - путь общий
-// для режима дампа и режима сверки с оракулом.
+// Read the model the same way as the Python load_step_model: vertex soup,
+// triangles and normals. Prints the reason for the failure and returns false - the path is
+// common to the dump mode and the oracle check mode.
 bool readModel(const std::string& stepPath, gv::StepModel& model) {
     try {
         model = gv::loadStepModel(stepPath);
@@ -169,15 +169,15 @@ int main(int argc, char** argv) {
     }
     const std::size_t faces = std::size_t(model.tri_count);
 
-    // Сериализации те же, что у оракула (numpy.tobytes): float64 LE (N,3) и
-    // float32 LE (F,3,3). x86 хранит их little-endian, порядок байтов не меняется.
+    // Serializations are the same as the oracle's (numpy.tobytes): float64 LE (N,3) and
+    // float32 LE (F,3,3). x86 stores them little-endian, the byte order does not change.
     const std::vector<unsigned char> vertsBytes =
         asBytes(model.verts.data(), model.verts.size(), sizeof(double));
     const std::vector<unsigned char> normalsBytes =
         asBytes(model.normals.data(), model.normals.size(), sizeof(float));
 
-    // Сверка с оракулом: те же дайджесты, что печатает режим дампа, но против
-    // oracle_manifest.json и без записи файлов.
+    // Oracle check: the same digests that the dump mode prints, but against
+    // oracle_manifest.json and without writing files.
     if (checkMode) {
         gv::manifest::Manifest manifest;
         std::string error;
@@ -187,8 +187,8 @@ int main(int argc, char** argv) {
             return 1;
         }
         gv::manifest::Checker checker(manifest);
-        // Формы записей - как в: суп (N,3), треугольники (F,3,3),
-        // нормали (F,3,3); байты step.tri и step.verts одни и те же.
+        // Entry shapes are as in: soup (N,3), triangles (F,3,3),
+        // normals (F,3,3); the bytes of step.tri and step.verts are the same.
         checker.check("step.verts", "float64", gv::sha256Hex(vertsBytes),
                       {static_cast<long long>(model.verts.size() / 3), 3});
         checker.check("step.tri", "float64", gv::sha256Hex(vertsBytes),

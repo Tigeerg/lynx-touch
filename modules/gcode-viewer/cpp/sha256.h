@@ -1,10 +1,10 @@
-// sha256.h - SHA-256 (FIPS 180-4) для пробников сверки с питоновским эталоном.
+// sha256.h - SHA-256 (FIPS 180-4) for probes checking against the Python reference.
 //
-// Пробники печатают sha256 тех же сериализаций, что считает hashlib в Python
-// (bytes у numpy-массива нужного dtype). Qt здесь не нужен: ядро и STEP-слой от
-// Qt не зависят, и QCryptographicHash притащил бы Qt в цели без Qt-зависимостей.
-// Заголовок общий: пробников сверки уже четыре, копия хэша в каждом - четыре
-// расходящиеся копии одного алгоритма.
+// The probes print the sha256 of the same serializations that hashlib computes in
+// Python (the bytes of a numpy array of the given dtype). Qt is not needed here: the
+// core and the STEP layer do not depend on Qt, and QCryptographicHash would drag Qt
+// into targets without Qt dependencies. The header is shared: there are already four
+// check probes, a hash copy in each would be four diverging copies of one algorithm.
 #pragma once
 
 #include <cstddef>
@@ -94,7 +94,7 @@ private:
                               0x510e527fU, 0x9b05688cU, 0x1f83d9abU, 0x5be0cd19U};
     unsigned char block_[64] = {};
     size_t filled_ = 0;
-    unsigned long long total_ = 0;   // счётчик только по полным блокам: длина добирается хвостом
+    unsigned long long total_ = 0;   // counter over full blocks only: the length is completed by the tail
 };
 
 inline std::string sha256Hex(const std::vector<unsigned char>& bytes) {

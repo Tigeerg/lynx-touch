@@ -1,18 +1,19 @@
-// occt/step_edges.h - рёбра B-Rep формы STEP как отрезки. Слой без Qt: тот же
-// алгоритм нужен и QML-плагину CNC.Edges (cpp/stepledgesgeometry.cpp), и сборке
-// модели (cpp/occt/step_bundle.cpp), поэтому он живёт в gvstep одной редакцией.
+// occt/step_edges.h - edges of a STEP B-Rep shape as segments. A layer without Qt:
+// the same algorithm is needed both by the CNC.Edges QML plugin
+// (cpp/stepledgesgeometry.cpp) and by the model assembly (cpp/occt/step_bundle.cpp),
+// so it lives in gvstep as a single copy.
 //
-// Повтор эталонной геометрии рёбер модели
-// (occt/step_import.cpp): обход TopAbs_EDGE в порядке
-// TopExp_Explorer, полилиния каждого ребра - GCPnts_UniformDeflection с линейным
-// допуском 0.05 мм (угловой критерий не используется: эталон его не задаёт),
-// затем склейка почти совпадающих отрезков (_coalesce_segments, core/packing.cpp).
-// Шовные линии криволинейных граней (прямое ребро, у которого все смежные грани
-// криволинейны) отбрасываются: SolidWorks их тоже не рисует.
+// A repeat of the reference edge geometry of the model
+// (occt/step_import.cpp): traversal of TopAbs_EDGE in
+// TopExp_Explorer order, the polyline of each edge - GCPnts_UniformDeflection with a
+// linear deflection of 0.05 mm (the angular criterion is not used: the reference does
+// not set one), then coalescing of nearly coincident segments (_coalesce_segments,
+// core/packing.cpp). Seam lines of curved faces (a straight edge whose adjacent faces
+// are all curved) are dropped: SolidWorks does not draw them either.
 //
-// Совпадение с эталоном проверяет cpp/stepledges_probe.cpp и
-// (сегменты до склейки на
-// Test_model: 4884, после склейки 2426).
+// Agreement with the reference is checked by cpp/stepledges_probe.cpp and
+// (segments before coalescing on
+// Test_model: 4884, after coalescing 2426).
 #pragma once
 
 #include <array>
@@ -22,22 +23,22 @@
 
 namespace gv {
 
-// Отрезок обводки в координатах модели, мм.
+// An outline segment in model coordinates, mm.
 struct EdgeSegment {
     std::array<double, 3> a{};
     std::array<double, 3> b{};
 };
 
-// Рёбра формы до склейки: порядок обхода и порядок точек внутри ребра - часть
-// контракта с эталоном, менять нельзя. dropSeams снимает шовные линии
-// криволинейных граней (у эталона выключение не предусмотрено).
+// Pre-coalesce shape edges: the traversal order and the point order inside an edge
+// are part of the contract with the reference and must not be changed. dropSeams
+// removes seam lines of curved faces (the reference has no way to switch it off).
 std::vector<EdgeSegment> stepRawSegments(const TopoDS_Shape &shape,
                                          double deflection = 0.05,
                                          bool dropSeams = true);
 
-// Склейка почти совпадающих прямых отрезков: корзины по направлению, внутри
-// корзины - кластеры по расстоянию от перпендикуляра (сетка distTol мм), осевые
-// интервалы кластера объединяются. Значения по умолчанию - как у эталона.
+// Coalescing of nearly coincident straight segments: buckets by direction, inside a
+// bucket - clusters by perpendicular distance (distTol mm grid), the axial intervals
+// of a cluster are merged. The default values are as in the reference.
 std::vector<EdgeSegment> coalesceStepSegments(const std::vector<EdgeSegment> &segments,
                                               double distTol = 0.12,
                                               double gapTol = 0.5);

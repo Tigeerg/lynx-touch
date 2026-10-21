@@ -16,8 +16,12 @@
 * [ ] **Перевести комментарии на английский** (`CLAUDE.md`, раздел 4). Сделано: `modules/gcode-viewer`
   (все слои, пробники, `GcodeViewer3D.qml`, `preview_3d.qml`, `CMakeLists.txt`), `apps/qt-interface`
   (`main.qml`, `preview.qml`), `scripts/*`, `tools/check.sh`, `tools/checks.txt`, `tools/keyprobe.ps1`,
-  `.github/workflows/viewer-linux.yml`, `data/cad-testdata/linuxcnc_ui.cps`, `environment.yml`.
+  `data/cad-testdata/linuxcnc_ui.cps`, `environment.yml`.
   Осталось:
+  - `.github/workflows/viewer-linux.yml` — комментарии переведены, но закоммитить и запушить не выходит:
+    у OAuth-токена нет scope `workflow`, а пуш, меняющий файлы workflow, GitHub отклоняет. Нужен
+    `gh auth refresh -h github.com -s workflow`, затем закоммитить файл (переведённый лежит в рабочем
+    дереве);
   - `apps/react-interface/**` — ведёт параллельная сессия;
   - `tools/check.ps1` — ведёт параллельная сессия;
   - `modules/gcode-viewer/cpp/core/stock_sim.h` / `.cpp` — комментарии переведены в рабочем дереве, но не

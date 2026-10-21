@@ -1,7 +1,8 @@
-// core/ui_tags.cpp - разбор тегов UI_* постпроцессора.
+// core/ui_tags.cpp - parsing of the postprocessor UI_* tags.
 //
-// Шаблоны повторяются вручную, а не std::regex: питоновские re работают в
-// юникодном режиме и по-другому трактуют \b и \s, а сравнить нужно дословно.
+// The patterns are repeated by hand rather than with std::regex: the reference
+// re works in Unicode mode and treats \b and \s differently, and the comparison
+// must be literal.
 #include "ui_tags.h"
 
 #include <cstdio>
@@ -15,7 +16,7 @@
 namespace gv {
 namespace {
 
-// Позиция подстроки без учёта регистра ASCII (re.IGNORECASE для ASCII-шаблонов).
+// Case-insensitive ASCII substring position (re.IGNORECASE for ASCII patterns).
 size_t findNoCase(const std::string& hay, const char *needle, size_t from = 0) {
     const size_t n = std::strlen(needle);
     if (n == 0 || hay.size() < n) { return std::string::npos; }
@@ -27,7 +28,7 @@ size_t findNoCase(const std::string& hay, const char *needle, size_t from = 0) {
     return std::string::npos;
 }
 
-// true, если на позиции p стоит слово целиком без учёта регистра; p сдвигается.
+// true if a whole word sits at position p, case-insensitively; p advances.
 bool eatNoCase(const std::string& s, size_t& p, const char *word) {
     const size_t n = std::strlen(word);
     if (p + n > s.size()) { return false; }
@@ -38,7 +39,7 @@ bool eatNoCase(const std::string& s, size_t& p, const char *word) {
     return true;
 }
 
-// Пропуск пробельных символов; true, если пропущен хотя бы один.
+// Skip whitespace characters; true if at least one was skipped.
 bool skipSpace(const std::string& s, size_t& p) {
     const size_t start = p;
     while (p < s.size() && isSpaceCh(static_cast<unsigned char>(s[p]))) { ++p; }
@@ -46,8 +47,8 @@ bool skipSpace(const std::string& s, size_t& p) {
 }
 
 
-// Число шаблона -?\d+(\.\d+)? (питоновский _NUM_RE): без знака плюс и без
-// экспоненты; точка без цифры после неё в число не входит.
+// The pattern number -?\d+(\.\d+)? (the reference _NUM_RE): no leading plus and
+// no exponent; a dot without a digit after it is not part of the number.
 bool readNum(const std::string& s, size_t& p, double& out) {
     const size_t start = p;
     if (p < s.size() && s[p] == '-') { ++p; }
@@ -62,7 +63,7 @@ bool readNum(const std::string& s, size_t& p, double& out) {
     return true;
 }
 
-// Все числа шаблона _NUM_RE по порядку (питоновский findall).
+// All numbers of the _NUM_RE pattern in order (the reference findall).
 std::vector<double> findAllNums(const std::string& s) {
     std::vector<double> out;
     size_t p = 0;
@@ -74,9 +75,10 @@ std::vector<double> findAllNums(const std::string& s) {
     return out;
 }
 
-// Вхождение 'ИМЯ:' с позиции from: возвращает начало тега, в `after` кладёт
-// позицию сразу за двоеточием. Вхождение без двоеточия - не совпадение, поиск
-// продолжается (как ведёт себя re.search с шаблоном 'ИМЯ:').
+// An occurrence of 'NAME:' from position from: returns the start of the tag and
+// puts the position right after the colon into `after`. An occurrence without a
+// colon is not a match, and the search continues (how re.search with the
+// 'NAME:' pattern behaves).
 size_t findTagAfterColon(const std::string& text, const char *tag, size_t from, size_t& after) {
     const size_t n = std::strlen(tag);
     size_t at = from;
@@ -91,7 +93,7 @@ size_t findTagAfterColon(const std::string& text, const char *tag, size_t from, 
     }
 }
 
-// Тело тега 'ИМЯ: <до) или конца строки>' (питоновский [^)\n]*).
+// The tag body 'NAME: <up to ) or end of line>' (the reference [^)\n]*).
 bool tagBody(const std::string& text, const char *tag, std::string& body) {
     size_t p = 0;
     if (findTagAfterColon(text, tag, 0, p) == std::string::npos) { return false; }
@@ -124,7 +126,7 @@ ToolInfo parseUiTool(const std::string& text) {
             stripInPlace(key);
             stripInPlace(val);
             for (char& c : key) { c = upperCh(c); }
-            kv.emplace_back(key, val);       // повтор ключа перекрывает прежнее значение
+            kv.emplace_back(key, val);       // a repeated key overrides the earlier value
         }
     }
     auto num = [&kv](const char *key, double def) {
@@ -163,20 +165,20 @@ ToolInfo parseUiTool(const std::string& text) {
 }
 
 std::string stageLabel(const ToolInfo& info) {
-    if (!info.present) { return "\xD0\xAD\xD1\x82\xD0\xB0\xD0\xBF"; }   // "Этап"
+    if (!info.present) { return "\xD0\xAD\xD1\x82\xD0\xB0\xD0\xBF"; }   // RU "Этап"
     std::string out = "T" + std::to_string(info.number);
     static const std::pair<const char *, const char *> kTypeRu[] = {
-        {"FLAT", "\xD1\x84\xD1\x80\xD0\xB5\xD0\xB7\xD0\xB0"},                       // "фреза"
-        {"BULL", "\xD1\x84\xD1\x80\xD0\xB5\xD0\xB7\xD0\xB0 R"},                    // "фреза R"
-        {"BALL", "\xD1\x81\xD1\x84\xD0\xB5\xD1\x80. \xD1\x84\xD1\x80\xD0\xB5\xD0\xB7\xD0\xB0"}, // "сфер. фреза"
-        {"CHAMFER", "\xD1\x84\xD0\xB0\xD1\x81\xD0\xBA\xD0\xB0"},                   // "фаска"
-        {"TAPER", "\xD0\xBA\xD0\xBE\xD0\xBD\xD1\x83\xD1\x81"},                     // "конус"
-        {"DOVETAIL", "\xD0\xBB\xD0\xB0\xD1\x81\xD1\x82\xD0\xBE\xD1\x87\xD0\xBA\xD0\xB0"}, // "ласточка"
-        {"LOLLIPOP", "\xD0\xB3\xD1\x80\xD0\xB8\xD0\xB1\xD0\xBE\xD0\xBA"},         // "грибок"
-        {"THREAD", "\xD1\x80\xD0\xB5\xD0\xB7\xD1\x8C\xD0\xB1\xD0\xB0"},           // "резьба"
-        {"DRILL", "\xD1\x81\xD0\xB2\xD0\xB5\xD1\x80\xD0\xBB\xD0\xBE"},             // "сверло"
-        {"TAP", "\xD0\xBC\xD0\xB5\xD1\x82\xD1\x87\xD0\xB8\xD0\xBA"},               // "метчик"
-        {"PROBE", "\xD1\x89\xD1\x83\xD0\xBF"},                                     // "щуп"
+        {"FLAT", "\xD1\x84\xD1\x80\xD0\xB5\xD0\xB7\xD0\xB0"},                       // RU "фреза"
+        {"BULL", "\xD1\x84\xD1\x80\xD0\xB5\xD0\xB7\xD0\xB0 R"},                    // RU "фреза R"
+        {"BALL", "\xD1\x81\xD1\x84\xD0\xB5\xD1\x80. \xD1\x84\xD1\x80\xD0\xB5\xD0\xB7\xD0\xB0"}, // RU "сфер. фреза"
+        {"CHAMFER", "\xD1\x84\xD0\xB0\xD1\x81\xD0\xBA\xD0\xB0"},                   // RU "фаска"
+        {"TAPER", "\xD0\xBA\xD0\xBE\xD0\xBD\xD1\x83\xD1\x81"},                     // RU "конус"
+        {"DOVETAIL", "\xD0\xBB\xD0\xB0\xD1\x81\xD1\x82\xD0\xBE\xD1\x87\xD0\xBA\xD0\xB0"}, // RU "ласточка"
+        {"LOLLIPOP", "\xD0\xB3\xD1\x80\xD0\xB8\xD0\xB1\xD0\xBE\xD0\xBA"},         // RU "грибок"
+        {"THREAD", "\xD1\x80\xD0\xB5\xD0\xB7\xD1\x8C\xD0\xB1\xD0\xB0"},           // RU "резьба"
+        {"DRILL", "\xD1\x81\xD0\xB2\xD0\xB5\xD1\x80\xD0\xBB\xD0\xBE"},             // RU "сверло"
+        {"TAP", "\xD0\xBC\xD0\xB5\xD1\x82\xD1\x87\xD0\xB8\xD0\xBA"},               // RU "метчик"
+        {"PROBE", "\xD1\x89\xD1\x83\xD0\xBF"},                                     // RU "щуп"
     };
     std::string typ = info.type;
     for (const auto& entry : kTypeRu) {
@@ -214,7 +216,7 @@ std::array<double, 3> parseUiRotation(const std::string& text) {
         skipSpace(text, p);
         if (!readNum(text, p, out[i])) { return zero; }
         if (p < text.size() && text[p] == '.') { ++p; }
-        if (i < 2 && !skipSpace(text, p)) { return zero; }   // между осями \s+ обязателен
+        if (i < 2 && !skipSpace(text, p)) { return zero; }   // between axes \s+ is required
     }
     return out;
 }
@@ -269,7 +271,7 @@ std::optional<HolderTag> parseUiHolder(const std::string& text) {
         if (p < body.size() && body[p] == '=') {
             ++p;
             skipSpace(body, p);
-            // [^=]+?\s*$: имя идёт до конца тела и не содержит '='.
+            // [^=]+?\s*$: the name runs to the end of the body and contains no '='.
             if (body.find('=', p) == std::string::npos) {
                 std::string name = body.substr(p);
                 stripInPlace(name);

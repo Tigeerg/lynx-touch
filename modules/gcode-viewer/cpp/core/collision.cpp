@@ -1,9 +1,9 @@
-// core/collision.cpp - скан коллизий оправки с заготовкой и сверка инструмента
-// со стойкой.
+// core/collision.cpp - scan of holder collisions with the stock and tool check
+// against the machine.
 //
-// Выражения повторяют питоновские дословно: скан сравнивается с эталоном до
-// последнего разряда, поэтому порядок суммирования и
-// деления здесь часть результата, а не оформление.
+// The expressions repeat the reference literally: the scan is checked against
+// the reference down to the last digit, so the order of summation and division
+// here is part of the result, not formatting.
 #include "core/collision.h"
 
 #include <algorithm>
@@ -19,33 +19,34 @@ namespace gv {
 
 namespace {
 
-// Тексты сообщений оператору - байт в байт как у эталона (UTF-8, escape'ами:
-// слой ядра пишет русские строки так же, как ui_tags). Комментарий рядом -
-// читаемый текст.
+// Operator messages - byte for byte as in the reference (UTF-8, as escapes: the
+// core layer writes Russian strings the same way as ui_tags). The comment next
+// to each is the readable text.
 const char *const MSG_MISSING =
     "\x54\x25\x64\x20\xD0\xBD\xD0\xB5\xD1\x82\x20\xD0\xB2\x20\xD1\x82\xD0\xB0\xD0\xB1\xD0\xBB"
-    "\xD0\xB8\xD1\x86\xD0\xB5\x20\xD1\x81\xD1\x82\xD0\xBE\xD0\xB9\xD0\xBA\xD0\xB8";   // "T%d нет в таблице стойки"
+    "\xD0\xB8\xD1\x86\xD0\xB5\x20\xD1\x81\xD1\x82\xD0\xBE\xD0\xB9\xD0\xBA\xD0\xB8";   // RU "T%d нет в таблице стойки"
 const char *const MSG_DISABLED =
     "\x54\x25\x64\x20\xD0\xBE\xD1\x82\xD0\xBA\xD0\xBB\xD1\x8E\xD1\x87\xD1\x91\xD0\xBD\x20"
-    "\xD0\xB2\x20\xD1\x81\xD1\x82\xD0\xBE\xD0\xB9\xD0\xBA\xD0\xB5";                    // "T%d отключён в стойке"
+    "\xD0\xB2\x20\xD1\x81\xD1\x82\xD0\xBE\xD0\xB9\xD0\xBA\xD0\xB5";                    // RU "T%d отключён в стойке"
 const char *const MSG_SHORT_NC =
     "\xD0\x92\xD1\x8B\xD0\xBB\xD0\xB5\xD1\x82\x20\x54\x25\x64\x20\x28\x25\x2E\x31\x66\x29\x20"
     "\xD0\xBC\xD0\xB5\xD0\xBD\xD1\x8C\xD1\x88\xD0\xB5\x20\xD0\xB7\xD0\xB0\xD0\xB4\xD0\xB0"
     "\xD0\xBD\xD0\xBD\xD0\xBE\xD0\xB3\xD0\xBE\x20\xD0\xB2\x20\xD0\xA3\xD0\x9F\x20"
-    "\x28\x25\x2E\x31\x66\x29";                     // "Вылет T%d (%.1f) меньше заданного в УП (%.1f)"
+    "\x28\x25\x2E\x31\x66\x29";                     // RU "Вылет T%d (%.1f) меньше заданного в УП (%.1f)"
 const char *const MSG_SHORT_DEPTH =
     "\xD0\x92\xD1\x8B\xD0\xBB\xD0\xB5\xD1\x82\x20\x54\x25\x64\x20\x28\x25\x2E\x31\x66\x29\x20"
     "\xD0\xBC\xD0\xB5\xD0\xBD\xD1\x8C\xD1\x88\xD0\xB5\x20\xD0\xB3\xD0\xBB\xD1\x83\xD0\xB1"
     "\xD0\xB8\xD0\xBD\xD1\x8B\x20\xD0\xBE\xD0\xB1\xD1\x80\xD0\xB0\xD0\xB1\xD0\xBE\xD1\x82"
-    "\xD0\xBA\xD0\xB8\x20\x28\x25\x2E\x31\x66\x29"; // "Вылет T%d (%.1f) меньше глубины обработки (%.1f)"
+    "\xD0\xBA\xD0\xB8\x20\x28\x25\x2E\x31\x66\x29"; // RU "Вылет T%d (%.1f) меньше глубины обработки (%.1f)"
 const char *const MSG_LIMIT =
     "\x54\x25\x64\x20\xD0\xB4\xD0\xBB\xD0\xB8\xD0\xBD\xD0\xBD\xD0\xB5\xD0\xB5\x20\xD0\xBD"
     "\xD0\xB0\x20\x25\x2E\x31\x66\x20\xD0\xBC\xD0\xBC\x20\xE2\x80\x94\x20\xD0\xB2\xD1\x8B"
     "\xD1\x85\xD0\xBE\xD0\xB4\x20\xD0\xB7\xD0\xB0\x20\xD0\xBB\xD0\xB8\xD0\xBC\xD0\xB8\xD1\x82"
-    "\x20\xD0\xBE\xD1\x81\xD0\xB8\x20\x5A";         // "T%d длиннее на %.1f мм — выход за лимит оси Z"
+    "\x20\xD0\xBE\xD1\x81\xD0\xB8\x20\x5A";         // RU "T%d длиннее на %.1f мм — выход за лимит оси Z"
 
-// Строка сообщения из шаблона: snprintf считает по C-локали, но разделитель
-// дробной части приводится к точке - оператор видит тот же текст, что в Python.
+// Message from a template: snprintf uses the C locale, but the fractional
+// separator is turned into a dot - the operator sees the same text as in the
+// reference.
 std::string formatMessage(const char *pattern, int number, double first, bool has_second,
                           double second)
 {
@@ -70,7 +71,7 @@ std::string messageOfNumber(const char *pattern, int number)
     return std::string(buf);
 }
 
-// Индекс этапа, которому принадлежит длина пути d: последний этап с началом <= d.
+// Index of the stage that owns path length d: the last stage with start <= d.
 int stageAt(const std::vector<double>& starts, double d)
 {
     int lo = 0;
@@ -90,7 +91,7 @@ int stageAt(const std::vector<double>& starts, double d)
 
 double collisionStep()
 {
-    // Читается один раз: в Python это значение на момент импорта модуля.
+    // Read once: in the reference this is the value at module import.
     static const double step = [] {
         const char* raw = std::getenv("CNC_COLLISION_STEP");
         if (raw == nullptr || *raw == '\0') {
@@ -144,7 +145,7 @@ std::vector<CollisionRange> scanCollisions(const std::vector<double>& pts,
     std::vector<CollisionRange> out;
     bool has_cur = false;
     CollisionRange cur;
-    int idx = 1;                       // движущийся указатель по cum (d растёт)
+    int idx = 1;                       // moving pointer over cum (d grows)
     double d = 0.0;
     while (d <= total) {
         while (idx < n - 1 && cum[std::size_t(idx)] < d) {
@@ -158,20 +159,20 @@ std::vector<CollisionRange> scanCollisions(const std::vector<double>& pts,
         const double sx = p0[0] + (p1[0] - p0[0]) * t;
         const double sy = p0[1] + (p1[1] - p0[1]) * t;
         const double sz = p0[2] + (p1[2] - p0[2]) * t;
-        const double x = sx;           // машинный X
-        const double y = -sz;          // машинный Y (сцена z = -машинный Y)
-        const double z = sy;           // машинный Z (сцена y = машинный Z)
+        const double x = sx;           // machine X
+        const double y = -sz;          // machine Y (scene z = -machine Y)
+        const double z = sy;           // machine Z (scene y = machine Z)
         const int si = stageAt(stage_starts, d);
         const double L = si < int(stage_len.size()) ? stage_len[std::size_t(si)] : 0.0;
         double worst = 0.0;
         if (si < int(holders.size())) {
             for (const HolderSection& sec : holders[std::size_t(si)]) {
-                const double hb = z + sec.z0_mm;      // низ секции, машинный Z
-                if (hb >= zmax) {                     // секция выше заготовки
+                const double hb = z + sec.z0_mm;      // bottom of the section, machine Z
+                if (hb >= zmax) {                     // the section is above the stock
                     continue;
                 }
                 const double ht = z + sec.z1_mm;
-                if (ht <= zmin) {                     // секция ниже заготовки
+                if (ht <= zmin) {                     // the section is below the stock
                     continue;
                 }
                 if (!circleRectHit(x, y, sec.radius_mm, xmin, xmax, ymin, ymax)) {
@@ -214,7 +215,7 @@ std::vector<ToolCheckRow> toolCheckReport(const std::vector<ToolInfo>& stage_too
         return {};
     }
     if (machine_tools.empty()) {
-        return {};                     // стойка не подключена - сверять нечего
+        return {};                     // the machine is not connected - nothing to check
     }
     const int n = int(cum.size());
     std::vector<double> starts(stages.size());
@@ -231,7 +232,7 @@ std::vector<ToolCheckRow> toolCheckReport(const std::vector<ToolInfo>& stage_too
         while (j + 1 < int(starts.size()) && starts[std::size_t(j + 1)] <= d) {
             ++j;
         }
-        const double z = pts[std::size_t(i) * 3 + 1];      // сцена y = машинный Z
+        const double z = pts[std::size_t(i) * 3 + 1];      // scene y = machine Z
         if (!has_z[std::size_t(j)] || z < z_min[std::size_t(j)]) {
             z_min[std::size_t(j)] = z;
             has_z[std::size_t(j)] = true;
@@ -281,7 +282,7 @@ std::vector<ToolCheckRow> toolCheckReport(const std::vector<ToolInfo>& stage_too
     const double zmax_lim = limits.present ? limits.z_max : 0.0;
     std::vector<ToolCheckRow> report;
     report.reserve(by_tool.size());
-    for (const auto& pair : by_tool) {          // ключи отсортированы номером
+    for (const auto& pair : by_tool) {          // keys sorted by number
         const int num = pair.first;
         const ToolEntry& entry = pair.second;
         const double depth = entry.has_z ? std::fabs(entry.z_min) : 0.0;

@@ -5,23 +5,23 @@
 #include <numeric>
 #include <utility>
 
-// Порядок операций здесь - часть контракта: результат сверяется с эталонными
-// дайджестами бит-в-бит, а не «примерно». Компилируется с
-// /fp:precise (MSVC) и -ffp-contract=off (GCC/Clang): переассоциация и FMA
-// сдвигают младшие биты float32-результата.
+// The order of operations here is part of the contract: the result is checked
+// against the reference digests bit for bit, not "approximately". It is compiled
+// with /fp:precise (MSVC) and -ffp-contract=off (GCC/Clang): reassociation and
+// FMA shift the low bits of the float32 result.
 
 namespace gv {
 namespace {
 
 constexpr double DEG_TO_RAD = 3.14159265358979323846 / 180.0;
 
-// Ключ сварки вершины: позиция, округлённая до сетки weld (np.round(V / weld)).
+// Weld key of a vertex: the position rounded to the weld grid (np.round(V / weld)).
 struct WeldKey {
     double v[3];
 };
 
-// Лексикографический порядок ключей, как у np.unique(axis=0): поля слева
-// направо. Равенство поэлементное (==), поэтому -0.0 и 0.0 - один узел.
+// Lexicographic key order, like np.unique(axis=0): fields left to right.
+// Equality is element-wise (==), so -0.0 and 0.0 are one node.
 inline bool keyLess(const WeldKey& a, const WeldKey& b) {
     for (int i = 0; i < 3; ++i) {
         if (a.v[i] < b.v[i]) { return true; }
@@ -34,14 +34,14 @@ inline bool keyEqual(const WeldKey& a, const WeldKey& b) {
     return a.v[0] == b.v[0] && a.v[1] == b.v[1] && a.v[2] == b.v[2];
 }
 
-// Ребро треугольника: канонически упорядоченные концы (a < b) и номер грани.
+// Triangle edge: canonically ordered ends (a < b) and the face number.
 struct EdgeRec {
     std::uint32_t a;
     std::uint32_t b;
     std::uint32_t face;
 };
 
-// Кандидатное силуэтное ребро: концы и две смежные грани (f0 < f1).
+// Candidate silhouette edge: ends and two adjacent faces (f0 < f1).
 struct Candidate {
     std::uint32_t a;
     std::uint32_t b;
@@ -49,8 +49,8 @@ struct Candidate {
     std::int32_t f1;
 };
 
-// np.clip(x, -1.0, 1.0) без ветки на NaN: NaN проходит насквозь, как у numpy
-// (std::min/std::max вернули бы из NaN единицу).
+// np.clip(x, -1.0, 1.0) without a NaN branch: NaN passes through, like numpy
+// (std::min/std::max would turn NaN into one).
 inline double clipUnit(double x) {
     if (x < -1.0) { return -1.0; }
     if (x > 1.0) { return 1.0; }
@@ -68,9 +68,10 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup,
         return topo;
     }
 
-    // Сварка вершин: одна позиция на сетке weld - один индекс. Без неё соседние
-    // грани одной кромки B-rep дают разные индексы и карта смежности рёбер не
-    // собирается. Ключ - позиция в единицах weld; равенство ключей и есть сварка.
+    // Vertex welding: one position on the weld grid is one index. Without it,
+    // adjacent faces of one B-rep edge get different indices and the edge
+    // adjacency map cannot be built. The key is the position in weld units; key
+    // equality is the welding.
     const std::size_t slots = faces * 3;
     std::vector<WeldKey> key(slots);
     for (std::size_t i = 0; i < slots; ++i) {
@@ -84,10 +85,10 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup,
         return keyLess(key[x], key[y]);
     });
 
-    // Представитель кластера - первый ключ группы в отсортированном порядке (у
-    // numpy - тоже первый: mask по aux[1:] != aux[:-1]). Равные ключи на супе
-    // STEP побитово одинаковы (нулевые ключи пришли все с -0.0), поэтому
-    // неустойчивость сортировки numpy на ea/eb не влияет.
+    // The cluster representative is the first key of the group in sorted order
+    // (in numpy also the first: mask by aux[1:] != aux[:-1]). Equal keys on a
+    // STEP soup are bit-identical (the zero keys all came from -0.0), so numpy's
+    // sort instability does not affect ea/eb.
     std::vector<std::uint32_t> inv(slots);
     std::vector<WeldKey> uniq;
     uniq.reserve(slots / 6 + 1);
@@ -99,8 +100,8 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup,
         inv[order[i]] = static_cast<std::uint32_t>(uniq.size() - 1);
     }
 
-    // Позиция узла - представитель кластера: расхождение с исходной точкой
-    // <= weld/2 (5e-5 мм), зато детерминированно.
+    // The node position is the cluster representative: the deviation from the
+    // original point is <= weld/2 (5e-5 mm), but deterministic.
     std::vector<double> pos(uniq.size() * 3);
     for (std::size_t g = 0; g < uniq.size(); ++g) {
         for (int d = 0; d < 3; ++d) {
@@ -108,8 +109,8 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup,
         }
     }
 
-    // Три ребра каждой грани (a < b) в порядке эталона: грань за гранью, внутри
-    // грани - (0,1), (1,2), (2,0).
+    // Three edges of each face (a < b) in the reference order: face by face,
+    // inside a face - (0,1), (1,2), (2,0).
     std::vector<EdgeRec> edge(slots);
     for (std::size_t f = 0; f < faces; ++f) {
         for (std::uint32_t j = 0; j < 3; ++j) {
@@ -121,18 +122,18 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup,
             rec.face = static_cast<std::uint32_t>(f);
         }
     }
-    // Ключ ребра - (a,b), как у numpy; третий ключ - грань: в эталоне группа
-    // собрана устойчивой сортировкой, поэтому внутри группы грани идут по
-    // возрастанию, и f0 - меньшая из них.
+    // The edge key is (a,b), like numpy; the third key is the face: in the
+    // reference the group is built by a stable sort, so inside a group the faces
+    // go in ascending order and f0 is the smaller one.
     std::sort(edge.begin(), edge.end(), [](const EdgeRec& x, const EdgeRec& y) {
         if (x.a != y.a) { return x.a < y.a; }
         if (x.b != y.b) { return x.b < y.b; }
         return x.face < y.face;
     });
 
-    // Кандидаты - рёбра ровно с двумя смежными гранями: силуэт живёт на стыке
-    // двух граней. Рёбра с другой кратностью (на супе STEP такие есть: 1, 4, 6)
-    // отсеяны, как и в эталоне.
+    // Candidates are edges with exactly two adjacent faces: a silhouette lives
+    // at the junction of two faces. Edges of another multiplicity (the STEP soup
+    // has some: 1, 4, 6) are filtered out, as in the reference.
     std::vector<Candidate> cand;
     for (std::size_t i = 0; i < edge.size();) {
         std::size_t j = i + 1;
@@ -147,9 +148,10 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup,
         i = j;
     }
 
-    // Нормали - геометрические, по самим треугольникам: горизонт силуэта задаёт
-    // переворот нормали грани, сглаживание его размывало бы. Порядок слагаемых
-    // тот же, что у numpy (cross, затем корень из суммы квадратов слева направо).
+    // Normals are geometric, from the triangles themselves: the silhouette
+    // horizon is set by a face normal flip, and smoothing would blur it. The
+    // summation order is the same as numpy (cross, then the square root of the
+    // sum of squares left to right).
     std::vector<double> nrm(faces * 3, 0.0);
     std::vector<double> area(faces, 0.0);
     for (std::size_t f = 0; f < faces; ++f) {
@@ -161,15 +163,15 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup,
                               d0[0] * d1[1] - d0[1] * d1[0]};
         const double len = std::sqrt(((cr[0] * cr[0] + cr[1] * cr[1]) + cr[2] * cr[2]));
         area[f] = 0.5 * len;
-        const double div = (len == 0.0) ? 1.0 : len;   // вырожденная грань: нормаль как есть
+        const double div = (len == 0.0) ? 1.0 : len;   // degenerate face: normal as is
         for (int d = 0; d < 3; ++d) {
             nrm[f * 3 + std::size_t(d)] = cr[d] / div;
         }
     }
 
-    // Фильтр кандидатов: только гладкие горизонты (без острых кромок - их рисует
-    // слой статических рёбер) и без вырожденных граней (их нормаль - численный
-    // мусор, знак скачет и родит короткие ложные усы).
+    // Candidate filter: only smooth horizons (no sharp edges - the static edge
+    // layer draws those) and no degenerate faces (their normal is numerical
+    // noise, the sign flips and breeds short false whiskers).
     const double angle_lim = quality.silhouetteMaxEdgeDeg * DEG_TO_RAD;
     topo.ea.reserve(cand.size() * 3);
     topo.eb.reserve(cand.size() * 3);
@@ -184,9 +186,9 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup,
         }
         const double* n0 = &nrm[f0 * 3];
         const double* n1 = &nrm[f1 * 3];
-        // Скалярное произведение нормалей слева направо: np.einsum для трёх
-        // слагаемых даёт местами другой младший бит, но решение о 20 градусах от
-        // этого не зависит - ближайший к порогу угол отстоит на 0.054 рад.
+        // Dot product of the normals left to right: np.einsum over three terms
+        // gives a different low bit in places, but the 20-degree decision does
+        // not depend on it - the angle nearest the threshold is 0.054 rad away.
         const double dot = ((n0[0] * n1[0] + n0[1] * n1[1]) + n0[2] * n1[2]);
         if (!(std::acos(clipUnit(dot)) < angle_lim)) {
             continue;
@@ -199,9 +201,9 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup,
         }
     }
 
-    // n и d: d = n·cen в float32, cen - центроид грани (среднее трёх вершин,
-    // double, затем float32). Единый порядок слагаемых с numpy: (n0*c0 + n1*c1)
-    // + n2*c2, сложение слева направо.
+    // n and d: d = n·cen in float32, cen is the face centroid (mean of three
+    // vertices, double, then float32). A single summation order with numpy:
+    // (n0*c0 + n1*c1) + n2*c2, addition left to right.
     topo.n.resize(faces * 3);
     topo.d.resize(faces);
     for (std::size_t f = 0; f < faces; ++f) {
@@ -223,7 +225,7 @@ MeshTopology buildSilhouetteTopology(const std::vector<double>& soup,
 std::vector<float> meshSilhouetteSegments(const MeshTopology& topo, const double eyeMm[3]) {
     MeshSilhouetteScratch scratch;
     meshSilhouetteSegments(topo, eyeMm, scratch);
-    return std::move(scratch.out);      // перенос, а не копия: как был возврат out
+    return std::move(scratch.out);      // move, not copy: as the former return of out
 }
 
 const std::vector<float>& meshSilhouetteSegments(const MeshTopology& topo, const double eyeMm[3],
@@ -234,13 +236,14 @@ const std::vector<float>& meshSilhouetteSegments(const MeshTopology& topo, const
         return scratch.out;
     }
 
-    // Глаз - float32, как в эталоне (np.asarray(E, dtype=float32)).
+    // The eye is float32, as in the reference (np.asarray(E, dtype=float32)).
     const float ex = static_cast<float>(eyeMm[0]);
     const float ey = static_cast<float>(eyeMm[1]);
     const float ez = static_cast<float>(eyeMm[2]);
 
-    // Знак s = n·E - d по граням. Грань с s == 0 (глаз в её плоскости, включая
-    // -0.0) получает 0 и силуэтной не считается - как произведение < 0 у эталона.
+    // Sign s = n·E - d per face. A face with s == 0 (the eye in its plane,
+    // including -0.0) gets 0 and is not counted as a silhouette edge - like the
+    // reference's product < 0.
     scratch.sign.assign(faces, 0);
     for (std::size_t f = 0; f < faces; ++f) {
         const float* nf = &topo.n[f * 3];

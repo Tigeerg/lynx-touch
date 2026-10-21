@@ -1,14 +1,14 @@
-// core/stl_import.cpp - чтение STL: бинарный и ASCII.
+// core/stl_import.cpp - STL reading: binary and ASCII.
 //
-// Разметка бинарного STL: 80 байт заголовка, uint32 little-endian - число
-// треугольников, далее записи по 50 байт (нормаль 3f, три вершины по 3f,
-// 2 байта атрибута). Нормаль записи не читается: эталон берёт только вершины.
+// Binary STL layout: an 80-byte header, a uint32 little-endian triangle count,
+// then 50-byte records (normal 3f, three vertices of 3f, 2 attribute bytes). The
+// record normal is not read: the reference takes only the vertices.
 //
-// ASCII-ветка повторяет питоновский путь строка за строкой: декодирование UTF-8
-// с игнорированием битых байтов, разбиение на строки набором str.splitlines,
-// снятие пробелов str.strip, поиск слов vertex. Числа разбирает strtodC (тот
-// же правильно округляющий разбор, что у float для обычной десятичной записи,
-// но в C-локали и независимо от LC_NUMERIC процесса).
+// The ASCII branch repeats the reference path line by line: UTF-8 decoding with
+// broken bytes ignored, splitting into lines with the str.splitlines set,
+// trimming with str.strip, searching for the vertex words. Numbers are parsed by
+// strtodC (the same correctly rounding parse as float for ordinary decimal
+// notation, but in the C locale and independent of the process LC_NUMERIC).
 #include "core/stl_import.h"
 
 #include "core/text_util.h"
@@ -26,9 +26,9 @@
 namespace gv {
 namespace {
 
-constexpr std::size_t BINARY_HEAD = 84;         // 80 байт заголовка + счётчик
-constexpr std::size_t TRIANGLE_BYTES = 50;      // запись одного треугольника
-constexpr std::size_t ASCII_PROBE_BYTES = 1024; // по первым 1024 байтам эталон решает, ASCII ли это
+constexpr std::size_t BINARY_HEAD = 84;         // 80 header bytes + counter
+constexpr std::size_t TRIANGLE_BYTES = 50;      // one triangle record
+constexpr std::size_t ASCII_PROBE_BYTES = 1024; // the reference decides "is this ASCII" from the first 1024 bytes
 
 bool readAll(const std::string& utf8Path, std::string& out) {
     std::ifstream fh(std::filesystem::u8path(utf8Path), std::ios::binary);
@@ -55,7 +55,8 @@ bool contains(const std::string& hay, const char* needle) {
     return hay.find(needle) != std::string::npos;
 }
 
-// Пробельный ли кодпоинт: набор str.isspace (нужен для strip и split без аргумента).
+// Is the code point whitespace: the str.isspace set (needed for strip and split
+// without an argument).
 bool isPySpace(std::uint32_t cp) {
     if (cp == 0x20 || (cp >= 0x09 && cp <= 0x0d) || (cp >= 0x1c && cp <= 0x1f)) {
         return true;
@@ -69,13 +70,14 @@ bool isPySpace(std::uint32_t cp) {
     return cp == 0x2028 || cp == 0x2029 || cp == 0x202f || cp == 0x205f || cp == 0x3000;
 }
 
-// Граница строки в str.splitlines - набор уже, чем у isspace (0x1f в него не входит).
+// Line boundary in str.splitlines - a narrower set than isspace (0x1f is not in
+// it).
 bool isLineBreak(std::uint32_t cp) {
     return cp == 0x0a || cp == 0x0b || cp == 0x0c || cp == 0x0d
         || (cp >= 0x1c && cp <= 0x1e) || cp == 0x85 || cp == 0x2028 || cp == 0x2029;
 }
 
-// UTF-8 -> кодпоинты с игнорированием битых байтов: str.decode("utf-8", "ignore").
+// UTF-8 -> code points with broken bytes ignored: str.decode("utf-8", "ignore").
 std::vector<std::uint32_t> decodeUtf8(const std::string& data) {
     std::vector<std::uint32_t> out;
     out.reserve(data.size());
@@ -118,8 +120,9 @@ std::vector<std::uint32_t> decodeUtf8(const std::string& data) {
     return out;
 }
 
-// Токен (кодпоинты) -> double: strtodC по ASCII-байтам токена. Возвращает false,
-// если число разобрано не полностью - у эталона это было бы исключение float.
+// Token (code points) -> double: strtodC over the token's ASCII bytes. Returns
+// false if the number is not parsed in full - in the reference that would be a
+// float exception.
 bool parseDouble(const std::vector<std::uint32_t>& text, std::size_t from, std::size_t to,
                  double& out) {
     std::string token;
@@ -142,7 +145,7 @@ bool parseDouble(const std::vector<std::uint32_t>& text, std::size_t from, std::
     return true;
 }
 
-// Строки ASCII STL: по одному слову vertex на вершину.
+// Lines of ASCII STL: one vertex word per vertex.
 std::vector<double> loadAscii(const std::vector<std::uint32_t>& text) {
     std::vector<double> out;
     std::size_t i = 0;
@@ -162,8 +165,9 @@ std::vector<double> loadAscii(const std::vector<std::uint32_t>& text) {
         const bool is_vertex = (b - a >= 6) && text[a] == 'v' && text[a + 1] == 'e'
             && text[a + 2] == 'r' && text[a + 3] == 't' && text[a + 4] == 'e' && text[a + 5] == 'x';
         if (is_vertex) {
-            // Поля строки целиком, как s.split в эталоне: первое - слово vertex
-            // (проверено префиксом), далее нужны второе, третье и четвёртое.
+            // All fields of the line, like s.split in the reference: the first is
+            // the word vertex (checked by prefix), then the second, third and
+            // fourth are needed.
             double vals[3] = {0.0, 0.0, 0.0};
             int seen = 0;
             bool ok = true;
@@ -186,7 +190,7 @@ std::vector<double> loadAscii(const std::vector<std::uint32_t>& text) {
                 k = e;
             }
             if (!ok) {
-                return {};                      // в эталоне это было бы исключение float()
+                return {};                      // in the reference this would be a float() exception
             }
             if (seen >= 4) {
                 out.insert(out.end(), vals, vals + 3);
@@ -195,7 +199,7 @@ std::vector<double> loadAscii(const std::vector<std::uint32_t>& text) {
         i = line_end;
         if (i < text.size()) {
             if (text[i] == 0x0d && i + 1 < text.size() && text[i + 1] == 0x0a) {
-                i += 2;                         // "\r\n" - одна граница строки
+                i += 2;                         // "\r\n" is one line boundary
             } else {
                 ++i;
             }
@@ -213,13 +217,13 @@ std::vector<double> loadBinary(const std::string& data) {
     std::size_t count = readU32(bytes + 80);
     const std::size_t room = (data.size() - BINARY_HEAD) / TRIANGLE_BYTES;
     if (count > room) {
-        count = room;                           // обрезанный файл: читаем, сколько есть
+        count = room;                           // truncated file: read as much as there is
     }
     out.reserve(count * 9);
     for (std::size_t t = 0; t < count; ++t) {
         const unsigned char* rec = bytes + BINARY_HEAD + t * TRIANGLE_BYTES;
         for (int v = 0; v < 3; ++v) {
-            const unsigned char* vp = rec + 12 + static_cast<std::size_t>(v) * 12;   // 12 байт нормали
+            const unsigned char* vp = rec + 12 + static_cast<std::size_t>(v) * 12;   // 12 bytes of normal
             for (int k = 0; k < 3; ++k) {
                 out.push_back(static_cast<double>(readF32(vp + k * 4)));
             }
@@ -245,7 +249,7 @@ std::vector<double> loadStlVertices(const std::string& utf8Path) {
 Aabb vertsBounds(const std::vector<double>& verts) {
     Aabb box;
     if (verts.size() < 3) {
-        return box;                             // нулевой габарит - как у пустого супа
+        return box;                             // zero bounds - as for an empty soup
     }
     double lo[3] = {verts[0], verts[1], verts[2]};
     double hi[3] = {lo[0], lo[1], lo[2]};

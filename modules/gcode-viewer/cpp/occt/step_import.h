@@ -1,13 +1,13 @@
-// occt/step_import.h - импорт STEP: B-rep, тесселяция, ориентация оболочки.
+// occt/step_import.h - STEP import: B-rep, tessellation, shell orientation.
 //
-// на OCCT SDK напрямую: эталон
-// ходит в те же OCCT-классы через питоновские биндинги OCP и платит за это
-// маршалингом на каждой вершине и треугольнике.
+// Works on the OCCT SDK directly: the reference goes through the same OCCT
+// classes via the OCP Python bindings and pays for it with marshalling on every
+// vertex and triangle.
 //
-// Рёбра STEP здесь не строятся: они уже перенесены плагином CNC.Edges
-// (cpp/stepledgesgeometry.cpp, обход TopAbs_EDGE + GCPnts_UniformDeflection +
-// склейка) и сверены с эталоном в. Дублировать этот
-// путь значило бы завести вторую редакцию одного алгоритма.
+// STEP edges are not built here: they were already ported by the CNC.Edges plugin
+// (cpp/stepledgesgeometry.cpp, TopAbs_EDGE traversal + GCPnts_UniformDeflection +
+// welding) and checked against the reference. Duplicating that path would mean
+// keeping a second copy of one algorithm.
 #pragma once
 
 #include <string>
@@ -17,51 +17,55 @@
 
 namespace gv {
 
-// Модель STEP для кожи: суп вершин и crease-aware нормали.
-// verts - (F*3, 3) float64 в порядке сборки (по три вершины на треугольник);
-// normals - (F, 3, 3) float32, пусто, если супа нет (у эталона normals = None).
-// segments (рёбра) отдаёт плагин CNC.Edges: см. cpp/stepledgesgeometry.cpp.
+// STEP model for the skin: vertex soup and crease-aware normals.
+// verts - (F*3, 3) float64 in assembly order (three vertices per triangle);
+// normals - (F, 3, 3) float32, empty if there is no soup (the reference's
+// normals = None). segments (edges) are provided by the CNC.Edges plugin: see
+// cpp/stepledgesgeometry.cpp.
 struct StepModel {
     std::vector<double> verts;
     std::vector<float> normals;
-    int tri_count = 0;              // треугольников в супе (verts / 9)
+    int tri_count = 0;              // triangles in the soup (verts / 9)
 };
 
-// Чтение STEP один раз: форма нужна и сетке, и списку аналитических
-// поверхностей (второй проход STEPControl_Reader стоит около 0.8 с).
-// Путь - в UTF-8: так его принимает OCCT. Ошибка чтения - std::runtime_error.
+// Read STEP once: the shape is needed both for the mesh and for the analytic
+// surface list (a second STEPControl_Reader pass costs about 0.8 s). The path is
+// UTF-8: that is how OCCT takes it. A read error is std::runtime_error.
 TopoDS_Shape readStepShape(const std::string& utf8Path);
 
-// Тесселяция формы BRepMesh_IncrementalMesh(deflection, угловой deflection * 2,
-// параллельно) и сборка супа вершин с учётом локации грани: обход
-// TopExp_Explorer(TopAbs_FACE), узлы грани подряд, треугольники - с разворотом
-// при ориентации REVERSED. Порядок обхода и порядок вершин внутри треугольника
-// - часть контракта с эталоном, менять нельзя.
+// Tessellate the shape with BRepMesh_IncrementalMesh(deflection, angular
+// deflection * 2, parallel) and assemble the vertex soup accounting for the face
+// location: TopExp_Explorer(TopAbs_FACE) traversal, face nodes in a row,
+// triangles reversed on REVERSED orientation. The traversal order and the vertex
+// order inside a triangle are part of the contract with the reference and must
+// not change.
 //
-// shapeAlreadyMeshed=true пропускает BRepMesh: форма размещена выше тем же
-// вызовом с теми же параметрами (как у loadStepSurfaces). Рантайм этим не
-// пользуется, флагом меряют разбивку тесселяции на мешер и сборку супа
-// (bench_probe, step_mesh / step_soup).
+// shapeAlreadyMeshed=true skips BRepMesh: the shape was meshed above with the
+// same call and the same parameters (as in loadStepSurfaces). The runtime does
+// not use this; the flag is used to measure the split of tessellation into the
+// mesher and soup assembly (bench_probe, step_mesh / step_soup).
 std::vector<double> tessellateSoup(const TopoDS_Shape& shape, double deflection = 0.05,
                                    bool shapeAlreadyMeshed = false);
 
-// Разворот оболочки наружу, если площадь-взвешенная нормаль смотрит к центроиду:
-// одно решение на модель. Возвращает (F,3,3) float64, тот же суп при
-// положительной сумме. Локальный разворот по центроиду грани не годится:
-// на вогнутых участках (карманах, отверстиях) он выворачивает их внутрь.
+// Flip the shell outward if the area-weighted normal points to the centroid: one
+// decision per model. Returns (F,3,3) float64, the same soup when the sum is
+// positive. A local flip by the face centroid is not suitable: on concave areas
+// (pockets, holes) it turns them inward.
 std::vector<double> orientShellOutward(const std::vector<double>& soup);
 
-// То же решение, но разворот на месте: у супа из loadStepModel копии больше нет -
-// этот вызов экономит материализацию супа (около 3 МБ на Test_model). Результат
-// тот же, что у orientShellOutward(soup), но soup меняется. Пустой суп не трогает.
+// The same decision, but flipped in place: the soup from loadStepModel has no
+// copy left - this call saves materialising the soup (about 3 MB on Test_model).
+// The result is the same as orientShellOutward(soup), but soup is modified. An
+// empty soup is left alone.
 void orientShellOutwardInPlace(std::vector<double>& soup);
 
-// load_step_model по сетке и нормалям: тесселяция, ориентация, нормали кожи.
-// creaseDeg - порог сглаживания нормалей (core/normals), у med 20 градусов.
+// load_step_model over the mesh and normals: tessellation, orientation, skin
+// normals. creaseDeg - the normal smoothing threshold (core/normals), 20 degrees
+// at med.
 StepModel loadStepModel(const TopoDS_Shape& shape, double deflection = 0.05,
                         double creaseDeg = 20.0);
 
-// То же по пути к файлу: чтение STEP внутри.
+// Same, over a file path: reads STEP inside.
 StepModel loadStepModel(const std::string& utf8Path, double deflection = 0.05,
                         double creaseDeg = 20.0);
 

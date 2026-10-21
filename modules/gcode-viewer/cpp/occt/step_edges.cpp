@@ -43,15 +43,15 @@ inline double norm(const Pnt3 &x)
     return std::sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
 }
 
-// Округление до 0.01 мм пол-к-чётному: так же считает numpy.round в эталоне.
+// Round to 0.01 mm half to even: numpy.round in the reference does the same.
 double round2(double v)
 {
     const double r = std::nearbyint(v * 100.0) / 100.0;
-    return r == 0.0 ? 0.0 : r;            // -0.0 и 0.0 - один ключ
+    return r == 0.0 ? 0.0 : r;            // -0.0 and 0.0 are one key
 }
 
-// Ключ прямого ребра: пара концов, округлённых до 0.01 мм, по возрастанию.
-// Повтор _line_key из occt/step_import.cpp (сортировка троек как кортежей).
+// Straight-edge key: a pair of ends rounded to 0.01 mm, in ascending order.
+// Mirrors _line_key from occt/step_import.cpp (sorting triples as tuples).
 struct LineKey {
     Pnt3 lo{};
     Pnt3 hi{};
@@ -78,7 +78,7 @@ struct LineKeyHash {
     }
 };
 
-// std::hash для std::array не определён: ключи клеток сетки хэшируются сами.
+// std::hash is not defined for std::array: grid-cell keys are hashed themselves.
 template <std::size_t N>
 struct IntTupleHash {
     std::size_t operator()(const std::array<long long, N> &k) const
@@ -111,13 +111,13 @@ bool lineKey(const BRepAdaptor_Curve &crv, LineKey &key)
     return true;
 }
 
-// Рёбра формы как отрезки: обход TopAbs_EDGE, полилиния каждого ребра -
-// GCPnts_UniformDeflection (линейный допуск, мм). Отбрасываются шовные линии:
-// прямое ребро, у которого все смежные грани криволинейны (швы и образующие
-// цилиндров и конусов, включая швы между дугами расточки), - это не ребро
-// модели, SolidWorks их тоже не рисует. Прямое ребро, касающееся плоскости хотя
-// бы одной гранью (переход плоской стенки в галтель, угол 90 градусов),
-// остаётся ребром.
+// Shape edges as segments: TopAbs_EDGE traversal, each edge's polyline via
+// GCPnts_UniformDeflection (linear tolerance, mm). Seam lines are dropped: a
+// straight edge whose adjacent faces are all curved (seams and generators of
+// cylinders and cones, including seams between counterbore arcs) - this is not a
+// model edge, SolidWorks does not draw them either. A straight edge that touches
+// a plane with at least one face (a flat wall transitioning into a fillet, 90
+// degrees) stays an edge.
 std::vector<Segment> buildSegments(const TopoDS_Shape &shape, double deflection,
                                    bool dropSeams)
 {
@@ -150,7 +150,7 @@ std::vector<Segment> buildSegments(const TopoDS_Shape &shape, double deflection,
             if (lineKey(crv, key)) {
                 const auto it = lineAllCurved.find(key);
                 if (it != lineAllCurved.end() && it->second)
-                    continue;                // шовная линия: не ребро модели
+                    continue;                // seam line: not a model edge
             }
         }
         GCPnts_UniformDeflection sampler(crv, deflection);
@@ -161,7 +161,7 @@ std::vector<Segment> buildSegments(const TopoDS_Shape &shape, double deflection,
             const gp_Pnt p = sampler.Value(i);
             const Pnt3 a{ prev.X(), prev.Y(), prev.Z() };
             const Pnt3 b{ p.X(), p.Y(), p.Z() };
-            // Совпавшие точки полилинии отрезком не становятся.
+            // Coincident polyline points do not become a segment.
             if (std::fabs(a[0] - b[0]) + std::fabs(a[1] - b[1])
                     + std::fabs(a[2] - b[2]) > 1e-9) {
                 out.push_back({ a, b });
@@ -172,12 +172,12 @@ std::vector<Segment> buildSegments(const TopoDS_Shape &shape, double deflection,
     return out;
 }
 
-// Склейка почти совпадающих прямых отрезков: повтор _coalesce_segments
-// (core/packing.cpp). STEP-файлы (особенно сборки) несут одну и ту же геометрию
-// несколькими разными TShape-рёбрами, и обводка рисует её дважды; копии,
-// сдвинутые на 0.02-0.1 мм, читаются как «двойные» линии. Отрезки собираются в
-// корзины по направлению, внутри корзины - в кластеры по расстоянию от
-// перпендикуляра (сетка 0.12 мм), осевые интервалы кластера объединяются.
+// Welding of nearly coincident straight segments: mirrors _coalesce_segments
+// (core/packing.cpp). STEP files (especially assemblies) carry the same geometry
+// as several different TShape edges, and the outline draws it twice; copies
+// shifted by 0.02-0.1 mm read as "double" lines. Segments are put into direction
+// buckets, inside a bucket into clusters by distance from the perpendicular (a
+// 0.12 mm grid), and the axial intervals of a cluster are merged.
 std::vector<Segment> coalesceSegments(const std::vector<Segment> &segments,
                                       double distTol, double gapTol)
 {
@@ -192,7 +192,7 @@ std::vector<Segment> coalesceSegments(const std::vector<Segment> &segments,
     if (m == 0)
         return {};
 
-    // Направление с каноническим знаком: первая ненулевая компонента > 0.
+    // Direction with a canonical sign: the first non-zero component > 0.
     std::vector<Pnt3> dir(m);
     for (int i = 0; i < m; ++i) {
         const Pnt3 d{ items[i].b[0] - items[i].a[0],
@@ -208,8 +208,8 @@ std::vector<Segment> coalesceSegments(const std::vector<Segment> &segments,
         dir[i] = u;
     }
 
-    // Корзины по направлению, округлённому до 0.001; порядок - как у dict в
-    // Python: по первому появлению в списке отрезков.
+    // Buckets by direction rounded to 0.001; the order is like a Python dict: by
+    // first appearance in the segment list.
     std::vector<std::vector<int>> buckets;
     std::unordered_map<std::array<long long, 3>, int, IntTupleHash<3>> bucketOf;
     for (int i = 0; i < m; ++i) {
@@ -237,7 +237,7 @@ std::vector<Segment> coalesceSegments(const std::vector<Segment> &segments,
     out.reserve(items.size());
     for (const std::vector<int> &idxs : buckets) {
         if (idxs.size() == 1) {
-            out.push_back(items[idxs[0]]);       // корзина из одного отрезка: как есть
+            out.push_back(items[idxs[0]]);       // a bucket of one segment: as is
             continue;
         }
         Pnt3 u{ 0.0, 0.0, 0.0 };
@@ -268,9 +268,9 @@ std::vector<Segment> coalesceSegments(const std::vector<Segment> &segments,
             fy[j] = dot(footA, e2);
         }
 
-        // Кластеризация жадная, в порядке возрастания осевого начала: кандидаты
-        // лежат в окрестности 3x3 клетки сетки (кластер не дальше distTol от
-        // своего основания).
+        // Clustering is greedy, in ascending axial start order: candidates lie in
+        // the 3x3 neighbourhood of grid cells (a cluster is no farther than
+        // distTol from its base).
         std::vector<int> order(c);
         for (int j = 0; j < c; ++j)
             order[j] = j;
@@ -316,8 +316,8 @@ std::vector<Segment> coalesceSegments(const std::vector<Segment> &segments,
                 cl.lo = std::min(cl.lo, lo0[j]);
                 cl.hi = std::max(cl.hi, hi0[j]);
                 cl.count = n;
-                // Среднее основание уезжает по мере входа членов: кластер должен
-                // находиться и из клетки своего текущего среднего.
+                // The average base drifts as members join: the cluster must also
+                // be found from the cell of its current average.
                 const long long mx =
                     static_cast<long long>(std::floor(cl.fx / distTol));
                 const long long my =

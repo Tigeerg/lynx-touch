@@ -22,15 +22,16 @@
 
 #include "core/normals.h"
 
-// Порядок обхода и порядок операций - часть контракта с эталоном
-// (occt/step_import.cpp): результат сверяется с ним побитово, поэтому файл
-// компилируется с /fp:precise (MSVC) и -ffp-contract=off (GCC/Clang).
+// The traversal order and the order of operations are part of the contract with
+// the reference (occt/step_import.cpp): the result is checked against it bit for
+// bit, so the file is compiled with /fp:precise (MSVC) and -ffp-contract=off
+// (GCC/Clang).
 
 namespace gv {
 namespace {
 
-// Парное суммирование numpy (pairwise_sum): блок 128, восемь аккумуляторов,
-// рекурсия по половине, выровненной на 8.
+// numpy pairwise summation (pairwise_sum): a block of 128, eight accumulators,
+// recursion over a half aligned to 8.
 double pairwiseSum(const double* a, std::size_t n) {
     if (n < 8) {
         double res = 0.0;
@@ -61,10 +62,11 @@ double pairwiseSum(const double* a, std::size_t n) {
     return pairwiseSum(a, n2) + pairwiseSum(a + n2, n - n2);
 }
 
-// Сумма непрерывного массива так, как её считает numpy (1.26.4): буфер
-// итератора - 8192 элемента, внутри буфера парное суммирование, буферы
-// складываются подряд. Числа измерены против numpy: на 136194 элементах эта
-// схема совпадает бит-в-бит, одиночная парная редукция по всему массиву - нет.
+// Sum of a contiguous array the way numpy (1.26.4) computes it: the iterator
+// buffer is 8192 elements, inside the buffer it is pairwise summation, and the
+// buffers are added in sequence. The numbers were measured against numpy: on
+// 136194 elements this scheme matches bit for bit, a single pairwise reduction
+// over the whole array does not.
 double bufferedSum(const std::vector<double>& a) {
     constexpr std::size_t BLOCK = 8192;
     double res = 0.0;
@@ -75,8 +77,8 @@ double bufferedSum(const std::vector<double>& a) {
     return res;
 }
 
-// Векторная площадь грани и её центроид: те же произведения и тот же порядок
-// слагаемых, что у numpy (cross и среднее трёх точек).
+// Vector area of a face and its centroid: the same products and the same
+// summation order as numpy (cross and the mean of three points).
 void faceCrossAndCenter(const double* t, double cr[3], double ctr[3]) {
     const double d0[3] = {t[3] - t[0], t[4] - t[1], t[5] - t[2]};
     const double d1[3] = {t[6] - t[0], t[7] - t[1], t[8] - t[2]};
@@ -106,9 +108,9 @@ std::vector<double> tessellateSoup(const TopoDS_Shape& shape, double deflection,
         mesher.Perform();
     }
 
-    std::vector<double> pts;            // узлы всех граней подряд, как в эталоне
+    std::vector<double> pts;            // nodes of all faces in a row, as in the reference
     std::vector<double> soup;
-    std::vector<double> nodes;          // буфер узлов текущей грани
+    std::vector<double> nodes;          // node buffer of the current face
 
     for (TopExp_Explorer exp(shape, TopAbs_FACE); exp.More(); exp.Next()) {
         try {
@@ -149,7 +151,7 @@ std::vector<double> tessellateSoup(const TopoDS_Shape& shape, double deflection,
                 }
             }
         } catch (const Standard_Failure&) {
-            // грань, которую не удалось разобрать, пропускается - как в эталоне
+            // a face that failed to parse is skipped - as in the reference
         }
     }
     return soup;
@@ -161,10 +163,10 @@ void orientShellOutwardInPlace(std::vector<double>& soup) {
         return;
     }
 
-    // Центроид модели: наивная аккумуляция по столбцам в возрастании номера
-    // строки (3F строк по 3 координаты) - так numpy считает mean(axis=0) по оси
-    // с шагом. Проверено на Test_model: 3 из 3 столбцов совпали бит-в-бит,
-    // парная схема на этой оси - нет.
+    // Model centroid: naive accumulation by columns in ascending row number (3F
+    // rows of 3 coordinates) - this is how numpy computes mean(axis=0) along a
+    // strided axis. Verified on Test_model: 3 of 3 columns matched bit for bit,
+    // the pairwise scheme on this axis did not.
     double cent[3] = {0.0, 0.0, 0.0};
     for (std::size_t row = 0; row < faces * 3; ++row) {
         for (int d = 0; d < 3; ++d) {
@@ -185,11 +187,11 @@ void orientShellOutwardInPlace(std::vector<double>& soup) {
         }
     }
     if (bufferedSum(prod) >= 0.0) {
-        return;                                          // оболочка смотрит наружу
+        return;                                          // the shell looks outward
     }
 
-    // Разворот на месте: у грани меняются местами первый и третий углы (на месте
-    // копии p0 <- p2, p2 <- p0). Значения те же, что у покадрового разворота.
+    // Flip in place: a face swaps its first and third corners (in place of the
+    // copy p0 <- p2, p2 <- p0). The values are the same as the per-frame flip.
     for (std::size_t f = 0; f < faces; ++f) {
         const std::size_t p = f * 9;
         for (int d = 0; d < 3; ++d) {
@@ -209,8 +211,9 @@ std::vector<double> orientShellOutward(const std::vector<double>& soup) {
 
 StepModel loadStepModel(const TopoDS_Shape& shape, double deflection, double creaseDeg) {
     StepModel out;
-    // Суп строится прямо в out.verts и разворачивается на месте: отдельные
-    // материализации под тесселяцию, ориентацию и нормали больше не нужны.
+    // The soup is built directly in out.verts and flipped in place: separate
+    // materialisations for tessellation, orientation and normals are no longer
+    // needed.
     out.verts = tessellateSoup(shape, deflection);
     out.tri_count = static_cast<int>(out.verts.size() / 9);
     orientShellOutwardInPlace(out.verts);

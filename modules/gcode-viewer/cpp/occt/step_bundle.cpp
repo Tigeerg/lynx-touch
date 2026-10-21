@@ -11,23 +11,23 @@
 namespace gv {
 namespace {
 
-// Модель по уже прочитанной форме: тесселяция, ориентация оболочки, нормали и
-// рёбра до склейки. Отдельная функция - чтобы чтение STEP у loadStepBundle и
-// loadStepBundleAll было одно и то же, а не две редакции подряд.
+// Model from an already read shape: tessellation, shell orientation, normals and
+// edges before welding. A separate function so that the STEP read in
+// loadStepBundle and loadStepBundleAll is the same, not two copies in a row.
 StepBundle bundleFromShape(const TopoDS_Shape &shape, double deflection,
                            double edgeDeflection, double creaseDeg)
 {
     StepModel model = loadStepModel(shape, deflection, creaseDeg);
 
     StepBundle out;
-    // Перемещение, а не копия: суп около 3 МБ, нормали около 1.6 МБ - набор
-    // модель->суп раньше материализовал их повторно.
+    // Move, not copy: the soup is about 3 MB, the normals about 1.6 MB - the
+    // model->soup assembly used to materialise them again.
     out.verts = std::move(model.verts);
     out.normals = std::move(model.normals);
 
-    // Допуск рёбер у эталона задан отдельно от тесселяции, а склейку делает
-    // вызывающий: у Python её ведёт _coalesce_segments, и порядок буфера обводки
-    // остаётся тем же.
+    // The reference sets the edge tolerance separately from tessellation, and the
+    // welding is done by the caller: in the reference _coalesce_segments drives
+    // it, and the outline buffer order stays the same.
     const std::vector<EdgeSegment> segs = stepRawSegments(shape, edgeDeflection, true);
     out.segments.resize(segs.size() * 6);
     for (std::size_t i = 0; i < segs.size(); ++i) {
@@ -55,10 +55,11 @@ StepBundleAll loadStepBundleAll(const std::string &utf8Path, double deflection,
 
     StepBundleAll out;
     out.bundle = bundleFromShape(shape, deflection, edgeDeflection, creaseDeg);
-    // Поверхности - после тесселяции: эталон тоже читает форму один раз, а
-    // тесселяцию кожи и обход граней ведёт по ней же. Форма уже размещена
-    // (loadStepModel выше), поэтому тесселяция пропускается: тот же вызов с теми
-    // же параметрами уже прошёл, повтор был бы пустым проходом.
+    // Surfaces - after tessellation: the reference also reads the shape once and
+    // drives the skin tessellation and the face traversal over it. The shape is
+    // already meshed (loadStepModel above), so tessellation is skipped: the same
+    // call with the same parameters already ran, and a repeat would be an empty
+    // pass.
     out.surfaces = loadStepSurfaces(shape, deflection, true);
     return out;
 }

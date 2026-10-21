@@ -490,11 +490,16 @@ says.
   boundary into two halves — the top of the untouched material and the floor of the cut (`stockLayerSurface`,
   `StockCutLayerGeometry`) — their edges meet on the boundary, so the transition strip became 0.00 mm and the tilt
   0.00 degrees (it was 0.25 mm and 17.4 with the stepping rule, 0.50 and 32.0 with the bilinear one), and the
-  vertical face between the halves is carried by the wall layer. The side of a boundary vertex is named by its
-  texcoord, shifted by 4 % of a cell into its own half (0.02 mm), and only where the rule steps: exactly on the
-  zero level of the signed distance the sign is a coin flip (the zero level lies 0.011 mm away from the polyline),
-  while the vertex position stays on the boundary; on a slope the texcoord does not move and the halves meet
-  vertex to vertex. The wall bottom is taken by the floor-half rule (`stockCutWallFromLayer`,
+  vertical face between the halves is carried by the wall layer. The side of a half is carried by the vertex FLAG
+  (`texcoord1.x`: 1 — top, 0 — floor), set by the kernel (`stockLayerSurface`): before, the sign of the signed
+  distance over the cell corners named it, and the corner chord lags the refined chain by 0.09 mm — top vertices
+  fell to the floor as a vertical triangle (light smears along the wall; measurement — the `wall_rim_drawn` case of
+  the `stock_sim_probe`: 4566 drops and 373 rises, 0 after the fix). The texcoord of a vertex where the rule steps
+  is still shifted by 4 % of a cell into its own half (0.02 mm): it makes the vertex height come from the cell of
+  its OWN half, while the position stays on the boundary; on a slope the texcoord does not move and the halves meet
+  vertex to vertex. The layer vertex stride is seven floats (position 3f, texcoord0 2f, texcoord1 2f; a
+  `static_assert` in `qmlbackend/gv_stockgeom` keeps the flag inside the stride). The wall bottom is taken by the
+  floor-half rule (`stockCutWallFromLayer`,
   `stockLayerDepthMm`), so it lands on the floor edge instead of the bilinear field depth at the contour point
   (0.32 against 0.8 at a 0.8 mm step). The layers are drawn by the views with a smooth top (smooth and exact
   contour, `stockLayersDrawn`); the exact view (its subject is the node steps) and the rounded one keep the former

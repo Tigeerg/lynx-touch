@@ -1846,7 +1846,7 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
         const bool floor = layer == StockLayer::Floor;
         std::vector<float>& vertices = floor ? floorVertices : topVertices;
         std::vector<std::uint32_t>& indices = floor ? floorIndices : topIndices;
-        const std::uint32_t base = std::uint32_t(vertices.size() / 6);
+        const std::uint32_t base = std::uint32_t(vertices.size() / 7);
         for (const Point& p : poly) {
             double u = ((p.x - bounds.xMinMm) / cellMm + 0.5) / double(countX);
             double v = ((p.y - bounds.yMinMm) / cellMm + 0.5) / double(countY);
@@ -1869,8 +1869,13 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
             // называл сторону знаком знакового расстояния по углам клетки, и
             // угловая хорда отставала от цепочки: вершины верха падали на дно
             // отвесным треугольником (замер - случай wall_rim_drawn). Признак
-            // занимает один float - шестой; шейдер читает его как UV1.x.
+            // едет в texcoord1 (шейдер читает его как UV1.x), а TexCoord1 - это
+            // vec2: вершина несёт ДВА float признака, и второй стоит нулём.
+            // Одного float не хватало: он вылезал за шаг вершины (20 + 8 > 24), и
+            // движок читал у последней вершины байты за буфером (проверка -
+            // static_assert в qmlbackend/gv_stockgeom).
             vertices.push_back(floor ? 0.0f : 1.0f);
+            vertices.push_back(0.0f);
         }
         for (std::size_t i = 1; i + 1 < poly.size(); ++i) {
             indices.push_back(base);
@@ -2079,7 +2084,7 @@ StockLayerSurface stockLayerSurface(const StockBounds& bounds, double cellMm,
             }
         }
         if (pass == 0) {
-            out.topVertexCount = int(topVertices.size() / 6);
+            out.topVertexCount = int(topVertices.size() / 7);
             out.topIndexCount = int(topIndices.size());
         }
     }

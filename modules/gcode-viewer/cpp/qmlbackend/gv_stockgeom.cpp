@@ -474,6 +474,19 @@ void StockCutLayerGeometry::setBoundaryData(const QByteArray &data)
     emit changed();
 }
 
+// Раскладка вершины слоистой поверхности: её читает вершинный шейдер поверхности
+// (stocksurface.vert), поэтому она объявлена здесь одним местом - и шагом, и
+// смещениями. Позиция 3f, texcoord0 2f (выборка поля), texcoord1 2f (сторона
+// половины в .x, второй float не читается). TexCoord1 - это vec2: уложись в шаг
+// только один float (как было в 0.58.1+mesh.5), движок читал бы у последней
+// вершины байты за буфером, а у остальных - начало следующей вершины.
+constexpr int kLayerStrideBytes = 7 * 4;
+constexpr int kLayerUv0OffsetBytes = 3 * 4;
+constexpr int kLayerUv1OffsetBytes = 5 * 4;
+constexpr int kLayerUv1Bytes = 2 * 4;
+static_assert(kLayerUv1OffsetBytes + kLayerUv1Bytes <= kLayerStrideBytes,
+              "texcoord1 (признак стороны) обязан уложиться в шаг вершины слоя");
+
 void StockCutLayerGeometry::rebuild()
 {
     clear();
@@ -494,7 +507,7 @@ void StockCutLayerGeometry::rebuild()
     const gv::StockLayerSurface mesh = gv::stockLayerSurface(bounds_, cell_mm_, depth,
                                                             count_x_, count_y_, cut_mm_,
                                                             segments);
-    vertex_count_ = int(mesh.vertices.size() / 6);
+    vertex_count_ = int(mesh.vertices.size() / 7);
     triangle_count_ = mesh.triangleCount();
     top_vertex_count_ = mesh.topVertexCount;
     floor_triangle_count_ = mesh.floorTriangles();
@@ -507,13 +520,16 @@ void StockCutLayerGeometry::rebuild()
 
     setVertexData(asBytes(mesh.vertices));
     setIndexData(asBytes(mesh.indices));
-    setStride(6 * 4);                      // позиция 3f + texcoord 2f + сторона 1f
+    setStride(kLayerStrideBytes);
     addAttribute(QQuick3DGeometry::Attribute::PositionSemantic, 0, F32);
-    addAttribute(QQuick3DGeometry::Attribute::TexCoord0Semantic, 3 * 4, F32);
-    // Сторона половины (1 - верх, 0 - дно) - шестой float той же вершины:
-    // шейдер читает её как UV1.x (stocksurface.vert, steppedDepth). Сторону
-    // знает тот, кто режет клетку цепочкой (ядро stockLayerSurface).
-    addAttribute(QQuick3DGeometry::Attribute::TexCoord1Semantic, 5 * 4, F32);
+    addAttribute(QQuick3DGeometry::Attribute::TexCoord0Semantic, kLayerUv0OffsetBytes, F32);
+    // Сторона половины (1 - верх, 0 - дно) - первый float texcoord1 той же
+    // вершины: шейдер читает её как UV1.x (stocksurface.vert, steppedDepth), а
+    // сторону знает тот, кто режет клетку цепочкой (ядро stockLayerSurface).
+    // TexCoord1 - это vec2, поэтому признак занимает два float, и объявлять их
+    // обязательно оба: один float вылезал бы за шаг вершины (за раскладкой следит
+    // static_assert выше).
+    addAttribute(QQuick3DGeometry::Attribute::TexCoord1Semantic, kLayerUv1OffsetBytes, F32);
     addAttribute(QQuick3DGeometry::Attribute::IndexSemantic, 0,
                  QQuick3DGeometry::Attribute::U32Type);
     // Габарит по всему ходу высоты: вершина стоит на верху заготовки, а

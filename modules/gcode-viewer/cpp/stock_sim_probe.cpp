@@ -1633,17 +1633,17 @@ int main(int argc, char** argv)
             int layerShifted = 0;             // граничных вершин со сдвинутым texcoord
             int layerRamp = 0;                // треугольников с разными высотами
             int layerFlagBad = 0;             // вершин, чей признак стороны врёт
-            for (std::size_t i = 0; i < layers.vertices.size() / 6; ++i) {
-                const double x = double(layers.vertices[i * 6]);
-                const double y = double(layers.vertices[i * 6 + 1]);
-                const double u = double(layers.vertices[i * 6 + 3]);
-                const double v = double(layers.vertices[i * 6 + 4]);
+            for (std::size_t i = 0; i < layers.vertices.size() / 7; ++i) {
+                const double x = double(layers.vertices[i * 7]);
+                const double y = double(layers.vertices[i * 7 + 1]);
+                const double u = double(layers.vertices[i * 7 + 3]);
+                const double v = double(layers.vertices[i * 7 + 4]);
                 if (std::fabs(x) > 0.05 || std::fabs(y - yRim) > windowMm) {
                     continue;
                 }
                 const bool floor = i >= std::size_t(layers.topVertexCount);
                 // Признак стороны из буфера обязан совпасть с половиной вершины.
-                if ((double(layers.vertices[i * 6 + 5]) > 0.5) == floor) {
+                if ((double(layers.vertices[i * 7 + 5]) > 0.5) == floor) {
                     ++layerFlagBad;
                 }
                 const double drawnMm = drawn.step(u, v, floor ? 0 : 1);
@@ -1679,15 +1679,15 @@ int main(int argc, char** argv)
                 bool inWindow = true;
                 for (int k = 0; k < 3; ++k) {
                     const std::size_t iv = std::size_t(layers.indices[t + std::size_t(k)]);
-                    const double x = double(layers.vertices[iv * 6]);
-                    const double y = double(layers.vertices[iv * 6 + 1]);
+                    const double x = double(layers.vertices[iv * 7]);
+                    const double y = double(layers.vertices[iv * 7 + 1]);
                     if (std::fabs(x) > 0.05 || std::fabs(y - yRim) > windowMm) {
                         inWindow = false;
                         break;
                     }
-                    heights[k] = drawn.step(double(layers.vertices[iv * 6 + 3]),
-                                            double(layers.vertices[iv * 6 + 4]),
-                                            double(layers.vertices[iv * 6 + 5]) > 0.5 ? 1 : 0);
+                    heights[k] = drawn.step(double(layers.vertices[iv * 7 + 3]),
+                                            double(layers.vertices[iv * 7 + 4]),
+                                            double(layers.vertices[iv * 7 + 5]) > 0.5 ? 1 : 0);
                 }
                 if (!inWindow) {
                     continue;
@@ -1884,9 +1884,9 @@ int main(int argc, char** argv)
         // известна точно.
         double areaMm2 = 0.0;
         for (std::size_t t = 0; t + 2 < layers.indices.size(); t += 3) {
-            const std::size_t i0 = std::size_t(layers.indices[t]) * 6;
-            const std::size_t i1 = std::size_t(layers.indices[t + 1]) * 6;
-            const std::size_t i2 = std::size_t(layers.indices[t + 2]) * 6;
+            const std::size_t i0 = std::size_t(layers.indices[t]) * 7;
+            const std::size_t i1 = std::size_t(layers.indices[t + 1]) * 7;
+            const std::size_t i2 = std::size_t(layers.indices[t + 2]) * 7;
             const double ax = double(layers.vertices[i0]);
             const double ay = double(layers.vertices[i0 + 1]);
             const double bx = double(layers.vertices[i1]);
@@ -1910,13 +1910,13 @@ int main(int argc, char** argv)
         int boundaryVertices = 0;
         int shiftedVertices = 0;
         int flagBadVertices = 0;                 // вершин, чей признак стороны врёт
-        for (std::size_t i = 0; i < layers.vertices.size() / 6; ++i) {
-            const double x = double(layers.vertices[i * 6]);
-            const double y = double(layers.vertices[i * 6 + 1]);
-            const double u = double(layers.vertices[i * 6 + 3]);
-            const double v = double(layers.vertices[i * 6 + 4]);
+        for (std::size_t i = 0; i < layers.vertices.size() / 7; ++i) {
+            const double x = double(layers.vertices[i * 7]);
+            const double y = double(layers.vertices[i * 7 + 1]);
+            const double u = double(layers.vertices[i * 7 + 3]);
+            const double v = double(layers.vertices[i * 7 + 4]);
             const bool floor = i >= std::size_t(layers.topVertexCount);
-            if ((double(layers.vertices[i * 6 + 5]) > 0.5) == floor) {
+            if ((double(layers.vertices[i * 7 + 5]) > 0.5) == floor) {
                 ++flagBadVertices;
             }
             const double signedAt = drawn.signedAt(u, v);
@@ -1961,14 +1961,14 @@ int main(int argc, char** argv)
             ++wallBottoms;
             double best = std::numeric_limits<double>::max();
             for (std::size_t k = std::size_t(layers.topVertexCount);
-                 k < layers.vertices.size() / 6; ++k) {
-                const double fx = double(layers.vertices[k * 6]);
-                const double fy = double(layers.vertices[k * 6 + 1]);
+                 k < layers.vertices.size() / 7; ++k) {
+                const double fx = double(layers.vertices[k * 7]);
+                const double fy = double(layers.vertices[k * 7 + 1]);
                 if (std::fabs(fx - wx) > 1e-9 || std::fabs(fy - wy) > 1e-9) {
                     continue;
                 }
-                const double fu = double(layers.vertices[k * 6 + 3]);
-                const double fv = double(layers.vertices[k * 6 + 4]);
+                const double fu = double(layers.vertices[k * 7 + 3]);
+                const double fv = double(layers.vertices[k * 7 + 4]);
                 best = std::min(best, std::fabs(drawn.step(fu, fv, 0) - wd));
             }
             slitWorst = std::max(slitWorst, best);
@@ -1984,12 +1984,12 @@ int main(int argc, char** argv)
                     "top_tri=%d floor_tri=%d area_mm2=%.3f want_area_mm2=%.3f boundary_vertices=%d "
                     "shifted=%d edge_mm=%.2e side_mm=%.2e rule_mm=%.2e field_mm=%.2e "
                     "wall_bottoms=%d slit_mm=%.2e wall_segments=%zu plain_top_tri=%d plain_floor_tri=%d\n",
-                    cell, cutMm, layers.vertices.size() / 6, layers.topVertexCount,
+                    cell, cutMm, layers.vertices.size() / 7, layers.topVertexCount,
                     layers.topTriangles(), layers.floorTriangles(), areaMm2, wantAreaMm2,
                     boundaryVertices, shiftedVertices, edgeWorst, sideWorst, ruleWorst, fieldWorst,
                     wallBottoms, slitWorst, contour.size(), plainLayers.topTriangles(),
                     plainLayers.floorTriangles());
-        reportCase("layer_surface", int(layers.vertices.size() / 6), slitWorst, 1e-6,
+        reportCase("layer_surface", int(layers.vertices.size() / 7), slitWorst, 1e-6,
                    std::fabs(areaMm2 - wantAreaMm2) <= 1e-6 * wantAreaMm2
                        && layers.topTriangles() > 0 && layers.floorTriangles() > 0
                        && boundaryVertices > 0 && shiftedVertices > 0
@@ -3187,13 +3187,13 @@ int main(int argc, char** argv)
                 double dropOffsetMax = 0.0;        // насколько вершина внутри своей стороны
                 std::vector<double> dropOffsets;   // те же числа по вершинам
                 int topDroppedFine = 0;            // то же, если сторону брать мелкой сеткой
-                for (std::size_t i = 0; i < layers.vertices.size() / 6; ++i) {
-                    const double x = double(layers.vertices[i * 6]);
-                    const double y = double(layers.vertices[i * 6 + 1]);
-                    const double u = double(layers.vertices[i * 6 + 3]);
-                    const double v = double(layers.vertices[i * 6 + 4]);
+                for (std::size_t i = 0; i < layers.vertices.size() / 7; ++i) {
+                    const double x = double(layers.vertices[i * 7]);
+                    const double y = double(layers.vertices[i * 7 + 1]);
+                    const double u = double(layers.vertices[i * 7 + 3]);
+                    const double v = double(layers.vertices[i * 7 + 4]);
                     const bool topHalf = i < std::size_t(layers.topVertexCount);
-                    if ((double(layers.vertices[i * 6 + 5]) > 0.5) != topHalf) {
+                    if ((double(layers.vertices[i * 7 + 5]) > 0.5) != topHalf) {
                         ++flagBad;                 // признак обязан быть у своей половины
                     }
                     const double uPos = ((x - bounds.xMinMm) / cell + 0.5) / double(nx);

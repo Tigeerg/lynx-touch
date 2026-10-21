@@ -462,7 +462,7 @@ enum class StockLayer { Top, Floor };
 // равна площади клетки - случай layer_surface). При одном звене в цепочке
 // половина - прежний кусок клетки, отрезанный хордой.
 //
-// Сторона вершины, стоящей НА границе, едет ПРИЗНАКОМ ВЕРШИНЫ (шестой float:
+// Сторона вершины, стоящей НА границе, едет ПРИЗНАКОМ ВЕРШИНЫ (texcoord1.x:
 // 1 - верх, 0 - дно) и читается шейдером как UV1.x (stocksurface.vert,
 // steppedDepth). Знать сторону может только тот, кто режет клетку цепочкой, -
 // то есть здесь, где половина и собирается: шейдер её не угадывает. Прежде
@@ -478,7 +478,7 @@ enum class StockLayer { Top, Floor };
 // перехода нулевая, а не 0.02 мм. У склона правило билинейно, texcoord не
 // двигается, и половины сходятся вершина в вершину.
 struct StockLayerSurface {
-    std::vector<float> vertices;      // 6 float на вершину: позиция 3f, texcoord 2f, сторона 1f
+    std::vector<float> vertices;      // 7 float на вершину: позиция 3f, texcoord0 2f, texcoord1 2f
     std::vector<std::uint32_t> indices;
     int topVertexCount = 0;           // первые topVertexCount вершин - верх
     int topIndexCount = 0;            // первые topIndexCount индексов - верх

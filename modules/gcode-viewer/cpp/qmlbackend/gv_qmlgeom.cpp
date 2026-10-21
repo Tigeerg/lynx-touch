@@ -1,10 +1,10 @@
-// cpp/qmlbackend/gv_qmlgeom.cpp - обёртки QML над геометриями этапа 3.
+// cpp/qmlbackend/gv_qmlgeom.cpp - QML wrappers over the stage 3 geometries.
 //
-// Логики сборки буфера здесь нет: каждый метод перекрывает одноимённый метод
-// базового класса (qt/gv_geometry), то есть порядок clear -> setVertexData ->
-// setStride -> addAttribute -> setBounds -> update остаётся буквально кодом
-// этапа 3, сверенным с питоновским qt/gv_geometry.cpp байт в байт. Добавлен только
-// сигнал, который QML ждёт для перепривязки свойства.
+// There is no buffer assembly logic here: each method overrides the base-class
+// method of the same name (qt/gv_geometry), so the order clear -> setVertexData
+// -> setStride -> addAttribute -> setBounds -> update stays literally stage 3
+// code, checked against the reference qt/gv_geometry.cpp byte for byte. Only a
+// signal is added, which QML waits for to rebind the property.
 #include "qmlbackend/gv_qmlgeom.h"
 
 namespace gvqml {

@@ -1,10 +1,11 @@
-// cpp/qmlbackend/gv_stockgeom.cpp - сборка буферов верха поля и оболочки коробки.
+// cpp/qmlbackend/gv_stockgeom.cpp - assembly of the field-top and box-shell
+// buffers.
 //
-// Разбора чисел здесь нет: узлы сетки и углы коробки считает ядро
-// (core/stock_sim, stockSurfaceMesh и stockShellVertices), а этот файл только
-// кладёт готовый буфер в QQuick3DGeometry тем же порядком, что геометрии этапа 3
-// (qt/gv_geometry): clear -> setVertexData -> setStride -> addAttribute ->
-// setBounds -> update.
+// There is no number parsing here: the grid nodes and box corners are computed by
+// the core (core/stock_sim, stockSurfaceMesh and stockShellVertices), and this
+// file only puts a ready buffer into QQuick3DGeometry in the same order as the
+// stage 3 geometries (qt/gv_geometry): clear -> setVertexData -> setStride ->
+// addAttribute -> setBounds -> update.
 #include "qmlbackend/gv_stockgeom.h"
 
 #include <QVector3D>
@@ -32,8 +33,8 @@ QByteArray asBytes(const std::vector<std::uint32_t> &values)
                      qsizetype(values.size() * sizeof(std::uint32_t)));
 }
 
-// Габарит из QML-списка [xmin, xmax, ymin, ymax, zmin, zmax], мм. Пустой или
-// короткий список - габарита нет: рисовать нечего.
+// Bounds from a QML list [xmin, xmax, ymin, ymax, zmin, zmax], mm. An empty or
+// short list means no bounds: nothing to draw.
 bool parseBounds(const QVariantList &list, gv::StockBounds *out)
 {
     if (list.size() < 6 || out == nullptr)
@@ -128,15 +129,16 @@ void StockSurfaceGeometry::rebuild()
 
     setVertexData(asBytes(mesh.vertices));
     setIndexData(asBytes(mesh.indices));
-    setStride(5 * 4);                      // позиция 3f + texcoord 2f
+    setStride(5 * 4);                      // position 3f + texcoord 2f
     addAttribute(QQuick3DGeometry::Attribute::PositionSemantic, 0, F32);
     addAttribute(QQuick3DGeometry::Attribute::TexCoord0Semantic, 3 * 4, F32);
-    // Без IndexSemantic индексы не читаются: приёмка буфера - штатный путь
-    // QQuick3DGeometry (addAttribute, "to use indexed drawing").
+    // Without IndexSemantic the indices are not read: buffer acceptance is the
+    // standard QQuick3DGeometry path (addAttribute, "to use indexed drawing").
     addAttribute(QQuick3DGeometry::Attribute::IndexSemantic, 0,
                  QQuick3DGeometry::Attribute::U32Type);
-    // Габарит по всему ходу высоты: вершина стоит на верху заготовки, а
-    // вершинный шейдер опускает её до дна - отсечение по одному верху соврало бы.
+    // Bounds over the whole height range: a vertex sits at the top of the stock,
+    // and the vertex shader lowers it to the bottom - clipping by the top alone
+    // would lie.
     setBounds(QVector3D(float(bounds_.xMinMm), float(bounds_.yMinMm), float(bounds_.zMinMm)),
               QVector3D(float(bounds_.xMaxMm), float(bounds_.yMaxMm), float(bounds_.zMaxMm)));
     update();
@@ -237,9 +239,10 @@ void StockShellGeometry::rebuild()
     }
 
     setVertexData(asBytes(vertices));
-    setStride(3 * 4);                      // позиция 3f
+    setStride(3 * 4);                      // position 3f
     addAttribute(QQuick3DGeometry::Attribute::PositionSemantic, 0, F32);
-    // Габарит с зазорами: стенка крупнее физического габарита ровно на них.
+    // Bounds with the gaps: the wall is larger than the physical bounds by exactly
+    // them.
     setBounds(QVector3D(float(bounds_.xMinMm - gap_side_mm_),
                         float(bounds_.yMinMm - gap_side_mm_),
                         float(bounds_.zMinMm - gap_bottom_mm_)),

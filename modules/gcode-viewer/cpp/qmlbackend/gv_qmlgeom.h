@@ -1,24 +1,27 @@
-// cpp/qmlbackend/gv_qmlgeom.h - QML-типы геометрий модуля MockBackend.
+// cpp/qmlbackend/gv_qmlgeom.h - QML geometry types of the MockBackend module.
 //
-// Шесть геометрий этапа 3 (qt/gv_geometry, цель gvqtgeom) уже собирают буферы,
-// равные питоновскому qt/gv_geometry.cpp байт в байт, но это обычные классы C++:
-// QML их не видит. Классы ниже - тонкие наследники: буфер, атрибуты, stride и
-// порядок вершин остаются кодом этапа 3, а здесь добавлено ровно то, чего требует
-// контракт QML - регистрация в URI MockBackend 1.0, свойства с сигналами
-// (GcodeViewer3D.qml задаёт их у GridGeometry и AxisArrowGeometry) и счётчики
-// (vertexCount, triangleCount), которые читают проверки.
+// The six geometries of stage 3 (qt/gv_geometry, target gvqtgeom) already build
+// buffers equal to the reference qt/gv_geometry.cpp byte for byte, but they are
+// plain C++ classes: QML does not see them. The classes below are thin
+// subclasses: the buffer, attributes, stride and vertex order stay stage 3 code,
+// and here only what the QML contract requires is added - registration under the
+// URI MockBackend 1.0, properties with signals (GcodeViewer3D.qml sets them on
+// GridGeometry and AxisArrowGeometry) and counters (vertexCount, triangleCount)
+// that the checks read.
 //
-// Форматы буферов - контракт QML и шейдеров, а не деталь реализации:
+// The buffer formats are the contract of QML and the shaders, not an
+// implementation detail:
 // ToolpathGeometry stride 20 = position 3f + texcoord0 2f (toolpath.vert/.frag);
 // HLRLineGeometry stride 48 = position vec4, normal vec4, texcoord0 vec4 (stepledges.vert);
 // GridGeometry stride 28 = position 3f + RGBA 4f;
 // AxisArrowGeometry stride 12 = position 3f;
 // MeshGeometry stride 24 = position 3f + normal 3f;
 // ToolGeometry stride 24 = position 3f + normal 3f.
-// Разбор и разбор форматов - в qt/gv_geometry.h; здесь они не дублируются.
+// The layout and the format breakdown are in qt/gv_geometry.h; they are not
+// duplicated here.
 //
-// Сетку и указатель оси QML создаёт сам по именам из MockBackend (см.
-// GcodeViewer3D.qml); остальные четыре приходят свойствами контроллера.
+// QML creates the grid and the axis marker itself by name from MockBackend (see
+// GcodeViewer3D.qml); the other four arrive as controller properties.
 #pragma once
 
 #include <QByteArray>
@@ -30,7 +33,7 @@
 namespace gvqml {
 
 // ---------------------------------------------------------------------------
-// ToolpathGeometry: линии траектории (stride 20), параметр пути в TexCoord0.x
+// ToolpathGeometry: path lines (stride 20), the path parameter in TexCoord0.x
 // ---------------------------------------------------------------------------
 class ToolpathGeometry : public gvgeom::ToolpathGeometry
 {
@@ -41,7 +44,7 @@ class ToolpathGeometry : public gvgeom::ToolpathGeometry
 public:
     explicit ToolpathGeometry(QQuick3DObject *parent = nullptr);
 
-    // Установка готового буфера (собирается вне GUI-потока) и уведомление QML.
+    // Set a ready buffer (assembled outside the GUI thread) and notify QML.
     void setPacked(const QByteArray &raw, const gv::Aabb *bounds, int nv);
 
 signals:
@@ -49,7 +52,7 @@ signals:
 };
 
 // ---------------------------------------------------------------------------
-// HLRLineGeometry: ленты контура (stride 48) с отжимом от опорной точки
+// HLRLineGeometry: contour ribbons (stride 48) with an offset from the reference point
 // ---------------------------------------------------------------------------
 class HLRLineGeometry : public gvgeom::HLRLineGeometry
 {
@@ -68,7 +71,7 @@ signals:
 };
 
 // ---------------------------------------------------------------------------
-// GridGeometry: сетка пола в плоскости XZ с растворением к краю
+// GridGeometry: floor grid in the XZ plane fading toward the edge
 // ---------------------------------------------------------------------------
 class GridGeometry : public gvgeom::GridGeometry
 {
@@ -84,7 +87,8 @@ class GridGeometry : public gvgeom::GridGeometry
 public:
     explicit GridGeometry(QQuick3DObject *parent = nullptr);
 
-    // Сеттер перекрывает базовый: тот же пересчёт буфера плюс сигнал QML.
+    // The setter overrides the base one: the same buffer recompute plus a QML
+    // signal.
     void setSize(double v);
     void setStep(double v);
     void setLevel(double v);
@@ -97,7 +101,7 @@ signals:
 };
 
 // ---------------------------------------------------------------------------
-// AxisArrowGeometry: плоский двусторонний указатель оси (stride 12)
+// AxisArrowGeometry: a flat double-sided axis marker (stride 12)
 // ---------------------------------------------------------------------------
 class AxisArrowGeometry : public gvgeom::AxisArrowGeometry
 {
@@ -121,7 +125,7 @@ signals:
 };
 
 // ---------------------------------------------------------------------------
-// MeshGeometry: сетка кожи (stride 24), плоские нормали считает этап 3
+// MeshGeometry: skin mesh (stride 24), flat normals are computed by stage 3
 // ---------------------------------------------------------------------------
 class MeshGeometry : public gvgeom::MeshGeometry
 {
@@ -141,7 +145,7 @@ signals:
 };
 
 // ---------------------------------------------------------------------------
-// ToolGeometry: тело вращения по профилю инструмента/оправки (stride 24)
+// ToolGeometry: a surface of revolution from a tool/holder profile (stride 24)
 // ---------------------------------------------------------------------------
 class ToolGeometry : public gvgeom::ToolGeometry
 {

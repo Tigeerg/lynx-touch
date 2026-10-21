@@ -1,13 +1,13 @@
-// qt/gv_geometry.cpp - геометрии Qt Quick 3D на C++ (этап 3 плана переноса).
+// qt/gv_geometry.cpp - Qt Quick 3D geometries in C++ (stage 3 of the port).
 //
-// Построчный перенос qt/gv_geometry.cpp. Расхождения недопустимы:
-// буферы этих геометрий читают шейдеры toolpath.* и stepledges.*, а совпадение с
-// питоновским эталоном проверяется байт в байт (cpp/geometry_probe.cpp и
-//). Отсюда два правила в коде:
-// * порядок операций и порядок вершин сохраняются буквально, включая места,
-// где выражение выглядит избыточным;
-// * там, где Python считает в float32 (проверки numpy над float32-массивами),
-// C++ считает в float, а не в double.
+// A line-by-line port of qt/gv_geometry.cpp. Divergence is not allowed: the
+// buffers of these geometries are read by the toolpath.* and stepledges.*
+// shaders, and the match with the reference is checked byte for byte
+// (cpp/geometry_probe.cpp). Hence two rules in the code:
+// * the order of operations and the vertex order are kept literally, including
+//   places where an expression looks redundant;
+// * where the reference computes in float32 (numpy checks over float32 arrays),
+//   C++ computes in float, not double.
 #include "qt/gv_geometry.h"
 
 #include <QVector3D>
@@ -23,9 +23,10 @@ namespace {
 constexpr double PI = 3.141592653589793;       // math.pi
 constexpr double TWO_PI = 2.0 * PI;
 
-// Целая часть от деления, как питоновский `a // b` над float: CPython считает
-// остаток fmod и делит разность, а на отрицательных значениях floor(a / b) даёт
-// другой результат. Габарит сетки считается этим числом, поэтому повторяем.
+// Integer part of a division, like the reference `a // b` over float: CPython
+// computes the remainder with fmod and divides the difference, while on negative
+// values floor(a / b) gives a different result. The grid bounds are computed with
+// this number, so it is repeated.
 double pyFloorDiv(double vx, double wx)
 {
     double mod = std::fmod(vx, wx);
@@ -44,7 +45,8 @@ double pyFloorDiv(double vx, double wx)
     return floorDiv;
 }
 
-// Габарит-накопитель: минимум и максимум по осям, как в питоновских циклах.
+// Bounds accumulator: minimum and maximum along the axes, as in the reference
+// loops.
 struct LoHi {
     double lo[3] = {std::numeric_limits<double>::infinity(),
                     std::numeric_limits<double>::infinity(),
@@ -147,16 +149,18 @@ void HLRLineGeometry::setSegments(const float *segs, int count)
         return;
     }
     const int m = count;
-    // Радиальный отжим FLOAT_SCALE запекается здесь (буфер статичен на загрузку);
-    // сдвиг вдоль луча зрения живёт в stepledges.vert (eyeRaw + camFloatMm).
-    // Отжим считается на паре концов на месте, без копии всего массива segs.
+    // The radial FLOAT_SCALE offset is baked in here (the buffer is static per
+    // load); the shift along the view ray lives in stepledges.vert (eyeRaw +
+    // camFloatMm). The offset is computed on a pair of ends in place, without
+    // copying the whole segs array.
     const bool scaled = !ref_.empty();
 
     static const int pick[6] = {0, 1, 1, 0, 1, 0};
     static const float sgn[6] = {1.0f, 1.0f, -1.0f, 1.0f, -1.0f, -1.0f};
-    // Буфер тот же, что в прошлом кадре: assign сохраняет ёмкость, поэтому
-    // выделение 64.5 КБ (силуэт) и 683 КБ (обводка) теперь раз на модель, а не
-    // раз на кадр. Значения те же: assign заливает нулями, как прежний вектор.
+    // The same buffer as in the previous frame: assign keeps the capacity, so the
+    // 64.5 KB (silhouette) and 683 KB (outline) allocations are now once per
+    // model, not once per frame. The values are the same: assign fills with
+    // zeros, like the former vector.
     std::vector<float> &vert = vert_;
     vert.assign(std::size_t(m) * 6 * 12, 0.0f);
     LoHi range;
@@ -168,7 +172,7 @@ void HLRLineGeometry::setSegments(const float *segs, int count)
         if (scaled) {
             for (int j = 0; j < 3; ++j) {
                 const float r = ref_[std::size_t(j)];
-                pa[j] = r + (ra[j] - r) * FLOAT_SCALE;    // порядок операций как в numpy
+                pa[j] = r + (ra[j] - r) * FLOAT_SCALE;    // order of operations as in numpy
                 pb[j] = r + (rb[j] - r) * FLOAT_SCALE;
             }
         } else {
@@ -180,13 +184,13 @@ void HLRLineGeometry::setSegments(const float *segs, int count)
         float d[3];
         for (int j = 0; j < 3; ++j)
             d[j] = pb[j] - pa[j];
-        // numpy.linalg.norm над float32 считает ((x*x + y*y) + z*z) в float32.
+        // numpy.linalg.norm over float32 computes ((x*x + y*y) + z*z) in float32.
         const float ln = std::sqrt((d[0] * d[0] + d[1] * d[1]) + d[2] * d[2]);
         const float divisor = (ln == 0.0f) ? 1.0f : ln;   // np.where(ln == 0, 1, ln)
         for (int j = 0; j < 3; ++j)
             d[j] = d[j] / divisor;
-        // Треугольники (pa+, pb+, pb-) и (pa+, pb-, pa-): 12 float на вершину,
-        // position @0, normal (направление отрезка) @16, texcoord0 (сторона) @32.
+        // Triangles (pa+, pb+, pb-) and (pa+, pb-, pa-): 12 float per vertex,
+        // position @0, normal (segment direction) @16, texcoord0 (side) @32.
         for (int v = 0; v < 6; ++v) {
             const float *p = (pick[v] == 0) ? pa : pb;
             float *o = &vert[(std::size_t(s) * 6 + v) * 12];
@@ -303,7 +307,7 @@ void GridGeometry::rebuild()
     const double y = level_;
     const double cx = cx_;
     const double cz = cz_;
-    const int segs = std::max(8, 2 * n);          // дробление вдоль каждой линии
+    const int segs = std::max(8, 2 * n);          // subdivision along each line
     std::vector<float> buf;
     LoHi range;
 
@@ -323,13 +327,13 @@ void GridGeometry::rebuild()
 
     for (int i = -n; i <= n; ++i) {
         const double c = i * step;
-        for (int k = 0; k < segs; ++k) {                  // линия вдоль Z
+        for (int k = 0; k < segs; ++k) {                  // line along Z
             const double z0 = cz - half + (2.0 * half) * double(k) / double(segs);
             const double z1 = cz - half + (2.0 * half) * double(k + 1) / double(segs);
             vertex(cx + c, z0);
             vertex(cx + c, z1);
         }
-        for (int k = 0; k < segs; ++k) {                  // линия вдоль X
+        for (int k = 0; k < segs; ++k) {                  // line along X
             const double x0 = cx - half + (2.0 * half) * double(k) / double(segs);
             const double x1 = cx - half + (2.0 * half) * double(k + 1) / double(segs);
             vertex(x0, cz + c);
@@ -385,7 +389,7 @@ void AxisArrowGeometry::rebuild()
     clear();
     setPrimitiveType(QQuick3DGeometry::PrimitiveType::Triangles);
     const double L = length_;
-    double s = L - headLen_;                  // стержень кончается там, где начинается голова
+    double s = L - headLen_;                  // the shaft ends where the head begins
     if (s <= 0.0)
         s = L * 0.5;
     const double sw = shaftW_;
@@ -397,7 +401,7 @@ void AxisArrowGeometry::rebuild()
     };
     std::vector<float> buf;
     LoHi range;
-    const auto push = [&](const double *p) {          // _pack: float32 в буфер, габарит по double
+    const auto push = [&](const double *p) {          // _pack: float32 into the buffer, bounds by double
         buf.push_back(float(p[0]));
         buf.push_back(float(p[1]));
         buf.push_back(float(p[2]));
@@ -405,7 +409,7 @@ void AxisArrowGeometry::rebuild()
     };
     for (int i = 0; i < 9; ++i)
         push(front[i]);
-    for (int i = 0; i < 9; i += 3) {                  // обратная сторона: те же треугольники
+    for (int i = 0; i < 9; i += 3) {                  // back side: the same triangles
         push(front[i + 2]);
         push(front[i + 1]);
         push(front[i]);
@@ -437,8 +441,8 @@ void MeshGeometry::setTriangles(const double *verts, int nFloats, const double *
 {
     if (verts != nullptr && nFloats >= 9) {
         const int nt = nFloats / 9;
-        // Треугольники сначала приводятся к float32 (ascontiguousarray), и все
-        // дальнейшие вычисления идут в float - как в numpy над float32-массивом.
+        // Triangles are first cast to float32 (ascontiguousarray), and all further
+        // computation runs in float - as in numpy over a float32 array.
         std::vector<float> tri(std::size_t(nt) * 9);
         for (int i = 0; i < nt * 9; ++i)
             tri[std::size_t(i)] = float(verts[i]);
@@ -453,7 +457,7 @@ void MeshGeometry::setTriangles(const double *verts, int nFloats, const double *
                 const float w0 = c[0] - a[0], w1 = c[1] - a[1], w2 = c[2] - a[2];
                 const float fn[3] = {u1 * w2 - u2 * w1, u2 * w0 - u0 * w2, u0 * w1 - u1 * w0};
                 const float ln = std::sqrt((fn[0] * fn[0] + fn[1] * fn[1]) + fn[2] * fn[2]);
-                const float divisor = (ln == 0.0f) ? 1.0f : ln;    // вырожденный треугольник
+                const float divisor = (ln == 0.0f) ? 1.0f : ln;    // degenerate triangle
                 for (int j = 0; j < 3; ++j)
                     face_n[j] = fn[j] / divisor;
             }
@@ -465,11 +469,11 @@ void MeshGeometry::setTriangles(const double *verts, int nFloats, const double *
                     for (int j = 0; j < 3; ++j)
                         o[3 + j] = face_n[j];
                 } else {
-                    // Нормаль задана на угол треугольника и у углов бывает разной:
-                    // _smooth_face_normals кластеризует нормали вокруг каждого
-                    // сваренного угла, поэтому углы одной грани получают разные
-                    // средние. Столбец первого угла на весь треугольник - другая
-                    // (сглаженная не в ту сторону) картинка.
+                    // The normal is given per triangle corner and may differ across
+                    // the corners: _smooth_face_normals clusters normals around each
+                    // welded corner, so the corners of one face get different
+                    // averages. Using the first corner's column for the whole
+                    // triangle is a different (smoothed the wrong way) picture.
                     const double *n = &normals[(std::size_t(t) * 3 + std::size_t(v)) * 3];
                     for (int j = 0; j < 3; ++j)
                         o[3 + j] = float(n[j]);
@@ -478,8 +482,8 @@ void MeshGeometry::setTriangles(const double *verts, int nFloats, const double *
         }
         data_ = asBytes(inter);
         nv_ = nt * 3;
-        // Габарит - по исходным double: питоновский _verts_bounds перебирает
-        // массив до приведения к float32.
+        // Bounds - from the original double: the reference _verts_bounds iterates
+        // the array before casting to float32.
         LoHi range;
         for (int i = 0; i < nFloats; ++i) {
             const int j = i % 3;
@@ -493,9 +497,9 @@ void MeshGeometry::setTriangles(const double *verts, int nFloats, const double *
         rebuild();
         return;
     }
-    // Пустой или неполный вход: геометрия пуста, габарит нулевой. Питоновская
-    // ветка без numpy (список точек) здесь не переносится: этап 0 оставил её без
-    // потребителей, а модели приходят массивом.
+    // Empty or incomplete input: the geometry is empty, the bounds are zero. The
+    // reference branch without numpy (a list of points) is not ported here: stage
+    // 0 left it without consumers, and models arrive as an array.
     data_.clear();
     nv_ = 0;
     lo_ = {0.0, 0.0, 0.0};
@@ -545,7 +549,7 @@ void ToolGeometry::setProfile(const double *profile, int count, int segments)
     prof.reserve(std::size_t(std::max(0, count)));
     for (int i = 0; i < count; ++i)
         prof.push_back({std::max(0.0, profile[2 * i]), profile[2 * i + 1]});
-    std::vector<std::array<double, 2>> cleaned;      // соседние дубликаты точек отброшены
+    std::vector<std::array<double, 2>> cleaned;      // adjacent duplicate points dropped
     for (const auto &p : prof) {
         if (cleaned.empty() || std::fabs(p[0] - cleaned.back()[0]) > 1e-9
                 || std::fabs(p[1] - cleaned.back()[1]) > 1e-9) {
@@ -590,23 +594,23 @@ void ToolGeometry::setProfile(const double *profile, int count, int segments)
         if (nl == 0.0)
             nl = 1.0;                                // Python: `or 1.0`
         const double npr = uy / nl;
-        const double npy = -ur / nl;                 // внешняя нормаль отрезка (r, y)
+        const double npy = -ur / nl;                 // outer normal of the (r, y) segment
         for (int s = 0; s < seg; ++s) {
             const double c0 = cosv[std::size_t(s)], s0 = sinv[std::size_t(s)];
             const double c1 = cosv[std::size_t(s) + 1], s1 = sinv[std::size_t(s) + 1];
             const double n0[3] = {npr * c0, npy, npr * s0};
             const double n1[3] = {npr * c1, npy, npr * s1};
-            if (r0 <= 1e-9) {                        // веер вверх от оси
+            if (r0 <= 1e-9) {                        // fan up from the axis
                 const double apex[3] = {npr * (c0 + c1) * 0.5, npy, npr * (s0 + s1) * 0.5};
                 vtx(0.0, y0, 0.0, apex);
                 vtx(r1 * c0, y1, r1 * s0, n1);
                 vtx(r1 * c1, y1, r1 * s1, n1);
-            } else if (r1 <= 1e-9) {                 // веер вниз к оси
+            } else if (r1 <= 1e-9) {                 // fan down to the axis
                 const double apex[3] = {npr * (c0 + c1) * 0.5, npy, npr * (s0 + s1) * 0.5};
                 vtx(r0 * c0, y0, r0 * s0, n0);
                 vtx(r0 * c1, y0, r0 * s1, n1);
                 vtx(0.0, y1, 0.0, apex);
-            } else {                                 // четырёхугольник - два треугольника
+            } else {                                 // quad - two triangles
                 vtx(r0 * c0, y0, r0 * s0, n0);
                 vtx(r0 * c1, y0, r0 * s1, n1);
                 vtx(r1 * c1, y1, r1 * s1, n1);
@@ -619,7 +623,7 @@ void ToolGeometry::setProfile(const double *profile, int count, int segments)
 
     data_ = asBytes(buf);
     nv_ = int(buf.size()) / 6;
-    // Пустой профиль оставляет габарит нулевым - как в Python (`lo if nv else [0, 0, 0]`).
+    // An empty profile leaves the bounds zero - as in the reference (`lo if nv else [0, 0, 0]`).
     lo_ = (nv_ > 0) ? std::array<double, 3>{range.lo[0], range.lo[1], range.lo[2]}
                     : std::array<double, 3>{0.0, 0.0, 0.0};
     hi_ = (nv_ > 0) ? std::array<double, 3>{range.hi[0], range.hi[1], range.hi[2]}

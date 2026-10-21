@@ -18,12 +18,12 @@ Item {
     width: 1024
     height: 600
 
-    // Активный экран (для QtVCP связать с логикой). Значения: pos, prog, ...
+    // Active screen (bind to logic in QtVCP). Values: pos, prog, ...
     property string activeScreen: "pos"
     onActiveScreenChanged: { if (activeScreen === "service") svcFocus = "nav"; }
     property string machineMode: "AUTO"
 
-    // --- 3D-траектория: QML-плагин MockBackend (C++) + QtQuick3D ---
+    // --- 3D toolpath: QML plugin MockBackend (C++) + QtQuick3D ---
     readonly property string viewSample: "O1000 (3D DEMO)\nG21 G90 G54\nT1 M06\nS8000 M03\nG0 X0 Y0 Z5\nG1 Z-2 F200\nG1 X60 Y0 F600\nG1 X60 Y40\nG1 X0 Y40\nG1 X0 Y0\nG0 Z5\nG0 X10 Y10\nG1 Z-4 F150\nG1 X50 Y10\nG1 X50 Y30\nG1 X10 Y30\nG1 X10 Y10\nG0 Z5\nG0 X0 Y0\n"
     GcodeToolpath {
         id: toolpath
@@ -43,7 +43,7 @@ Item {
         { n: "009", title: "Дверь: зелёный", contacts: [ { a: "I0.0", l: "Цепь АВ.СТОП" }, { a: "I0.2", l: "Давл. воздуха" } ], coil: { a: "Q0.5", l: "Лампа работа" }, on: false }
     ]
 
-    // --- Клавиатурная логика (порт из React, визуальная часть в QML) ---
+    // --- Keyboard logic (ported from React, the visual part is in QML) ---
     signal machineJogRequest(int dir)
     property int cursorProg: 0
     property int cursorOffset: 0
@@ -81,7 +81,7 @@ Item {
     function keyIs(ev, vk, qtkey) { return ev.nativeVirtualKey === vk || ev.key === qtkey; }
     function modeStartScreen(m) { return m === "AUTO" ? "prog" : "pos"; }
     function setMode(m) {
-        // React SET_MODE: стартовый экран режима + коррекция шага (MPG)
+        // React SET_MODE: mode start screen + step correction (MPG)
         machineMode = m;
         activeScreen = modeStartScreen(m);
         if (m === "MPG" && (jogStep < 0 || jogStep > 2)) jogStep = 2;
@@ -339,7 +339,7 @@ Item {
     }
     readonly property var screenIds: ["pos", "prog", "offset", "tool", "alarm", "service", "view"]
 
-    // --- Сервис: выбранный раздел (визуальная логика в QML) ---
+    // --- Service: selected section (visual logic in QML) ---
     property string serviceSection: "system"
     onServiceSectionChanged: { svcCursor = 0; svcEditing = false; svcFocus = "nav"; }
     property var serviceNav: [
@@ -366,7 +366,7 @@ Item {
         serviceSection = serviceIds[i];
     }
 
-    // ---- Сигналы наружу: ТОЛЬКО управление станком (шлются в QtVCP) ----
+    // ---- Outgoing signals: machine control ONLY (sent to QtVCP) ----
     signal machineCycleStart()
     signal machineFeedHold()
     signal machineReset()
@@ -374,10 +374,10 @@ Item {
     signal machineToggleSpindle()
     signal machineToggleCoolant()
 
-    // Данные программы (для экрана «Программа»)
+    // Program data (for the "Program" screen)
 
 
-    // --- Параметры сервиса (v0.5): defs по разделу + карты значений ---
+    // --- Service parameters (v0.5): per-section defs + value maps ---
     property int svcCursor: 0
     property bool svcEditing: false
     property string svcFocus: "nav"
@@ -566,7 +566,7 @@ Item {
     function svcSave() { var arr = sysParamsFor(serviceSection); var m = {}; for (var kk in svcSavedMap) m[kk] = svcSavedMap[kk]; for (var i = 0; i < arr.length; i++) m[svcKey(i)] = svcValueAt(i); svcSavedMap = m; svcEditing = false; }
     function svcDefaults() { var i = svcCursor; var def = svcDefAt(i); if (!def || !(def.free || serviceWrite)) return; setSvcVal(i, def.dflt); }
 
-    // --- Данные экранов ---
+    // --- Screen data ---
     property var offsetsData: [
         { code: "G54", x: "−120.500", y: "+35.250", z: "−210.400", a: "+0.000", active: true },
         { code: "G55", x: "−320.000", y: "+35.250", z: "−210.400", a: "+90.000", active: false },
@@ -612,12 +612,12 @@ Item {
     ]
 
     // ================= Themes (from globals.css v0.5.1) =====================
-    // OKLCH -> sRGB HEX (Ottosson). Темы: light / dark / graphite / mint.
+    // OKLCH -> sRGB HEX (Ottosson). Themes: light / dark / graphite / mint.
     readonly property var pal_light: ({ background: "#E3E7EA", foreground: "#141B24", card: "#FCFDFF", muted: "#EEF0F3", mutedForeground: "#535C66", accent: "#DCEDFF", accentForeground: "#003B7F", primary: "#0362BB", primaryFg: "#FCFCFC", destructive: "#D42125", success: "#1D9247", warning: "#F3A518", warningFg: "#4C2905", border: "#C9CED4", borderMuted: "#E2E6EA" })
     readonly property var pal_dark: ({ background: "#0F1318", foreground: "#E5E8EC", card: "#1A1F25", muted: "#23282F", mutedForeground: "#989FA8", accent: "#1E3149", accentForeground: "#B0D5FE", primary: "#4296EB", primaryFg: "#070E16", destructive: "#EA3B3F", success: "#3CB360", warning: "#F6AD39", warningFg: "#331700", border: "#383E46", borderMuted: "#292E36" })
     readonly property var pal_graphite: ({ background: "#332C28", foreground: "#F1EEEA", card: "#413A35", muted: "#3A342F", mutedForeground: "#B9B3AC", accent: "#624631", accentForeground: "#FFDAAF", primary: "#F3984E", primaryFg: "#211208", destructive: "#EA3B3F", success: "#3CB360", warning: "#F6AD39", warningFg: "#331700", border: "#5E5650", borderMuted: "#504842" })
     readonly property var pal_mint: ({ background: "#DEECE7", foreground: "#0B1E1E", card: "#FAFDFC", muted: "#EAF2F0", mutedForeground: "#485D5B", accent: "#CAF2E6", accentForeground: "#004740", primary: "#007565", primaryFg: "#FCFCFC", destructive: "#D42125", success: "#1D9247", warning: "#F3A518", warningFg: "#4C2905", border: "#BECFCA", borderMuted: "#DCE6E3" })
-    // THEME param: 0 Светлая, 1 Тёмная, 2 Графит, 3 Мята
+    // THEME param: 0 Light, 1 Dark, 2 Graphite, 3 Mint
     function pal() { var i = svcVal("system", 0, systemDefs[0]); return i === 1 ? pal_dark : i === 2 ? pal_graphite : i === 3 ? pal_mint : pal_light; }
 
     readonly property color cBackground:       root.pal().background
@@ -654,7 +654,7 @@ Item {
     FontLoader { id: lucideFont;  source: "fonts/lucide.ttf" }
 
     // ================= Layout metrics =======================================
-    readonly property int  gap:     6    // p-2 / gap-2 (уменьшено для компактности)
+    readonly property int  gap:     6    // p-2 / gap-2 (reduced for compactness)
     readonly property int  pad:     8
     readonly property int  kh:      28   // keycap h-7
     readonly property int  bh:      44   // operator button h-11
@@ -733,9 +733,9 @@ Item {
             Layout.minimumHeight: 44
             Layout.maximumHeight: 44
             Layout.alignment: Qt.AlignVCenter          // items-stretch
-            spacing: 6                                  // gap-2 (уменьшено)
+            spacing: 6                                  // gap-2 (reduced)
 
-            // ----- 1. Machine block (ЧПУ) --------------------------------
+            // ----- 1. Machine block (CNC) --------------------------------
             Rectangle {
                 id: machBlock
                 Layout.preferredWidth: 100
@@ -748,7 +748,7 @@ Item {
                 radius: 6                               // rounded-md
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 8                  // компактнее
+                    anchors.margins: 8                  // more compact
                     spacing: 8
                     Rectangle {                          // logo 32x32
                         Layout.preferredWidth: 28
@@ -767,7 +767,7 @@ Item {
                             font.pixelSize: 11
                         }
                     }
-                    Text {                               // только название (подпись убрана)
+                    Text {                               // name only (the caption has been removed)
                         text: "VMC-850"
                         Layout.fillWidth: true
                         Layout.alignment: Qt.AlignVCenter
@@ -779,7 +779,7 @@ Item {
                 }
             }
 
-            // ----- 2. Mode block (Режим / АВТО + 5 icons + M) ------------
+            // ----- 2. Mode block (Mode / AUTO + 5 icons + M) ------------
             Rectangle {
                 id: modeBlock
                 Layout.preferredWidth: 188
@@ -794,7 +794,7 @@ Item {
                     anchors.fill: parent
                     anchors.margins: 8
                     spacing: 3
-                    ColumnLayout {                       // "РЕЖИМ" / "АВТО"
+                    ColumnLayout {                       // "MODE" / "AUTO"
                         Layout.preferredWidth: 44
                         Layout.minimumWidth: 44
                         Layout.maximumWidth: 44
@@ -818,7 +818,7 @@ Item {
                             elide: Text.ElideRight
                         }
                     }
-                                        // 4 mode icons (v0.4: AUTO/MDI/JOG/MPG), активная = по machineMode
+                                        // 4 mode icons (v0.4: AUTO/MDI/JOG/MPG), the active one follows machineMode
                     Rectangle { Layout.preferredWidth: 28; Layout.preferredHeight: 28; Layout.minimumWidth: 28; Layout.maximumWidth: 28; Layout.minimumHeight: 28; Layout.maximumHeight: 28; color: root.machineMode === "AUTO" ? cPrimary : cMuted; radius: 4; clip: true; Text { anchors.centerIn: parent; text: "\ue146"; color: root.machineMode === "AUTO" ? cPrimaryFg : cMutedForeground; font.family: "lucide"; font.pixelSize: 15 } }
                     Rectangle { Layout.preferredWidth: 28; Layout.preferredHeight: 28; Layout.minimumWidth: 28; Layout.maximumWidth: 28; Layout.minimumHeight: 28; Layout.maximumHeight: 28; color: root.machineMode === "MDI" ? cPrimary : cMuted; radius: 4; clip: true; Text { anchors.centerIn: parent; text: "\ue20a"; color: root.machineMode === "MDI" ? cPrimaryFg : cMutedForeground; font.family: "lucide"; font.pixelSize: 15 } }
                     Rectangle { Layout.preferredWidth: 28; Layout.preferredHeight: 28; Layout.minimumWidth: 28; Layout.maximumWidth: 28; Layout.minimumHeight: 28; Layout.maximumHeight: 28; color: root.machineMode === "JOG" ? cPrimary : cMuted; radius: 4; clip: true; Text { anchors.centerIn: parent; text: "\ue1d7"; color: root.machineMode === "JOG" ? cPrimaryFg : cMutedForeground; font.family: "lucide"; font.pixelSize: 15 } }
@@ -826,7 +826,7 @@ Item {
                 }
             }
 
-            // ----- 3. Run state badge (ГОТОВ) -----------------------------
+            // ----- 3. Run state badge (READY) -----------------------------
             Rectangle {
                 id: runBadge
                 Layout.preferredWidth: 112
@@ -849,7 +849,7 @@ Item {
                 }
             }
 
-            // ----- 4. Program block (Программа / O1024 · КОРПУС ФЛАНЦА) ---
+            // ----- 4. Program block (Program / O1024 · FLANGE HOUSING) ---
             Rectangle {
                 id: progBlock
                 Layout.fillWidth: true
@@ -915,7 +915,7 @@ Item {
                 }
             }
 
-            // ----- 6. Фокус + часы (две строки) -----
+            // ----- 6. Focus + clock (two rows) -----
             Rectangle {
                 id: kbdBlock
                 Layout.preferredWidth: 108
@@ -963,7 +963,7 @@ Item {
             Layout.maximumHeight: 36
             spacing: 6
 
-            // ----- Tab 1: Позиция -----
+            // ----- Tab 1: Position -----
             Rectangle {
                 id: tab0
                 property bool on: root.activeScreen === "pos"
@@ -1004,7 +1004,7 @@ Item {
                 MouseArea { anchors.fill: parent; enabled: !tab0.locked; onClicked: root.activeScreen = "pos" }
             }
 
-            // ----- Tab 2: Программа -----
+            // ----- Tab 2: Program -----
             Rectangle {
                 id: tab1
                 property bool on: root.activeScreen === "prog"
@@ -1045,7 +1045,7 @@ Item {
                 MouseArea { anchors.fill: parent; enabled: !tab1.locked; onClicked: root.activeScreen = "prog" }
             }
 
-            // ----- Tab 3: Смещения -----
+            // ----- Tab 3: Offsets -----
             Rectangle {
                 id: tab2
                 property bool on: root.activeScreen === "offset"
@@ -1086,7 +1086,7 @@ Item {
                 MouseArea { anchors.fill: parent; enabled: !tab2.locked; onClicked: root.activeScreen = "offset" }
             }
 
-            // ----- Tab 4: Инструмент -----
+            // ----- Tab 4: Tool -----
             Rectangle {
                 id: tab3
                 property bool on: root.activeScreen === "tool"
@@ -1127,7 +1127,7 @@ Item {
                 MouseArea { anchors.fill: parent; enabled: !tab3.locked; onClicked: root.activeScreen = "tool" }
             }
 
-            // ----- Tab 5: Сообщения -----
+            // ----- Tab 5: Messages -----
             Rectangle {
                 id: tab4
                 property bool on: root.activeScreen === "alarm"
@@ -1176,7 +1176,7 @@ Item {
                 MouseArea { anchors.fill: parent; enabled: !tab4.locked; onClicked: root.activeScreen = "alarm" }
             }
 
-            // ----- Tab 6: Сервис -----
+            // ----- Tab 6: Service -----
             Rectangle {
                 id: tab5
                 property bool on: root.activeScreen === "service"
@@ -1263,12 +1263,12 @@ Item {
             Layout.fillHeight: true
             spacing: 6
 
-            // ============ SCREENS STACK (переключение экранов в QML) ============
+            // ============ SCREENS STACK (screen switching in QML) ============
             StackLayout {
                 id: screensStack
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                // Индексы: 0 = Позиция, 1 = Программа
+                // Indices: 0 = Position, 1 = Program
                 currentIndex: root.activeScreen === "prog" ? 1
                             : root.activeScreen === "offset" ? 2
                             : root.activeScreen === "tool" ? 3
@@ -1276,8 +1276,8 @@ Item {
                             : root.activeScreen === "service" ? 5
                             : root.activeScreen === "view" ? 6 : 0
 
-            // ============ STAGE 3 — POSITION SCREEN (Положение осей) ==========
-            //      Единая таблица: Ось | Рабочие (G54) | Машинные | Остаток | Отн.
+            // ============ STAGE 3 — POSITION SCREEN (Axis position) ==========
+            //      Single table: Axis | Work (G54) | Machine | Remaining | Rel.
             ColumnLayout {
                 id: posWrap
                 Layout.fillWidth: true
@@ -1296,7 +1296,7 @@ Item {
 
             ColumnLayout {
                 anchors.fill: parent
-                // Отступ = толщина рамки, чтобы содержимое не заходило на обводку.
+                // Margin = frame thickness so the content does not overlap the border.
                 anchors.topMargin: 1
                 anchors.leftMargin: 1
                 anchors.rightMargin: 1
@@ -1304,9 +1304,9 @@ Item {
                 anchors.margins: 0
                 spacing: 0
 
-                // ---------- Panel header (Положение осей) ----------
-// Прямой ребёнок внешнего ColumnLayout, растянут на всю ширину панели.
-// radius: 6 + clip: true — скругляет ВЕРХНИЕ углы шапки (низ перекроет полоса).
+                // ---------- Panel header (Axis position) ----------
+// Direct child of the outer ColumnLayout, stretched to the full panel width.
+// radius: 6 + clip: true — rounds the TOP corners of the header (the strip covers the bottom).
                 Rectangle {
                     id: posHeader
                     Layout.fillWidth: true
@@ -1336,7 +1336,7 @@ Item {
                         }
                         // spacer pushes right group to the edge
                         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.minimumHeight: 1; Layout.maximumHeight: 1; color: "transparent" }
-                        // right side: "Траектория скрыта [P]" + "G54 · мм"
+                        // right side: "Toolpath hidden [P]" + "G54 · mm"
                         Text {
                             visible: root.machineMode !== "MDI"
                             text: "Траектория скрыта"
@@ -1389,7 +1389,7 @@ Item {
                 }
 
                 // ---------- Column header row (5 cols) ----------
-                // Белая карточка (cCard), как thead на bg-card в React.
+                // White card (cCard), like thead on bg-card in React.
                 Rectangle {
                     id: axesHeader
                     Layout.fillWidth: true
@@ -1401,7 +1401,7 @@ Item {
                         anchors.fill: parent
                         anchors.margins: 10
                         spacing: 4
-                        // Колонки: Ось | Рабочие (G54) | Машинные | Остаток | Отн.
+                        // Columns: Axis | Work (G54) | Machine | Remaining | Rel.
                         Text {
                             text: "ОСЬ"
                             Layout.minimumWidth: 56; Layout.maximumWidth: 56; Layout.preferredWidth: 56
@@ -1656,7 +1656,7 @@ Item {
             }
         }   // posScreen
 
-                // ===== MDI input (режим MDI) =====
+                // ===== MDI input (MDI mode) =====
                 Rectangle {
                     id: mdiPanel
                     visible: root.machineMode === "MDI"
@@ -1708,7 +1708,7 @@ Item {
                 Layout.fillHeight: true
                 spacing: 6
 
-                // ----- Выполнение детали (AUTO, v0.5.1) — отдельная карточка -----
+                // ----- Part run (AUTO, v0.5.1) — separate card -----
                 Rectangle {
                     id: autoProgressBar
                     visible: root.machineMode === "AUTO"
@@ -1725,7 +1725,7 @@ Item {
                     }
                 }
 
-                // ----- Панель «Программа» -----
+                // ----- "Program" panel -----
                 Rectangle {
                     id: progPanel
                     Layout.fillWidth: true
@@ -1819,7 +1819,7 @@ Item {
                 }
             }
 
-                    // ===== Экран «Смещения» =====
+                    // ===== "Offsets" screen =====
                     Rectangle {
                         id: offsetScreen
                         Layout.fillWidth: true; Layout.fillHeight: true
@@ -1896,7 +1896,7 @@ Item {
                             Item { Layout.fillWidth: true; Layout.fillHeight: true }
                         }
 
-                        // ===== 3D щуп — мастер =====
+                        // ===== 3D probe — wizard =====
                         ColumnLayout {
                             id: probeWizard
                             visible: root.probeOpen
@@ -2121,7 +2121,7 @@ Item {
                         }
                     }
 
-                    // ===== Экран «Инструмент» =====
+                    // ===== "Tool" screen =====
                     Rectangle {
                         id: toolScreen
                         Layout.fillWidth: true; Layout.fillHeight: true
@@ -2198,7 +2198,7 @@ Item {
                         }
                     }
 
-                    // ===== Экран «Сообщения» =====
+                    // ===== "Messages" screen =====
                     Rectangle {
                         id: alarmScreen
                         Layout.fillWidth: true; Layout.fillHeight: true
@@ -2252,7 +2252,7 @@ Item {
                         }
                     }
 
-                    // ===== Экран «Сервис» =====
+                    // ===== "Service" screen =====
                     Rectangle {
                         id: serviceScreen
                         Layout.fillWidth: true; Layout.fillHeight: true
@@ -2275,7 +2275,7 @@ Item {
                             }
                             Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.minimumHeight: 1; Layout.maximumHeight: 1; color: cBorder }
                             RowLayout { Layout.fillWidth: true; Layout.fillHeight: true; spacing: 0
-                                // left nav (клик + стрелки ↑↓)
+                                // left nav (click + up/down keys)
                                 Rectangle {
                                     Layout.preferredWidth: 240; Layout.minimumWidth: 240; Layout.maximumWidth: 240; Layout.fillHeight: true; color: cMuted
                                     ColumnLayout { anchors.fill: parent; anchors.margins: 6; spacing: 2
@@ -2359,7 +2359,7 @@ Item {
                                         }
                                     }
                                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.minimumHeight: 1; Layout.maximumHeight: 1; color: cBorder }
-                                    // ===== Селектор оси (Оси/PID, v0.5.1) =====
+                                    // ===== Axis selector (Joints/PID, v0.5.1) =====
                                     Rectangle {
                                         id: axisSelector
                                         visible: root.serviceSection === "joints" || root.serviceSection === "pid"
@@ -2416,7 +2416,7 @@ Item {
                                             MouseArea { anchors.fill: parent; onClicked: { root.svcCursor = index; root.svcFocus = "list"; } }
                                         }
                                     }
-                                    // ===== HAL — монитор пинов (v0.5.1) =====
+                                    // ===== HAL — pin monitor (v0.5.1) =====
                                     Flickable {
                                         id: halFlick
                                         objectName: "halGroup"
@@ -2533,7 +2533,7 @@ Item {
                             }
                         }
                     
-                        // ===== Диалог доступа к записи (v0.5 PasswordDialog) =====
+                        // ===== Write access dialog (v0.5 PasswordDialog) =====
                         Rectangle {
                             id: svcAuth
                             visible: root.serviceAuthOpen
@@ -2630,7 +2630,7 @@ Item {
 
             }   // screensStack
 
-            // ============ PROGRAM SIDE (Обработка, v0.4) ============
+            // ============ PROGRAM SIDE (Machining, v0.4) ============
             Rectangle {
                 id: programSide
                 visible: root.activeScreen === "prog"
@@ -2655,7 +2655,7 @@ Item {
                     }
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.minimumHeight: 1; Layout.maximumHeight: 1; color: cBorder }
 
-                    // Section: Выполнение
+                    // Section: Run
                     Rectangle {
                         Layout.fillWidth: true; Layout.preferredHeight: 108; Layout.minimumHeight: 108; Layout.maximumHeight: 108; color: cCard
                         ColumnLayout { anchors.fill: parent; anchors.margins: 8; spacing: 4
@@ -2695,7 +2695,7 @@ Item {
                     }
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.minimumHeight: 1; Layout.maximumHeight: 1; color: cBorder }
 
-                    // Section: Инструмент программы
+                    // Section: Program tool
                     Rectangle {
                         Layout.fillWidth: true; Layout.preferredHeight: 100; Layout.minimumHeight: 100; Layout.maximumHeight: 100; color: cCard
                         ColumnLayout { anchors.fill: parent; anchors.margins: 8; spacing: 3
@@ -2731,7 +2731,7 @@ Item {
                     }
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.minimumHeight: 1; Layout.maximumHeight: 1; color: cBorder }
 
-                    // Section: Корректоры
+                    // Section: Overrides
                     Rectangle {
                         Layout.fillWidth: true; Layout.preferredHeight: 92; Layout.minimumHeight: 92; Layout.maximumHeight: 92; color: cCard
                         ColumnLayout { anchors.fill: parent; anchors.margins: 8; spacing: 4
@@ -2771,7 +2771,7 @@ Item {
                 }
             }
 
-            // ============ STAGE 4 — SIDE STATUS (Состояние станка) ==========
+            // ============ STAGE 4 — SIDE STATUS (Machine state) ==========
             Rectangle {
                 id: sideStatus
                                 visible: root.activeScreen === "pos"
@@ -2785,14 +2785,14 @@ Item {
                 radius: 6
                 clip: true
 
-                // ----- Panel title: Режимы — ЗАКРЕПЛЁН anchors-ами, вне layout -----
-                // Не может съехать: привязан к верху/лево/право панели.
+                // ----- Panel title: Modes — PINNED by anchors, outside the layout -----
+                // Cannot drift: anchored to the top/left/right of the panel.
                 Rectangle {
                     id: sideTitle
                     anchors.top: parent.top
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    // Отступ = толщина рамки, чтобы заголовок не заходил на обводку.
+                    // Margin = frame thickness so the title does not overlap the border.
                     anchors.topMargin: 1
                     anchors.leftMargin: 1
                     anchors.rightMargin: 1
@@ -2800,7 +2800,7 @@ Item {
                     color: cMuted
                     radius: 6
                     clip: true
-                    // Прямая полоса снизу — убирает нижнее скругление (верх остаётся скруглённым).
+                    // Straight strip at the bottom — removes the bottom rounding (the top stays rounded).
                     Rectangle {
                         anchors.left: parent.left
                         anchors.right: parent.right
@@ -2822,7 +2822,7 @@ Item {
                     }
                 }
 
-                // ---------- Разделитель под заголовком (border-b как в React) ----------
+                // ---------- Divider under the title (border-b as in React) ----------
                 Rectangle {
                     id: sideTitleDivider
                     anchors.top: sideTitle.bottom
@@ -2834,20 +2834,20 @@ Item {
                     color: cBorder
                 }
 
-                // ---------- Секции: отдельный ColumnLayout, привязан под разделителем ----------
+                // ---------- Sections: separate ColumnLayout, anchored under the divider ----------
                 ColumnLayout {
                     id: sideBody
                                         anchors.top: sideTitleDivider.bottom
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    // Отступ = толщина рамки панели, чтобы разделители не заходили на обводку.
+                    // Margin = panel frame thickness so the dividers do not overlap the border.
                     anchors.leftMargin: 1
                     anchors.rightMargin: 1
-                    // Высота по содержимому: секции не растягиваются и не наложатся.
+                    // Height by content: the sections do not stretch and do not overlap.
                     height: implicitHeight
                     spacing: 0
 
-                    // ===== Section 1: Кадр =====
+                    // ===== Section 1: Frame =====
                     Rectangle {
                         id: secFrame
                         objectName: "secFrameObj"
@@ -2864,7 +2864,7 @@ Item {
                             anchors.rightMargin: 12
                             spacing: 3
 
-                            // header: Кадр + N0001
+                            // header: Frame + N0001
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 4
@@ -2872,7 +2872,7 @@ Item {
                                 Text { text: "КАДР"; color: cMutedForeground; font.bold: true; font.pixelSize: 11; font.letterSpacing: 1 }
                                 Text { text: "N0001"; Layout.fillWidth: true; color: cForeground; font.bold: true; font.pixelSize: 12; font.family: fontMono; horizontalAlignment: Text.AlignRight }
                             }
-                            // current line — подсвеченная строка как в React:
+                            // current line — highlighted row as in React:
                             // bg-primary rounded-sm px-2 py-0.5 font-mono text-sm bold
                             Rectangle {
                                 id: curLine
@@ -2929,7 +2929,7 @@ Item {
                                     horizontalAlignment: Text.AlignRight
                                 }
                             }
-                            // divider above stats (как border-t у <dl>)
+                            // divider above stats (like border-t on <dl>)
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 1
@@ -2966,7 +2966,7 @@ Item {
                     // divider
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.minimumHeight: 1; Layout.maximumHeight: 1; color: cBorder }
 
-                    // ===== Section 2: Шпиндель =====
+                    // ===== Section 2: Spindle =====
                     Rectangle {
                         id: secSpindle
                         objectName: "secSpindleObj"
@@ -3096,7 +3096,7 @@ Item {
                     // divider
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.minimumHeight: 1; Layout.maximumHeight: 1; color: cBorder }
 
-                    // ===== Section 3: Подача =====
+                    // ===== Section 3: Feed =====
                     Rectangle {
                         id: secFeed
                         objectName: "secFeedObj"
@@ -3200,7 +3200,7 @@ Item {
                     // divider
                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.minimumHeight: 1; Layout.maximumHeight: 1; color: cBorder }
 
-                    // ===== Section 4: Инструмент =====
+                    // ===== Section 4: Tool =====
                     Rectangle {
                         id: secTool
                         Layout.fillWidth: true
@@ -3231,7 +3231,7 @@ Item {
                         }
                     }
                     Rectangle { visible: root.machineMode === "JOG"; Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.minimumHeight: 1; Layout.maximumHeight: 1; color: cBorder }
-                    // ===== Ручная подача (JOG) =====
+                    // ===== Manual jog (JOG) =====
                     Rectangle {
                         id: secJog
                         visible: root.machineMode === "JOG"
@@ -3258,7 +3258,7 @@ Item {
                         }
                     }
                     Rectangle { visible: root.machineMode === "MPG"; Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.minimumHeight: 1; Layout.maximumHeight: 1; color: cBorder }
-                    // ===== Маховик (MPG) =====
+                    // ===== Handwheel (MPG) =====
                     Rectangle {
                         id: secMpg
                         visible: root.machineMode === "MPG"
@@ -3292,7 +3292,7 @@ Item {
         }   // contentRow
 
         // ============ STAGE 5 — SOFTKEY BAR (F1–F8) ============
-        // React: <SoftkeyBar> grid-cols-8 gap-2, каждый ключ h-[76px]
+        // React: <SoftkeyBar> grid-cols-8 gap-2, each key h-[76px]
         RowLayout {
             id: softkeyRow
             Layout.fillWidth: true

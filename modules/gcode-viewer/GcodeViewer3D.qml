@@ -37,7 +37,7 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.58.3"   // keep in sync with modules/gcode-viewer/VERSION
+    readonly property string viewerVersion: "0.58.4"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -1643,8 +1643,8 @@ Item {
             spacing: 2
             // The lines are grouped: on top the run state and status, below the keys
             // one by one. The font does not draw the pause glyph (\u23F8) - in a frame it
-            // is an empty square, so the run is named with a word, as at the bottom panel
-            // button.
+            // is an empty square, so the run is named with a word both in this hint and on
+            // the bottom panel button.
             Text {
                 text: "v" + root.viewerVersion + "   "
                       + (root.playing ? "идёт" : "пауза") + " "
@@ -1723,7 +1723,7 @@ Item {
             // "Play / Pause" - playback is always manual now (no auto-play)
             ViewButton {
                 checked: root.playing
-                text: root.playing ? "\u23F8 Пауза" : "\u25B6 Играть"
+                text: root.playing ? "Пауза" : "Играть"
                 onClicked: root.togglePlay()
             }
 

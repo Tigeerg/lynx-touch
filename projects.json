@@ -1,6 +1,6 @@
 {
   "product": "CNC Панель оператора",
-  "version": "0.18.5",
+  "version": "0.18.6",
   "versioning": "semver",
   "description": "Панель оператора ЧПУ: React-интерфейс, Qt-порт, 3D-вьювер УП и тестовые данные/постпроцессор.",
   "projects": [
@@ -26,7 +26,7 @@
     {
       "id": "gcode-viewer",
       "name": "3D-вьювер УП",
-      "version": "0.58.3",
+      "version": "0.58.4",
       "path": "modules/gcode-viewer",
       "kind": "qml+cpp",
       "entry": "GcodeViewer3D.qml",

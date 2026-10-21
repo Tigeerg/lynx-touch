@@ -57,7 +57,27 @@ if ($arrowHits.Count -gt 0) {
   Ok 'в комментариях стрелок Unicode нет'
 }
 
-# 2. Иконки только lucide (`lucide-react` в React, fonts/lucide.ttf в QML).
+# 2. Глиф паузы U+23F8 приложенные шрифты (Inter, JetBrains Mono) не рисуют: в кадре на его месте
+#    пустой квадрат (замер и разбор - GcodeViewer3D.qml). В строках QML его не ставят; упоминание
+#    глифа в комментарии, которое называет запрещённый символ, находкой не считается.
+$pauseHits = New-Object System.Collections.Generic.List[string]
+foreach ($file in $sources) {
+  if ($file.Extension -ne '.qml') { continue }
+  $lines = Get-Content -LiteralPath $file.FullName -Encoding UTF8
+  for ($i = 0; $i -lt $lines.Count; $i++) {
+    $line = $lines[$i]
+    $t = $line.TrimStart()
+    if ($t.StartsWith('//') -or $t.StartsWith('/*') -or $t.StartsWith('*')) { continue }
+    if ($line -match '\\u23F8|\u23F8') { $pauseHits.Add("$($file.FullName):$($i + 1)") }
+  }
+}
+if ($pauseHits.Count -gt 0) {
+  foreach ($h in $pauseHits) { Bad "глиф паузы U+23F8 в строке QML: $h" }
+} else {
+  Ok 'глифа паузы U+23F8 в строках QML нет'
+}
+
+# 3. Иконки только lucide (`lucide-react` в React, fonts/lucide.ttf в QML).
 $iconPattern = 'react-icons|@heroicons|feather-icons|phosphor-icons|@tabler/icons|bootstrap-icons|@radix-ui/react-icons'
 $iconHits = $sources | Select-String -Pattern $iconPattern -ErrorAction SilentlyContinue
 if ($iconHits) {
@@ -66,7 +86,7 @@ if ($iconHits) {
   Ok 'набор иконок — lucide'
 }
 
-# 3. Метки размера: держатся равенством, растут и падают с правкой метки.
+# 4. Метки размера: держатся равенством, растут и падают с правкой метки.
 foreach ($rel in $marks.Keys) {
   $count = (Get-Content -LiteralPath $rel).Count
   $mark = $marks[$rel]
@@ -79,7 +99,7 @@ foreach ($rel in $marks.Keys) {
   }
 }
 
-# 4. Инструментальные проверки — если инструмент настоящий, а не заглушка.
+# 5. Инструментальные проверки — если инструмент настоящий, а не заглушка.
 $pnpmReal = $false
 if (Get-Command pnpm -ErrorAction SilentlyContinue) {
   if ((Get-ToolVersion 'pnpm' @('-v')) -match '^\d+\.') { $pnpmReal = $true }
@@ -92,7 +112,7 @@ if ($pnpmReal) {
   Skipped 'pnpm: typecheck, test, format:check'
 }
 
-# 5. Сборка C++ (ядро gvcore, геометрии gvqtgeom, слой STEP gvstep, плагин
+# 6. Сборка C++ (ядро gvcore, геометрии gvqtgeom, слой STEP gvstep, плагин
 #    CNC.Edges, контроллер MockBackend, точка входа gcodeviewer) и прогон
 #    пробников напрямую, ключом --manifest: сверка рёбер STEP, супа, обводки STL,
 #    топологии силуэта, аналитических поверхностей и семейств касательных с
@@ -146,7 +166,7 @@ if ($cppReady) {
   Skipped 'сборка C++ и прогоны пробников: нет тулчейна (Qt6, OCCT, cmake, ninja, vcvars64)'
 }
 
-# 6. C++-точка входа вьювера (build/viewer/gcodeviewer.exe): offscreen-прогон на
+# 7. C++-точка входа вьювера (build/viewer/gcodeviewer.exe): offscreen-прогон на
 #    реальном УП. Нужны собранный exe и Qt в PATH (exe линкуется с Qt6Core.dll);
 #    каталог плагина и DLL OCCT точка входа добавляет себе сама. Нет exe или Qt -
 #    шаг пропускается.
@@ -164,7 +184,7 @@ if ((Test-Path -LiteralPath $viewerExe) -and (Test-Path -LiteralPath (Join-Path 
   Skipped 'gcodeviewer.exe offscreen: нет собранной точки входа или Qt'
 }
 
-# 7. Пробник горячих клавиш вьювера (build/viewer/keyprobe.exe): подаёт клавиши с
+# 8. Пробник горячих клавиш вьювера (build/viewer/keyprobe.exe): подаёт клавиши с
 #    признаками настоящего события (скан-код, VK и символ по раскладке) на русской и
 #    английской раскладках и сверяет, что каждая горячая клавиша переключила своё
 #    свойство. Дефект «горячие клавиши требовательны к языку» ловится здесь: до фикса

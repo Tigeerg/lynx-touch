@@ -1,8 +1,8 @@
-// core/gv_types.h - типы границ ядра вьювера: точка пути, этап, инструмент.
+// core/gv_types.h - boundary types of the viewer core: path point, stage, tool.
 //
-// Структуры, нужные чистому ядру (парсер и подготовка траектории). Имена полей
-// повторяют прежний контракт: ядро сверяется с эталонными дайджестами побайтово,
-// и расхождение в именах мешало бы сверке.
+// Structures needed by the pure core (parser and path preparation). The field
+// names repeat the former contract: the core is checked against the reference
+// digests byte for byte, and a name mismatch would break the check.
 #pragma once
 
 #include <array>
@@ -11,9 +11,10 @@
 
 namespace gv {
 
-// Инструмент из тега UI_TOOL: поля те же, что отдаёт ui_tags.parse_ui_tool.
-// `present` - тег найден и разобран: в Python пустой dict от непустого отличает
-// именно истинность, и по ней же выбирается подпись этапа.
+// Tool from the UI_TOOL tag: the fields are those ui_tags.parse_ui_tool
+// returns. `present` - the tag was found and parsed: in the reference an empty
+// dict is told from a non-empty one by truthiness, and the same decides the
+// stage label.
 struct ToolInfo {
     bool present = false;
     int number = 0;
@@ -31,41 +32,42 @@ struct ToolInfo {
     int flutes = 0;
 };
 
-// Вершина 2D-профиля инструмента/оправки в плоскости (радиус, высота), мм.
-// Профиль вращается вокруг оси Y, высота отсчитывается от острия инструмента
-// либо от основания оправки.
+// Vertex of a 2D tool/holder profile in the (radius, height) plane, mm. The
+// profile is revolved around the Y axis; the height is measured from the tool
+// tip or from the holder base.
 struct ProfilePoint {
     double radius_mm = 0.0;
     double height_mm = 0.0;
 };
 
-// Цилиндрическая секция оправки: радиус и пределы по высоте от острия, мм.
-// Секции читает скан коллизий: круг радиуса `radius_mm` между `z0_mm` и
-// `z1_mm` над острием инструмента.
+// Cylindrical holder section: radius and height limits from the tip, mm. The
+// collision scan reads the sections: a circle of radius `radius_mm` between
+// `z0_mm` and `z1_mm` above the tool tip.
 struct HolderSection {
     double radius_mm = 0.0;
     double z0_mm = 0.0;
     double z1_mm = 0.0;
 };
 
-// Точка траектории в машинных координатах, мм. `speed_mm_s` - скорость
-// ИСХОДЯЩЕГО сегмента: запрограммированная подача F (мм/мин -> мм/с) у G1/G2/G3
-// либо фиксированная машинная скорость быстрого хода у G0.
+// Path point in machine coordinates, mm. `speed_mm_s` is the speed of the
+// OUTGOING segment: the programmed feed F (mm/min -> mm/s) for G1/G2/G3, or the
+// fixed machine rapid speed for G0.
 struct PathPoint {
     std::array<double, 3> point{0.0, 0.0, 0.0};
     bool is_rapid = false;
     double speed_mm_s = 0.0;
 };
 
-// Этап УП из parse_gcode: индекс первой точки, подпись и метаданные UI_TOOL.
+// NC stage from parse_gcode: index of the first point, label and UI_TOOL
+// metadata.
 struct Stage {
     int index = 0;
     std::string label;
     ToolInfo info;
 };
 
-// Результат parse_gcode: путь в порядке программы, последняя точка, число
-// сегментов и этапы.
+// Result of parse_gcode: the path in program order, the last point, the
+// segment count and the stages.
 struct ParseResult {
     std::vector<PathPoint> ordered;
     std::array<double, 3> last{0.0, 0.0, 0.0};

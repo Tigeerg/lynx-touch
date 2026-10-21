@@ -22,7 +22,14 @@ function Skipped([string]$text) { Write-Host "skip  $text" -ForegroundColor Yell
 
 function Run-Tool([string]$label, [scriptblock]$cmd) {
   $code = 1
-  try { & $cmd; $code = $LASTEXITCODE } catch { $code = 1 }
+  try {
+    # A native command writes diagnostics to stderr; with $ErrorActionPreference = 'Stop' that
+    # becomes a terminating error, and the step is reported failed although it exited 0. The
+    # exit code is the only verdict here.
+    $ErrorActionPreference = 'Continue'
+    & $cmd
+    $code = $LASTEXITCODE
+  } catch { $code = 1 }
   if ($code -ne 0) { Bad $label } else { Ok $label }
 }
 

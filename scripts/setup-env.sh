@@ -1,20 +1,20 @@
 #!/bin/sh
-# scripts/setup-env.sh - окружение и сборка 3D-вьювера УП на Linux одним шагом.
+# scripts/setup-env.sh - the environment and the build of the NC 3D viewer on Linux in one step.
 #
-# Запуск:  bash scripts/setup-env.sh
+# Usage:  bash scripts/setup-env.sh
 #
-# По шагам:
-#   1. Находит conda (PATH, затем $HOME/miniconda3 и $HOME/anaconda3); её нет -
-#      печатает, что поставить, и выходит с кодом 1.
-#   2. Создаёт окружение gcode-cpp из environment.yml (уже есть - пропускает).
-#   3. Собирает вьювер тем же окружением: conda run ... bash scripts/build-viewer.sh
-#      (SDK и компилятор берутся из окружения, см. environment.yml).
+# Step by step:
+#   1. Finds conda (PATH, then $HOME/miniconda3 and $HOME/anaconda3); if it is not there, it
+#      prints what to install and exits with code 1.
+#   2. Creates the gcode-cpp environment from environment.yml (if it already exists - skips it).
+#   3. Builds the viewer with the same environment: conda run ... bash scripts/build-viewer.sh
+#      (the SDK and the compiler are taken from the environment, see environment.yml).
 #
-# Установка пользовательская: dotfiles и PATH не меняются, и подчистка - две
-# команды, их скрипт печатает в конце.
+# The install is user-level: dotfiles and PATH are not changed, and cleanup is two
+# commands, the script prints them at the end.
 #
-# Код возврата: 0 - окружение и сборка на месте; 1 - conda не найдена или
-# сборка не прошла.
+# Exit code: 0 - the environment and the build are in place; 1 - conda was not found or the
+# build failed.
 
 set -eu
 
@@ -27,7 +27,7 @@ fail() {
     exit 1
 }
 
-# conda: команда из PATH, иначе бинарь пользовательских установок Miniconda.
+# conda: the command from PATH, otherwise the binary of a user-level Miniconda install.
 conda=''
 for candidate in "$(command -v conda 2>/dev/null || true)" \
                  "${HOME:-}/miniconda3/bin/conda" \

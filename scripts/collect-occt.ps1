@@ -1,38 +1,38 @@
-﻿# scripts/collect-occt.ps1 — минимальный набор DLL OCCT для поставки.
+﻿# scripts/collect-occt.ps1 - the minimal set of OCCT DLLs for distribution.
 #
-# Запуск:  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/collect-occt.ps1 `
+# Usage:  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/collect-occt.ps1 `
 #              -OutDir D:\cnc-toolchain\dist-occt
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/collect-occt.ps1 `
 #              -OutDir D:\cnc-toolchain\dist-occt -IncludeQt
 #
-# Набор не пишут руками: скрипт обходит настоящий граф зависимостей собранных
-# артефактов (dumpbin /dependents, рекурсивно) и берёт только те DLL, которые
-# действительно грузятся. Источник DLL OCCT — каталог -OccDir (по умолчанию
-# $env:CNC_OCC_DIR), каталог сборки — -BuildDir (по умолчанию <repo>\build),
-# результат — в -OutDir: он обязателен, в репозиторий скрипт не пишет.
-# DLL Qt ($env:CNC_QT_DIR\bin) считаются отдельно и по умолчанию не копируются:
-# их добавляет ключ -IncludeQt.
+# The set is not written by hand: the script walks the real dependency graph of the built
+# artifacts (dumpbin /dependents, recursively) and takes only the DLLs that
+# are actually loaded. The source of the OCCT DLLs is the -OccDir directory (by default
+# $env:CNC_OCC_DIR), the build directory is -BuildDir (by default <repo>\build),
+# the result is in -OutDir: it is mandatory, the script does not write to the repository.
+# Qt DLLs ($env:CNC_QT_DIR\bin) are counted separately and are not copied by default:
+# they are added by the -IncludeQt key.
 #
-# dumpbin берётся из окружения MSVC, которое снимается одним вызовом vcvars64.bat,
-# как в scripts/build-viewer.ps1 (путь ищется там же: CNC_VCVARS, vswhere,
-# каталоги VS). Сначала ищется DLL в каталоге OCCT, затем в Qt, затем в каталогах
-# сборки и System32; зависимость, не найденная нигде, печатается как находка, а не
-# молча прячется. Скрипт идемпотентен: файлы вне -OutDir он не трогает.
+# dumpbin is taken from the MSVC environment, which is captured with a single vcvars64.bat call,
+# as in scripts/build-viewer.ps1 (the path is searched for in the same place: CNC_VCVARS, vswhere,
+# VS directories). A DLL is first searched for in the OCCT directory, then in Qt, then in the
+# build directories and System32; a dependency not found anywhere is printed as a finding, not
+# silently hidden. The script is idempotent: it does not touch files outside -OutDir.
 #
-# Код возврата: 0 — набор собран; 1 — инструмент или каталог не найден.
+# Exit code: 0 - the set is assembled; 1 - a tool or directory was not found.
 
 [CmdletBinding()]
 param(
-    # Каталог OCCT (внутри ожидается bin с DLL и lib/cmake/opencascade/OpenCASCADEConfig.cmake).
+    # OCCT directory (a bin with DLLs and lib/cmake/opencascade/OpenCASCADEConfig.cmake are expected inside).
     [string]$OccDir = $env:CNC_OCC_DIR,
-    # Каталог сборки относительно корня репозитория.
+    # Build directory relative to the repository root.
     [string]$BuildDir = '',
-    # Каталог результата; обязателен и не может лежать внутри репозитория.
+    # Result directory; mandatory and it must not be inside the repository.
     [Parameter(Mandatory = $true)]
     [string]$OutDir,
-    # Каталог Qt6 (внутри ожидается bin с DLL Qt).
+    # Qt6 directory (a bin with Qt DLLs is expected inside).
     [string]$QtDir = $env:CNC_QT_DIR,
-    # Копировать в набор и DLL, разрешённые из каталога Qt.
+    # Also copy into the set the DLLs resolved from the Qt directory.
     [switch]$IncludeQt
 )
 
@@ -55,7 +55,7 @@ function First-Existing([string[]]$paths) {
     return ''
 }
 
-# Первый найденный по имени файл: порядок каталогов задаёт источник DLL.
+# The first file found by name: the order of the directories sets the DLL source.
 function Resolve-Dependency([string]$name, [string[]]$dirs) {
     foreach ($dir in $dirs) {
         $candidate = Join-Path $dir $name
@@ -64,7 +64,7 @@ function Resolve-Dependency([string]$name, [string[]]$dirs) {
     return ''
 }
 
-# Имена DLL из раздела «dependencies» вывода dumpbin /dependents.
+# Names of the DLLs from the "dependencies" section of the dumpbin /dependents output.
 function Get-Dependents([string]$file) {
     $names = New-Object System.Collections.Generic.List[string]
     $lines = & $script:dumpbin /nologo /dependents $file 2>$null
@@ -73,8 +73,8 @@ function Get-Dependents([string]$file) {
     foreach ($line in $lines) {
         if ($line -match 'dependencies:\s*$') { $inDep = $true; continue }
         if (-not $inDep) { continue }
-        # После заголовка dumpbin печатает пустую строку, дальше — имена DLL;
-        # список кончается первой непустой строкой не из имени DLL («Summary»).
+        # After the header dumpbin prints an empty line, then the DLL names;
+        # the list ends at the first non-empty line that is not a DLL name ("Summary").
         if ($line -match '^\s*(\S+\.dll)\s*$') {
             $names.Add($matches[1])
         } elseif ($line.Trim() -ne '') {
@@ -98,9 +98,9 @@ if ($outFull.StartsWith($rootFull, [System.StringComparison]::OrdinalIgnoreCase)
 }
 if (-not (Test-Path -LiteralPath $OutDir)) { New-Item -ItemType Directory -Force -Path $OutDir | Out-Null }
 
-# vcvars64.bat — batch-файл: его окружение снимается один раз в переменные
-# процесса, дальше dumpbin запускается прямо из PowerShell (путь репозитория с
-# кириллицей доезжает без перекодировки).
+# vcvars64.bat - a batch file: its environment is captured once into process
+# variables, after that dumpbin is launched directly from PowerShell (the repository path with
+# Cyrillic reaches it without re-encoding).
 $vsRoot = ''
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 if (Test-Path -LiteralPath $vswhere) {
@@ -129,9 +129,9 @@ if ($applied -lt 10) { Fail 'окружение MSVC не получено: пр
 $script:dumpbin = (Get-Command 'dumpbin.exe' -ErrorAction SilentlyContinue).Source
 if (-not $script:dumpbin) { Fail 'dumpbin не найден: проверьте CNC_VCVARS' }
 
-# Каталоги поиска: сначала OCCT, потом Qt, потом сборка и System32. Источник DLL
-# нужен, чтобы отделить DLL OCCT (копируются) от Qt (считаются отдельно) и
-# системных (не копируются).
+# Search directories: first OCCT, then Qt, then the build directories and System32. The DLL source
+# is needed to separate the OCCT DLLs (copied) from Qt (counted separately) and
+# system ones (not copied).
 $qtBin = ''
 if ($QtDir) { $qtBin = Join-Path $QtDir 'bin' }
 $searchDirs = @($occBin)
@@ -171,11 +171,11 @@ Write-Host "collect-occt: build  = $BuildDir"
 Write-Host "collect-occt: вывод  = $OutDir"
 Write-Host "collect-occt: dumpbin= $script:dumpbin"
 
-# Обход графа: считаем артефакты, дальше — их зависимости. Системные каталоги не
-# обходим: их DLL всё равно не копируются, а дерево велико.
-$resolved = @{}                                   # имя (в нижнем регистре) -> путь
-$dependencyOf = @{}                               # имя -> каталог-источник
-$unresolved = @{}                                 # имена, не найденные нигде
+# Graph walk: the artifacts are counted first, then their dependencies. System directories are not
+# walked: their DLLs are not copied anyway, and the tree is large.
+$resolved = @{}                                   # name (lowercase) -> path
+$dependencyOf = @{}                               # name -> source directory
+$unresolved = @{}                                 # names not found anywhere
 $scanned = @{}
 $queue = New-Object System.Collections.Generic.Queue[string]
 
@@ -211,11 +211,11 @@ while ($queue.Count -gt 0) {
     }
 }
 
-# Конда-пакет OCCT держит в своём bin и копии служебных DLL: наборы API Windows
-# (api-ms-win-*) и рантайм MSVC (msvcp140*, vcruntime140*, vcomp140*, concrt140*).
-# В поставку их даёт система или распространяемый пакет MSVC, а не OCCT, поэтому в
-# набор они не идут: без них замыкание равно настоящему, а с ними раздувается на 18
-# файлов. Тест — по имени, а не списком, чтобы набор оставался воспроизводимым.
+# The conda OCCT package keeps copies of auxiliary DLLs in its bin as well: the Windows API sets
+# (api-ms-win-*) and the MSVC runtime (msvcp140*, vcruntime140*, vcomp140*, concrt140*).
+# At distribution time they are provided by the system or by the MSVC redistributable, not by OCCT, so
+# they do not go into the set: without them the closure equals the real one, and with them it grows by 18
+# files. The test is by name, not by a list, so that the set stays reproducible.
 function Test-SystemDependency([string]$name) {
     return $name -match '^(api-ms-win-|ucrtbase|msvcp|vcruntime|vcomp|concrt)'
 }

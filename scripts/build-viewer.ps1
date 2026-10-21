@@ -1,6 +1,6 @@
-﻿# scripts/build-viewer.ps1 — сборка QML-плагина CNC.Edges (StepEdges) из modules/gcode-viewer/cpp.
+﻿# scripts/build-viewer.ps1 - build of the QML plugin CNC.Edges (StepEdges) from modules/gcode-viewer/cpp.
 #
-# Запуск:  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
+# Usage:  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunProbe
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunCoreProbe
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunStepProbe
@@ -9,93 +9,93 @@
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunTangentsProbe
 #          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-viewer.ps1 -RunViewer
 #
-# Генератор — Ninja, конфигурация Release, компилятор MSVC. Пути SDK берутся из
-# окружения с умолчаниями: CNC_QT_DIR (Qt6 с Quick3D), CNC_OCC_DIR (OCCT),
-# CNC_VCVARS (vcvars64.bat), CNC_CMAKE, CNC_NINJA. Скрипт не привязан к одной
-# машине: всё, что не найдено, названо в ошибке, а не угадано.
+# Generator - Ninja, Release configuration, MSVC compiler. SDK paths are taken from
+# the environment with defaults: CNC_QT_DIR (Qt6 with Quick3D), CNC_OCC_DIR (OCCT),
+# CNC_VCVARS (vcvars64.bat), CNC_CMAKE, CNC_NINJA. The script is not tied to a single
+# machine: everything that is not found is named in the error, not guessed.
 #
-# Окружение MSVC снимается одним вызовом vcvars64.bat (cmd /c "call ... && set"),
-# дальше cmake и cl запускаются из PowerShell напрямую: так путь репозитория с
-# кириллицей доезжает до инструментов без перекодировки (cmd.exe читает .cmd в
-# кодировке консоли и портит не-ASCII пути).
+# The MSVC environment is captured with a single call to vcvars64.bat (cmd /c "call ... && set"),
+# after that cmake and cl are launched from PowerShell directly: this way the repository path with
+# Cyrillic reaches the tools without re-encoding (cmd.exe reads .cmd in the
+# console encoding and corrupts non-ASCII paths).
 #
-# Собранный модуль лежит в <build>/CNC/Edges/ (qmldir, cncedgesplugin.dll,
-# cncedgespluginplugin.dll); каталог <build> — это import path для QML. Пробник —
-# в <build>/stepledges_probe.exe.
-# Той же сборкой собирается чистое ядро gvcore (без Qt и OCCT) и его пробник
-# <build>/gcode_probe.exe: он сверяет свои дайджесты с эталоном
-# modules/gcode-viewer/oracle_manifest.json ключом --manifest.
+# The built module is in <build>/CNC/Edges/ (qmldir, cncedgesplugin.dll,
+# cncedgespluginplugin.dll); the <build> directory is the import path for QML. The probe is
+# in <build>/stepledges_probe.exe.
+# The same build also builds the pure core gvcore (without Qt and OCCT) and its probe
+# <build>/gcode_probe.exe: it compares its digests against the reference
+# modules/gcode-viewer/oracle_manifest.json with the --manifest key.
 #
-# Той же сборкой собираются геометрии Qt Quick 3D (цель gvqtgeom) и их пробник
-# <build>/geometry_probe.exe; его вход он строит сам из УП и сверяет дайджесты
-# буферов с манифестом, поэтому отдельного ключа запуска у скрипта нет - он только
-# следит, что пробник собран.
+# The same build also builds the Qt Quick 3D geometries (target gvqtgeom) and their probe
+# <build>/geometry_probe.exe; it builds its own input from the NC program and compares the digests
+# of the buffers with the manifest, so the script has no separate run key - it only
+# checks that the probe is built.
 #
-# Той же сборкой собирается слой STEP и crease-aware нормалей (цель gvstep, пробник
-# <build>/step_probe.exe, этап 4a плана переноса); сверку с манифестом ведёт тот же
-# ключ --manifest. Qt этой цели не нужен: только OCCT.
+# The same build also builds the STEP layer and crease-aware normals (target gvstep, probe
+# <build>/step_probe.exe, stage 4a of the port plan); the comparison with the manifest is done by the same
+# --manifest key. This target does not need Qt: only OCCT.
 #
-# Импорт STL и обводка меша (этап 4b плана переноса) лежат в ядре gvcore, их
-# пробник - <build>/stl_probe.exe; сверку с манифестом ведёт тот же ключ --manifest.
-# Ни Qt, ни OCCT этой цели не нужны.
+# STL import and mesh outline (stage 4b of the port plan) live in the gvcore core, their
+# probe is <build>/stl_probe.exe; the comparison with the manifest is done by the same --manifest key.
+# This target needs neither Qt nor OCCT.
 #
-# Топология силуэта (этап 4c плана переноса) лежит в ядре gvcore, её пробник -
-# <build>/silhouette_probe.exe: он берёт суп вершин из STEP через цель gvstep,
-# поэтому ему нужны DLL OCCT (Qt - нет). Сверку с манифестом ведёт ключ --manifest.
+# The silhouette topology (stage 4c of the port plan) lives in the gvcore core, its probe is
+# <build>/silhouette_probe.exe: it takes the set of vertices from STEP through the gvstep target,
+# so it needs the OCCT DLLs (Qt - no). The comparison with the manifest is done by the --manifest key.
 #
-# Аналитические поверхности вращения STEP (этап 4d плана переноса) лежат в
-# gvstep (occt/step_surfaces), семейства касательных - в gvcore
-# (core/tangents), их общий пробник - <build>/tangents_probe.exe: он тоже берёт
-# суп и поверхности из STEP через gvstep, упакованные рёбра STEP строит сам из
-# той же формы тем же путём, что рантайм (occt/step_edges + core/packing), и
-# печатает рядом дайджест своего буфера рёбер, поэтому ему нужны DLL
-# OCCT (Qt - нет). Его режим --manifest сверяет 22 записи tangents.* со своего
-# буфера рёбер; буфер не совпадает с дайджестом манифеста байт в байт (набор
-# отрезков один, порядок и младшие биты - нет), поэтому оговорка и числа - в
-# cpp/tangents_probe.cpp и cpp/CMakeLists.txt.
+# The analytic surfaces of revolution of STEP (stage 4d of the port plan) live in
+# gvstep (occt/step_surfaces), the tangent families - in gvcore
+# (core/tangents), their common probe is <build>/tangents_probe.exe: it also takes
+# the set and the surfaces from STEP through gvstep, builds the packed STEP edges itself from
+# the same shape by the same path as the runtime (occt/step_edges + core/packing), and
+# prints alongside the digest of its own edge buffer, so it needs the
+# OCCT DLLs (Qt - no). Its --manifest mode compares the 22 tangents.* records from its
+# edge buffer; the buffer does not match the manifest digest byte for byte (the set of
+# segments is the same, the order and the low bits are not), so the caveat and the numbers are in
+# cpp/tangents_probe.cpp and cpp/CMakeLists.txt.
 #
-# Той же сборкой собирается C++-контроллер вьювера (этап 5.4а плана переноса):
-# QML-модуль MockBackend 1.0 (цель gvqmlbackend) в <repo>/build/qmlbackend/
-# MockBackend - тип GcodeToolpath и шесть геометрий этапа 3. Это единственный
-# бэкенд вьювера.
+# The same build also builds the C++ viewer controller (stage 5.4a of the port plan):
+# the QML module MockBackend 1.0 (target gvqmlbackend) in <repo>/build/qmlbackend/
+# MockBackend - the GcodeToolpath type and the six geometries of stage 3. This is the only
+# viewer backend.
 #
-# Той же сборкой собирается C++-точка входа вьювера:
-# <repo>/build/viewer/gcodeviewer.exe, исходник - cpp/viewer/main.cpp. Она грузит
-# GcodeViewer3D.qml в QQuickView и работает только с плагином MockBackend:
-# питоновского бэкенда нет ни в рантайме, ни в репозитории. Запуск - с Qt в PATH
-# (exe линкуется с Qt6Core.dll); каталог плагина и DLL OCCT точка входа добавляет
-# себе сама:
+# The same build also builds the C++ viewer entry point:
+# <repo>/build/viewer/gcodeviewer.exe, the source is cpp/viewer/main.cpp. It loads
+# GcodeViewer3D.qml into QQuickView and works only with the MockBackend plugin:
+# there is no Python backend either in the runtime or in the repository. Launch - with Qt in PATH
+# (the exe links against Qt6Core.dll); the plugin directory and the OCCT DLLs the entry point adds
+# to itself:
 #   build\viewer\gcodeviewer.exe data\cad-testdata\Test_model.ngc
 #   build\viewer\gcodeviewer.exe --smoke
 #   build\viewer\gcodeviewer.exe --frame frame.png data\cad-testdata\Test_model.ngc
 #
-# Код возврата: 0 — собрано, плагин на месте; 1 — инструмент не найден или ошибка сборки.
+# Exit code: 0 - built, the plugin is in place; 1 - tool not found or build error.
 
 [CmdletBinding()]
 param(
-    # Каталог Qt6 (внутри ожидается lib/cmake/Qt6/Qt6Config.cmake).
+    # Qt6 directory (lib/cmake/Qt6/Qt6Config.cmake is expected inside).
     [string]$QtDir = $env:CNC_QT_DIR,
-    # Каталог OCCT (внутри ожидается lib/cmake/opencascade/OpenCASCADEConfig.cmake).
+    # OCCT directory (lib/cmake/opencascade/OpenCASCADEConfig.cmake is expected inside).
     [string]$OccDir = $env:CNC_OCC_DIR,
-    # Каталог сборки относительно корня репозитория.
+    # Build directory relative to the repository root.
     [string]$BuildDir = 'build/edges',
-    # Дополнительно прогнать пробник сегментов на data/cad-testdata/Test_model.STEP.
+    # Additionally run the segments probe on data/cad-testdata/Test_model.STEP.
     [switch]$RunProbe,
-    # Дополнительно прогнать пробник ядра на data/cad-testdata/Test_model.ngc.
+    # Additionally run the core probe on data/cad-testdata/Test_model.ngc.
     [switch]$RunCoreProbe,
-    # Дополнительно прогнать пробник STEP и нормалей на data/cad-testdata/Test_model.STEP.
+    # Additionally run the STEP and normals probe on data/cad-testdata/Test_model.STEP.
     [switch]$RunStepProbe,
-    # Дополнительно прогнать пробник STL и обводки меша на data/cad-testdata/Test_model.STL.
+    # Additionally run the STL and mesh outline probe on data/cad-testdata/Test_model.STL.
     [switch]$RunStlProbe,
-    # Дополнительно прогнать пробник топологии силуэта на data/cad-testdata/Test_model.STEP.
+    # Additionally run the silhouette topology probe on data/cad-testdata/Test_model.STEP.
     [switch]$RunSilhouetteProbe,
-    # Дополнительно прогнать пробник поверхностей и касательных на data/cad-testdata/Test_model.STEP.
+    # Additionally run the surfaces and tangents probe on data/cad-testdata/Test_model.STEP.
     [switch]$RunTangentsProbe,
-    # Дополнительно прогнать C++-точку входа вьювера offscreen на data/cad-testdata/Test_model.ngc.
+    # Additionally run the C++ viewer entry point offscreen on data/cad-testdata/Test_model.ngc.
     [switch]$RunViewer,
-    # Дополнительно прогнать пробник горячих клавиш вьювера на русской и английской раскладках.
+    # Additionally run the viewer hotkey probe on the Russian and English layouts.
     [switch]$RunKeyProbe,
-    # Только конфигурирование, без сборки.
+    # Configure only, without building.
     [switch]$ConfigureOnly
 )
 
@@ -115,7 +115,7 @@ function Fail([string]$text) {
     exit 1
 }
 
-# Первый существующий путь из списка; пустая строка, если ничего не нашлось.
+# The first existing path from the list; an empty string if nothing was found.
 function First-Existing([string[]]$paths) {
     foreach ($p in $paths) {
         if ($p -and (Test-Path -LiteralPath $p)) { return $p }
@@ -180,9 +180,9 @@ Write-Host "build-viewer: cmake=$cmake"
 Write-Host "build-viewer: ninja=$ninja"
 Write-Host "build-viewer: build=$BuildDir"
 
-# vcvars64.bat — batch-файл: его окружение снимается один раз в переменные процесса,
-# дальше cmake и cl запускаются прямо из PowerShell. Так путь репозитория с кириллицей
-# доезжает до инструментов без перекодировки (cmd.exe читает .cmd в кодировке консоли).
+# vcvars64.bat - a batch file: its environment is captured once into process variables,
+# after that cmake and cl are launched directly from PowerShell. This way the repository path with Cyrillic
+# reaches the tools without re-encoding (cmd.exe reads .cmd in the console encoding).
 $envText = & cmd.exe /c ('call "' + $vcvars + '" >nul && set')
 if ($LASTEXITCODE -ne 0) { Fail "vcvars64.bat не отработал: $vcvars" }
 $applied = 0
@@ -194,7 +194,7 @@ foreach ($line in $envText) {
 }
 if ($applied -lt 10) { Fail 'окружение MSVC не получено: проверьте CNC_VCVARS' }
 
-$env:VSLANG = '1033'                       # сообщения компилятора латиницей: читаемы в любой консоли
+$env:VSLANG = '1033'                       # compiler messages in Latin script: readable in any console
 
 & $cmake -S $srcDir -B $BuildDir -G Ninja -DCMAKE_BUILD_TYPE=Release `
     -DCMAKE_MAKE_PROGRAM="$ninja" -DCMAKE_PREFIX_PATH="$prefix" `
@@ -242,8 +242,8 @@ if (Test-Path -LiteralPath $geomProbe) {
     Fail "геометрии не собраны: нет $geomProbe"
 }
 
-# Пробник версии: сверяет VERSION, projects.json и свойство viewerVersion в QML.
-# Ни Qt, ни OCCT ему не нужны.
+# Version probe: compares VERSION, projects.json and the viewerVersion property in QML.
+# It needs neither Qt nor OCCT.
 $versionProbe = Join-Path $BuildDir 'version_probe.exe'
 if (Test-Path -LiteralPath $versionProbe) {
     Write-Host ("build-viewer: пробник версии " + $versionProbe)
@@ -279,9 +279,9 @@ if (Test-Path -LiteralPath $tanProbe) {
     Fail "поверхности и касательные не собраны: нет $tanProbe"
 }
 
-# QML-модуль C++-контроллера (этап 5.4а): каталог модуля - <repo>/build/qmlbackend/
-# MockBackend, импорт-путь - <repo>/build/qmlbackend. Путь предсказуем для точки
-# входа вьювера, поэтому каталог и не совпадает с каталогом сборки.
+# QML module of the C++ controller (stage 5.4a): the module directory is <repo>/build/qmlbackend/
+# MockBackend, the import path is <repo>/build/qmlbackend. The path is predictable for the
+# viewer entry point, that is why the directory does not match the build directory.
 $backendImport = Join-Path $root 'build\qmlbackend'
 $backendModule = Join-Path $backendImport 'MockBackend'
 $backendQmldir = Join-Path $backendModule 'qmldir'
@@ -292,9 +292,9 @@ if (Test-Path -LiteralPath $backendQmldir) {
     Fail "модуль MockBackend не собран: нет $backendQmldir"
 }
 
-# C++-точка входа вьювера (отказ от Python в рантайме): <repo>/build/viewer/
-# gcodeviewer.exe. Она - то, чем вьювер запускается без Python; питоновского
-# бэкенда в рантайме нет, поэтому отсутствие exe - ошибка сборки, а не мелочь.
+# C++ viewer entry point (dropping Python in the runtime): <repo>/build/viewer/
+# gcodeviewer.exe. It is what launches the viewer without Python; there is no Python
+# backend in the runtime, so a missing exe is a build error, not a trifle.
 $viewerExe = Join-Path $root 'build\viewer\gcodeviewer.exe'
 if (Test-Path -LiteralPath $viewerExe) {
     Write-Host ("build-viewer: точка входа вьювера " + $viewerExe)
@@ -302,10 +302,10 @@ if (Test-Path -LiteralPath $viewerExe) {
     Fail "точка входа вьювера не собрана: нет $viewerExe"
 }
 
-# Пробник горячих клавиш (viewer/keyprobe.cpp): грузит тот же GcodeViewer3D.qml и
-# проверяет, что на русской и английской раскладках каждая буквенная горячая клавиша
-# переключает своё свойство. Собирается вместе с точкой входа, проверку гоняет сторож
-# (tools/check.ps1) - здесь только наличие пробника и ключ запуска.
+# Hotkey probe (viewer/keyprobe.cpp): loads the same GcodeViewer3D.qml and
+# checks that in the Russian and English layouts every letter hotkey
+# toggles its own property. It is built together with the entry point, the check is run by the guard
+# (tools/check.ps1) - here only the presence of the probe and the run key are checked.
 $keyProbeExe = Join-Path $root 'build\viewer\keyprobe.exe'
 if (Test-Path -LiteralPath $keyProbeExe) {
     Write-Host ("build-viewer: пробник клавиш " + $keyProbeExe)
@@ -316,14 +316,14 @@ if (Test-Path -LiteralPath $keyProbeExe) {
 if ($RunProbe) {
     if (-not (Test-Path -LiteralPath $probe)) { Fail "пробника нет: $probe" }
     if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
-    $env:PATH = "$moduleDir;$OccDir\bin;$QtDir\bin;$env:PATH"   # DLL OCCT, Qt и плагина
+    $env:PATH = "$moduleDir;$OccDir\bin;$QtDir\bin;$env:PATH"   # OCCT, Qt and plugin DLLs
     & $probe $probeStep
     if ($LASTEXITCODE -ne 0) { Fail "пробник вернул $LASTEXITCODE" }
 }
 
 if ($RunCoreProbe) {
     if (-not (Test-Path -LiteralPath $probeNgc)) { Fail "нет тестовой УП: $probeNgc" }
-    # Пробнику ядра DLL не нужны: gvcore статическая, Qt и OCCT в ней не участвуют.
+    # The core probe needs no DLLs: gvcore is static, Qt and OCCT do not take part in it.
     $dumpDir = Join-Path $env:TEMP 'gvcore_build_probe'
     New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
     & $coreProbe $probeNgc $dumpDir
@@ -333,7 +333,7 @@ if ($RunCoreProbe) {
 if ($RunStepProbe) {
     if (-not (Test-Path -LiteralPath $stepProbe)) { Fail "пробника нет: $stepProbe" }
     if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
-    # Пробнику нужны только DLL OCCT: Qt в цели gvstep нет.
+    # The probe needs only the OCCT DLLs: there is no Qt in the gvstep target.
     $env:PATH = "$OccDir\bin;$env:PATH"
     $dumpDir = Join-Path $env:TEMP 'gvstep_build_probe'
     New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
@@ -344,7 +344,7 @@ if ($RunStepProbe) {
 if ($RunStlProbe) {
     if (-not (Test-Path -LiteralPath $stlProbe)) { Fail "пробника нет: $stlProbe" }
     if (-not (Test-Path -LiteralPath $probeStl)) { Fail "нет тестовой модели: $probeStl" }
-    # Пробнику STL DLL не нужны: он целиком в gvcore, Qt и OCCT в ней не участвуют.
+    # The STL probe needs no DLLs: it is entirely in gvcore, Qt and OCCT do not take part in it.
     $dumpDir = Join-Path $env:TEMP 'gvstl_build_probe'
     New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
     & $stlProbe $probeStl $dumpDir
@@ -354,7 +354,7 @@ if ($RunStlProbe) {
 if ($RunSilhouetteProbe) {
     if (-not (Test-Path -LiteralPath $silProbe)) { Fail "пробника нет: $silProbe" }
     if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
-    # Пробнику нужны только DLL OCCT: суп он берёт из STEP через цель gvstep.
+    # The probe needs only the OCCT DLLs: it takes the set from STEP through the gvstep target.
     $env:PATH = "$OccDir\bin;$env:PATH"
     $dumpDir = Join-Path $env:TEMP 'gvsilhouette_build_probe'
     New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
@@ -365,10 +365,10 @@ if ($RunSilhouetteProbe) {
 if ($RunTangentsProbe) {
     if (-not (Test-Path -LiteralPath $tanProbe)) { Fail "пробника нет: $tanProbe" }
     if (-not (Test-Path -LiteralPath $probeStep)) { Fail "нет тестовой модели: $probeStep" }
-    # Пробнику нужны только DLL OCCT: суп и поверхности он берёт из STEP через
-    # цель gvstep. Упакованных рёбер в этом каталоге нет - пробник пойдёт без
-    # пометок DROP, как эталон с packed_edges=None; полную сверку с манифестом
-    # ведёт тот же пробник ключом --manifest.
+    # The probe needs only the OCCT DLLs: it takes the set and the surfaces from STEP through
+    # the gvstep target. There are no packed edges in this directory - the probe will run without
+    # DROP marks, like the reference with packed_edges=None; the full comparison with the manifest
+    # is done by the same probe with the --manifest key.
     $env:PATH = "$OccDir\bin;$env:PATH"
     $dumpDir = Join-Path $env:TEMP 'gvtangents_build_probe'
     New-Item -ItemType Directory -Force -Path $dumpDir | Out-Null
@@ -379,8 +379,8 @@ if ($RunTangentsProbe) {
 if ($RunViewer) {
     if (-not (Test-Path -LiteralPath $viewerExe)) { Fail "нет точки входа вьювера: $viewerExe" }
     if (-not (Test-Path -LiteralPath $probeNgc)) { Fail "нет тестовой УП: $probeNgc" }
-    # Qt в PATH обязателен: exe линкуется с Qt6Core.dll. Каталог плагина и DLL
-    # OCCT точка входа добавляет себе сама.
+    # Qt in PATH is required: the exe links against Qt6Core.dll. The plugin directory and the
+    # OCCT DLLs the entry point adds to itself.
     $env:QT_QPA_PLATFORM = 'offscreen'
     $env:PATH = "$QtDir\bin;$env:PATH"
     & $viewerExe $probeNgc
@@ -390,9 +390,9 @@ if ($RunViewer) {
 if ($RunKeyProbe) {
     if (-not (Test-Path -LiteralPath $keyProbeExe)) { Fail "нет пробника клавиш: $keyProbeExe" }
     if (-not (Test-Path -LiteralPath $probeNgc)) { Fail "нет тестовой УП: $probeNgc" }
-    # Пробнику нужен Qt в PATH (exe линкуется с Qt6Core.dll); каталог плагина и DLL
-    # OCCT он добавляет себе сам, как точка входа вьювера. Платформа offscreen:
-    # живой сессии и переднего окна пробе не нужно.
+    # The probe needs Qt in PATH (the exe links against Qt6Core.dll); the plugin directory and the
+    # OCCT DLLs it adds to itself, like the viewer entry point. The offscreen platform:
+    # the probe does not need a live session or a foreground window.
     $env:QT_QPA_PLATFORM = 'offscreen'
     $env:PATH = "$QtDir\bin;$env:PATH"
     & $keyProbeExe $probeNgc

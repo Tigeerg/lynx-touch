@@ -1,49 +1,50 @@
-﻿# tools/keyprobe.ps1 — проба горячих клавиш вьювера на разных раскладках.
+﻿# tools/keyprobe.ps1 - viewer hotkey probe on different layouts.
 #
-# Запуск: powershell -NoProfile -ExecutionPolicy Bypass -File tools/keyprobe.ps1
+# Run: powershell -NoProfile -ExecutionPolicy Bypass -File tools/keyprobe.ps1
 #         powershell -NoProfile -ExecutionPolicy Bypass -File tools/keyprobe.ps1 -Layouts ru
 #
-# Что делает: поднимает живой вьювер (build/viewer/gcodeviewer.exe) с включённой
-# диагностикой клавиш (CNC_KEY_DEBUG=1, печатает GcodeViewer3D.qml), переключает
-# раскладку окна на заданную, посылает физические нажатия и читает журнал.
-# Нажатие посылается сканом (SendInput, KEYEVENTF_SCANCODE): систему скан-код в VK и
-# символ переводит сама, поэтому проба воспроизводит то, что видит вьювер на русской
-# раскладке. Синтетическое событие (PostMessage с готовым VK) для этого не годится:
-# оно задаёт VK напрямую и не воспроизводит трансляцию раскладки.
+# What it does: starts a live viewer (build/viewer/gcodeviewer.exe) with key
+# diagnostics enabled (CNC_KEY_DEBUG=1, printed by GcodeViewer3D.qml), switches
+# the window layout to the given one, sends physical key presses and reads the log.
+# A press is sent as a scan code (SendInput, KEYEVENTF_SCANCODE): the system itself
+# translates a scan code into VK and a character, so the probe reproduces what the
+# viewer sees on the Russian layout. A synthetic event (PostMessage with a ready VK)
+# is not suitable for this: it sets the VK directly and does not reproduce the
+# layout translation.
 #
-# Результат - по существу: клавиша считается сработавшей, если после нажатия
-# состояние переключателей вьювера изменилось (строка state в журнале).
+# The result is substantive: a key counts as fired if after the press the state of
+# the viewer toggles changed (the state line in the log).
 #
-# Нужна живая сессия рабочего стола: окно вьювера обязано быть передним, иначе
-# нажатия ушли бы в чужое окно - и проба их не посылает вовсе. Поэтому в сторож
-# (tools/check.ps1) проба не входит, её гоняют руками.
+# A live desktop session is required: the viewer window must be foreground, otherwise
+# the presses would go to a foreign window - and the probe does not send them at all.
+# That is why the probe is not part of the guard (tools/check.ps1), it is run by hand.
 #
-# Прогон на машине сборки: выбор окна, переключение раскладки (ru и en встают) и
-# разбор журнала проверены; доставку посланных нажатий подтвердить не удалось -
-# SendInput в живой сессии до окна вьювера не доходил (у консольного exe два окна
-# верхнего уровня: консоль и окно Qt). Воспроизводимая проверка слоя - шаг сторожа
-# build/viewer/keyprobe.exe (offscreen, раскладки ru и en).
+# A run on the build machine: window selection, layout switching (ru and en take hold)
+# and log parsing are verified; delivery of the sent presses could not be confirmed -
+# SendInput in a live session did not reach the viewer window (a console exe has two
+# top-level windows: the console and the Qt window). A reproducible check of the layer is
+# the guard step build/viewer/keyprobe.exe (offscreen, layouts ru and en).
 #
-# Код возврата: 0 - все клавиши сработали; 1 - часть не сработала; 2 - пробы не было
-# (нет exe, нет окна, окно не вышло на передний план, нет рабочего стола).
+# Return code: 0 - all keys fired; 1 - some did not fire; 2 - there was no probe
+# (no exe, no window, the window did not come to the foreground, no desktop).
 
 [CmdletBinding()]
 param(
-    # Точка входа вьювера.
+    # Viewer entry point.
     [string]$Exe = '',
-    # УП для загрузки, относительно корня репозитория: на пустом вьювере P и T молчат.
+    # G-code to load, relative to the repository root: on an empty viewer P and T stay silent.
     [string]$Program = 'data\cad-testdata\Test_model.ngc',
-    # Раскладки целевого окна: ru (00000419), en (00000409).
+    # Layouts of the target window: ru (00000419), en (00000409).
     [string[]]$Layouts = @('ru', 'en'),
-    # Физические клавиши горячих клавиш вьювера.
+    # Physical keys of the viewer hotkeys.
     [string[]]$Keys = @('P', 'S', 'M', 'L', 'T', 'E', 'D', 'X', 'F'),
-    # Ожидание окна вьювера, мс.
+    # Waiting for the viewer window, ms.
     [int]$WaitMs = 15000,
-    # Пауза после подъёма окна (вьювер грузит модель и УП), мс.
+    # Pause after the window is up (the viewer loads the model and the g-code), ms.
     [int]$SettleMs = 6000,
-    # Каталог Qt (внутри ожидается bin/Qt6Core.dll).
+    # Qt directory (bin/Qt6Core.dll is expected inside).
     [string]$QtDir = $env:CNC_QT_DIR,
-    # Каталог OCCT (внутри ожидается bin).
+    # OCCT directory (bin is expected inside).
     [string]$OccDir = $env:CNC_OCC_DIR
 )
 
@@ -114,8 +115,8 @@ public static class K {
 
 $inputSize = [System.Runtime.InteropServices.Marshal]::SizeOf([type][K+INPUT])
 
-# Окна процесса: у консольного exe MainWindowHandle указывает на консоль, поэтому окна
-# перебираются и берётся окно класса Qt (QQuickView), а не ConsoleWindowClass.
+# Windows of the process: for a console exe MainWindowHandle points to the console, so the
+# windows are enumerated and the window of class Qt (QQuickView) is taken, not ConsoleWindowClass.
 function Find-ViewerWindow([int]$processId, [int]$timeoutMs) {
     $deadline = (Get-Date).AddMilliseconds($timeoutMs)
     while ((Get-Date) -lt $deadline) {
@@ -139,8 +140,8 @@ function Find-ViewerWindow([int]$processId, [int]$timeoutMs) {
     return $null
 }
 
-# Передний план: окно выводится на передний план один раз, дальше передний план только
-# проверяется - показ и переключение окна на каждой клавише роняют доставку нажатий.
+# Foreground: the window is brought to the foreground once, after that the foreground is only
+# checked - showing and switching the window on every key drops the delivery of presses.
 function Set-Foreground([IntPtr]$hwnd, [uint32]$myTid, [bool]$strong) {
     $fg = [K]::GetForegroundWindow()
     if ($fg -eq $hwnd) { return $true }
@@ -157,7 +158,7 @@ function Set-Foreground([IntPtr]$hwnd, [uint32]$myTid, [bool]$strong) {
     return ([K]::GetForegroundWindow() -eq $hwnd)
 }
 
-# Физическое нажатие: скан-код, перевод в VK и символ делает система по раскладке окна.
+# Physical press: scan code, the system translates it into VK and a character according to the window layout.
 function Send-Scan([int]$scan) {
     $down = New-Object K+INPUT
     $down.type = 1
@@ -176,10 +177,10 @@ function Send-Scan([int]$scan) {
     Start-Sleep -Milliseconds 120
 }
 
-# Раскладка окна: LoadKeyboardLayout для своего потока плюс запрос окну
-# (WM_INPUTLANGCHANGEREQUEST). Привязка к очереди окна (AttachThreadInput) не нужна:
-# раскладка у потока своя, а перевод скан-кода в символ система делает по раскладке
-# окна, которое получило нажатие.
+# Window layout: LoadKeyboardLayout for its own thread plus a request to the window
+# (WM_INPUTLANGCHANGEREQUEST). Attachment to the window queue (AttachThreadInput) is not needed:
+# the thread has its own layout, and the system translates the scan code into a character according to the layout
+# of the window that received the press.
 function Set-Layout([IntPtr]$hwnd, [uint32]$tid, [uint32]$myTid, [string]$tag) {
     $klid = if ($tag -eq 'ru') { '00000419' } else { '00000409' }
     $hkl = [K]::LoadKeyboardLayout($klid, 0x00000001)
@@ -201,7 +202,7 @@ $errLog = Join-Path $logDir 'stderr.txt'
 Remove-Item -LiteralPath $outLog, $errLog -ErrorAction SilentlyContinue
 Write-Host "keyprobe: журнал $logDir"
 
-# Журнал: stdout процесса (точка входа) и stderr (console.log из QML).
+# Log: the process stdout (entry point) and stderr (console.log from QML).
 function Get-LogText {
     $text = ''
     foreach ($file in $outLog, $errLog) {
@@ -240,8 +241,8 @@ $fired = 0
 $total = 0
 foreach ($tag in $Layouts) {
     $hkl = Set-Layout $hwnd $tid $myTid $tag
-    # GetKeyboardLayout отдаёт HKL: младшее слово - язык (0x0419 русский, 0x0409 английский),
-    # старшее - описатель устройства, он от загрузки зависит и для сверки не годится.
+    # GetKeyboardLayout returns an HKL: the low word is the language (0x0419 Russian, 0x0409 English),
+    # the high word is the device descriptor, it depends on the load and is not good for comparison.
     $langWanted = if ($tag -eq 'ru') { 0x0419 } else { 0x0409 }
     $langGot = $hkl.ToInt64() -band 0xFFFF
     if ($langGot -ne $langWanted) {
@@ -256,8 +257,8 @@ foreach ($tag in $Layouts) {
         $stateBefore = @(Get-StateLines (Get-LogText))
         $keysBefore = (Get-KeyLines (Get-LogText)).Count
         $line = ''
-        # Нажатие повторяется, пока событие не появится в журнале: живая сессия может
-        # отобрать передний план на середине пробы.
+        # The press is repeated until the event appears in the log: a live session may
+        # take away the foreground in the middle of the probe.
         for ($try = 1; $try -le 6; $try++) {
             if (-not (Set-Foreground $hwnd $myTid $false)) {
                 Write-Host ("keyprobe: [{0}] {1}: окно потеряло передний план, нажатие не послано" -f $tag, $key)

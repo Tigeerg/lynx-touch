@@ -1,35 +1,35 @@
 #!/bin/sh
-# scripts/build-viewer.sh - сборка вьювера УП на C++ под Linux: QML-плагин CNC.Edges,
-# ядро gvcore, геометрии gvqtgeom, слой STEP gvstep, QML-модуль MockBackend и точка
-# входа build/viewer/gcodeviewer.
+# scripts/build-viewer.sh - build of the NC viewer in C++ on Linux: the QML plugin CNC.Edges,
+# the gvcore core, the gvqtgeom geometries, the gvstep STEP layer, the QML module MockBackend and the entry
+# point build/viewer/gcodeviewer.
 #
-# Запуск:  bash scripts/build-viewer.sh
-#          CNC_QT_DIR=<каталог Qt6> CNC_OCC_DIR=<каталог OCCT> bash scripts/build-viewer.sh
+# Usage:  bash scripts/build-viewer.sh
+#          CNC_QT_DIR=<Qt6 directory> CNC_OCC_DIR=<OCCT directory> bash scripts/build-viewer.sh
 #
-# Окружение SDK и компилятора на Linux собирает environment.yml в корне
-# (conda-forge): conda env create -f environment.yml. Компилятор в окружении -
-# не роскошь: conda-сборка OCCT линкуется символом __cxa_call_terminate@CXXABI_1.3.15,
-# которого нет в GCC 11 системных Ubuntu 22.04.
+# The SDK and compiler environment on Linux is assembled by environment.yml in the root
+# (conda-forge): conda env create -f environment.yml. The compiler in the environment is
+# not a luxury: the conda build of OCCT links against the symbol __cxa_call_terminate@CXXABI_1.3.15,
+# which GCC 11 of a stock Ubuntu 22.04 does not have.
 #
-# Скрипт делает то же, что scripts/build-viewer.ps1 (разбор целей и артефактов - там
-# же), минус Windows: окружение MSVC не снимается, vcvars64.bat не нужен, компилятор
-# и загрузчик - системные. Пути SDK берутся из окружения: CNC_QT_DIR (Qt6 с Quick3D),
-# CNC_OCC_DIR (OCCT с CMake-пакетом), CNC_CMAKE, CNC_NINJA. Не заданы - берётся
-# $CONDA_PREFIX в раскладке conda-forge (lib/cmake/Qt6 и lib/cmake/opencascade), а
-# если и там их нет - переменные не задаются вовсе, и пути ищет сам find_package.
-# Каталог сборки - CNC_BUILD_DIR, по умолчанию <repo>/build/edges.
+# The script does the same as scripts/build-viewer.ps1 (the breakdown of targets and artifacts is there),
+# minus Windows: the MSVC environment is not captured, vcvars64.bat is not needed, the compiler
+# and the linker are the system ones. SDK paths are taken from the environment: CNC_QT_DIR (Qt6 with Quick3D),
+# CNC_OCC_DIR (OCCT with a CMake package), CNC_CMAKE, CNC_NINJA. If not set, $CONDA_PREFIX is taken
+# in the conda-forge layout (lib/cmake/Qt6 and lib/cmake/opencascade), and
+# if they are not there either, the variables are not set at all, and find_package looks for the paths itself.
+# The build directory is CNC_BUILD_DIR, by default <repo>/build/edges.
 #
-# Загрузчик находит Qt и OCCT по rpath сборки (CMake заполняет его сам, BUILD_RPATH),
-# поэтому LD_LIBRARY_PATH не нужен, и точка входа (cpp/viewer/main.cpp) на Linux PATH
-# не трогает.
+# The dynamic linker finds Qt and OCCT by the build rpath (CMake fills it itself, BUILD_RPATH),
+# so LD_LIBRARY_PATH is not needed, and the entry point (cpp/viewer/main.cpp) on Linux does not touch
+# PATH.
 #
-# Собранное: <build>/CNC/Edges/ (qmldir, libcncedgesplugin.so,
+# Built: <build>/CNC/Edges/ (qmldir, libcncedgesplugin.so,
 # libcncedgespluginplugin.so),
 # <repo>/build/qmlbackend/MockBackend/ (libgvqmlbackend.so, libgvqmlbackendplugin.so),
 # <repo>/build/viewer/gcodeviewer.
 #
-# Код возврата: 0 - собрано, артефакты на месте; 1 - инструмент не найден или ошибка
-# сборки.
+# Exit code: 0 - built, the artifacts are in place; 1 - tool not found or build
+# error.
 
 set -eu
 
@@ -43,19 +43,19 @@ fail() {
     exit 1
 }
 
-# Каталог Qt6: внутри ожидается lib/cmake/Qt6/Qt6Config.cmake.
+# Qt6 directory: lib/cmake/Qt6/Qt6Config.cmake is expected inside.
 is_qt_dir() {
     [ -n "$1" ] && [ -f "$1/lib/cmake/Qt6/Qt6Config.cmake" ]
 }
 
-# Каталог OCCT: внутри ожидается lib/cmake/opencascade/OpenCASCADEConfig.cmake.
+# OCCT directory: lib/cmake/opencascade/OpenCASCADEConfig.cmake is expected inside.
 is_occ_dir() {
     [ -n "$1" ] && [ -f "$1/lib/cmake/opencascade/OpenCASCADEConfig.cmake" ]
 }
 
-# Инструмент: значение переменной окружения, иначе первая найденная команда из
-# PATH, иначе - из bin каталогов Qt/OCCT/окружения: conda-окружение держит cmake
-# и ninja в своём bin, и без активации окружения их в PATH нет.
+# Tool: the value of the environment variable, otherwise the first command found in
+# PATH, otherwise - from the bin directories of Qt/OCCT/the environment: the conda environment keeps cmake
+# and ninja in its bin, and without activating the environment they are not in PATH.
 find_tool() {
     override=$1
     shift
@@ -100,8 +100,8 @@ cmake=$(find_tool "${CNC_CMAKE:-}" cmake)
 ninja=$(find_tool "${CNC_NINJA:-}" ninja ninja-build)
 [ -n "$ninja" ] || fail 'ninja не найден: задайте CNC_NINJA=<путь к ninja> или активируйте окружение (conda activate gcode-cpp)'
 
-# CMAKE_PREFIX_PATH: найденные каталоги через точку с запятой. Ничего не задано -
-# ключ не передаётся вовсе: пути ищет find_package.
+# CMAKE_PREFIX_PATH: the found directories separated by a semicolon. If nothing is set,
+# the key is not passed at all: find_package looks for the paths.
 prefix=''
 for dir in "$qt_dir" "$occ_dir"; do
     if [ -n "$dir" ]; then
@@ -115,8 +115,8 @@ echo "build-viewer: cmake=$cmake"
 echo "build-viewer: ninja=$ninja"
 echo "build-viewer: build=$build_dir"
 
-# Параметры конфигурирования собираются в позиционные: путь с пробелом доезжает до
-# cmake одним словом.
+# The configure parameters are collected into positional ones: a path with a space reaches
+# cmake as a single word.
 set -- -S "$src_dir" -B "$build_dir" -G Ninja -DCMAKE_BUILD_TYPE=Release \
        -DCMAKE_MAKE_PROGRAM="$ninja"
 if [ -n "$prefix" ]; then
@@ -145,8 +145,8 @@ echo "build-viewer: модуль  $module_dir"
 echo "build-viewer: плагин  $plugin"
 echo "build-viewer: import path для QML: $build_dir"
 
-# Пробники: те же цели, что под Windows, только без суффикса .exe. Их гоняют
-# сторожа (tools/checks.txt) и человек.
+# Probes: the same targets as on Windows, only without the .exe suffix. They are run by
+# the guards (tools/checks.txt) and by a human.
 for probe_name in stepledges_probe gcode_probe version_probe geometry_probe step_probe stl_probe \
                   silhouette_probe tangents_probe; do
     probe="$build_dir/$probe_name"

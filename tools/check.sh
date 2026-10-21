@@ -1,21 +1,21 @@
 #!/bin/sh
-# tools/check.sh - сторож стиля и структуры проекта под Linux (правила - CLAUDE.md).
+# tools/check.sh - style and structure guard for the project under Linux (rules - CLAUDE.md).
 #
-# Запуск:  bash tools/check.sh
+# Run:  bash tools/check.sh
 #
-# Исполняет общий список проверок tools/checks.txt; тем же списком правится
-# список в tools/check.ps1 (pnpm guard под Windows), так что добавить проверку -
-# одна строка манифеста. Текстовые правила CLAUDE.md, метки размеров файлов и
-# pnpm-прогоны React остаются в tools/check.ps1: им нужен Windows или node; на
-# Linux они печатаются как skip.
+# Runs the shared check list tools/checks.txt; the same list drives the
+# list in tools/check.ps1 (pnpm guard under Windows), so adding a check is
+# one manifest line. The text rules of CLAUDE.md, file size labels and
+# pnpm/React runs stay in tools/check.ps1: they need Windows or node; on
+# Linux they are printed as skip.
 #
-# Питоновского слоя нет: все проверки - C++ (пробники и точка входа вьювера).
+# There is no Python layer: all checks are C++ (probes and the viewer entry point).
 #
-# Проверка, которой не хватает инструмента (нет собранных пробников, QML-модуля
-# MockBackend или точки входа вьювера), печатается как skip: на машине без
-# тулчейна сторож остаётся зелёным. Красная проверка печатает свой вывод целиком.
+# A check whose tool is missing (no built probes, the MockBackend QML module
+# or viewer entry point) is printed as skip: on a machine without the toolchain
+# the guard stays green. A red check prints its output in full.
 #
-# Код возврата: 0 - все исполняемые проверки зелёные; 1 - есть красная.
+# Return code: 0 - all executed checks are green; 1 - there is a red one.
 
 set -u
 
@@ -30,8 +30,8 @@ print_ok() { printf 'ok    %s\n' "$1"; n_ok=$((n_ok + 1)); }
 print_bad() { printf 'FAIL  %s\n' "$1"; n_fail=$((n_fail + 1)); }
 print_skip() { printf 'skip  %s\n' "$1"; n_skip=$((n_skip + 1)); }
 
-# Собранное: пробники в build/edges, модуль контроллера в build/qmlbackend,
-# точка входа вьювера в build/viewer. Сборка - bash scripts/build-viewer.sh.
+# Built artefacts: probes in build/edges, controller module in build/qmlbackend,
+# viewer entry point in build/viewer. Build - bash scripts/build-viewer.sh.
 have_probe=0
 if [ -x build/edges/gcode_probe ]; then
     have_probe=1
@@ -43,8 +43,8 @@ fi
 
 echo "check: пробники = $have_probe, плагин MockBackend и вьювер = $have_plugin"
 
-# Режим без экрана на весь прогон: его наследуют прогоны вьювера и съёмка кадра.
-# Кадр offscreen снимается, но сцену Quick3D рисует только живая платформа.
+# Screenless mode for the whole run: viewer runs and the frame capture inherit it.
+# The offscreen frame is captured, but only a live platform renders the Quick3D scene.
 export QT_QPA_PLATFORM=offscreen
 
 while IFS='|' read -r label need cmdline; do
@@ -68,9 +68,9 @@ while IFS='|' read -r label need cmdline; do
     fi
     log=$(sh -c "$cmdline" 2>&1)
     code=$?
-    # Кода возврата мало: падение внутри прогона его не меняет - прогоны вьювера
-    # печатают "loaded OK" и при отказе. Такие отказы обязаны быть видны, поэтому
-    # Traceback или строка WARNING/ERROR/ в выводе красят проверку.
+    # The return code is not enough: a crash inside the run does not change it - viewer
+    # runs print "loaded OK" even on failure. Such failures must be visible, so a
+    # Traceback or a WARNING/ERROR/ line in the output paints the check red.
     if [ "$code" -ne 0 ] || printf '%s\n' "$log" | grep -qE 'Traceback|^(WARNING|ERROR) '; then
         print_bad "$label (код возврата $code)"
         printf '%s\n' "$log" | sed 's/^/      /'
@@ -79,7 +79,7 @@ while IFS='|' read -r label need cmdline; do
     fi
 done < tools/checks.txt
 
-# Шаги вне манифеста: им нужен Windows или node (см. tools/check.ps1).
+# Steps outside the manifest: they need Windows or node (see tools/check.ps1).
 print_skip 'pnpm: typecheck, test, format:check (только Windows/сторож pnpm guard)'
 print_skip 'tools/check.ps1: текстовые правила CLAUDE.md, метки размеров, сборка C++ под MSVC'
 

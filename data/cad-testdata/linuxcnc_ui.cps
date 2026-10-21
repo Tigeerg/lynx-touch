@@ -192,7 +192,7 @@ wcsDefinitions = {
   ]
 };
 
-// ':' добавлен для тегов UI_*
+// ':' added for UI_* tags
 var permittedCommentChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,=_-:";
 
 var singleLineCoolant = false; // specifies to output multiple coolant codes in one line rather than in separate lines
@@ -220,7 +220,7 @@ var dFormat = createFormat({prefix:"D", decimals:1});
 var xyzFormat = createFormat({decimals:(unit == MM ? 3 : 4), forceDecimal:true});
 var rFormat = xyzFormat; // radius
 var abcFormat = createFormat({decimals:3, forceDecimal:true, scale:DEG});
-// === UI: формат для углов поворота (без scale: перевод радианов в градусы делаем вручную) ===
+// === UI: format for rotation angles (no scale: radians are converted to degrees manually) ===
 var spatialFormat = createFormat({decimals:1, forceDecimal:true});
 var feedFormat = createFormat({decimals:(unit == MM ? 2 : 3), forceDecimal:true});
 var pitchFormat = createFormat({decimals:(unit == MM ? 3 : 4), forceDecimal:true});
@@ -854,8 +854,8 @@ function isProbeOperation() {
   return hasParameter("operation-strategy") && (getParameter("operation-strategy") == "probe");
 }
 
-// === UI: тип инструмента строкой для 3D-панели ===
-// Отсутствующие в движке константы бросают ReferenceError -> проверяем typeof.
+// === UI: tool type as a string for the 3D panel ===
+// Constants missing in the engine throw ReferenceError -> we check typeof.
 function getUIToolType(tool) {
   if (typeof TOOL_MILLING_END_BALL !== "undefined" && tool.type == TOOL_MILLING_END_BALL) return "BALL";
   if (typeof TOOL_MILLING_CHAMFER !== "undefined" && tool.type == TOOL_MILLING_CHAMFER) return "CHAMFER";
@@ -873,15 +873,15 @@ function getUIToolType(tool) {
   return "FLAT";
 }
 
-// === UI: полная геометрия инструмента одной строкой ===
-// Поля добавляются только если движок их отдал.
+// === UI: full tool geometry in one line ===
+// Fields are added only if the engine provided them.
 function uiToolNum(key, v) {
   return (typeof v == "number" && v === v) ? (" " + key + "=" + xyzFormat.format(v)) : "";
 }
 function uiToolInt(key, v) {
   return (typeof v == "number" && v === v) ? (" " + key + "=" + toolFormat.format(v)) : "";
 }
-function uiToolAngle(key, vRad) {   // радианы -> градусы (taperFormat: scale DEG)
+function uiToolAngle(key, vRad) {   // radians -> degrees (taperFormat: scale DEG)
   return (typeof vRad == "number" && vRad === vRad && vRad > 0 && vRad < Math.PI)
     ? (" " + key + "=" + taperFormat.format(vRad)) : "";
 }
@@ -901,7 +901,7 @@ function getUIToolLine(tool) {
     uiToolInt("NF", tool.numberOfFlutes);
 }
 
-// === UI: привязки для панели — одним блоком в шапке программы ===
+// === UI: panel bindings - in one block in the program header ===
 function getUIWorkOrigin(section) {
   try {
     if (section.workOrigin) {
@@ -914,7 +914,7 @@ function getUIWorkOrigin(section) {
 function getUIRotation(workPlane) {
   var euler;
   try {
-    euler = workPlane.getEuler2(EULER_XYZ_S);   // радианы
+    euler = workPlane.getEuler2(EULER_XYZ_S);   // radians
   } catch (e) {
     euler = new Vector(0, 0, 0);
   }
@@ -963,10 +963,10 @@ function writeUISetup() {
   }
 }
 
-// === Безопасный вход: Zmax -> XY начала -> рабочая высота ===
+// === Safe lead-in: Zmax -> start XY -> working height ===
 function writeZmax() {
   writeBlock(gAbsIncModal.format(90), gFormat.format(53), gMotionModal.format(0),
-    "Z" + xyzFormat.format(toPreciseUnit(0, MM)));   // отвод в машинный Zmax
+    "Z" + xyzFormat.format(toPreciseUnit(0, MM)));   // retract to machine Zmax
   zOutput.reset();
   retracted = true;
 }
@@ -977,9 +977,9 @@ function writeSafeStart(initialPosition, lengthOffset) {
   }
   gMotionModal.reset();
   writeBlock(gAbsIncModal.format(90), gMotionModal.format(0),
-    xOutput.format(initialPosition.x), yOutput.format(initialPosition.y));   // XY начала
+    xOutput.format(initialPosition.x), yOutput.format(initialPosition.y));   // start XY
   writeBlock(gMotionModal.format(0), gFormat.format(43),
-    zOutput.format(initialPosition.z), hFormat.format(lengthOffset));        // вниз на рабочую высоту
+    zOutput.format(initialPosition.z), hFormat.format(lengthOffset));        // down to the working height
   gMotionModal.reset();
 }
 
@@ -1055,11 +1055,11 @@ function onSection() {
       warning(localize("Tool number exceeds maximum value."));
     }
 
-    // UI_TOOL перед M6, чтобы панель успела построить инструмент до смены
+    // UI_TOOL before M6 so the panel can build the tool before the change
     writeComment(getUIToolLine(tool));
 
-    // UI_HOLDER: вылет оправки (gauge length) — если задан в CAM, панель/
-    // вьювер поставят модель оправки по фактическому вылету.
+    // UI_HOLDER: holder gauge length - if set in CAM, the panel/
+    // viewer will place the holder model by the actual gauge length.
     if (hasParameter("operation:tool_holderGaugeLength")) {
       writeComment("UI_HOLDER: GAUGE=" + xyzFormat.format(getParameter("operation:tool_holderGaugeLength")));
     }

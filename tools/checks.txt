@@ -1,28 +1,29 @@
-# tools/checks.txt - общий список прогонов сторожа. Его исполняет tools/check.sh
-# (Linux, bash) и по нему же правится список в tools/check.ps1 (Windows,
-# pnpm guard). Строка - одна проверка:
+# tools/checks.txt - shared run list of the guard. It is executed by tools/check.sh
+# (Linux, bash) and the same list drives the list in tools/check.ps1 (Windows,
+# pnpm guard). A line is one check:
 #
-#   метка|требование|команда
+#   label|requirement|command
 #
-# Требования: probe - нужны собранные пробники (build/edges); plugin - нужен
-# собранный QML-модуль MockBackend (build/qmlbackend/MockBackend/qmldir) и точка
-# входа build/viewer/gcodeviewer - без них не стартует ни один прогон вьювера;
-# frame - съёмка кадра (та же сборка, что у plugin).
+# Requirements: probe - built probes needed (build/edges); plugin - the built
+# MockBackend QML module needed (build/qmlbackend/MockBackend/qmldir) and the
+# entry point build/viewer/gcodeviewer - without them not a single viewer run
+# starts; frame - frame capture (same build as plugin).
 #
-# Исполнитель зовёт команды из корня репозитория с QT_QPA_PLATFORM=offscreen и
-# считает проверку красной, если код возврата не нулевой или в выводе есть
-# Traceback либо строка, начинающаяся с WARNING/ или ERROR/: одного кода
-# возврата мало, падение внутри прогона его не меняет. Требование не закрыто -
-# проверка печатается как skip.
+# The executor calls commands from the repository root with QT_QPA_PLATFORM=offscreen
+# and counts a check red if the return code is non-zero or the output contains a
+# Traceback or a line starting with WARNING/ or ERROR/: the return code alone
+# is not enough, a crash inside the run does not change it. Requirement not met -
+# the check is printed as skip.
 #
-# Питоновского слоя в репозитории нет: пробники сверяются с эталоном сами (ключ
-# --manifest, дайджесты массивов против modules/gcode-viewer/oracle_manifest.json),
-# аналитика поля съёма - случаями stock_sim_probe, живые пути - пробниками
-# viewer/*. Замеры (bench_probe, фазы stock_sim_probe) в список не входят: они
-# печатают числа, а не вердикт.
+# There is no Python layer in the repository: the probes compare against the
+# reference themselves (key --manifest, array digests against
+# modules/gcode-viewer/oracle_manifest.json), field analytics of the stock removal -
+# by stock_sim_probe cases, live paths - by viewer/* probes. Measurements
+# (bench_probe, stock_sim_probe phases) are not part of the list: they
+# print numbers, not a verdict.
 #
-# Текстовые правила CLAUDE.md, метки размеров файлов, pnpm-прогоны React и сборка
-# C++ под MSVC остаются в tools/check.ps1: им нужен Windows или node.
+# The text rules of CLAUDE.md, file size labels, pnpm/React runs and the C++
+# build under MSVC stay in tools/check.ps1: they need Windows or node.
 
 gcode_probe --manifest|probe|build/edges/gcode_probe --manifest modules/gcode-viewer/oracle_manifest.json
 version_probe (VERSION, projects.json, QML)|probe|build/edges/version_probe

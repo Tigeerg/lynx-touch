@@ -1,15 +1,15 @@
-# viewer-linux.yml - прогон 3D-вьювера УП на Linux: сборка C++ (scripts/build-viewer.sh),
-# смок и полный offscreen-прогон эталонной УП. Путь Linux долго не гонялся (README,
-# «Сборка и запуск вьювера (C++)»), и этот workflow держит его живым.
+# viewer-linux.yml - run of the 3D g-code viewer on Linux: C++ build (scripts/build-viewer.sh),
+# smoke and full offscreen run of the reference g-code. The Linux path has not been run for long (README,
+# "Building and running the viewer (C++)"), and this workflow keeps it alive.
 #
-# Локаль ru_RU.UTF-8 генерируется и выставляется намеренно: разбор чисел УП когда-то
-# зависел от LC_NUMERIC, и под ru_RU траектория Test_model.ngc обрывалась на 785
-# сегментах из 70914 (журнал вьювера 0.41.1). Прогон под ru_RU страхует от повторения.
+# The ru_RU.UTF-8 locale is generated and set on purpose: g-code number parsing once
+# depended on LC_NUMERIC, and under ru_RU the toolpath of Test_model.ngc broke off at 785
+# segments out of 70914 (viewer log 0.41.1). A run under ru_RU guards against a repeat.
 #
-# Пробники сверки с оракулом (gcode_probe --manifest и прочие) здесь НЕ гоняются:
-# сверка бит-в-бит, а на Linux против эталона Windows 2 записи из 31 расходятся на
-# 1 ULP из-за разных libm (журнал вьювера 0.41.3, замер). Их место - машина
-# разработки и сторож pnpm guard.
+# Oracle comparison probes (gcode_probe --manifest and others) are NOT run here:
+# it is bit-for-bit comparison, and on Linux against the Windows reference 2 records out of 31 differ by
+# 1 ULP due to different libm (viewer log 0.41.3, measurement). Their place is the
+# development machine and the pnpm guard.
 name: viewer-linux
 
 on:
@@ -73,8 +73,8 @@ jobs:
             echo 'FAIL в прогоне есть [QML warning]'
             exit 1
           fi
-          # Падение на teardown починено (деструктор контроллера дожидается
-          # задачи пула, журнал вьювера 0.41.4): прогон обязан заканчиваться 0.
+          # The teardown crash is fixed (the controller destructor waits for the pool
+          # task, viewer log 0.41.4): the run must end with 0.
           if [ "$code" -ne 0 ]; then
             echo "FAIL код выхода $code"
             exit 1

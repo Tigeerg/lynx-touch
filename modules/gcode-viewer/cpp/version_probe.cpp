@@ -1,10 +1,14 @@
-// cpp/version_probe.cpp - checking the viewer version in three files.
+// cpp/version_probe.cpp - checking repository versions.
 //
 // The viewer version lives in three places (VERSIONING.md, section 3):
 // modules/gcode-viewer/VERSION, projects.json (the version field of the project with id
 // gcode-viewer) and the viewerVersion property in GcodeViewer3D.qml - the entry
 // point prints it and the viewer panel shows it. A forgotten edit of one of the three is
 // invisible both to the build and to a run: this probe reads all three and requires equality.
+// The same probe holds the product version (the root VERSION against projects.json) and the
+// name and version of the react-interface manifest (package.json against projects.json), and
+// requires the version files to carry no BOM (UTF-8): with the mark a reader gets
+// "\uFEFF0.58.3" instead of the version, while to the eye the strings are identical.
 //
 // The check is trivial, but no geometry probe replaces it. The Python
 // module-name check (test_module_names.py) no longer exists: it guarded the boundaries of
@@ -14,7 +18,8 @@
 //
 // Run: version_probe            (the repository root is taken from the probe path)
 //      version_probe <root>     (explicit repository root)
-// Return code: 0 - all three versions matched; 1 - a mismatch or the file was not read.
+// Return code: 0 - the versions match and the files are clean; 1 - a mismatch, a BOM
+// mark or an unreadable file.
 
 #include <cstdio>
 #include <filesystem>
@@ -37,10 +42,17 @@ std::string readText(const std::string& utf8Path, bool& ok)
     return std::string((std::istreambuf_iterator<char>(fh)), std::istreambuf_iterator<char>());
 }
 
+// BOM (UTF-8) at the start of a file: with it a reader outside the probe gets the version
+// with an extra character, while to the eye the strings are indistinguishable.
+bool startsWithBom(const std::string& text)
+{
+    return text.compare(0, 3, "\xEF\xBB\xBF") == 0;
+}
+
 std::string trimmed(const std::string& text)
 {
-    // VERSION is written with a BOM (UTF-8): without stripping the mark the version does not
-    // equal the string from projects.json, although to the eye they look the same.
+    // The BOM (UTF-8) in version files is forbidden - the check below catches it; it is
+    // still stripped on reading so that a mismatch does not hide behind the mark.
     const std::string bom = "\xEF\xBB\xBF";
     const std::string body = text.compare(0, bom.size(), bom) == 0 ? text.substr(bom.size()) : text;
     const std::size_t first = body.find_first_not_of(" \t\r\n");
@@ -70,11 +82,11 @@ std::string quotedValueAfter(const std::string& text, const std::string& key, st
     return text.substr(open + 1, close - open - 1);
 }
 
-// The version of the gcode-viewer project from projects.json: the version field of the nearest
-// object after "id": "gcode-viewer".
-std::string versionFromProjects(const std::string& text)
+// The version of a project from projects.json: the version field of the nearest object
+// after "id": "<id>".
+std::string versionFromProject(const std::string& text, const std::string& id)
 {
-    const std::size_t id_pos = text.find("\"gcode-viewer\"");
+    const std::size_t id_pos = text.find("\"" + id + "\"");
     if (id_pos == std::string::npos) {
         return {};
     }
@@ -120,9 +132,14 @@ int main(int argc, char* argv[])
     }
 
     bool ok = false;
-    const std::string version_file = trimmed(readText(root + "/modules/gcode-viewer/VERSION", ok));
+    const std::string viewer_version_raw = readText(root + "/modules/gcode-viewer/VERSION", ok);
     if (!ok) {
         std::fprintf(stderr, "version_probe: не прочитан modules/gcode-viewer/VERSION\n");
+        return 1;
+    }
+    const std::string product_version_raw = readText(root + "/VERSION", ok);
+    if (!ok) {
+        std::fprintf(stderr, "version_probe: не прочитан VERSION\n");
         return 1;
     }
     const std::string projects = readText(root + "/projects.json", ok);
@@ -135,15 +152,39 @@ int main(int argc, char* argv[])
         std::fprintf(stderr, "version_probe: не прочитан GcodeViewer3D.qml\n");
         return 1;
     }
+    const std::string manifest = readText(root + "/apps/react-interface/package.json", ok);
+    if (!ok) {
+        std::fprintf(stderr, "version_probe: не прочитан apps/react-interface/package.json\n");
+        return 1;
+    }
 
-    const std::string from_projects = versionFromProjects(projects);
+    const std::string version_file = trimmed(viewer_version_raw);
+    const std::string product_version = trimmed(product_version_raw);
+    const std::string from_projects = versionFromProject(projects, "gcode-viewer");
     const std::string from_qml = versionFromQml(qml);
+    const std::string product_from_projects = quotedValueAfter(projects, "version", 0);
+    const std::string react_from_projects = versionFromProject(projects, "react-interface");
+    const std::string manifest_name = quotedValueAfter(manifest, "name", 0);
+    const std::string manifest_version = quotedValueAfter(manifest, "version", 0);
 
     std::printf("version VERSION=%s\n", version_file.c_str());
     std::printf("version projects.json=%s\n", from_projects.c_str());
     std::printf("version GcodeViewer3D.qml=%s\n", from_qml.c_str());
+    std::printf("product VERSION=%s\n", product_version.c_str());
+    std::printf("product projects.json=%s\n", product_from_projects.c_str());
+    std::printf("react-interface package.json=%s (имя %s)\n", manifest_version.c_str(), manifest_name.c_str());
+    std::printf("react-interface projects.json=%s\n", react_from_projects.c_str());
 
     std::vector<std::string> problems;
+    if (startsWithBom(viewer_version_raw)) {
+        problems.push_back("modules/gcode-viewer/VERSION записан с меткой BOM (UTF-8)");
+    }
+    if (startsWithBom(product_version_raw)) {
+        problems.push_back("VERSION записан с меткой BOM (UTF-8)");
+    }
+    if (startsWithBom(manifest)) {
+        problems.push_back("apps/react-interface/package.json записан с меткой BOM (UTF-8)");
+    }
     if (from_projects.empty()) {
         problems.push_back("в projects.json нет проекта gcode-viewer с полем version");
     }
@@ -155,6 +196,23 @@ int main(int argc, char* argv[])
     }
     if (!from_qml.empty() && from_qml != version_file) {
         problems.push_back("GcodeViewer3D.qml (" + from_qml + ") не равен VERSION (" + version_file + ")");
+    }
+    if (product_from_projects.empty()) {
+        problems.push_back("в projects.json нет поля version продукта");
+    }
+    if (!product_from_projects.empty() && product_from_projects != product_version) {
+        problems.push_back("projects.json (" + product_from_projects + ") не равен корневому VERSION (" +
+                           product_version + ")");
+    }
+    if (react_from_projects.empty()) {
+        problems.push_back("в projects.json нет проекта react-interface с полем version");
+    }
+    if (manifest_name != "react-interface") {
+        problems.push_back("имя в package.json (" + manifest_name + ") не равно react-interface");
+    }
+    if (!react_from_projects.empty() && manifest_version != react_from_projects) {
+        problems.push_back("package.json (" + manifest_version + ") не равен projects.json (" +
+                           react_from_projects + ")");
     }
 
     if (problems.empty()) {

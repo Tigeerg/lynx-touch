@@ -26,7 +26,7 @@
 # build under MSVC stay in tools/check.ps1: they need Windows or node.
 
 gcode_probe --manifest|probe|build/edges/gcode_probe --manifest modules/gcode-viewer/oracle_manifest.json
-version_probe (VERSION, projects.json, QML)|probe|build/edges/version_probe
+version_probe (версии проектов)|probe|build/edges/version_probe
 geometry_probe --manifest|probe|build/edges/geometry_probe --manifest modules/gcode-viewer/oracle_manifest.json
 step_probe --manifest|probe|build/edges/step_probe --manifest modules/gcode-viewer/oracle_manifest.json
 stl_probe --manifest|probe|build/edges/stl_probe --manifest modules/gcode-viewer/oracle_manifest.json

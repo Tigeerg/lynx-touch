@@ -43,13 +43,13 @@ describe('авто: F1-F8 и действия', () => {
     expect(bounced.screen).toBe('prog')
   })
 
-  it('вид в АВТО идёт по кругу: траектория, gcode, совместно', () => {
+  it('вид в АВТО идёт по кругу: трасса, gcode, совместно', () => {
     const a = reducer(initialState, { type: 'AUTO_VIEW_CYCLE' })
     const b = reducer(a, { type: 'AUTO_VIEW_CYCLE' })
     const c = reducer(b, { type: 'AUTO_VIEW_CYCLE' })
 
     expect([a.test.autoView, b.test.autoView, c.test.autoView]).toEqual(['trajectory', 'gcode', 'both'])
-    expect(a.message?.text).toBe('Вид: траектория')
+    expect(a.message?.text).toBe('Вид: трасса')
   })
 
   it('счётчики деталей обнуляются в останове', () => {

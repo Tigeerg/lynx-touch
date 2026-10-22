@@ -155,7 +155,7 @@ export const WORKPLACE_LABEL: Record<Workplace, string> = {
 }
 
 export const AUTO_VIEW_LABEL: Record<AutoView, string> = {
-  trajectory: 'траектория',
+  trajectory: 'трасса',
   gcode: 'gcode',
   both: 'совместно',
 }

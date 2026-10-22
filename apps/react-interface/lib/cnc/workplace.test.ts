@@ -45,7 +45,7 @@ describe('рабочее место', () => {
     const labels = getSoftkeys(s).map((k) => k?.label)
 
     expect(labels).toEqual([
-      'Обмер инструмента',
+      'Обмер',
       'Центроискатель',
       'Запись базы',
       'Таблица баз',

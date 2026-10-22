@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 
 $marks = @{
-  'apps/react-interface/lib/cnc/machine.ts' = 946  # редуктор сводит, а не впитывает: подсистема -> свой редьюсер
+  'apps/react-interface/lib/cnc/machine.ts' = 768  # редуктор сводит, а не впитывает: подсистема -> свой редьюсер
 }
 
 $fail = New-Object System.Collections.Generic.List[string]

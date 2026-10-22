@@ -4,19 +4,18 @@ import {
   INITIAL_TOOLS,
   MODE_LABEL,
   PROGRAM_FILES,
-  RAPID_JOG_MULT,
-  RAPID_STEPS,
   SCREEN_LABEL,
-  SOFT_LIMITS,
   WORKPLACE_LABEL,
 } from './data'
-import { PROBE_CYCLES, PROBE_STEP_MEASURE, PROBE_STEP_RESULT, PROBE_TOOL } from './probe'
+import { PROBE_CYCLES, PROBE_STEP_MEASURE, PROBE_TOOL } from './probe'
 import { abortProbe, probeTick } from './probe-exec'
 import { initialLadder, isLadderAction, ladderReducer, type LadderAction } from './ladder'
 import { idleSim, isProgAction, progReducer, tickSim, type ProgAction } from './prog'
 import { parseWords } from './gcode'
 import { editorReducer, isEditorAction, type EditorAction } from './editor'
 import { isSetupAction, setupReducer, type SetupAction } from './setup'
+import { controlReducer, isControlAction, type ControlAction } from './control'
+import { isProbeWizardAction, probeWizardReducer, type ProbeWizardAction } from './probe-wizard'
 import { isMpgAction, mpgReducer, type MpgAction } from './mpg'
 import { initialTest, isTestAction, testReducer, type TestAction } from './test'
 import {
@@ -25,8 +24,6 @@ import {
   formatParam,
   sameLadderMem,
   INI_FILE,
-  MAX_FEED_PARAM,
-  MAX_SPINDLE_PARAM,
   hasServiceList,
   paramAt,
   SERVICE_PASSWORD,
@@ -61,7 +58,7 @@ import { currentFile, programLines } from './files'
 import { listLength } from './list'
 import { cancelEdit, markSaved, setParam } from './service-edit'
 import { notify, pushAlarm } from './messages'
-import { MACHINE_LOCK_MSG, blockedFromMotion, isBusy } from './guards'
+import { isBusy } from './guards'
 
 export { distanceToGo, motionSpeed, toWork, workOffset } from './coords'
 export { currentFile, programLines } from './files'
@@ -77,38 +74,11 @@ export type Action =
   | { type: 'SPINDLE_WARMUP' }
   | { type: 'CYCLE_MODE'; dir: 1 | -1 }
   | { type: 'SET_SCREEN'; screen: Screen }
-  | { type: 'SELECT_AXIS'; axis: Axis }
-  | { type: 'JOG'; dir: 1 | -1; axis?: Axis }
-  | { type: 'SET_STEP'; step: number }
-  | { type: 'OVERRIDE'; kind: 'feed' | 'spindle' | 'rapid'; dir: 1 | -1 }
-  | {
-      type: 'TOGGLE'
-      key:
-        | 'singleBlock'
-        | 'optStop'
-        | 'dryRun'
-        | 'blockSkip'
-        | 'machineLock'
-        | 'coolant'
-        | 'mist'
-        | 'workLight'
-        | 'chipConveyor'
-        | 'jogRapid'
-        | 'aBrake'
-    }
-  | { type: 'SPINDLE_MANUAL'; dir?: 1 | -1 }
-  | { type: 'SPINDLE_STOP' }
-  | { type: 'TOOL_CLAMP'; clamp: boolean }
-  | { type: 'LUBE' }
-  | { type: 'GO_SAFE' }
-  | { type: 'MDI_BUFFER'; value: string }
-  | { type: 'MDI_RECALL'; index: number }
   | { type: 'CURSOR'; delta: number }
   | { type: 'PROG_REWIND' }
   | { type: 'PROG_TO_CURSOR' }
   | { type: 'ALARM_ACK' }
   | { type: 'ALARM_CLEAR_ALL' }
-  | { type: 'SET_JOG_FEED'; feed: number }
   | { type: 'HELP'; open?: boolean }
   | { type: 'SERVICE_SECTION'; section: ServiceSection }
   | { type: 'SERVICE_AXIS'; axis: Axis }
@@ -123,11 +93,6 @@ export type Action =
   | { type: 'THEME_TOGGLE' }
   | { type: 'UI_MODE_SET'; value: 0 | 1 }
   | { type: 'TOOLPATH_TOGGLE' }
-  | { type: 'PROBE_OPEN'; open?: boolean }
-  | { type: 'PROBE_STEP'; dir: 1 | -1 }
-  | { type: 'PROBE_CALL_TOOL' }
-  | { type: 'PROBE_WRITE' }
-  | { type: 'PROBE_RETRY' }
   | { type: 'CALC'; open?: boolean }
   | ProgAction
   | LadderAction
@@ -135,6 +100,8 @@ export type Action =
   | TestAction
   | EditorAction
   | SetupAction
+  | ControlAction
+  | ProbeWizardAction
 
 export const initialState: MachineState = {
   ladder: initialLadder,
@@ -368,6 +335,14 @@ export function reducer(state: MachineState, a: Action): MachineState {
     const r = setupReducer(s, a)
     return r.msg ? notify(r.s, r.msg, r.level) : r.s
   }
+  if (isControlAction(a)) {
+    const r = controlReducer(s, a)
+    return r.msg ? notify(r.s, r.msg, r.level) : r.s
+  }
+  if (isProbeWizardAction(a)) {
+    const r = probeWizardReducer(s, a)
+    return r.msg ? notify(r.s, r.msg, r.level) : r.s
+  }
   switch (a.type) {
     case 'TICK': {
       let n = s
@@ -554,110 +529,6 @@ export function reducer(state: MachineState, a: Action): MachineState {
       }
       return { ...s, screen: a.screen }
 
-    case 'SELECT_AXIS':
-      return { ...s, jogAxis: a.axis }
-
-    case 'JOG': {
-      if (s.mode !== 'JOG' && s.mode !== 'MPG')
-        return notify(s, 'Перемещение доступно в режиме РУЧНОЙ или МАХОВИК', 'warn')
-      if (s.run !== 'IDLE') return notify(s, 'Перемещение заблокировано', 'warn')
-      if (s.machineLock) return notify(s, MACHINE_LOCK_MSG, 'warn')
-      const ax = a.axis ?? s.jogAxis
-      if (ax === 'A' && s.aBrake) return notify(s, 'Тормоз оси A включён — снимите его клавишей F6', 'error')
-      const distance = s.jogRapid ? s.jogStep * RAPID_JOG_MULT : s.jogStep
-      const next = Math.round((s.machine[ax] + a.dir * distance) * 1000) / 1000
-      const [min, max] = SOFT_LIMITS[ax]
-      if (next < min || next > max) {
-        return notify({ ...s, jogAxis: ax }, `Программный предел оси ${ax}${a.dir > 0 ? '+' : '−'}`, 'error')
-      }
-      return { ...s, jogAxis: ax, machine: { ...s.machine, [ax]: next } }
-    }
-
-    case 'SET_STEP':
-      if (s.mode !== 'JOG' && s.mode !== 'MPG') return notify(s, 'Шаг выбирается в режиме РУЧНОЙ или МАХОВИК', 'warn')
-      if (s.mode === 'MPG' && !MPG_STEPS.includes(a.step))
-        return notify(s, 'Маховик: доступны множители ×1, ×10, ×100', 'warn')
-      return { ...s, jogStep: a.step }
-
-    case 'SET_JOG_FEED':
-      if (s.mode !== 'JOG') return notify(s, 'Скорость перемещения задаётся в режиме РУЧНОЙ', 'warn')
-      return { ...s, jogFeed: a.feed }
-
-    case 'OVERRIDE': {
-      if (a.kind === 'feed')
-        return { ...s, feedOverride: clamp(s.feedOverride + a.dir * 10, 0, s.params[MAX_FEED_PARAM]) }
-      if (a.kind === 'spindle')
-        return { ...s, spindleOverride: clamp(s.spindleOverride + a.dir * 10, 50, s.params[MAX_SPINDLE_PARAM]) }
-      const idx = clamp(RAPID_STEPS.indexOf(s.rapidOverride) + a.dir, 0, RAPID_STEPS.length - 1)
-      return { ...s, rapidOverride: RAPID_STEPS[idx] }
-    }
-
-    case 'TOGGLE':
-      if (a.key === 'dryRun' && isBusy(s)) return notify(s, 'Холостой ход переключается только в останове', 'warn')
-      if (a.key === 'machineLock' && isBusy(s))
-        return notify(s, 'Блокировка станка переключается только в останове', 'warn')
-      return { ...s, [a.key]: !s[a.key] }
-
-    case 'SPINDLE_STOP':
-      if (!s.spindleOn) return s
-      if (isBusy(s)) return notify(s, 'Остановка шпинделя во время цикла недоступна', 'warn')
-      return notify({ ...s, spindleOn: false }, 'Шпиндель остановлен (M5)')
-
-    case 'SPINDLE_MANUAL': {
-      if (s.mode === 'AUTO' || isBusy(s) || s.run === 'ESTOP') {
-        return notify(s, 'Ручное управление шпинделем недоступно', 'warn')
-      }
-      const dir = a.dir ?? s.spindleDir
-      if (s.spindleOn) {
-        if (dir !== s.spindleDir) return notify(s, 'Сначала остановите шпиндель', 'warn')
-        return notify({ ...s, spindleOn: false }, 'Шпиндель остановлен')
-      }
-      if (!s.toolClamped) return notify(s, 'Инструмент разжат — пуск шпинделя запрещён', 'error')
-      if (s.tool === PROBE_TOOL) return notify(s, 'В шпинделе щуп T99 — вращение запрещено', 'error')
-      return notify(
-        { ...s, spindleOn: true, spindleDir: dir, spindleSet: s.spindleSet || 1000 },
-        dir > 0 ? 'Шпиндель по часовой (M3)' : 'Шпиндель против часовой (M4)',
-      )
-    }
-
-    case 'TOOL_CLAMP':
-      if (a.clamp === s.toolClamped) return s
-      if (!a.clamp && (s.spindleOn || isBusy(s)))
-        return notify(s, 'Разжим запрещён: шпиндель вращается или идёт цикл', 'error')
-      return notify(
-        { ...s, toolClamped: a.clamp },
-        a.clamp ? 'Инструмент зажат' : 'Инструмент разжат',
-        a.clamp ? 'info' : 'warn',
-      )
-
-    case 'LUBE':
-      if (s.run === 'ESTOP') return notify(s, 'Смазка недоступна при аварийном стопе', 'warn')
-      return notify({ ...s, lube: 3000 }, 'Принудительная смазка направляющих')
-
-    case 'GO_SAFE':
-      if (s.run === 'ESTOP' || s.run === 'ALARM') return notify(s, 'Сначала сбросьте аварию', 'error')
-      return (
-        blockedFromMotion(s, 'Остановите программу перед выходом в безопасную точку') ??
-        notify(
-          {
-            ...s,
-            run: 'RUN',
-            homing: true,
-            workZero: false,
-            motion: { target: { ...s.machine, Z: 0 }, rapid: true, feed: 0 },
-          },
-          'Выход в безопасную точку: Z0, затем X0 Y0',
-        )
-      )
-
-    case 'MDI_BUFFER':
-      return { ...s, mdi: { ...s.mdi, buffer: a.value.toUpperCase() } }
-
-    case 'MDI_RECALL': {
-      const text = s.mdi.history[a.index]
-      return text ? { ...s, mdi: { ...s.mdi, buffer: text } } : s
-    }
-
     case 'SERVICE_SECTION': {
       const base = cancelEdit(s)
       return {
@@ -806,55 +677,6 @@ export function reducer(state: MachineState, a: Action): MachineState {
         show ? 'Предпросмотр траектории включён' : 'Предпросмотр траектории скрыт',
       )
     }
-
-    case 'PROBE_OPEN': {
-      const open = a.open ?? !s.probe.open
-      if (!open && s.probe.running) return notify(s, 'Дождитесь окончания измерения или нажмите СБРОС', 'warn')
-      if (open && isBusy(s)) return notify(s, 'Остановите программу', 'warn')
-      if (open && MODE_LOCKED_SCREENS[s.mode].includes('offset'))
-        return notify(s, `Щуп недоступен в режиме «${WORKPLACE_LABEL[s.workplace]}»`, 'warn')
-      return {
-        ...s,
-        screen: open ? 'offset' : s.screen,
-        probe: { ...s.probe, open, step: open ? 0 : s.probe.step, result: open ? null : s.probe.result },
-      }
-    }
-
-    case 'PROBE_STEP': {
-      if (s.probe.running) return s
-      const step = clamp(s.probe.step + a.dir, 0, PROBE_STEP_MEASURE)
-      if (a.dir > 0 && s.probe.step === 1 && s.tool !== PROBE_TOOL)
-        return notify(s, 'Установите щуп T99 в шпиндель (F3)', 'warn')
-      if (a.dir > 0 && s.probe.step === PROBE_STEP_MEASURE) return notify(s, 'Нажмите ПУСК для измерения', 'warn')
-      const from = s.probe.step === PROBE_STEP_RESULT && a.dir < 0 ? PROBE_STEP_MEASURE : step
-      return { ...s, probe: { ...s.probe, step: from } }
-    }
-
-    case 'PROBE_CALL_TOOL':
-      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
-      return notify(
-        { ...s, tool: PROBE_TOOL, pendingTool: PROBE_TOOL, spindleOn: false },
-        'Щуп T99 в шпинделе. Шпиндель заблокирован',
-      )
-
-    case 'PROBE_WRITE': {
-      const r = s.probe.result
-      if (!r) return s
-      const i = s.cursor.offset
-      const offsets = s.offsets.map((o, idx) => (idx === i ? { ...o, values: { ...o.values, ...r.values } } : o))
-      const axes = Object.keys(r.values).join(' ')
-      const prev = s.probe.prev ?? { ...s.offsets[i].values }
-      return notify(
-        { ...s, offsets, probe: { ...s.probe, written: true, prev } },
-        `Записано в ${s.offsets[i].code}: ${axes}`,
-      )
-    }
-
-    case 'PROBE_RETRY':
-      return {
-        ...s,
-        probe: { ...s.probe, step: PROBE_STEP_MEASURE, result: null, written: false, prev: null, elapsed: 0 },
-      }
 
     case 'CALC':
       return { ...s, calc: a.open ?? !s.calc }

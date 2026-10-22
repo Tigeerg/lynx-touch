@@ -16,6 +16,7 @@ import { initialLadder, isLadderAction, ladderReducer, type LadderAction } from 
 import { idleSim, isProgAction, progReducer, tickSim, type ProgAction } from './prog'
 import { parseWords } from './gcode'
 import { editorReducer, isEditorAction, type EditorAction } from './editor'
+import { isSetupAction, setupReducer, type SetupAction } from './setup'
 import { isMpgAction, mpgReducer, type MpgAction } from './mpg'
 import { initialTest, isTestAction, testReducer, type TestAction } from './test'
 import {
@@ -105,16 +106,8 @@ export type Action =
   | { type: 'CURSOR'; delta: number }
   | { type: 'PROG_REWIND' }
   | { type: 'PROG_TO_CURSOR' }
-  | { type: 'OFFSET_ACTIVATE' }
-  | { type: 'OFFSET_TEACH'; axis: Axis }
-  | { type: 'OFFSET_CLEAR' }
-  | { type: 'TOOL_CALL' }
-  | { type: 'TOOL_MEASURE' }
-  | { type: 'TOOL_RESET_LIFE' }
   | { type: 'ALARM_ACK' }
   | { type: 'ALARM_CLEAR_ALL' }
-  | { type: 'ZERO_REL' }
-  | { type: 'ZERO_WORK'; axis?: Axis }
   | { type: 'SET_JOG_FEED'; feed: number }
   | { type: 'HELP'; open?: boolean }
   | { type: 'SERVICE_SECTION'; section: ServiceSection }
@@ -135,19 +128,13 @@ export type Action =
   | { type: 'PROBE_CALL_TOOL' }
   | { type: 'PROBE_WRITE' }
   | { type: 'PROBE_RETRY' }
-  | { type: 'OFFSET_NEXT' }
-  | { type: 'GO_WORK_ZERO' }
-  | { type: 'TOOL_PROBE' }
-  | { type: 'TOOL_DIALOG'; open?: boolean }
-  | { type: 'TOOL_INPUT'; value: string }
-  | { type: 'TOOL_BACK' }
-  | { type: 'TOOL_RUN' }
   | { type: 'CALC'; open?: boolean }
   | ProgAction
   | LadderAction
   | MpgAction
   | TestAction
   | EditorAction
+  | SetupAction
 
 export const initialState: MachineState = {
   ladder: initialLadder,
@@ -375,6 +362,10 @@ export function reducer(state: MachineState, a: Action): MachineState {
   }
   if (isEditorAction(a)) {
     const r = editorReducer(s, a)
+    return r.msg ? notify(r.s, r.msg, r.level) : r.s
+  }
+  if (isSetupAction(a)) {
+    const r = setupReducer(s, a)
     return r.msg ? notify(r.s, r.msg, r.level) : r.s
   }
   switch (a.type) {
@@ -865,77 +856,6 @@ export function reducer(state: MachineState, a: Action): MachineState {
         probe: { ...s.probe, step: PROBE_STEP_MEASURE, result: null, written: false, prev: null, elapsed: 0 },
       }
 
-    case 'OFFSET_NEXT': {
-      if (isBusy(s)) return notify(s, 'Смена системы координат недоступна во время цикла', 'warn')
-      const i = (s.activeOffset + 1) % s.offsets.length
-      return notify({ ...s, activeOffset: i }, `Активная система: ${s.offsets[i].code}`)
-    }
-
-    case 'GO_WORK_ZERO': {
-      if (s.run === 'ESTOP' || s.run === 'ALARM') return notify(s, 'Сначала сбросьте аварию', 'error')
-      return (
-        blockedFromMotion(s, 'Остановите программу перед переходом к нулю детали') ??
-        notify(
-          {
-            ...s,
-            run: 'RUN',
-            workZero: true,
-            homing: false,
-            motion: { target: { ...s.machine, Z: 0 }, rapid: true, feed: 0 },
-          },
-          `К нулю ${s.offsets[s.activeOffset].code}: подъём Z, затем X0 Y0`,
-        )
-      )
-    }
-
-    case 'TOOL_PROBE': {
-      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
-      if (s.spindleOn) return notify(s, 'Остановите шпиндель перед измерением', 'warn')
-      if (s.tool === PROBE_TOOL) return notify(s, 'В шпинделе щуп T99', 'error')
-      const i = s.tools.findIndex((t) => t.number === s.tool)
-      if (i < 0) return notify(s, 'В шпинделе нет инструмента из таблицы', 'warn')
-      const length = Math.round((60 + ((Math.abs(s.machine.Z) * 7.31 + i * 13.7) % 70)) * 1000) / 1000
-      const tools = s.tools.map((t, idx) => (idx === i ? { ...t, length } : t))
-      const t = tools[i]
-      return notify(
-        { ...s, tools },
-        `Датчик: T${String(t.number).padStart(2, '0')} длина ${length.toFixed(3)} мм, Ø ${t.diameter.toFixed(3)} мм`,
-      )
-    }
-
-    case 'TOOL_DIALOG': {
-      const open = a.open ?? !s.toolDialog
-      if (open && isBusy(s)) return notify(s, 'Остановите программу, чтобы вызвать инструмент', 'warn')
-      return { ...s, toolDialog: open, toolBuffer: open ? '' : s.toolBuffer }
-    }
-
-    case 'TOOL_INPUT':
-      return { ...s, toolBuffer: (s.toolBuffer + a.value).replace(/^0+(?=\d)/, '').slice(0, 2) }
-
-    case 'TOOL_BACK':
-      return { ...s, toolBuffer: s.toolBuffer.slice(0, -1) }
-
-    case 'TOOL_RUN': {
-      const n = s.toolBuffer ? Number(s.toolBuffer) : 0
-      if (!n) return notify(s, 'Введите номер инструмента', 'warn')
-      const i = s.tools.findIndex((t) => t.number === n)
-      if (i < 0) return notify(s, `Инструмент T${n} отсутствует в таблице`, 'error')
-      if (s.mode === 'AUTO' || isBusy(s)) return notify(s, 'Смена инструмента в режиме РУЧНОЙ / MDI', 'warn')
-      const t = s.tools[i]
-      return notify(
-        {
-          ...s,
-          toolDialog: false,
-          toolBuffer: '',
-          cursor: { ...s.cursor, tool: i },
-          tool: t.number,
-          pendingTool: t.number,
-          spindleOn: false,
-        },
-        `T${String(t.number).padStart(2, '0')} M6: «${t.name}» в шпинделе`,
-      )
-    }
-
     case 'CALC':
       return { ...s, calc: a.open ?? !s.calc }
 
@@ -1006,48 +926,6 @@ export function reducer(state: MachineState, a: Action): MachineState {
       )
     }
 
-    case 'OFFSET_ACTIVATE':
-      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
-      return notify({ ...s, activeOffset: s.cursor.offset }, `Активно смещение ${s.offsets[s.cursor.offset].code}`)
-
-    case 'OFFSET_TEACH': {
-      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
-      const i = s.cursor.offset
-      const offsets = s.offsets.map((o, idx) =>
-        idx === i ? { ...o, values: { ...o.values, [a.axis]: s.machine[a.axis] } } : o,
-      )
-      return notify({ ...s, offsets }, `${s.offsets[i].code} ${a.axis} = ${s.machine[a.axis].toFixed(3)}`)
-    }
-
-    case 'OFFSET_CLEAR': {
-      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
-      const i = s.cursor.offset
-      const offsets = s.offsets.map((o, idx) => (idx === i ? { ...o, values: zeroAxes() } : o))
-      return notify({ ...s, offsets }, `${s.offsets[i].code} обнулено`)
-    }
-
-    case 'TOOL_CALL': {
-      if (s.mode === 'AUTO' || isBusy(s)) return notify(s, 'Смена инструмента в режиме РУЧНОЙ / MDI', 'warn')
-      const t = s.tools[s.cursor.tool].number
-      return notify({ ...s, tool: t, pendingTool: t }, `Инструмент T${String(t).padStart(2, '0')} в шпинделе`)
-    }
-
-    case 'TOOL_MEASURE': {
-      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
-      const i = s.cursor.tool
-      const length = Math.round((60 + ((Math.abs(s.machine.Z) * 7.31 + i * 13.7) % 70)) * 1000) / 1000
-      const tools = s.tools.map((t, idx) => (idx === i ? { ...t, length } : t))
-      return notify({ ...s, tools }, `T${String(tools[i].number).padStart(2, '0')}: длина ${length.toFixed(3)} мм`)
-    }
-
-    case 'TOOL_RESET_LIFE': {
-      const i = s.cursor.tool
-      const tools = s.tools.map((t, idx) => (idx === i ? { ...t, life: 100 } : t))
-      const number = s.tools[i]?.number
-      const toolTime = number === undefined ? s.toolTime : { ...s.toolTime, [number]: 0 }
-      return notify({ ...s, tools, toolTime }, 'Ресурс инструмента сброшен')
-    }
-
     case 'ALARM_ACK': {
       const i = s.cursor.alarm
       if (!s.alarms[i]) return s
@@ -1057,23 +935,6 @@ export function reducer(state: MachineState, a: Action): MachineState {
     case 'ALARM_CLEAR_ALL': {
       const alarms = s.alarms.filter((al) => al.active)
       return { ...s, alarms, cursor: { ...s.cursor, alarm: clamp(s.cursor.alarm, 0, Math.max(0, alarms.length - 1)) } }
-    }
-
-    case 'ZERO_REL':
-      return notify({ ...s, relOrigin: { ...s.machine } }, 'Относительные координаты обнулены')
-
-    case 'ZERO_WORK': {
-      if (s.mode !== 'JOG') return notify(s, 'Обнуление рабочих координат — в режиме РУЧНОЙ', 'warn')
-      if (isBusy(s)) return notify(s, 'Остановите станок', 'warn')
-      const axes = a.axis ? [a.axis] : AXES
-      const offsets = s.offsets.map((o, idx) => {
-        if (idx !== s.activeOffset) return o
-        const values = { ...o.values }
-        for (const ax of axes) values[ax] = s.machine[ax]
-        return { ...o, values }
-      })
-      const code = s.offsets[s.activeOffset].code
-      return notify({ ...s, offsets }, a.axis ? `${code}: ${a.axis} = 0` : `${code}: все оси обнулены`)
     }
 
     case 'HELP':

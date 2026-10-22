@@ -340,7 +340,7 @@ export const SYSTEM_PARAMS: ParamDef[] = [
     min: 0,
     max: 1,
     default: 0,
-    options: ['.ngc .nc', '.ngc .nc .tap .py'],
+    options: ['.ngc .nc', '.ngc .nc .tap'],
   }),
   p({
     group: 'TRAJ',

@@ -10,10 +10,10 @@
 // message.
 import { clamp } from './clamp'
 import { isBusy } from './guards'
-import type { Action } from './machine'
 import { cancelEdit, markSaved, setParam } from './service-edit'
 import { INI_FILE, SERVICE_PASSWORD, hasServiceList, paramAt, paramValue, unsavedIds } from './service-data'
-import { AXES, SERVICE_SECTIONS, type Axis, type MachineState, type Message, type ServiceSection } from './types'
+import type { Dispatch, Result } from './subsystem'
+import { AXES, SERVICE_SECTIONS, type Axis, type MachineState, type ServiceSection } from './types'
 
 export type ServiceAction =
   | { type: 'SERVICE_SECTION'; section: ServiceSection }
@@ -41,10 +41,6 @@ const SERVICE_TYPES = new Set<string>([
 ])
 
 export const isServiceAction = (a: { type: string }): a is ServiceAction => SERVICE_TYPES.has(a.type)
-
-export type Dispatch = (s: MachineState, a: Action) => MachineState
-
-export type Result = { s: MachineState; msg?: string; level?: Message['level'] }
 
 export function serviceReducer(s: MachineState, a: ServiceAction, dispatch: Dispatch): Result {
   switch (a.type) {

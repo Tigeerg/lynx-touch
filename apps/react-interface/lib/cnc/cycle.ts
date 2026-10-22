@@ -14,7 +14,8 @@ import { PROBE_STEP_MEASURE, PROBE_TOOL } from './probe'
 import { abortProbe, probeTick } from './probe-exec'
 import { idleSim, tickSim } from './prog'
 import { evaluateLadder, sameLadderMem } from './ladder-scan'
-import { AXES, MDI_HISTORY_SIZE, type Axes, type MachineState, type Message } from './types'
+import type { Result } from './subsystem'
+import { AXES, MDI_HISTORY_SIZE, type Axes, type MachineState } from './types'
 
 export function executeLine(state: MachineState, index: number): MachineState {
   const lines = programLines(state)
@@ -142,8 +143,6 @@ export type CycleAction =
 const CYCLE_TYPES = new Set<string>(['TICK', 'CYCLE_START', 'FEED_HOLD', 'RESET', 'ESTOP', 'SPINDLE_WARMUP'])
 
 export const isCycleAction = (a: { type: string }): a is CycleAction => CYCLE_TYPES.has(a.type)
-
-export type Result = { s: MachineState; msg?: string; level?: Message['level'] }
 
 export function cycleReducer(s: MachineState, a: CycleAction): Result {
   switch (a.type) {

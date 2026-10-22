@@ -31,8 +31,10 @@ Layers, top to bottom:
 * `components/cnc/` — the view layer: screens (`screens/`), the physical console (`hardware/`), dialogs,
   overlays, `primitives.tsx`. Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
   `ui-mode-context.ts`.
-* `lib/cnc/` — **pure machine logic, no JSX, React, or DOM**: `machine.ts` (reducer that composes
-  subsystems) and the subsystems next to it (`ladder.ts` is the sample, `ladder-scan.ts` is the PLC scan,
+* `lib/cnc/` — **pure machine logic, no JSX, React, or DOM**: `machine.ts` (reducer that composes the
+  subsystems through a registry), `subsystem.ts` (the action layer's leaf: `Action`, `Result`, `Dispatch`,
+  the registry entry), and the subsystems next to it (`ladder.ts` is the sample, `ladder-scan.ts` is the
+  PLC scan,
   `nav.ts`, `cycle.ts`, `control.ts`, `service.ts`), `types.ts`, `coords.ts`, `guards.ts` (input checks),
   `data.ts` and `softkeys.ts` (texts and icons), `service-data.ts` (the catalogue API: `ParamDef` types and
   the sections), `params/` (the section tables, one file per section: `def.ts`, `display.ts`, `system.ts`,

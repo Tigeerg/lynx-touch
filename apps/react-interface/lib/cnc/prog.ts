@@ -8,7 +8,8 @@ import { isBusy } from './guards'
 import { pushAlarm } from './messages'
 import { PROBE_TOOL } from './probe'
 import { BROKEN_TOL_MM, sensorLength } from './tool-check'
-import { MODE_LOCKED_SCREENS, type MachineState, type Message } from './types'
+import type { Result } from './subsystem'
+import { MODE_LOCKED_SCREENS, type MachineState } from './types'
 
 const SIM_STEP_MS = 120
 
@@ -44,8 +45,6 @@ const PROG_TYPES = new Set<string>([
 ])
 
 export const isProgAction = (a: { type: string }): a is ProgAction => PROG_TYPES.has(a.type)
-
-export type Result = { s: MachineState; msg?: string; level?: Message['level'] }
 
 // Simulation step on TICK: the blocks advance on a timer while the machine is not running a program.
 export function tickSim(s: MachineState, dt: number): MachineState {

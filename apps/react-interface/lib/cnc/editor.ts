@@ -11,7 +11,8 @@ import { SCREEN_LABEL, WORKPLACE_LABEL } from './data'
 import { currentFile, programLines, setLines } from './files'
 import { isBusy } from './guards'
 import { idleSim } from './prog'
-import { MODE_LOCKED_SCREENS, type MachineState, type Message } from './types'
+import type { Result } from './subsystem'
+import { MODE_LOCKED_SCREENS, type MachineState } from './types'
 
 export type EditorAction =
   | { type: 'FILE_DIALOG'; open?: boolean }
@@ -39,8 +40,6 @@ const EDITOR_TYPES = new Set<string>([
 ])
 
 export const isEditorAction = (a: { type: string }): a is EditorAction => EDITOR_TYPES.has(a.type)
-
-export type Result = { s: MachineState; msg?: string; level?: Message['level'] }
 
 export function editorReducer(s: MachineState, a: EditorAction): Result {
   switch (a.type) {

@@ -5,7 +5,8 @@
 import { zeroAxes } from './coords'
 import { blockedFromMotion, isBusy } from './guards'
 import { PROBE_TOOL } from './probe'
-import { AXES, type Axis, type MachineState, type Message } from './types'
+import type { Result } from './subsystem'
+import { AXES, type Axis, type MachineState } from './types'
 
 export type SetupAction =
   | { type: 'OFFSET_NEXT' }
@@ -43,8 +44,6 @@ const SETUP_TYPES = new Set<string>([
 ])
 
 export const isSetupAction = (a: { type: string }): a is SetupAction => SETUP_TYPES.has(a.type)
-
-export type Result = { s: MachineState; msg?: string; level?: Message['level'] }
 
 export function setupReducer(s: MachineState, a: SetupAction): Result {
   switch (a.type) {

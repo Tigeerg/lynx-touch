@@ -1,6 +1,7 @@
 import { clampIndex } from './clamp'
 import { stamp } from './files'
 import { isBusy } from './guards'
+import type { Result } from './subsystem'
 import type {
   CoilKind,
   CompareOp,
@@ -12,7 +13,6 @@ import type {
   LadderScheme,
   LadderState,
   MachineState,
-  Message,
 } from './types'
 
 export const LADDER_MAX_CONTACTS = 5
@@ -179,8 +179,6 @@ export type LadderAction =
   | { type: 'LADDER_REMOVE' }
 
 export const isLadderAction = (a: { type: string }): a is LadderAction => a.type.startsWith('LADDER_')
-
-type Result = { s: MachineState; msg?: string; level?: Message['level'] }
 
 const cloneContact = (c: LadderContact): LadderContact => ({ ...c, ...(c.cmp ? { cmp: { ...c.cmp } } : {}) })
 const cloneRungs = (rungs: LadderRung[]): LadderRung[] =>

@@ -8,7 +8,8 @@ import { clamp } from './clamp'
 import { WORKPLACE_LABEL } from './data'
 import { isBusy } from './guards'
 import { PROBE_STEP_MEASURE, PROBE_STEP_RESULT, PROBE_TOOL } from './probe'
-import { MODE_LOCKED_SCREENS, type MachineState, type Message } from './types'
+import type { Result } from './subsystem'
+import { MODE_LOCKED_SCREENS, type MachineState } from './types'
 
 export type ProbeWizardAction =
   | { type: 'PROBE_OPEN'; open?: boolean }
@@ -20,8 +21,6 @@ export type ProbeWizardAction =
 const PROBE_TYPES = new Set<string>(['PROBE_OPEN', 'PROBE_STEP', 'PROBE_CALL_TOOL', 'PROBE_WRITE', 'PROBE_RETRY'])
 
 export const isProbeWizardAction = (a: { type: string }): a is ProbeWizardAction => PROBE_TYPES.has(a.type)
-
-export type Result = { s: MachineState; msg?: string; level?: Message['level'] }
 
 export function probeWizardReducer(s: MachineState, a: ProbeWizardAction): Result {
   switch (a.type) {

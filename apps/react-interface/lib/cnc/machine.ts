@@ -1,44 +1,26 @@
 import { clampIndex } from './clamp'
-import { controlReducer, isControlAction, type ControlAction } from './control'
+import { controlReducer, isControlAction } from './control'
 import { zeroAxes } from './coords'
-import { cycleReducer, isCycleAction, type CycleAction } from './cycle'
+import { cycleReducer, isCycleAction } from './cycle'
 import { INITIAL_ALARMS, INITIAL_OFFSETS, INITIAL_TOOLS, PROGRAM_FILES } from './data'
-import { editorReducer, isEditorAction, type EditorAction } from './editor'
-import { initialLadder, isLadderAction, ladderReducer, type LadderAction } from './ladder'
+import { editorReducer, isEditorAction } from './editor'
+import { initialLadder, isLadderAction, ladderReducer } from './ladder'
 import { notify } from './messages'
-import { isMpgAction, mpgReducer, type MpgAction } from './mpg'
-import { isNavAction, navReducer, type NavAction } from './nav'
-import { isProbeWizardAction, probeWizardReducer, type ProbeWizardAction } from './probe-wizard'
-import { idleSim, isProgAction, progReducer, type ProgAction } from './prog'
-import { isServiceAction, serviceReducer, type ServiceAction } from './service'
+import { isMpgAction, mpgReducer } from './mpg'
+import { isNavAction, navReducer } from './nav'
+import { isProbeWizardAction, probeWizardReducer } from './probe-wizard'
+import { idleSim, isProgAction, progReducer } from './prog'
+import { isServiceAction, serviceReducer } from './service'
 import { defaultParams, THEME_OPTIONS, THEME_PARAM, TOOLPATH_PARAM, UI_MODE_PARAM } from './service-data'
 import { markSaved } from './service-edit'
-import { isSetupAction, setupReducer, type SetupAction } from './setup'
-import { initialTest, isTestAction, testReducer, type TestAction } from './test'
+import { isSetupAction, setupReducer } from './setup'
+import { defineSubsystem, isMachineAction, type Action, type MachineAction, type Subsystem } from './subsystem'
+import { initialTest, isTestAction, testReducer } from './test'
 import { MODE_START_SCREEN, type MachineState } from './types'
 
 export { distanceToGo, motionSpeed, toWork, workOffset } from './coords'
 export { currentFile, programLines } from './files'
-
-export type Action =
-  | { type: 'ALARM_ACK' }
-  | { type: 'ALARM_CLEAR_ALL' }
-  | { type: 'HELP'; open?: boolean }
-  | { type: 'THEME_TOGGLE' }
-  | { type: 'UI_MODE_SET'; value: 0 | 1 }
-  | { type: 'TOOLPATH_TOGGLE' }
-  | { type: 'CALC'; open?: boolean }
-  | ProgAction
-  | LadderAction
-  | MpgAction
-  | TestAction
-  | EditorAction
-  | SetupAction
-  | ControlAction
-  | ProbeWizardAction
-  | ServiceAction
-  | CycleAction
-  | NavAction
+export type { Action } from './subsystem'
 
 export const initialState: MachineState = {
   ladder: initialLadder,
@@ -131,52 +113,33 @@ export const initialState: MachineState = {
   params: defaultParams(),
 }
 
+// The subsystems the machine composes, in the order they claim their actions: a subsystem is
+// registered here and nowhere else, so joining the machine is a line, not another `if`
+// (CLAUDE.md, section 6.8). subsystem.ts holds the shape of an entry and the action union.
+const SUBSYSTEMS: Subsystem[] = [
+  defineSubsystem({ claims: isLadderAction, reduce: ladderReducer }),
+  defineSubsystem({ claims: isProgAction, reduce: progReducer }),
+  defineSubsystem({ claims: isMpgAction, reduce: mpgReducer }),
+  defineSubsystem({ claims: isTestAction, reduce: testReducer }),
+  defineSubsystem({ claims: isEditorAction, reduce: editorReducer }),
+  defineSubsystem({ claims: isSetupAction, reduce: setupReducer }),
+  defineSubsystem({ claims: isControlAction, reduce: controlReducer }),
+  defineSubsystem({ claims: isProbeWizardAction, reduce: probeWizardReducer }),
+  defineSubsystem({ claims: isServiceAction, reduce: serviceReducer }),
+  defineSubsystem({ claims: isCycleAction, reduce: cycleReducer }),
+  defineSubsystem({ claims: isNavAction, reduce: navReducer }),
+]
+
 export function reducer(state: MachineState, a: Action): MachineState {
-  const s = state
-  if (isLadderAction(a)) {
-    const r = ladderReducer(s, a)
-    return r.msg ? notify(r.s, r.msg, r.level) : r.s
+  for (const subsystem of SUBSYSTEMS) {
+    const r = subsystem.reduce(state, a, reducer)
+    if (r) return r.msg ? notify(r.s, r.msg, r.level) : r.s
   }
-  if (isProgAction(a)) {
-    const r = progReducer(s, a)
-    return r.msg ? notify(r.s, r.msg, r.level) : r.s
-  }
-  if (isMpgAction(a)) {
-    const r = mpgReducer(s, a)
-    return r.msg ? notify(r.s, r.msg, r.level) : r.s
-  }
-  if (isTestAction(a)) {
-    const r = testReducer(s, a)
-    return r.msg ? notify(r.s, r.msg, r.level) : r.s
-  }
-  if (isEditorAction(a)) {
-    const r = editorReducer(s, a)
-    return r.msg ? notify(r.s, r.msg, r.level) : r.s
-  }
-  if (isSetupAction(a)) {
-    const r = setupReducer(s, a)
-    return r.msg ? notify(r.s, r.msg, r.level) : r.s
-  }
-  if (isControlAction(a)) {
-    const r = controlReducer(s, a)
-    return r.msg ? notify(r.s, r.msg, r.level) : r.s
-  }
-  if (isProbeWizardAction(a)) {
-    const r = probeWizardReducer(s, a)
-    return r.msg ? notify(r.s, r.msg, r.level) : r.s
-  }
-  if (isServiceAction(a)) {
-    const r = serviceReducer(s, a, reducer)
-    return r.msg ? notify(r.s, r.msg, r.level) : r.s
-  }
-  if (isCycleAction(a)) {
-    const r = cycleReducer(s, a)
-    return r.msg ? notify(r.s, r.msg, r.level) : r.s
-  }
-  if (isNavAction(a)) {
-    const r = navReducer(s, a, reducer)
-    return r.msg ? notify(r.s, r.msg, r.level) : r.s
-  }
+  return isMachineAction(a) ? machineReducer(state, a) : state
+}
+
+/** The machine's own branches: the console keys no subsystem claims. */
+function machineReducer(s: MachineState, a: MachineAction): MachineState {
   switch (a.type) {
     case 'THEME_TOGGLE': {
       // A missing key (an older state) takes the first theme, not NaN.

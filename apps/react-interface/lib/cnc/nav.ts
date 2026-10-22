@@ -11,10 +11,10 @@ import { MODE_LABEL, SCREEN_LABEL, WORKPLACE_LABEL } from './data'
 import { currentFile, programLines } from './files'
 import { isBusy } from './guards'
 import { listLength } from './list'
-import type { Action } from './machine'
 import { PROBE_CYCLES } from './probe'
 import { idleSim } from './prog'
 import { cancelEdit } from './service-edit'
+import type { Dispatch, Result } from './subsystem'
 import {
   MODE_LOCKED_SCREENS,
   MODE_START_SCREEN,
@@ -24,7 +24,6 @@ import {
   screenOfTab,
   tabOfScreen,
   type MachineState,
-  type Message,
   type Mode,
   type Screen,
   type Workplace,
@@ -50,10 +49,6 @@ const NAV_TYPES = new Set<string>([
 ])
 
 export const isNavAction = (a: { type: string }): a is NavAction => NAV_TYPES.has(a.type)
-
-export type Dispatch = (s: MachineState, a: Action) => MachineState
-
-export type Result = { s: MachineState; msg?: string; level?: Message['level'] }
 
 export function navReducer(s: MachineState, a: NavAction, dispatch: Dispatch): Result {
   switch (a.type) {

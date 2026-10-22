@@ -4,7 +4,8 @@
 // held by the tools/check.ps1 mark.
 import { AUTO_VIEW_LABEL } from './data'
 import { PATH_VIEWS } from './toolpath'
-import { AUTO_VIEWS, type MachineState, type Message, type TestState } from './types'
+import type { Result } from './subsystem'
+import { AUTO_VIEWS, type MachineState, type TestState } from './types'
 
 export const initialTest: TestState = { curtain: false, bbox: false, hidePath: false, autoView: 'both', view: 'ISO' }
 
@@ -24,8 +25,6 @@ const TEST_TYPES = new Set<string>([
 ])
 
 export const isTestAction = (a: { type: string }): a is TestAction => TEST_TYPES.has(a.type)
-
-export type Result = { s: MachineState; msg?: string; level?: Message['level'] }
 
 export function testReducer(s: MachineState, a: TestAction): Result {
   switch (a.type) {

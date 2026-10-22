@@ -30,7 +30,8 @@
 * `components/cnc/` — слой представления: экраны (`screens/`), физический пульт (`hardware/`), диалоги,
   оверлеи, `primitives.tsx`. Сенсорный вариант — `components/cnc/touch/`; переключатель — `ui-mode.tsx`,
   контекст — `ui-mode-context.ts`.
-* `lib/cnc/` — **чистая логика станка, без JSX, React и DOM**: `machine.ts` (редьюсер, сводит подсистемы)
+* `lib/cnc/` — **чистая логика станка, без JSX, React и DOM**: `machine.ts` (редьюсер, сводит подсистемы
+  через реестр), `subsystem.ts` (листовой слой действий: `Action`, `Result`, `Dispatch`, запись реестра)
   и подсистемы рядом (`ladder.ts` — образец, `ladder-scan.ts` — скан ПЛК, `nav.ts`, `cycle.ts`,
   `control.ts`, `service.ts`), `types.ts`, `coords.ts`, `guards.ts` (проверки входа), `data.ts` и
   `softkeys.ts` (тексты и иконки), `service-data.ts` (API каталога: типы `ParamDef` и разделы),

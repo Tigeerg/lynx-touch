@@ -59,7 +59,7 @@ import {
 } from 'lucide-react'
 import { PROBE_STEP_MEASURE, PROBE_STEP_RESULT, PROBE_TOOL } from './probe'
 import { AUTO_VIEW_LABEL } from './data'
-import type { Action } from './machine'
+import type { Action } from './subsystem'
 import { paramAt, paramValue, TOOLPATH_PARAM, unsavedIds } from './service-data'
 import { AUTO_VIEWS, type MachineState, type ServiceSection } from './types'
 

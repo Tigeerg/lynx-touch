@@ -6,17 +6,16 @@
 // The run follows the "Dry run" modifier (dryRun): turning the handwheel moves the axes to
 // the next toolpath block, without the spindle or coolant. Modal X/Y/Z/A and the work offset
 // (G54-G59) are taken into account, so the position matches the NC program.
+import { programLines } from './files'
 import { parseWords } from './gcode'
-import { programLines } from './machine'
-import type { Axes, MachineState, Message } from './types'
+import type { Result } from './subsystem'
+import type { Axes, MachineState } from './types'
 
 export type MpgAction = { type: 'MPG_HANDWHEEL'; dir: 1 | -1 }
 
 const MPG_TYPES = new Set<string>(['MPG_HANDWHEEL'])
 
 export const isMpgAction = (a: { type: string }): a is MpgAction => MPG_TYPES.has(a.type)
-
-export type Result = { s: MachineState; msg?: string; level?: Message['level'] }
 
 interface PathPoint {
   index: number

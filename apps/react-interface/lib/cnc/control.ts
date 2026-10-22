@@ -9,7 +9,8 @@ import { RAPID_JOG_MULT, RAPID_STEPS, SOFT_LIMITS } from './data'
 import { MACHINE_LOCK_MSG, blockedFromMotion, isBusy } from './guards'
 import { PROBE_TOOL } from './probe'
 import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM } from './service-data'
-import { MPG_STEPS, type Axis, type MachineState, type Message } from './types'
+import type { Result } from './subsystem'
+import { MPG_STEPS, type Axis, type MachineState } from './types'
 
 export type ControlToggleKey =
   | 'singleBlock'
@@ -56,8 +57,6 @@ const CONTROL_TYPES = new Set<string>([
 ])
 
 export const isControlAction = (a: { type: string }): a is ControlAction => CONTROL_TYPES.has(a.type)
-
-export type Result = { s: MachineState; msg?: string; level?: Message['level'] }
 
 export function controlReducer(s: MachineState, a: ControlAction): Result {
   switch (a.type) {

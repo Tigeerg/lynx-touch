@@ -323,12 +323,12 @@ Item {
         ];
         if (screen === "alarm") return [
             { id: "ack", label: "Квитировать", icon: "\ue06c" },
-            { id: "alarmClearAll", label: "Удалить квитир.", icon: "\ue18d" }
+            { id: "alarmClearAll", label: "Удалить квитированные", icon: "\ue18d" }
         ];
         if (screen === "service") {
             var keys2 = [
                 { id: "svcBack", label: "Назад", icon: "\ue2a1" },
-                { id: "svcLock", label: serviceWrite ? "Блок. записи" : "Разрешить запись", icon: serviceWrite ? "\ue10c" : "\ue10b" },
+                { id: "svcLock", label: serviceWrite ? "Блокировать запись" : "Разрешить запись", icon: serviceWrite ? "\ue10c" : "\ue10b" },
                 { id: "svcSave", label: "Сохранить", icon: "\ue14d" },
                 { id: "svcDefaults", label: "По умолчанию", icon: "\ue148" },
                 serviceSection === "ladder" ? { id: "ladderEdit", label: "Правка схемы", icon: "\ue1f9" } : null

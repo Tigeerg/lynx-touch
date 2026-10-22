@@ -226,24 +226,22 @@
   `TOOL_PROBE`, `GO_SAFE`, `TOOL_LIFE`, `PART_COUNTER_RESET`, `BROKEN_TOOL_CHECK` в `apps/qt-interface`
   нет, и поведение клавиш в порту не реализовано. Это новая функциональность порта, не текст: переносить
   отдельным заходом (`qt-interface`), согласовав с распорядителем.
-* [ ] **Спор правила с реальностью надо закрыть словом в `CLAUDE.md`.** Раздел 5 запрещает названия сторонних
-  продуктов в текстах интерфейса, а справочник INI их несёт обязательно: `gmoccapy`, `qtvcp`, `axis`,
-  `gedit`, `nano`, `linuxcnc.gif`, `~/linuxcnc/nc_files` (`params/system.ts:82`, `:225`, `:235`, `:255`),
-  `ClassicLadder` (`ladder-scan.ts:3`, `service-screen.tsx:515`), `LinuxCNC` в заголовках (`service-data.ts:18`,
-  `:54`). Либо правило говорит явно «номенклатура контроллера — не сторонний продукт», либо таблицы чистят;
-  молчать нельзя.
-* [ ] **Стиль того же разбора (не блокеры).** Имена: `p`, `ax` (`params/def.ts:27`), `L` (`ladder.ts`),
-  `sv`, `sig`, `th` (`service-screen.tsx:457`). `LadderForm.values` — кортеж однотипных строк
-  (`types.ts:206`), нужны `ElementForm`/`SchemeForm`; `MESA_INPUTS`/`MESA_OUTPUTS` — пары с `''` как
-  «адреса нет» (`service-screen.tsx:363`), нужен `{ terminal, addr: string | null }`; числа без имени и без
-  «почему»: `dwell 150`/`1800` (`cycle.ts`), `60000`, `12` (`service.ts`), `2500`
-  (`hardware-keyboard.tsx`), `229` (`service-screen.tsx`); `freeFlag`/`freeTimer`/`freeCounter` — три почти
-  одинаковые функции (`ladder.ts`) с запасным адресом `M1.0`, который может быть занят; `service.ts`
-  `PARAM_ADJUST` — 24 строки и четыре заботы в одном месте; `system.ts` обещает опцию `LANGUAGE = English`,
-  которой в панели нет; `splash-screen.tsx` — модульный `let splashDone` и картинка 1024 в слоте 300 px;
-  подписи-обрывки «Удалить квитир.» и «Блок. записи»; `hal.ts`/`system.ts` несут названия сторонних
-  продуктов (`gmoccapy`, `qtvcp`, `gedit`) — правило `CLAUDE.md` раздел 5 против реальности справочника,
-  нужен либо явный пункт правила, либо чистка.
+* [x] **Спор правила с реальностью закрыт словом в `CLAUDE.md`.** В `0.18.33` раздел 5 дополнен: номенклатура
+  контроллера — не сторонний продукт, имена узлов, утилит и разделов INI (`gmoccapy`, `qtvcp`, `axis`,
+  `gedit`, `ClassicLadder`, `LinuxCNC`) стоят в справочнике как есть. Чистка таблиц не нужна.
+* [x] **Стиль того же разбора: часть (числа, free-адрес, типы, подписи, `LANGUAGE`).** Исправлено в
+  `0.18.33`: числа названы (`MS_PER_MINUTE`, `BLOCK_DWELL_MS`/`TOOL_CHANGE_DWELL_MS`,
+  `SERVICE_PASSWORD_MAX`, `HINT_MS`, `IME_KEYCODE`); `freeFlag`/`freeTimer`/`freeCounter` сведены в
+  `freeAddr` (`ladder.ts`); `MESA_INPUTS`/`MESA_OUTPUTS` — `{ terminal, addr: string | null }` без пустой
+  строки как «адреса нет»; подписи-обрывки заменены («Удалить квитированные», «Блокировать запись») в
+  React и Qt; строка `LANGUAGE = English`, которой в панели нет, убрана из `system.ts`. Проверка —
+  `lib/cnc/ladder.test.ts` (новый кадр не занимает адрес уже стоящей катушки); остальное — чистый перенос,
+  поведение не менялось.
+* [ ] **Стиль разбора: остаток (не блокеры).** Имена: `p`, `ax` (`params/def.ts:27`), `L` (`ladder.ts`),
+  `sv`, `sig`, `th` (`service-screen.tsx`). `LadderForm.values` — кортеж однотипных строк (`types.ts`),
+  нужны `ElementForm`/`SchemeForm`. `service.ts` `PARAM_ADJUST` — четыре заботы в одном месте.
+  `splash-screen.tsx` — модульный `let splashDone` и картинка 1024 в слоте 300 px (нужно решение: сжать
+  файл или это осознанно). Отдельным заходом.
 
 ## 8. Панель: разбор 22.10.2026 после `0.18.20`-`0.18.26`
 

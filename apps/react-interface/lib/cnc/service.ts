@@ -15,6 +15,9 @@ import { INI_FILE, SERVICE_PASSWORD, hasServiceList, paramAt, paramValue, unsave
 import type { Dispatch, Result } from './subsystem'
 import { AXES, SERVICE_SECTIONS, isParamSection, type Axis, type MachineState, type ServiceSection } from './types'
 
+/** The password field shows at most this many characters (SERVICE_AUTH_INPUT). */
+const SERVICE_PASSWORD_MAX = 12
+
 export type ServiceAction =
   | { type: 'SERVICE_SECTION'; section: ServiceSection }
   | { type: 'SERVICE_AXIS'; axis: Axis }
@@ -123,7 +126,9 @@ export function serviceReducer(s: MachineState, a: ServiceAction, dispatch: Disp
 
     case 'SERVICE_AUTH_INPUT':
       if (!s.service.auth) return { s }
-      return { s: { ...s, service: { ...s.service, auth: { input: a.value.slice(0, 12), error: false } } } }
+      return {
+        s: { ...s, service: { ...s.service, auth: { input: a.value.slice(0, SERVICE_PASSWORD_MAX), error: false } } },
+      }
 
     case 'SERVICE_SAVE': {
       const sv = s.service

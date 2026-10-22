@@ -3,6 +3,7 @@
 import { FileCode, Route } from 'lucide-react'
 import { useMemo } from 'react'
 import { currentFile, distanceToGo, programLines, type Action } from '@/lib/cnc/machine'
+import { MS_PER_MINUTE } from '@/lib/cnc/data'
 import { remainingLength, type PathView } from '@/lib/cnc/toolpath'
 import { AXES, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
@@ -30,7 +31,7 @@ export function AutoScreen({
     [state.files, state.activeFile, state.line],
   )
   const file = currentFile(state)
-  const restMs = (rest / (state.programFeed || 1000)) * 60000
+  const restMs = (rest / (state.programFeed || 1000)) * MS_PER_MINUTE
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5">

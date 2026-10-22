@@ -74,6 +74,18 @@ describe('ladder editor: coil presets', () => {
   })
 })
 
+describe('ladder editor: a new rung takes a free coil address', () => {
+  it('does not reuse an address already on the scheme', () => {
+    const used = rung([contact('I0.0')], { addr: 'M1.0', label: 'Занято' })
+    const s = reducer(withRungs([used]), { type: 'LADDER_EDIT', on: true })
+    const added = reducer(s, { type: 'LADDER_ADD_RUNG' })
+    const addresses = (added.ladder.draft ?? []).map((r) => r.coil.addr)
+
+    expect(addresses).toContain('M1.0')
+    expect(new Set(addresses).size).toBe(addresses.length)
+  })
+})
+
 describe('ladder editor: scheme list guards', () => {
   it.each([{ type: 'LADDER_LOAD' }, { type: 'LADDER_COPY' }, { type: 'LADDER_RENAME' }] as const)(
     'does not crash on a stale scheme index ($type)',

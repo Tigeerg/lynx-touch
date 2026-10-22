@@ -11,6 +11,9 @@ type Shift = 'off' | 'once' | 'lock'
 
 type KeyDef = { letter: string; alt: string; block: 'address' | 'numeric' }
 
+/** How long a key hint stays on the panel after a press. */
+const HINT_MS = 2500
+
 const address = (pairs: string): KeyDef[] =>
   pairs.split(' ').map(([letter, alt]) => ({ letter, alt, block: 'address' }))
 const numeric = (pairs: string): KeyDef[] =>
@@ -68,7 +71,7 @@ export function HardwareKeyboard({
   const flash = (text: string) => {
     setHint(text)
     window.clearTimeout(timer.current)
-    timer.current = window.setTimeout(() => setHint(null), 2500)
+    timer.current = window.setTimeout(() => setHint(null), HINT_MS)
   }
 
   const mdi = state.mode === 'MDI'

@@ -6,6 +6,8 @@ export const PROGRAM_TITLE = 'КОРПУС ФЛАНЦА'
 export const RAPID_RATE = 15000
 export const DRY_RUN_RATE = 6000
 export const MAX_RPM = 12000
+/** Milliseconds in a minute: converts an mm/min feed into the per-millisecond travel. */
+export const MS_PER_MINUTE = 60_000
 export const JOG_STEPS = [0.001, 0.01, 0.1]
 export const RAPID_JOG_MULT = 10
 export const RAPID_STEPS = [5, 25, 50, 100]

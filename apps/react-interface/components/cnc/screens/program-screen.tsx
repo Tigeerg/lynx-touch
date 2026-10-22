@@ -3,6 +3,7 @@
 import { FileCode, Play, Search, SquarePen, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, type Dispatch } from 'react'
 import { currentFile, distanceToGo, programLines, toWork, type Action } from '@/lib/cnc/machine'
+import { MS_PER_MINUTE } from '@/lib/cnc/data'
 import { AXES, type Axis, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { buildToolpath, remainingLength, simPose, type PathView } from '@/lib/cnc/toolpath'
@@ -282,7 +283,8 @@ export function ProgramList({
   const running = !sim && (state.run === 'RUN' || state.run === 'HOLD')
   const follow = sim ? state.sim.line : running ? state.line : state.cursor.prog
   const file = currentFile(state)
-  const restMs = (remainingLength(file.lines, sim ? state.sim.line : state.line) / (state.programFeed || 1000)) * 60000
+  const restMs =
+    (remainingLength(file.lines, sim ? state.sim.line : state.line) / (state.programFeed || 1000)) * MS_PER_MINUTE
 
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>(`[data-index="${follow}"]`)?.scrollIntoView({ block: 'nearest' })

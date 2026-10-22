@@ -4,7 +4,7 @@
 // prog.ts: the reducer composes the subsystems, and the size of the machine is held by the
 // tools/check.ps1 mark. executeLine is exported because the SPINDLE_WARMUP case (machine.ts)
 // starts a program through it. A result is { s, msg, level }; machine.ts shows the message.
-import { WORKPLACE_LABEL } from './data'
+import { MS_PER_MINUTE, WORKPLACE_LABEL } from './data'
 import { programLines } from './files'
 import { isBusy } from './guards'
 import { parseWords } from './gcode'
@@ -16,6 +16,11 @@ import { idleSim, tickSim } from './prog'
 import { evaluateLadder, sameLadderMem, sameLadderSignals } from './ladder-scan'
 import type { Result } from './subsystem'
 import { AXES, MDI_HISTORY_SIZE, type Axes, type MachineState } from './types'
+
+/** The dwell after a block with motion: how long the axes rest before the next block. */
+const BLOCK_DWELL_MS = 150
+/** The dwell of a tool change (M06): the real machine waits for the clamp. */
+const TOOL_CHANGE_DWELL_MS = 1800
 
 export function executeLine(state: MachineState, index: number): MachineState {
   const lines = programLines(state)
@@ -29,7 +34,7 @@ export function executeLine(state: MachineState, index: number): MachineState {
 }
 
 export function applyBlock(state: MachineState, text: string, allowMotion: boolean): MachineState {
-  let s: MachineState = { ...state, dwell: 150 }
+  let s: MachineState = { ...state, dwell: BLOCK_DWELL_MS }
   const coords: Partial<Axes> = {}
   let home = false
   const mCodes: number[] = []
@@ -65,7 +70,7 @@ export function applyBlock(state: MachineState, text: string, allowMotion: boole
     if (m === 5) s.spindleOn = false
     if (m === 6) {
       s.tool = s.pendingTool
-      s.dwell = 1800
+      s.dwell = TOOL_CHANGE_DWELL_MS
     }
     if (m === 8) s.coolant = true
     if (m === 9) s.coolant = false
@@ -85,7 +90,7 @@ function stepMotion(s: MachineState, dt: number): MachineState {
   if (s.machineLock) return { ...s, motion: null }
   const { target } = s.motion
   const dist = Math.hypot(...AXES.map((ax) => target[ax] - s.machine[ax]))
-  const travel = (motionSpeed(s) / 60000) * dt
+  const travel = (motionSpeed(s) / MS_PER_MINUTE) * dt
   if (dist <= 0.0005 || travel >= dist) return { ...s, machine: { ...target }, motion: null }
   if (travel === 0) return s
   const k = travel / dist

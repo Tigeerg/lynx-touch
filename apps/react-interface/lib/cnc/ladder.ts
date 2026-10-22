@@ -194,27 +194,26 @@ const patch = (s: MachineState, p: Partial<LadderState>): MachineState => ({ ...
 
 const replaceAt = <T>(list: T[], index: number, item: T) => list.map((x, i) => (i === index ? item : x))
 
-function freeFlag(rungs: LadderRung[]) {
+type FreeAddrKind = 'flag' | 'timer' | 'counter'
+
+/**
+ * The first free coil address of a kind for a new rung: it must not already be on the scheme (a
+ * duplicate coil is refused on save). One function, not three near-copies.
+ */
+function freeAddr(rungs: LadderRung[], kind: FreeAddrKind): string {
   const used = new Set(rungs.map((r) => r.coil.addr))
-  for (let byte = 1; byte < 100; byte++) {
-    for (let bit = 0; bit < 8; bit++) {
-      const addr = `M${byte}.${bit}`
-      if (!used.has(addr)) return addr
+  if (kind === 'flag') {
+    for (let byte = 1; byte < 100; byte++) {
+      for (let bit = 0; bit < 8; bit++) {
+        const addr = `M${byte}.${bit}`
+        if (!used.has(addr)) return addr
+      }
     }
+    return 'M1.0'
   }
-  return 'M1.0'
-}
-
-function freeTimer(rungs: LadderRung[]) {
-  const used = new Set(rungs.map((r) => r.coil.addr))
-  for (let n = 0; n < 100; n++) if (!used.has(`T${n}`)) return `T${n}`
-  return 'T99'
-}
-
-function freeCounter(rungs: LadderRung[]) {
-  const used = new Set(rungs.map((r) => r.coil.addr))
-  for (let n = 0; n < 100; n++) if (!used.has(`C${n}`)) return `C${n}`
-  return 'C99'
+  const prefix = kind === 'timer' ? 'T' : 'C'
+  for (let n = 0; n < 100; n++) if (!used.has(`${prefix}${n}`)) return `${prefix}${n}`
+  return `${prefix}99`
 }
 
 const presetText = (c: LadderCoil) =>
@@ -233,7 +232,7 @@ function uniqueName(schemes: LadderScheme[], base: string) {
 const newRung = (rungs: LadderRung[], n: number): LadderRung => ({
   title: `Ступень ${n}`,
   contacts: [sig('I0.0')],
-  coil: { addr: freeFlag(rungs), label: 'Новый флаг' },
+  coil: { addr: freeAddr(rungs, 'flag'), label: 'Новый флаг' },
 })
 
 const elementForm = (rung: LadderRung, path: number, col: number) => {
@@ -354,12 +353,12 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
           // as a counter's pulses (the scan takes the unit's own default when the field is absent).
           coil = {
             ...base,
-            addr: keep ? base.addr : counter ? freeCounter(rungs) : freeTimer(rungs),
+            addr: keep ? base.addr : freeAddr(rungs, counter ? 'counter' : 'timer'),
             label: keep ? base.label : counter ? 'Счётчик' : 'Таймер',
             kind: next,
           }
         } else if (isTimerKind(kind) || isCounterKind(kind)) {
-          coil = { addr: freeFlag(rungs), label: 'Новый флаг', ...(next === 'coil' ? {} : { kind: next }) }
+          coil = { addr: freeAddr(rungs, 'flag'), label: 'Новый флаг', ...(next === 'coil' ? {} : { kind: next }) }
         } else {
           coil = { ...base, ...(next === 'coil' ? {} : { kind: next }) }
         }

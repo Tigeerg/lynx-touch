@@ -49,17 +49,6 @@ export const SYSTEM_PARAMS: readonly ParamDef[] = Object.freeze([
     free: true,
   }),
   p({
-    group: 'DISPLAY',
-    key: 'LANGUAGE',
-    label: 'Язык интерфейса',
-    step: 1,
-    min: 0,
-    max: 1,
-    default: 0,
-    options: ['Русский', 'English'],
-    free: true,
-  }),
-  p({
     group: 'EMC',
     key: 'MACHINE',
     label: 'Имя станка',

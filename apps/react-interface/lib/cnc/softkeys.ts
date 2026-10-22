@@ -469,7 +469,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       keys = [
         { label: 'Назад', icon: Undo2, action: { type: 'SERVICE_BACK' } },
         {
-          label: sv.write ? 'Блок. записи' : 'Разрешить запись',
+          label: sv.write ? 'Блокировать запись' : 'Разрешить запись',
           icon: sv.write ? LockOpen : Lock,
           action: { type: 'SERVICE_LOCK' },
           active: sv.write,
@@ -519,7 +519,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
           action: { type: 'ALARM_ACK' },
           disabled: !s.alarms[s.cursor.alarm]?.active,
         },
-        { label: 'Удалить квитир.', icon: Trash2, action: { type: 'ALARM_CLEAR_ALL' } },
+        { label: 'Удалить квитированные', icon: Trash2, action: { type: 'ALARM_CLEAR_ALL' } },
         { label: 'Сброс', icon: RotateCcw, action: { type: 'RESET' }, disabled: s.run === 'ESTOP' },
         null,
         null,

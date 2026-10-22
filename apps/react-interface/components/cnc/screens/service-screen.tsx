@@ -44,6 +44,9 @@ import { cn } from '@/lib/utils'
 import { HelpGroups } from '../help-overlay'
 import { Keycap, Panel } from '../primitives'
 
+/** The Windows IME processing key code: a keydown carrying it is composition, not a command. */
+const IME_KEYCODE = 229
+
 export function ServiceScreen({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
   const { section, write, restartPending, focus, saved } = state.service
   const unsaved = useMemo(() => unsavedIds(state.params, saved).length, [state.params, saved])
@@ -262,7 +265,7 @@ function PasswordDialog({ state, dispatch }: { state: MachineState; dispatch: (a
             aria-invalid={auth.error}
             onChange={(e) => dispatch({ type: 'SERVICE_AUTH_INPUT', value: e.target.value })}
             onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return
+              if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === IME_KEYCODE) return
               if (e.key === 'Enter') {
                 e.preventDefault()
                 dispatch({ type: 'SERVICE_ENTER' })
@@ -370,28 +373,31 @@ function mesaInfo(s: MachineState): InfoItem[] {
   ]
 }
 
-const MESA_INPUTS = [
-  ['IN0', 'I0.0'],
-  ['IN1', 'I0.1'],
-  ['IN2', 'I0.2'],
-  ['IN3', 'I0.3'],
-  ['IN4', 'I0.4'],
-  ['IN5', 'I0.5'],
-  ['IN6', ''],
-  ['IN7', ''],
-  ['IN8', ''],
-  ['IN9', ''],
-  ['IN10', ''],
-] as const
+/** The Mesa terminal wiring: `addr: null` is an unwired terminal, not an empty address. */
+type MesaTerminal = { terminal: string; addr: string | null }
 
-const MESA_OUTPUTS = [
-  ['OUT0', 'Q0.0'],
-  ['OUT1', 'Q0.1'],
-  ['OUT2', 'Q0.2'],
-  ['OUT3', 'Q0.3'],
-  ['OUT4', 'Q0.4'],
-  ['OUT5', 'Q0.5'],
-] as const
+const MESA_INPUTS: MesaTerminal[] = [
+  { terminal: 'IN0', addr: 'I0.0' },
+  { terminal: 'IN1', addr: 'I0.1' },
+  { terminal: 'IN2', addr: 'I0.2' },
+  { terminal: 'IN3', addr: 'I0.3' },
+  { terminal: 'IN4', addr: 'I0.4' },
+  { terminal: 'IN5', addr: 'I0.5' },
+  { terminal: 'IN6', addr: null },
+  { terminal: 'IN7', addr: null },
+  { terminal: 'IN8', addr: null },
+  { terminal: 'IN9', addr: null },
+  { terminal: 'IN10', addr: null },
+]
+
+const MESA_OUTPUTS: MesaTerminal[] = [
+  { terminal: 'OUT0', addr: 'Q0.0' },
+  { terminal: 'OUT1', addr: 'Q0.1' },
+  { terminal: 'OUT2', addr: 'Q0.2' },
+  { terminal: 'OUT3', addr: 'Q0.3' },
+  { terminal: 'OUT4', addr: 'Q0.4' },
+  { terminal: 'OUT5', addr: 'Q0.5' },
+]
 
 function IoLed({ name, on }: { name: string; on: boolean }) {
   return (
@@ -414,16 +420,16 @@ function MesaIo({ state }: { state: MachineState }) {
       <div className="flex items-center gap-3">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Входы TB3</span>
         <div className="flex gap-2">
-          {MESA_INPUTS.map(([name, addr]) => (
-            <IoLed key={name} name={name} on={!!addr && !!signals[addr]} />
+          {MESA_INPUTS.map(({ terminal, addr }) => (
+            <IoLed key={terminal} name={terminal} on={addr !== null && !!signals[addr]} />
           ))}
         </div>
       </div>
       <div className="flex items-center gap-3">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Выходы TB4</span>
         <div className="flex gap-2">
-          {MESA_OUTPUTS.map(([name, addr]) => (
-            <IoLed key={name} name={name} on={!!signals[addr]} />
+          {MESA_OUTPUTS.map(({ terminal, addr }) => (
+            <IoLed key={terminal} name={terminal} on={addr !== null && !!signals[addr]} />
           ))}
         </div>
       </div>

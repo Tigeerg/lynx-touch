@@ -20,7 +20,7 @@ const SHARED: [string, string][] = [
   ['measure', 'Замер длины'],
   ['resetLife', 'Сброс ресурса'],
   ['ack', 'Квитировать'],
-  ['alarmClearAll', 'Удалить квитир.'],
+  ['alarmClearAll', 'Удалить квитированные'],
   ['svcBack', 'Назад'],
   ['svcSave', 'Сохранить'],
   ['svcDefaults', 'По умолчанию'],

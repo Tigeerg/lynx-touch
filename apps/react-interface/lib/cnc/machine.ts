@@ -7,11 +7,10 @@ import {
   SCREEN_LABEL,
   WORKPLACE_LABEL,
 } from './data'
-import { PROBE_CYCLES, PROBE_STEP_MEASURE, PROBE_TOOL } from './probe'
-import { abortProbe, probeTick } from './probe-exec'
+import { PROBE_CYCLES, PROBE_TOOL } from './probe'
+import { applyBlock, cycleReducer, executeLine, isCycleAction, type CycleAction } from './cycle'
 import { initialLadder, isLadderAction, ladderReducer, type LadderAction } from './ladder'
-import { idleSim, isProgAction, progReducer, tickSim, type ProgAction } from './prog'
-import { parseWords } from './gcode'
+import { idleSim, isProgAction, progReducer, type ProgAction } from './prog'
 import { editorReducer, isEditorAction, type EditorAction } from './editor'
 import { isSetupAction, setupReducer, type SetupAction } from './setup'
 import { controlReducer, isControlAction, type ControlAction } from './control'
@@ -21,9 +20,7 @@ import { isMpgAction, mpgReducer, type MpgAction } from './mpg'
 import { initialTest, isTestAction, testReducer, type TestAction } from './test'
 import {
   defaultParams,
-  evaluateLadder,
   formatParam,
-  sameLadderMem,
   THEME_OPTIONS,
   THEME_PARAM,
   TOOLPATH_PARAM,
@@ -31,8 +28,6 @@ import {
   type ParamDef,
 } from './service-data'
 import {
-  AXES,
-  MDI_HISTORY_SIZE,
   MODE_LOCKED_SCREENS,
   MODE_START_SCREEN,
   MODES,
@@ -40,7 +35,6 @@ import {
   SERVICE_SECTIONS,
   screenOfTab,
   tabOfScreen,
-  type Axes,
   type Axis,
   type MachineState,
   type Mode,
@@ -48,22 +42,17 @@ import {
   type Workplace,
 } from './types'
 
-import { distanceToGo, motionSpeed, toWork, workOffset, zeroAxes } from './coords'
+import { zeroAxes } from './coords'
 import { currentFile, programLines } from './files'
 import { listLength } from './list'
 import { cancelEdit, markSaved } from './service-edit'
-import { notify, pushAlarm } from './messages'
+import { notify } from './messages'
 import { isBusy } from './guards'
 
 export { distanceToGo, motionSpeed, toWork, workOffset } from './coords'
 export { currentFile, programLines } from './files'
 
 export type Action =
-  | { type: 'TICK'; dt: number }
-  | { type: 'CYCLE_START' }
-  | { type: 'FEED_HOLD' }
-  | { type: 'RESET' }
-  | { type: 'ESTOP' }
   | { type: 'SET_MODE'; mode: Mode }
   | { type: 'SET_WORKPLACE'; workplace: Workplace }
   | { type: 'SPINDLE_WARMUP' }
@@ -88,6 +77,7 @@ export type Action =
   | ControlAction
   | ProbeWizardAction
   | ServiceAction
+  | CycleAction
 
 export const initialState: MachineState = {
   ladder: initialLadder,
@@ -180,119 +170,6 @@ export const initialState: MachineState = {
   params: defaultParams(),
 }
 
-function executeLine(state: MachineState, index: number): MachineState {
-  const lines = programLines(state)
-  if (index >= lines.length) return { ...state, programEnd: true }
-  if (state.blockSkip && lines[index].trimStart().startsWith('/')) {
-    return { ...state, line: index, nextLine: index + 1, dwell: 0 }
-  }
-  return applyBlock({ ...state, line: index, nextLine: index + 1 }, lines[index], index > 0)
-}
-
-function applyBlock(state: MachineState, text: string, allowMotion: boolean): MachineState {
-  let s: MachineState = { ...state, dwell: 150 }
-  const coords: Partial<Axes> = {}
-  let home = false
-  const mCodes: number[] = []
-
-  for (const { letter, value } of parseWords(text)) {
-    if (letter === 'G') {
-      if (value === 0 || value === 1) s.motionModal = value
-      if (value >= 54 && value <= 59) s.activeOffset = value - 54
-      if (value === 28) home = true
-    } else if (letter === 'X' || letter === 'Y' || letter === 'Z' || letter === 'A') {
-      coords[letter] = value
-    } else if (letter === 'F') s.programFeed = value
-    else if (letter === 'S') s.spindleSet = value
-    else if (letter === 'T') s.pendingTool = value
-    else if (letter === 'M') mCodes.push(value)
-  }
-
-  if (home) {
-    s.motion = { target: { ...s.machine, Z: 0 }, rapid: true, feed: 0 }
-  } else if (Object.keys(coords).length > 0 && allowMotion) {
-    const off = workOffset(s)
-    const work = toWork(s)
-    const target = { ...zeroAxes() }
-    for (const ax of AXES) target[ax] = (coords[ax] ?? work[ax]) + off[ax]
-    s.motion = { target, rapid: s.motionModal === 0, feed: s.programFeed }
-  }
-
-  for (const m of mCodes) {
-    if (m === 3 || m === 4) {
-      s.spindleOn = true
-      s.spindleDir = m === 3 ? 1 : -1
-    }
-    if (m === 5) s.spindleOn = false
-    if (m === 6) {
-      s.tool = s.pendingTool
-      s.dwell = 1800
-    }
-    if (m === 8) s.coolant = true
-    if (m === 9) s.coolant = false
-    if (m === 0 || (m === 1 && s.optStop)) {
-      s.stopAfterBlock = true
-      s = notify(s, m === 0 ? 'Программный останов M00' : 'Опциональный останов M01 — нажмите ПУСК')
-    }
-    if (m === 30) s.programEnd = true
-  }
-
-  if (s.singleBlock) s.stopAfterBlock = true
-  return s
-}
-
-function stepMotion(s: MachineState, dt: number): MachineState {
-  if (!s.motion) return s
-  if (s.machineLock) return { ...s, motion: null }
-  const { target } = s.motion
-  const dist = Math.hypot(...AXES.map((ax) => target[ax] - s.machine[ax]))
-  const travel = (motionSpeed(s) / 60000) * dt
-  if (dist <= 0.0005 || travel >= dist) return { ...s, machine: { ...target }, motion: null }
-  if (travel === 0) return s
-  const k = travel / dist
-  const machine = { ...s.machine }
-  for (const ax of AXES) machine[ax] += (target[ax] - machine[ax]) * k
-  return { ...s, machine }
-}
-
-function completeBlock(s: MachineState): MachineState {
-  if (s.homing) {
-    if (s.machine.X !== 0 || s.machine.Y !== 0) {
-      return { ...s, motion: { target: { ...s.machine, X: 0, Y: 0 }, rapid: true, feed: 0 } }
-    }
-    return notify({ ...s, run: 'IDLE', homing: false }, 'Безопасная точка достигнута')
-  }
-  if (s.mdi.running) {
-    return { ...s, run: 'IDLE', mdi: { ...s.mdi, running: false }, stopAfterBlock: false, programEnd: false }
-  }
-  if (s.workZero) {
-    const off = workOffset(s)
-    if (Math.abs(s.machine.X - off.X) > 0.0005 || Math.abs(s.machine.Y - off.Y) > 0.0005) {
-      return { ...s, motion: { target: { ...s.machine, X: off.X, Y: off.Y, Z: 0 }, rapid: true, feed: 0 } }
-    }
-    return notify({ ...s, run: 'IDLE', workZero: false }, 'В нуле детали')
-  }
-  if (s.programEnd) {
-    return notify(
-      {
-        ...s,
-        run: 'IDLE',
-        programEnd: false,
-        line: 0,
-        nextLine: 0,
-        partCount: s.partCount + 1,
-        lastCycle: s.cycleTime,
-        cycleTime: 0,
-        spindleOn: false,
-        coolant: false,
-      },
-      'Программа завершена (M30). Деталь учтена',
-    )
-  }
-  if (s.stopAfterBlock) return { ...s, run: 'IDLE', stopAfterBlock: false }
-  return executeLine(s, s.nextLine)
-}
-
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
 
 export function reducer(state: MachineState, a: Action): MachineState {
@@ -333,129 +210,11 @@ export function reducer(state: MachineState, a: Action): MachineState {
     const r = serviceReducer(s, a, reducer)
     return r.msg ? notify(r.s, r.msg, r.level) : r.s
   }
+  if (isCycleAction(a)) {
+    const r = cycleReducer(s, a)
+    return r.msg ? notify(r.s, r.msg, r.level) : r.s
+  }
   switch (a.type) {
-    case 'TICK': {
-      let n = s
-      if (n.message && n.message.ttl > 0) {
-        const ttl = n.message.ttl - a.dt
-        n = { ...n, message: ttl > 0 ? { ...n.message, ttl } : null }
-      }
-      if (n.lube > 0) n = { ...n, lube: Math.max(0, n.lube - a.dt) }
-      const scan = evaluateLadder(n, undefined, a.dt)
-      if (!sameLadderMem(scan.mem, n.ladder.mem)) n = { ...n, ladder: { ...n.ladder, mem: scan.mem } }
-      n = tickSim(n, a.dt)
-      if (n.run !== 'RUN') return n
-      if (n.probe.running) {
-        const r = probeTick(n, a.dt)
-        return r.msg ? notify(r.s, r.msg) : r.s
-      }
-      if (n.mode === 'AUTO') n = { ...n, cycleTime: n.cycleTime + a.dt }
-      if (n.spindleOn) n = { ...n, toolTime: { ...n.toolTime, [n.tool]: (n.toolTime[n.tool] ?? 0) + a.dt } }
-      if (n.dwell > 0) return { ...n, dwell: Math.max(0, n.dwell - a.dt) }
-      if (n.motion) return stepMotion(n, a.dt)
-      return completeBlock(n)
-    }
-
-    case 'CYCLE_START': {
-      if (s.run === 'ESTOP') return notify(s, 'Аварийный стоп активен — отпустите кнопку', 'error')
-      if (s.run === 'ALARM') return notify(s, 'Есть авария — нажмите СБРОС', 'error')
-      if (s.run === 'RUN') return s
-      if (s.run === 'HOLD') return notify({ ...s, sim: idleSim(), run: 'RUN' }, 'Подача возобновлена')
-      if (s.probe.open && s.screen === 'offset') {
-        if (s.probe.step !== PROBE_STEP_MEASURE) return notify(s, 'ПУСК щупа доступен на шаге «Измерение»', 'warn')
-        if (s.tool !== PROBE_TOOL) return notify(s, 'В шпинделе нет щупа T99', 'error')
-        if (s.spindleOn) return notify(s, 'Остановите шпиндель перед измерением', 'error')
-        return notify(
-          {
-            ...s,
-            sim: idleSim(),
-            run: 'RUN',
-            probe: {
-              ...s.probe,
-              running: true,
-              elapsed: 0,
-              origin: { ...s.machine },
-              result: null,
-              written: false,
-              prev: null,
-            },
-          },
-          'Измерение щупом… G38.2',
-        )
-      }
-      if (s.editMode) return notify(s, 'Выйдите из режима редактирования', 'warn')
-      if (s.mode === 'AUTO') {
-        const start = s.nextLine >= programLines(s).length ? 0 : s.nextLine
-        return executeLine({ ...s, sim: idleSim(), run: 'RUN' }, start)
-      }
-      if (s.workplace === 'SETUP') {
-        const text = s.mdi.buffer.trim().toUpperCase()
-        if (!text) return notify(s, 'Введите кадр MDI', 'warn')
-        if (!s.toolClamped && /M0?[34]\b/.test(text))
-          return notify(s, 'Инструмент разжат — зажмите перед пуском шпинделя', 'error')
-        const history = [text, ...s.mdi.history.filter((h) => h !== text)].slice(0, MDI_HISTORY_SIZE)
-        const n = applyBlock(
-          { ...s, sim: idleSim(), run: 'RUN', mdi: { buffer: '', history, running: true } },
-          text,
-          true,
-        )
-        return notify({ ...n, programEnd: false, stopAfterBlock: false }, `MDI: ${text}`)
-      }
-      return notify(s, `ПУСК недоступен в режиме «${WORKPLACE_LABEL[s.workplace]}»`, 'warn')
-    }
-
-    case 'FEED_HOLD':
-      return s.run === 'RUN' ? notify({ ...s, run: 'HOLD' }, 'Стоп подачи. ПУСК — продолжить', 'warn') : s
-
-    case 'RESET': {
-      if (s.run === 'ESTOP') return notify(s, 'Сначала отпустите аварийный стоп', 'error')
-      return notify(
-        {
-          ...abortProbe(s),
-          run: 'IDLE',
-          motion: null,
-          dwell: 0,
-          homing: false,
-          workZero: false,
-          sim: idleSim(),
-          programEnd: false,
-          stopAfterBlock: false,
-          spindleOn: false,
-          coolant: false,
-          mist: false,
-          mdi: { ...s.mdi, running: false },
-          line: 0,
-          nextLine: 0,
-          cycleTime: 0,
-          alarms: s.alarms.map((al) => (al.level === 'error' ? { ...al, active: false } : al)),
-        },
-        'Сброс выполнен',
-      )
-    }
-
-    case 'ESTOP': {
-      if (s.run === 'ESTOP') return notify({ ...s, run: 'ALARM' }, 'Аварийный стоп отпущен — нажмите СБРОС', 'warn')
-      const n = pushAlarm(
-        {
-          ...abortProbe(s),
-          run: 'ESTOP',
-          motion: null,
-          dwell: 0,
-          homing: false,
-          workZero: false,
-          sim: idleSim(),
-          spindleOn: false,
-          coolant: false,
-          mist: false,
-          mdi: { ...s.mdi, running: false },
-        },
-        1001,
-        'error',
-        'Нажата кнопка аварийного останова',
-      )
-      return notify(n, 'АВАРИЙНЫЙ СТОП', 'error')
-    }
-
     case 'SET_MODE': {
       if (s.run === 'RUN') return notify(s, 'Смена режима во время выполнения запрещена', 'warn')
       const screen = MODE_START_SCREEN[a.mode]

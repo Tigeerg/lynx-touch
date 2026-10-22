@@ -15,6 +15,7 @@ import { abortProbe, probeTick } from './probe-exec'
 import { initialLadder, isLadderAction, ladderReducer, type LadderAction } from './ladder'
 import { idleSim, isProgAction, progReducer, tickSim, type ProgAction } from './prog'
 import { parseWords } from './gcode'
+import { editorReducer, isEditorAction, type EditorAction } from './editor'
 import { isMpgAction, mpgReducer, type MpgAction } from './mpg'
 import { initialTest, isTestAction, testReducer, type TestAction } from './test'
 import {
@@ -55,7 +56,7 @@ import {
 } from './types'
 
 import { distanceToGo, motionSpeed, toWork, workOffset, zeroAxes } from './coords'
-import { currentFile, programLines, setLines } from './files'
+import { currentFile, programLines } from './files'
 import { listLength } from './list'
 import { cancelEdit, markSaved, setParam } from './service-edit'
 import { notify, pushAlarm } from './messages'
@@ -116,16 +117,6 @@ export type Action =
   | { type: 'ZERO_WORK'; axis?: Axis }
   | { type: 'SET_JOG_FEED'; feed: number }
   | { type: 'HELP'; open?: boolean }
-  | { type: 'FILE_DIALOG'; open?: boolean }
-  | { type: 'FILE_CURSOR'; delta: number }
-  | { type: 'FILE_OPEN' }
-  | { type: 'EDIT_MODE'; on?: boolean }
-  | { type: 'EDIT_BEGIN' }
-  | { type: 'EDIT_INSERT' }
-  | { type: 'EDIT_DELETE' }
-  | { type: 'EDIT_BUFFER'; value: string }
-  | { type: 'EDIT_COMMIT' }
-  | { type: 'EDIT_CANCEL' }
   | { type: 'SERVICE_SECTION'; section: ServiceSection }
   | { type: 'SERVICE_AXIS'; axis: Axis }
   | { type: 'SERVICE_ENTER' }
@@ -156,6 +147,7 @@ export type Action =
   | LadderAction
   | MpgAction
   | TestAction
+  | EditorAction
 
 export const initialState: MachineState = {
   ladder: initialLadder,
@@ -379,6 +371,10 @@ export function reducer(state: MachineState, a: Action): MachineState {
   }
   if (isTestAction(a)) {
     const r = testReducer(s, a)
+    return r.msg ? notify(r.s, r.msg, r.level) : r.s
+  }
+  if (isEditorAction(a)) {
+    const r = editorReducer(s, a)
     return r.msg ? notify(r.s, r.msg, r.level) : r.s
   }
   switch (a.type) {
@@ -1082,103 +1078,6 @@ export function reducer(state: MachineState, a: Action): MachineState {
 
     case 'HELP':
       return { ...s, help: a.open ?? !s.help }
-
-    case 'FILE_DIALOG': {
-      const open = a.open ?? !s.fileDialog
-      if (open && isBusy(s)) return notify(s, 'Остановите программу, чтобы открыть другой файл', 'warn')
-      return { ...s, fileDialog: open, fileCursor: s.activeFile, editor: open ? null : s.editor }
-    }
-
-    case 'FILE_CURSOR':
-      return { ...s, fileCursor: clamp(s.fileCursor + a.delta, 0, s.files.length - 1) }
-
-    case 'FILE_OPEN': {
-      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
-      const f = s.files[s.fileCursor]
-      return notify(
-        {
-          ...s,
-          activeFile: s.fileCursor,
-          fileDialog: false,
-          screen: MODE_LOCKED_SCREENS[s.mode].includes('prog') ? s.screen : 'prog',
-          editMode: false,
-          editor: null,
-          line: 0,
-          nextLine: 0,
-          cycleTime: 0,
-          sim: idleSim(),
-          cursor: { ...s.cursor, prog: 0 },
-        },
-        `Открыт файл ${f.name} — ${f.title}`,
-      )
-    }
-
-    case 'EDIT_MODE': {
-      const on = a.on ?? !s.editMode
-      if (on && isBusy(s)) return notify(s, 'Редактирование доступно только в останове', 'warn')
-      if (on && MODE_LOCKED_SCREENS[s.mode].includes('prog'))
-        return notify(s, `В режиме «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL.prog}» заблокирован`, 'warn')
-      if (on)
-        return notify(
-          { ...s, editMode: true, screen: 'prog' },
-          'Редактирование: Enter — изменить, Ins — вставить, Del — удалить',
-        )
-      return notify({ ...s, editMode: false, editor: null }, `Файл ${currentFile(s).name} сохранён`)
-    }
-
-    case 'EDIT_BEGIN': {
-      if (!s.editMode) return s
-      const i = s.cursor.prog
-      return { ...s, editor: { line: i, buffer: programLines(s)[i], inserted: false } }
-    }
-
-    case 'EDIT_INSERT': {
-      if (!s.editMode) return s
-      const i = s.cursor.prog + 1
-      const lines = [...programLines(s)]
-      lines.splice(i, 0, '')
-      const n = setLines(s, lines)
-      return { ...n, cursor: { ...s.cursor, prog: i }, editor: { line: i, buffer: '', inserted: true } }
-    }
-
-    case 'EDIT_DELETE': {
-      if (!s.editMode) return s
-      const lines = programLines(s)
-      if (lines.length <= 1) return notify(s, 'Нельзя удалить последний кадр', 'warn')
-      const i = s.cursor.prog
-      const n = setLines(
-        s,
-        lines.filter((_, idx) => idx !== i),
-      )
-      return notify(
-        { ...n, cursor: { ...s.cursor, prog: clamp(i, 0, lines.length - 2) }, line: 0, nextLine: 0 },
-        `Кадр ${i + 1} удалён`,
-      )
-    }
-
-    case 'EDIT_BUFFER':
-      return s.editor ? { ...s, editor: { ...s.editor, buffer: a.value.toUpperCase() } } : s
-
-    case 'EDIT_COMMIT': {
-      if (!s.editor) return s
-      const value = s.editor.buffer.trim()
-      if (!value) return reducer(s, { type: 'EDIT_CANCEL' })
-      const lines = programLines(s).map((l, idx) => (idx === s.editor!.line ? value : l))
-      return notify({ ...setLines(s, lines), editor: null }, `Кадр ${s.editor.line + 1} изменён`)
-    }
-
-    case 'EDIT_CANCEL': {
-      if (!s.editor) return s
-      if (s.editor.inserted) {
-        const i = s.editor.line
-        const n = setLines(
-          s,
-          programLines(s).filter((_, idx) => idx !== i),
-        )
-        return { ...n, editor: null, cursor: { ...s.cursor, prog: Math.max(0, i - 1) } }
-      }
-      return { ...s, editor: null }
-    }
 
     default:
       return s

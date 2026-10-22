@@ -29,7 +29,54 @@
 
 #include "manifest_check.h"   // gv::manifest::repoRoot: the same root search as in the check probes
 
+// windows.h is needed for wide argument parsing: the repository path lies in a directory
+// with Cyrillic ("AI проекты"), and the narrow argv carries it in the console encoding.
+#ifdef _WIN32
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#endif
+
 namespace {
+
+// The repository path lies in a directory with Cyrillic: the arguments are taken in wide
+// form and converted to UTF-8, and files are opened via std::filesystem::u8path. Otherwise
+// the path would not be found and the run would abort on the invalid bytes.
+std::string toUtf8(const std::wstring& w)
+{
+#ifdef _WIN32
+    const int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (n <= 1) {
+        return {};
+    }
+    std::string out(static_cast<std::size_t>(n - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, out.data(), n, nullptr, nullptr);
+    return out;
+#else
+    return std::string(w.begin(), w.end());
+#endif
+}
+
+std::vector<std::string> probeArgs(int argc, char** argv)
+{
+#ifdef _WIN32
+    int count = 0;
+    LPWSTR* wargv = CommandLineToArgvW(GetCommandLineW(), &count);
+    std::vector<std::string> out;
+    for (int i = 0; i < count; ++i) {
+        out.push_back(toUtf8(wargv[i]));
+    }
+    LocalFree(wargv);
+    return out;
+#else
+    std::vector<std::string> out;
+    for (int i = 0; i < argc; ++i) {
+        out.push_back(argv[i]);
+    }
+    return out;
+#endif
+}
 
 std::string readText(const std::string& utf8Path, bool& ok)
 {
@@ -115,9 +162,10 @@ std::string versionFromQml(const std::string& text)
 
 int main(int argc, char* argv[])
 {
+    const std::vector<std::string> args = probeArgs(argc, argv);
     std::string root;
-    for (int i = 1; i < argc; ++i) {
-        const std::string arg(argv[i]);
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        const std::string& arg = args[i];
         if (!arg.empty() && arg[0] != '-') {
             root = arg;
         }

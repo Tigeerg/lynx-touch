@@ -167,6 +167,7 @@ if ($cppReady) {
   Run-Tool 'silhouette_probe --manifest' { & 'build/edges/silhouette_probe.exe' --manifest $manifest }
   Run-Tool 'tangents_probe --manifest' { & 'build/edges/tangents_probe.exe' --manifest $manifest }
   Run-Tool 'version_probe (версии проектов)' { & 'build/edges/version_probe.exe' }
+  Run-Tool 'version_probe (путь с кириллицей)' { & 'build/edges/version_probe.exe' "$PWD" }
   Run-Tool 'stock_sim_probe (аналитика поля съёма)' { & 'build/edges/stock_sim_probe.exe' }
   Run-Tool 'gcodeviewer --smoke' { & 'build/viewer/gcodeviewer.exe' --smoke }
   Run-Tool 'stock_bind_probe (привязка поля к траектории)' { & 'build/viewer/stock_bind_probe.exe' }

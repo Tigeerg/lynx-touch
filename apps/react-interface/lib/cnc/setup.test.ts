@@ -76,3 +76,27 @@ describe('наладка: смещения, инструмент, обнулен
     expect(s.relOrigin).toEqual(machine)
   })
 })
+
+describe('наладка: пустой список не роняет экран', () => {
+  const empty = { ...initialState, offsets: [], tools: [] }
+
+  it.each([{ type: 'OFFSET_ACTIVATE' }, { type: 'OFFSET_TEACH', axis: 'X' }, { type: 'OFFSET_CLEAR' }] as const)(
+    'смещение под курсором: $type отвечает сообщением',
+    (action) => {
+      const r = setupReducer(empty, action)
+
+      expect(r.msg).toBeTruthy()
+      expect(r.s.offsets).toEqual([])
+    },
+  )
+
+  it.each([{ type: 'TOOL_CALL' }, { type: 'TOOL_MEASURE' }] as const)(
+    'инструмент под курсором: $type отвечает сообщением',
+    (action) => {
+      const r = setupReducer({ ...empty, mode: 'JOG' }, action)
+
+      expect(r.msg).toBeTruthy()
+      expect(r.s.tools).toEqual([])
+    },
+  )
+})

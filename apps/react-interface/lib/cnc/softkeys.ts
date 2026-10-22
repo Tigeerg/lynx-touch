@@ -77,6 +77,13 @@ export const SERVICE_ICON: Record<ServiceSection, LucideIcon> = {
 
 export const SOFTKEY_SLOTS = 8
 
+/**
+ * The code of the offset under the cursor. The key must render even when the list is empty (the
+ * cursor reads an element that is not there), so an absent row shows a dash instead of taking
+ * the bar down.
+ */
+const offsetCode = (s: MachineState) => s.offsets[s.cursor.offset]?.code ?? '—'
+
 // The label wraps inside the slot, so what must fit on one line is a single word (CLAUDE.md,
 // section 5: the panel is 1024 wide, the slot is a fixed width, so the length of the line is
 // part of the check, not taste). The panel is 1024 wide, the bar is eight columns with a
@@ -319,7 +326,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
             disabled: busy,
           },
           {
-            label: `Записать в ${s.offsets[s.cursor.offset].code}`,
+            label: `Записать в ${offsetCode(s)}`,
             icon: Save,
             action: { type: 'PROBE_WRITE' },
             active: p.written,
@@ -356,7 +363,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
         { label: 'Привязка Z', icon: Crosshair, action: { type: 'OFFSET_TEACH', axis: 'Z' }, disabled: busy },
         { label: 'Привязка A', icon: Crosshair, action: { type: 'OFFSET_TEACH', axis: 'A' }, disabled: busy },
         {
-          label: `Обнулить ${s.offsets[s.cursor.offset].code}`,
+          label: `Обнулить ${offsetCode(s)}`,
           icon: Eraser,
           action: { type: 'OFFSET_CLEAR' },
           disabled: busy,

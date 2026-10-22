@@ -70,4 +70,25 @@ describe('софт-кеи: подпись влезает в слот', () => {
   it('потолок — 14 символов: замер строки слота панели, а не вкус', () => {
     expect(SOFTKEY_LABEL_MAX).toBe(14)
   })
+
+  it('подпись смещения переживает пустой список', () => {
+    const s: MachineState = { ...initialState, screen: 'offset', offsets: [] }
+
+    expect(() => getSoftkeys(s)).not.toThrow()
+    const labels = getSoftkeys(s)
+      .filter((k): k is NonNullable<typeof k> => !!k)
+      .map((k) => k.label)
+    expect(labels.some((label) => label.includes('—'))).toBe(true)
+  })
+
+  it('подпись записи щупа переживает пустой список', () => {
+    const s: MachineState = {
+      ...initialState,
+      screen: 'offset',
+      probe: { ...initialState.probe, open: true },
+      offsets: [],
+    }
+
+    expect(() => getSoftkeys(s)).not.toThrow()
+  })
 })

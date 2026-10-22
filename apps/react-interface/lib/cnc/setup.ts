@@ -118,38 +118,54 @@ export function setupReducer(s: MachineState, a: SetupAction): Result {
       }
     }
 
-    case 'OFFSET_ACTIVATE':
+    case 'OFFSET_ACTIVATE': {
       if (isBusy(s)) return { s, msg: 'Остановите программу', level: 'warn' }
-      return { s: { ...s, activeOffset: s.cursor.offset }, msg: `Активно смещение ${s.offsets[s.cursor.offset].code}` }
+      const offset = s.offsets[s.cursor.offset]
+      if (!offset) return { s, msg: 'Смещение не выбрано', level: 'warn' }
+      return { s: { ...s, activeOffset: s.cursor.offset }, msg: `Активно смещение ${offset.code}` }
+    }
 
     case 'OFFSET_TEACH': {
       if (isBusy(s)) return { s, msg: 'Остановите программу', level: 'warn' }
       const i = s.cursor.offset
+      const offset = s.offsets[i]
+      if (!offset) return { s, msg: 'Смещение не выбрано', level: 'warn' }
       const offsets = s.offsets.map((o, idx) =>
         idx === i ? { ...o, values: { ...o.values, [a.axis]: s.machine[a.axis] } } : o,
       )
-      return { s: { ...s, offsets }, msg: `${s.offsets[i].code} ${a.axis} = ${s.machine[a.axis].toFixed(3)}` }
+      return { s: { ...s, offsets }, msg: `${offset.code} ${a.axis} = ${s.machine[a.axis].toFixed(3)}` }
     }
 
     case 'OFFSET_CLEAR': {
       if (isBusy(s)) return { s, msg: 'Остановите программу', level: 'warn' }
       const i = s.cursor.offset
+      const offset = s.offsets[i]
+      if (!offset) return { s, msg: 'Смещение не выбрано', level: 'warn' }
       const offsets = s.offsets.map((o, idx) => (idx === i ? { ...o, values: zeroAxes() } : o))
-      return { s: { ...s, offsets }, msg: `${s.offsets[i].code} обнулено` }
+      return { s: { ...s, offsets }, msg: `${offset.code} обнулено` }
     }
 
     case 'TOOL_CALL': {
       if (s.mode === 'AUTO' || isBusy(s)) return { s, msg: 'Смена инструмента в режиме РУЧНОЙ / MDI', level: 'warn' }
-      const t = s.tools[s.cursor.tool].number
-      return { s: { ...s, tool: t, pendingTool: t }, msg: `Инструмент T${String(t).padStart(2, '0')} в шпинделе` }
+      const tool = s.tools[s.cursor.tool]
+      if (!tool) return { s, msg: 'Инструмент не выбран', level: 'warn' }
+      return {
+        s: { ...s, tool: tool.number, pendingTool: tool.number },
+        msg: `Инструмент T${String(tool.number).padStart(2, '0')} в шпинделе`,
+      }
     }
 
     case 'TOOL_MEASURE': {
       if (isBusy(s)) return { s, msg: 'Остановите программу', level: 'warn' }
       const i = s.cursor.tool
+      const measured = s.tools[i]
+      if (!measured) return { s, msg: 'Инструмент не выбран', level: 'warn' }
       const length = Math.round((60 + ((Math.abs(s.machine.Z) * 7.31 + i * 13.7) % 70)) * 1000) / 1000
       const tools = s.tools.map((t, idx) => (idx === i ? { ...t, length } : t))
-      return { s: { ...s, tools }, msg: `T${String(tools[i].number).padStart(2, '0')}: длина ${length.toFixed(3)} мм` }
+      return {
+        s: { ...s, tools },
+        msg: `T${String(measured.number).padStart(2, '0')}: длина ${length.toFixed(3)} мм`,
+      }
     }
 
     case 'TOOL_RESET_LIFE': {

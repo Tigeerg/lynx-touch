@@ -52,6 +52,12 @@ export function sameLadderMem(a: LadderMem, b: LadderMem) {
   )
 }
 
+/** Shallow equality of two signal maps: TICK keeps the state reference when nothing changed. */
+export function sameLadderSignals(a: Record<string, boolean>, b: Record<string, boolean>) {
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k])
+}
+
 function resolveOperand(
   x: string,
   signals: Record<string, boolean>,

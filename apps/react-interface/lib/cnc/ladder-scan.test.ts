@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { initialLadder } from './ladder'
 import { evaluateLadder } from './ladder-scan'
-import { initialState } from './machine'
+import { initialState, reducer } from './machine'
 import type { LadderCoil, LadderContact, LadderRung, MachineState } from './types'
 
 const contact = (addr: string): LadderContact => ({ addr, label: addr })
@@ -79,5 +79,23 @@ describe('ladder scan: presets', () => {
       s = tick({ ...s, spindleOn: false }).s
     }
     expect(s.ladder.mem.counters.C0.q).toBe(true)
+  })
+})
+
+describe('ladder scan: the result lives in the state', () => {
+  it('keeps the last scan signals so the monitor does not rescan', () => {
+    const s = reducer({ ...initialState, run: 'RUN', spindleOn: true }, { type: 'TICK', dt: 16 })
+
+    expect(s.ladder.signals['M0.2']).toBe(true)
+    expect(s.ladder.signals['M0.0']).toBe(true)
+    expect(s.ladder.signals).toEqual(evaluateLadder(s).signals)
+  })
+
+  it('keeps the state reference when the scan did not change, so a tick does not rerender', () => {
+    // The first tick fills the state's signals; from then on an idle tick changes nothing and must
+    // hand back the same object, or React re-renders the panel twenty times a second.
+    const once = reducer({ ...initialState }, { type: 'TICK', dt: 0 })
+
+    expect(reducer(once, { type: 'TICK', dt: 0 })).toBe(once)
   })
 })

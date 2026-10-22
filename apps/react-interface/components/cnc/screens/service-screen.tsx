@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -13,7 +13,6 @@ import {
   Settings,
 } from 'lucide-react'
 import type { Action } from '@/lib/cnc/machine'
-import { evaluateLadder } from '@/lib/cnc/ladder-scan'
 import {
   formatParam,
   formatValue,
@@ -47,7 +46,11 @@ import { Keycap, Panel } from '../primitives'
 
 export function ServiceScreen({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
   const { section, write, restartPending, focus, saved } = state.service
-  const unsaved = unsavedIds(state.params, saved).length
+  const unsaved = useMemo(() => unsavedIds(state.params, saved).length, [state.params, saved])
+  // The per-axis rows are rebuilt into new objects on every render otherwise: 18 of them for the
+  // joint table alone, while only the axis changes their content.
+  const jointDefs = useMemo(() => JOINT_PARAMS.map((d) => jointParam(d, state.service.axis)), [state.service.axis])
+  const pidDefs = useMemo(() => PID_PARAMS.map((d) => jointParam(d, state.service.axis)), [state.service.axis])
   const activeNavRef = useRef<HTMLButtonElement>(null)
   const [collapsed, setCollapsed] = useState(false)
   const [prevFocus, setPrevFocus] = useState(focus)
@@ -212,13 +215,13 @@ export function ServiceScreen({ state, dispatch }: { state: MachineState; dispat
           {section === 'joints' && (
             <>
               <AxisSelector state={state} />
-              <ParamTable state={state} defs={JOINT_PARAMS.map((d) => jointParam(d, state.service.axis))} />
+              <ParamTable state={state} defs={jointDefs} />
             </>
           )}
           {section === 'pid' && (
             <>
               <AxisSelector state={state} />
-              <ParamTable state={state} defs={PID_PARAMS.map((d) => jointParam(d, state.service.axis))} />
+              <ParamTable state={state} defs={pidDefs} />
             </>
           )}
           {section === 'hal' && <HalMonitor state={state} />}
@@ -403,7 +406,9 @@ function IoLed({ name, on }: { name: string; on: boolean }) {
 }
 
 function MesaIo({ state }: { state: MachineState }) {
-  const { signals } = evaluateLadder(state)
+  // The signals come from the last TICK scan (state.ladder.signals): scanning again here was a
+  // second evaluateLadder in the same render as the one in the cycle reducer.
+  const signals = state.ladder.signals
   return (
     <div className="flex shrink-0 items-center gap-6 border-b px-3 py-2">
       <div className="flex items-center gap-3">

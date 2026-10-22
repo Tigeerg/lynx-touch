@@ -127,6 +127,7 @@ export const initialLadder: LadderState = {
   pick: 0,
   form: null,
   mem: emptyMem(),
+  signals: {},
 }
 
 /** The active scheme; a stale index falls back to the first one rather than reading undefined. */

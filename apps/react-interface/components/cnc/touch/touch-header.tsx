@@ -4,16 +4,9 @@ import { currentFile, type Action } from '@/lib/cnc/machine'
 import type { MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { RUN_STYLE, WORKPLACE_ICON } from '../header-bar'
+import { Clock } from '../clock'
 
-export function TouchHeader({
-  state,
-  clock,
-  dispatch,
-}: {
-  state: MachineState
-  clock: string | null
-  dispatch: (a: Action) => void
-}) {
+export function TouchHeader({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
   const activeAlarms = state.alarms.filter((a) => a.active)
   const hasError = activeAlarms.some((a) => a.level === 'error')
   const ModeIcon = WORKPLACE_ICON[state.workplace]
@@ -83,9 +76,7 @@ export function TouchHeader({
       </button>
 
       <div className="flex w-[104px] shrink-0 items-center justify-center rounded-md border bg-card">
-        <time className="font-mono text-lg font-bold tabular-nums" suppressHydrationWarning>
-          {clock ?? '--:--:--'}
-        </time>
+        <Clock className="font-mono text-lg font-bold tabular-nums" />
       </div>
     </header>
   )

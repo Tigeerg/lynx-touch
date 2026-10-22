@@ -4,6 +4,7 @@ import { currentFile } from '@/lib/cnc/machine'
 import { paramValue, THEME_OPTIONS, THEME_PARAM } from '@/lib/cnc/service-data'
 import { WORKPLACES, type MachineState, type Workplace } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
+import { Clock } from './clock'
 
 export const WORKPLACE_ICON: Record<Workplace, LucideIcon> = {
   SETUP: Wrench,
@@ -21,7 +22,6 @@ export const RUN_STYLE: Record<MachineState['run'], string> = {
 
 export function HeaderBar({
   state,
-  clock,
   focused,
   hardwareOpen,
   onToggleHardware,
@@ -29,7 +29,6 @@ export function HeaderBar({
   onWorkplace,
 }: {
   state: MachineState
-  clock: string | null
   focused: boolean
   hardwareOpen: boolean
   onToggleHardware: () => void
@@ -156,9 +155,7 @@ export function HeaderBar({
           title={focused ? 'Пульт принимает нажатия клавиш' : 'Кликните по экрану, чтобы активировать клавиатуру'}
           className={cn('size-2 rounded-full', focused ? 'bg-success' : 'bg-muted-foreground/50')}
         />
-        <time className="font-mono text-base font-bold tabular-nums" suppressHydrationWarning>
-          {clock ?? '--:--:--'}
-        </time>
+        <Clock className="font-mono text-base font-bold tabular-nums" />
       </div>
     </header>
   )

@@ -30,7 +30,7 @@ const SCREEN_W = 864
 const SCREEN_H = 1536
 
 export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachine> }) {
-  const { state, dispatch, softkeys, clock, pathView } = machine
+  const { state, dispatch, softkeys, pathView } = machine
   const showPath = state.params[TOOLPATH_PARAM] === 1 || state.sim.active
   const activeAlarms = state.alarms.filter((a) => a.active).length
   const testMode = state.workplace === 'TEST'
@@ -52,7 +52,7 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
             </span>
           </div>
         )}
-        <TouchHeader state={state} clock={clock} dispatch={dispatch} />
+        <TouchHeader state={state} dispatch={dispatch} />
         <TouchTabs
           screen={state.screen}
           workplace={state.workplace}

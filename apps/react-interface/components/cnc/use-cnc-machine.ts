@@ -131,18 +131,13 @@ function keyToAction(state: MachineState, e: KeyboardEvent): Action | null {
 
 export function useCncMachine() {
   const [state, dispatch] = useReducer(reducer, initialState)
-  const [clock, setClock] = useState<string | null>(null)
   const [focused, setFocused] = useState(true)
   const softkeys = getSoftkeys(state)
   const cycleView = () => dispatch({ type: 'PATH_VIEW_CYCLE' })
 
   useEffect(() => {
     const id = window.setInterval(() => dispatch({ type: 'TICK', dt: TICK_MS }), TICK_MS)
-    const clockId = window.setInterval(() => setClock(new Date().toLocaleTimeString('ru-RU', { hour12: false })), 1000)
-    return () => {
-      window.clearInterval(id)
-      window.clearInterval(clockId)
-    }
+    return () => window.clearInterval(id)
   }, [])
 
   const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
@@ -193,5 +188,5 @@ export function useCncMachine() {
     root.classList.toggle('theme-minimal-dark', theme === 1)
   }, [theme])
 
-  return { state, dispatch, softkeys, clock, focused, pathView: state.test.view, cycleView }
+  return { state, dispatch, softkeys, focused, pathView: state.test.view, cycleView }
 }

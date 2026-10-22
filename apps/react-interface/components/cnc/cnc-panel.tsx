@@ -37,7 +37,7 @@ import { ServiceScreen } from './screens/service-screen'
 import { AlarmScreen, OffsetScreen, ToolScreen } from './screens/table-screens'
 
 export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine> }) {
-  const { state, dispatch, softkeys, clock, focused, pathView } = machine
+  const { state, dispatch, softkeys, focused, pathView } = machine
   const [hardware, setHardware] = useState(true)
 
   const showPath = state.params[TOOLPATH_PARAM] === 1 || state.sim.active
@@ -70,7 +70,6 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
       )}
       <HeaderBar
         state={state}
-        clock={clock}
         focused={focused}
         hardwareOpen={hardware}
         onToggleHardware={() => setHardware((v) => !v)}

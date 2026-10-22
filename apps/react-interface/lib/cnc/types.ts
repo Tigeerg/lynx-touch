@@ -232,6 +232,8 @@ export interface LadderState {
   pick: number
   form: LadderForm | null
   mem: LadderMem
+  /** The signal map of the last PLC scan (TICK), so the monitor reads it instead of rescanning. */
+  signals: Record<string, boolean>
 }
 
 export interface MachineState {

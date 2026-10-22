@@ -13,7 +13,7 @@ import { motionSpeed, toWork, workOffset, zeroAxes } from './coords'
 import { PROBE_STEP_MEASURE, PROBE_TOOL } from './probe'
 import { abortProbe, probeTick } from './probe-exec'
 import { idleSim, tickSim } from './prog'
-import { evaluateLadder, sameLadderMem } from './ladder-scan'
+import { evaluateLadder, sameLadderMem, sameLadderSignals } from './ladder-scan'
 import type { Result } from './subsystem'
 import { AXES, MDI_HISTORY_SIZE, type Axes, type MachineState } from './types'
 
@@ -154,7 +154,8 @@ export function cycleReducer(s: MachineState, a: CycleAction): Result {
       }
       if (n.lube > 0) n = { ...n, lube: Math.max(0, n.lube - a.dt) }
       const scan = evaluateLadder(n, undefined, a.dt)
-      if (!sameLadderMem(scan.mem, n.ladder.mem)) n = { ...n, ladder: { ...n.ladder, mem: scan.mem } }
+      if (!sameLadderMem(scan.mem, n.ladder.mem) || !sameLadderSignals(scan.signals, n.ladder.signals))
+        n = { ...n, ladder: { ...n.ladder, mem: scan.mem, signals: scan.signals } }
       n = tickSim(n, a.dt)
       if (n.run !== 'RUN') return { s: n }
       if (n.probe.running) {

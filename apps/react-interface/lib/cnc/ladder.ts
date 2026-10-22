@@ -1,3 +1,6 @@
+import { clampIndex } from './clamp'
+import { stamp } from './files'
+import { isBusy } from './guards'
 import type {
   CoilKind,
   CompareOp,
@@ -172,13 +175,6 @@ export const isLadderAction = (a: { type: string }): a is LadderAction => a.type
 
 type Result = { s: MachineState; msg?: string; level?: Message['level'] }
 
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
-const isBusy = (s: MachineState) => s.run === 'RUN' || s.run === 'HOLD'
-const stamp = () =>
-  new Date()
-    .toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-    .replace(',', '')
-
 const cloneContact = (c: LadderContact): LadderContact => ({ ...c, ...(c.cmp ? { cmp: { ...c.cmp } } : {}) })
 const cloneRungs = (rungs: LadderRung[]): LadderRung[] =>
   rungs.map((r) => ({
@@ -273,7 +269,7 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
       if (!L.draft || L.manager || L.form) return { s }
       const { col, contacts, path } = ladderCursor(s)
       const maxCol = path === 0 ? contacts.length : Math.max(0, contacts.length - 1)
-      return { s: patch(s, { col: clamp(col + a.dir, 0, maxCol) }) }
+      return { s: patch(s, { col: clampIndex(col, a.dir, maxCol + 1) }) }
     }
 
     case 'LADDER_CYCLE_PATH': {
@@ -543,7 +539,7 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
       return { s: patch(s, { manager: a.open, pick: L.active, form: null }) }
 
     case 'LADDER_PICK_MOVE':
-      return { s: patch(s, { pick: clamp(L.pick + a.delta, 0, L.schemes.length - 1) }) }
+      return { s: patch(s, { pick: clampIndex(L.pick, a.delta, L.schemes.length) }) }
 
     case 'LADDER_LOAD': {
       if (L.dirty) return { s, msg: DIRTY_BLOCK, level: 'warn' }

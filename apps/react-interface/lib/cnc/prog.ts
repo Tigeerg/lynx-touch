@@ -4,14 +4,13 @@
 // the tools/check.ps1 mark. A result is { s, msg, level }; machine.ts shows the message.
 import { SCREEN_LABEL, WORKPLACE_LABEL } from './data'
 import { programLines, setLines } from './files'
+import { isBusy } from './guards'
 import { pushAlarm } from './messages'
 import { PROBE_TOOL } from './probe'
 import { BROKEN_TOL_MM, sensorLength } from './tool-check'
 import { MODE_LOCKED_SCREENS, type MachineState, type Message } from './types'
 
 const SIM_STEP_MS = 120
-
-const isBusy = (s: MachineState) => s.run === 'RUN' || s.run === 'HOLD'
 
 const escapeRegExp = (t: string): string => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 

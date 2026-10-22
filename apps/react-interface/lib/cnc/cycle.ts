@@ -18,7 +18,9 @@ import { AXES, MDI_HISTORY_SIZE, type Axes, type MachineState, type Message } fr
 
 export function executeLine(state: MachineState, index: number): MachineState {
   const lines = programLines(state)
-  if (index >= lines.length) return { ...state, programEnd: true }
+  // A negative index is a caller defect (a stale cursor): lines[-1] is undefined, and parseWords
+  // threw on it, taking the whole panel down. End the program instead of crashing.
+  if (index < 0 || index >= lines.length) return { ...state, programEnd: true }
   if (state.blockSkip && lines[index].trimStart().startsWith('/')) {
     return { ...state, line: index, nextLine: index + 1, dwell: 0 }
   }

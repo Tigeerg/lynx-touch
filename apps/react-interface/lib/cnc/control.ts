@@ -4,13 +4,12 @@
 // ladder.ts and prog.ts: the reducer composes the subsystems, and the size of the machine
 // is held by the tools/check.ps1 mark. A result is { s, msg, level }; machine.ts shows the
 // message.
+import { clamp, clampIndex } from './clamp'
 import { RAPID_JOG_MULT, RAPID_STEPS, SOFT_LIMITS } from './data'
 import { MACHINE_LOCK_MSG, blockedFromMotion, isBusy } from './guards'
 import { PROBE_TOOL } from './probe'
 import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM } from './service-data'
 import { MPG_STEPS, type Axis, type MachineState, type Message } from './types'
-
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
 
 export type ControlToggleKey =
   | 'singleBlock'
@@ -97,7 +96,7 @@ export function controlReducer(s: MachineState, a: ControlAction): Result {
         return { s: { ...s, feedOverride: clamp(s.feedOverride + a.dir * 10, 0, s.params[MAX_FEED_PARAM]) } }
       if (a.kind === 'spindle')
         return { s: { ...s, spindleOverride: clamp(s.spindleOverride + a.dir * 10, 50, s.params[MAX_SPINDLE_PARAM]) } }
-      const idx = clamp(RAPID_STEPS.indexOf(s.rapidOverride) + a.dir, 0, RAPID_STEPS.length - 1)
+      const idx = clampIndex(RAPID_STEPS.indexOf(s.rapidOverride), a.dir, RAPID_STEPS.length)
       return { s: { ...s, rapidOverride: RAPID_STEPS[idx] } }
     }
 

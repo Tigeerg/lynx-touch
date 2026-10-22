@@ -4,12 +4,11 @@
 // size of the machine is held by the tools/check.ps1 mark. The measurement run itself
 // (probeTick) lives in probe-exec.ts. A result is { s, msg, level }; machine.ts shows the
 // message.
+import { clamp } from './clamp'
 import { WORKPLACE_LABEL } from './data'
 import { isBusy } from './guards'
 import { PROBE_STEP_MEASURE, PROBE_STEP_RESULT, PROBE_TOOL } from './probe'
 import { MODE_LOCKED_SCREENS, type MachineState, type Message } from './types'
-
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
 
 export type ProbeWizardAction =
   | { type: 'PROBE_OPEN'; open?: boolean }

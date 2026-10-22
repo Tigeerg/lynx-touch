@@ -8,13 +8,12 @@
 // caller passes its reducer as dispatch - here the subsystem hands the action back up
 // instead of importing machine.ts. A result is { s, msg, level }; machine.ts shows the
 // message.
+import { clamp } from './clamp'
 import { isBusy } from './guards'
 import type { Action } from './machine'
 import { cancelEdit, markSaved, setParam } from './service-edit'
 import { INI_FILE, SERVICE_PASSWORD, defaultParams, hasServiceList, paramAt, unsavedIds } from './service-data'
 import { AXES, SERVICE_SECTIONS, type Axis, type MachineState, type Message, type ServiceSection } from './types'
-
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
 
 export type ServiceAction =
   | { type: 'SERVICE_SECTION'; section: ServiceSection }

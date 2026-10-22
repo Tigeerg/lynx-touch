@@ -6,13 +6,12 @@
 // Editing works on a block buffer (editor): Enter edits, Ins inserts, Del deletes;
 // commit writes the buffer into the file, cancel drops it. The file write goes through
 // files.ts (setLines); the file state lives in MachineState.
+import { clampIndex } from './clamp'
 import { SCREEN_LABEL, WORKPLACE_LABEL } from './data'
 import { currentFile, programLines, setLines } from './files'
 import { isBusy } from './guards'
 import { idleSim } from './prog'
 import { MODE_LOCKED_SCREENS, type MachineState, type Message } from './types'
-
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
 
 export type EditorAction =
   | { type: 'FILE_DIALOG'; open?: boolean }
@@ -52,7 +51,7 @@ export function editorReducer(s: MachineState, a: EditorAction): Result {
     }
 
     case 'FILE_CURSOR':
-      return { s: { ...s, fileCursor: clamp(s.fileCursor + a.delta, 0, s.files.length - 1) } }
+      return { s: { ...s, fileCursor: clampIndex(s.fileCursor, a.delta, s.files.length) } }
 
     case 'FILE_OPEN': {
       if (isBusy(s)) return { s, msg: 'Остановите программу', level: 'warn' }
@@ -117,7 +116,7 @@ export function editorReducer(s: MachineState, a: EditorAction): Result {
         lines.filter((_, idx) => idx !== i),
       )
       return {
-        s: { ...n, cursor: { ...s.cursor, prog: clamp(i, 0, lines.length - 2) }, line: 0, nextLine: 0 },
+        s: { ...n, cursor: { ...s.cursor, prog: clampIndex(i, 0, lines.length - 1) }, line: 0, nextLine: 0 },
         msg: `Кадр ${i + 1} удалён`,
       }
     }

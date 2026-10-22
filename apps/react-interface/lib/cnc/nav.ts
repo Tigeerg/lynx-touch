@@ -5,13 +5,13 @@
 // the whole machine (a screen change, the mode cycle, the cursor handing PARAM_ADJUST /
 // SERVICE_SECTION / LADDER_PICK_MOVE up), so the caller passes its reducer as dispatch. A
 // result is { s, msg, level }; machine.ts shows the message.
+import { clampIndex } from './clamp'
 import { applyBlock } from './cycle'
 import { MODE_LABEL, SCREEN_LABEL, WORKPLACE_LABEL } from './data'
 import { currentFile, programLines } from './files'
 import { isBusy } from './guards'
 import { listLength } from './list'
 import type { Action } from './machine'
-import { notify } from './messages'
 import { PROBE_CYCLES } from './probe'
 import { idleSim } from './prog'
 import { cancelEdit } from './service-edit'
@@ -29,8 +29,6 @@ import {
   type Screen,
   type Workplace,
 } from './types'
-
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
 
 export type NavAction =
   | { type: 'SET_MODE'; mode: Mode }
@@ -109,7 +107,7 @@ export function navReducer(s: MachineState, a: NavAction, dispatch: Dispatch): R
         return {
           s: {
             ...s,
-            probe: { ...s.probe, cycle: clamp(s.probe.cycle + Math.sign(a.delta), 0, PROBE_CYCLES.length - 1) },
+            probe: { ...s.probe, cycle: clampIndex(s.probe.cycle, Math.sign(a.delta), PROBE_CYCLES.length) },
           },
         }
       }
@@ -122,7 +120,7 @@ export function navReducer(s: MachineState, a: NavAction, dispatch: Dispatch): R
           return {
             s: dispatch(s, {
               type: 'SERVICE_SECTION',
-              section: SERVICE_SECTIONS[clamp(i + a.delta, 0, SERVICE_SECTIONS.length - 1)],
+              section: SERVICE_SECTIONS[clampIndex(i, a.delta, SERVICE_SECTIONS.length)],
             }),
           }
         }
@@ -132,7 +130,7 @@ export function navReducer(s: MachineState, a: NavAction, dispatch: Dispatch): R
         if (s.ladder.manager) return { s: dispatch(s, { type: 'LADDER_PICK_MOVE', delta: a.delta }) }
       }
       const len = listLength(s, s.screen)
-      return { s: { ...s, cursor: { ...s.cursor, [s.screen]: clamp(s.cursor[s.screen] + a.delta, 0, len - 1) } } }
+      return { s: { ...s, cursor: { ...s.cursor, [s.screen]: clampIndex(s.cursor[s.screen], a.delta, len) } } }
     }
 
     case 'PROG_REWIND':
@@ -144,7 +142,11 @@ export function navReducer(s: MachineState, a: NavAction, dispatch: Dispatch): R
 
     case 'PROG_TO_CURSOR': {
       if (isBusy(s)) return { s, msg: 'Остановите программу', level: 'warn' }
-      const idx = s.cursor.prog
+      // The cursor can be stale or past the end (the file was edited or reloaded): an index out
+      // of range used to travel on as line/nextLine, and start then read the program as
+      // undefined. An empty program keeps the start at block 0.
+      const lines = programLines(s)
+      const idx = clampIndex(s.cursor.prog, 0, lines.length)
       let base: MachineState = {
         ...s,
         sim: idleSim(),
@@ -155,7 +157,7 @@ export function navReducer(s: MachineState, a: NavAction, dispatch: Dispatch): R
         programEnd: false,
         message: null,
       }
-      for (let i = 0; i < idx; i++) base = applyBlock(base, programLines(s)[i], false)
+      for (let i = 0; i < idx; i++) base = applyBlock(base, lines[i], false)
       const codes = [base.offsets[base.activeOffset].code]
       if (base.spindleOn) codes.push(`S${base.spindleSet} ${base.spindleDir === 1 ? 'M3' : 'M4'}`)
       if (base.coolant) codes.push('M8')

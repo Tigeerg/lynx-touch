@@ -1,21 +1,21 @@
-import { INITIAL_ALARMS, INITIAL_OFFSETS, INITIAL_TOOLS, PROGRAM_FILES } from './data'
-import { cycleReducer, isCycleAction, type CycleAction } from './cycle'
-import { isNavAction, navReducer, type NavAction } from './nav'
-import { initialLadder, isLadderAction, ladderReducer, type LadderAction } from './ladder'
-import { idleSim, isProgAction, progReducer, type ProgAction } from './prog'
-import { editorReducer, isEditorAction, type EditorAction } from './editor'
-import { isSetupAction, setupReducer, type SetupAction } from './setup'
+import { clampIndex } from './clamp'
 import { controlReducer, isControlAction, type ControlAction } from './control'
-import { isProbeWizardAction, probeWizardReducer, type ProbeWizardAction } from './probe-wizard'
-import { isServiceAction, serviceReducer, type ServiceAction } from './service'
-import { isMpgAction, mpgReducer, type MpgAction } from './mpg'
-import { initialTest, isTestAction, testReducer, type TestAction } from './test'
-import { defaultParams, THEME_OPTIONS, THEME_PARAM, TOOLPATH_PARAM, UI_MODE_PARAM } from './service-data'
-import { MODE_START_SCREEN, type MachineState } from './types'
-
 import { zeroAxes } from './coords'
-import { markSaved } from './service-edit'
+import { cycleReducer, isCycleAction, type CycleAction } from './cycle'
+import { INITIAL_ALARMS, INITIAL_OFFSETS, INITIAL_TOOLS, PROGRAM_FILES } from './data'
+import { editorReducer, isEditorAction, type EditorAction } from './editor'
+import { initialLadder, isLadderAction, ladderReducer, type LadderAction } from './ladder'
 import { notify } from './messages'
+import { isMpgAction, mpgReducer, type MpgAction } from './mpg'
+import { isNavAction, navReducer, type NavAction } from './nav'
+import { isProbeWizardAction, probeWizardReducer, type ProbeWizardAction } from './probe-wizard'
+import { idleSim, isProgAction, progReducer, type ProgAction } from './prog'
+import { isServiceAction, serviceReducer, type ServiceAction } from './service'
+import { defaultParams, THEME_OPTIONS, THEME_PARAM, TOOLPATH_PARAM, UI_MODE_PARAM } from './service-data'
+import { markSaved } from './service-edit'
+import { isSetupAction, setupReducer, type SetupAction } from './setup'
+import { initialTest, isTestAction, testReducer, type TestAction } from './test'
+import { MODE_START_SCREEN, type MachineState } from './types'
 
 export { distanceToGo, motionSpeed, toWork, workOffset } from './coords'
 export { currentFile, programLines } from './files'
@@ -131,8 +131,6 @@ export const initialState: MachineState = {
   params: defaultParams(),
 }
 
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
-
 export function reducer(state: MachineState, a: Action): MachineState {
   const s = state
   if (isLadderAction(a)) {
@@ -208,7 +206,7 @@ export function reducer(state: MachineState, a: Action): MachineState {
 
     case 'ALARM_CLEAR_ALL': {
       const alarms = s.alarms.filter((al) => al.active)
-      return { ...s, alarms, cursor: { ...s.cursor, alarm: clamp(s.cursor.alarm, 0, Math.max(0, alarms.length - 1)) } }
+      return { ...s, alarms, cursor: { ...s.cursor, alarm: clampIndex(s.cursor.alarm, 0, alarms.length) } }
     }
 
     case 'HELP':

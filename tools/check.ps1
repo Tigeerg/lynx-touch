@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 
 $marks = @{
-  'apps/react-interface/lib/cnc/machine.ts' = 220  # the reducer composes, it does not absorb: a subsystem -> its own reducer
+  'apps/react-interface/lib/cnc/machine.ts' = 218  # the reducer composes, it does not absorb: a subsystem -> its own reducer
 }
 
 $fail = New-Object System.Collections.Generic.List[string]

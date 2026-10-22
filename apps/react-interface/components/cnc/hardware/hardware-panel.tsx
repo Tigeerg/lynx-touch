@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { JOG_STEPS, RAPID_JOG_MULT, RAPID_STEPS, WORKPLACE_LABEL } from '@/lib/cnc/data'
 import type { Action } from '@/lib/cnc/machine'
-import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM } from '@/lib/cnc/service-data'
+import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
 import { WORKPLACES, type Axis, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { WORKPLACE_ICON } from '../header-bar'
@@ -153,7 +153,7 @@ export function HardwarePanel({ state, dispatch }: { state: MachineState; dispat
             readout={`${state.feedOverride}%`}
             offset={(state.feedOverride - 100) / OVERRIDE_STEP}
             minOffset={-100 / OVERRIDE_STEP}
-            maxOffset={(state.params[MAX_FEED_PARAM] - 100) / OVERRIDE_STEP}
+            maxOffset={(paramValue(state.params, MAX_FEED_PARAM) - 100) / OVERRIDE_STEP}
             onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'feed', dir })}
           />
           <Knob
@@ -161,7 +161,7 @@ export function HardwarePanel({ state, dispatch }: { state: MachineState; dispat
             readout={`${state.spindleOverride}%`}
             offset={(state.spindleOverride - 100) / OVERRIDE_STEP}
             minOffset={(MIN_SPINDLE - 100) / OVERRIDE_STEP}
-            maxOffset={(state.params[MAX_SPINDLE_PARAM] - 100) / OVERRIDE_STEP}
+            maxOffset={(paramValue(state.params, MAX_SPINDLE_PARAM) - 100) / OVERRIDE_STEP}
             onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'spindle', dir })}
           />
           <Knob

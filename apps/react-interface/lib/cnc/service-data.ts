@@ -77,10 +77,26 @@ export function defaultParams(): Record<string, number> {
   return out
 }
 
-export function formatParam(def: ParamDef, value: number) {
+/** The catalogue defaults, built once: the fallback for a key the state does not carry yet. */
+export const PARAM_DEFAULTS: Record<string, number> = defaultParams()
+
+/**
+ * The value of a parameter. A key the state does not carry (an older machine INI, a section added
+ * later) falls back to the catalogue default, so a screen shows the default and an adjust does not
+ * write NaN (CLAUDE.md, section 8). Read parameters through this rather than by index:
+ * `Record<string, number>` cannot promise the key is there.
+ */
+export const paramValue = (params: Record<string, number>, id: string): number => params[id] ?? PARAM_DEFAULTS[id] ?? 0
+
+/** A number as the screen shows it: the option text, or the value with the row's digits. */
+export function formatValue(def: ParamDef, value: number) {
   if (def.options) return def.options[value] ?? String(value)
   return value.toFixed(def.digits)
 }
+
+/** The row's value in this state, shown; a missing key shows the catalogue default. */
+export const formatParam = (def: ParamDef, params: Record<string, number>) =>
+  formatValue(def, paramValue(params, def.id))
 
 // The catalogue itself, re-exported so the screens and the reducer keep a single entry point.
 export { HAL_GROUPS, HAL_ROW_COUNT } from './hal'

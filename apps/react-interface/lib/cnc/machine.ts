@@ -178,12 +178,11 @@ export function reducer(state: MachineState, a: Action): MachineState {
     return r.msg ? notify(r.s, r.msg, r.level) : r.s
   }
   switch (a.type) {
-    case 'THEME_TOGGLE':
-      return markSaved(
-        { ...s, params: { ...s.params, [THEME_PARAM]: (s.params[THEME_PARAM] + 1) % THEME_OPTIONS.length } },
-        THEME_PARAM,
-        (s.params[THEME_PARAM] + 1) % THEME_OPTIONS.length,
-      )
+    case 'THEME_TOGGLE': {
+      // A missing key (an older state) takes the first theme, not NaN.
+      const next = ((s.params[THEME_PARAM] ?? 0) + 1) % THEME_OPTIONS.length
+      return markSaved({ ...s, params: { ...s.params, [THEME_PARAM]: next } }, THEME_PARAM, next)
+    }
     case 'UI_MODE_SET':
       if (s.params[UI_MODE_PARAM] === a.value) return s
       return markSaved({ ...s, params: { ...s.params, [UI_MODE_PARAM]: a.value } }, UI_MODE_PARAM, a.value)

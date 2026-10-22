@@ -292,5 +292,9 @@ export interface MachineState {
   sim: SimState
   test: TestState
   search: SearchState
+  /**
+   * Parameter values by catalogue id. A key may be absent (an older machine INI, a section added
+   * later): read through paramValue (service-data.ts), not by index.
+   */
   params: Record<string, number>
 }

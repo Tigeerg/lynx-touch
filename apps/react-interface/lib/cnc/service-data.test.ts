@@ -10,10 +10,13 @@ import {
   LINUXCNC_PARAMS,
   MESA_PARAMS,
   MOTION_PARAMS,
+  PARAM_DEFAULTS,
   PID_PARAMS,
   SYSTEM_PARAMS,
   defaultParams,
+  formatParam,
   paramAt,
+  paramValue,
   sectionParams,
   serviceListLength,
   type ParamDef,
@@ -65,6 +68,40 @@ describe('service catalogue', () => {
         }
       }
     }
+  })
+
+  it('holds the HAL pin count as a number, not as the definition against itself', () => {
+    expect(HAL_ROW_COUNT).toBe(30)
+  })
+
+  it('keeps the identifiers unique across the whole catalogue, axes included', () => {
+    const keys = Object.keys(defaultParams())
+    expect(new Set(keys).size).toBe(keys.length)
+  })
+
+  it('addresses a row by index and refuses anything out of range', () => {
+    expect(paramAt('system', -1, 'X')).toBeNull()
+    expect(paramAt('system', 0.5, 'X')).toBeNull()
+    expect(paramAt('system', Number.NaN, 'X')).toBeNull()
+    expect(paramAt('system', SYSTEM_PARAMS.length, 'X')).toBeNull()
+    expect(paramAt('help', 0, 'X')).toBeNull()
+  })
+
+  it('reads a value from the state and falls back to the catalogue default', () => {
+    const def = SYSTEM_PARAMS[0]
+    expect(paramValue({ [def.id]: 3 }, def.id)).toBe(3)
+    expect(paramValue({}, def.id)).toBe(def.default)
+    expect(PARAM_DEFAULTS[def.id]).toBe(def.default)
+    expect(PARAM_DEFAULTS[JOINT_PARAMS[0].key]).toBeUndefined()
+  })
+
+  it('shows a value with the catalogue default instead of throwing', () => {
+    const option = SYSTEM_PARAMS[0]
+    expect(() => formatParam(option, {})).not.toThrow()
+    expect(formatParam(option, {})).toBe(option.options?.[option.default])
+
+    const numeric = SYSTEM_PARAMS.find((d) => !d.options)!
+    expect(formatParam(numeric, {})).toBe(numeric.default.toFixed(numeric.digits))
   })
 
   it('fills the section lists without holes', () => {

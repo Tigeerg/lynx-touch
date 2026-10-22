@@ -3,7 +3,7 @@
 // saving and the fallback of a screen change to the whole machine (through dispatch).
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer } from './machine'
-import { SERVICE_PASSWORD } from './service-data'
+import { SERVICE_PASSWORD, SYSTEM_PARAMS } from './service-data'
 import { serviceReducer, type ServiceAction } from './service'
 import type { MachineState } from './types'
 
@@ -74,5 +74,32 @@ describe('служба параметров: разделы, запись, со�
     const s = reducer(initialState, { type: 'SERVICE_SECTION', section: 'joints' })
 
     expect(s.service.section).toBe('joints')
+  })
+})
+
+describe('служба параметров: ключа нет в состоянии', () => {
+  const editing = (id: string, original: number): MachineState => ({
+    ...initialState,
+    params: {},
+    service: { ...initialState.service, focus: 'list', editing: { id, original } },
+  })
+
+  it('правка списка берёт значение по умолчанию, а не NaN', () => {
+    const option = SYSTEM_PARAMS[0]
+    const s = run(editing(option.id, option.default), { type: 'PARAM_ADJUST', dir: 1 })
+
+    expect(s.params[option.id]).toBe(1)
+  })
+
+  it('правка числа считает от значения по умолчанию', () => {
+    const index = SYSTEM_PARAMS.findIndex((d) => !d.options)
+    const numeric = SYSTEM_PARAMS[index]
+    const s = run(
+      { ...editing(numeric.id, numeric.default), cursor: { ...initialState.cursor, service: index } },
+      { type: 'PARAM_ADJUST', dir: 1 },
+    )
+
+    expect(Number.isFinite(s.params[numeric.id])).toBe(true)
+    expect(s.params[numeric.id]).toBe(Math.min(numeric.max, numeric.default + numeric.step))
   })
 })

@@ -12,7 +12,7 @@ import { clamp } from './clamp'
 import { isBusy } from './guards'
 import type { Action } from './machine'
 import { cancelEdit, markSaved, setParam } from './service-edit'
-import { INI_FILE, SERVICE_PASSWORD, defaultParams, hasServiceList, paramAt, unsavedIds } from './service-data'
+import { INI_FILE, SERVICE_PASSWORD, hasServiceList, paramAt, paramValue, unsavedIds } from './service-data'
 import { AXES, SERVICE_SECTIONS, type Axis, type MachineState, type Message, type ServiceSection } from './types'
 
 export type ServiceAction =
@@ -78,7 +78,7 @@ export function serviceReducer(s: MachineState, a: ServiceAction, dispatch: Disp
       if (sv.editing) {
         const def = paramAt(sv.section, s.cursor.service, sv.axis)
         const committed: MachineState = { ...s, service: { ...sv, editing: null } }
-        return { s: def?.free ? markSaved(committed, def.id, s.params[def.id]) : committed }
+        return { s: def?.free ? markSaved(committed, def.id, paramValue(s.params, def.id)) : committed }
       }
       if (sv.focus === 'nav') {
         if (!hasServiceList(sv.section)) return { s, msg: 'В этом разделе нет редактируемых параметров' }
@@ -91,7 +91,7 @@ export function serviceReducer(s: MachineState, a: ServiceAction, dispatch: Disp
         if (isBusy(s)) return { s, msg: 'Изменение параметров во время цикла запрещено', level: 'warn' }
         if (!sv.write) return { s: { ...s, service: { ...sv, auth: { input: '', error: false } } } }
       }
-      return { s: { ...s, service: { ...sv, editing: { id: def.id, original: s.params[def.id] } } } }
+      return { s: { ...s, service: { ...sv, editing: { id: def.id, original: paramValue(s.params, def.id) } } } }
     }
 
     case 'SERVICE_CANCEL': {
@@ -148,8 +148,10 @@ export function serviceReducer(s: MachineState, a: ServiceAction, dispatch: Disp
       if (sv.auth || sv.editing || sv.focus !== 'list') return { s }
       const def = paramAt(sv.section, s.cursor.service, sv.axis)
       if (!def) return { s }
-      const value = defaultParams()[def.id]
-      if (s.params[def.id] === value) return { s, msg: 'Параметр уже имеет значение по умолчанию' }
+      // The row's own default is the catalogue default: no lookup in the defaults map, and no
+      // undefined when the row comes from a table the map does not cover.
+      const value = def.default
+      if (paramValue(s.params, def.id) === value) return { s, msg: 'Параметр уже имеет значение по умолчанию' }
       if (!def.free) {
         if (isBusy(s)) return { s, msg: 'Изменение параметров во время цикла запрещено', level: 'warn' }
         if (!sv.write) return { s, msg: 'Параметр защищён — разрешите запись (F2)', level: 'warn' }
@@ -176,7 +178,7 @@ export function serviceReducer(s: MachineState, a: ServiceAction, dispatch: Disp
       }
       const def = paramAt(sv.section, s.cursor.service, sv.axis)
       if (!def || def.id !== sv.editing.id) return { s }
-      const cur = s.params[def.id]
+      const cur = paramValue(s.params, def.id)
       let next: number
       if (def.options) {
         next = (cur + a.dir + def.options.length) % def.options.length

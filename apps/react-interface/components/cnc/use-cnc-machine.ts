@@ -2,7 +2,7 @@
 
 import { useEffect, useEffectEvent, useReducer, useState } from 'react'
 import { initialState, reducer, type Action } from '@/lib/cnc/machine'
-import { THEME_PARAM } from '@/lib/cnc/service-data'
+import { paramValue, THEME_PARAM } from '@/lib/cnc/service-data'
 import { getSoftkeys } from '@/lib/cnc/softkeys'
 import { TABS, WORKPLACES, screenOfTab, type Axis, type MachineState } from '@/lib/cnc/types'
 
@@ -183,7 +183,7 @@ export function useCncMachine() {
     }
   }, [])
 
-  const theme = state.params[THEME_PARAM]
+  const theme = paramValue(state.params, THEME_PARAM)
   useEffect(() => {
     const root = document.documentElement
     root.classList.toggle('dark', theme === 1 || theme === 3 || theme === 4)

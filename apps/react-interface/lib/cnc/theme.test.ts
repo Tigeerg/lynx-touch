@@ -16,4 +16,10 @@ describe('темы оформления', () => {
     expect(reducer(withTheme(1), { type: 'THEME_TOGGLE' }).params[THEME_PARAM]).toBe(2)
     expect(reducer(withTheme(5), { type: 'THEME_TOGGLE' }).params[THEME_PARAM]).toBe(0)
   })
+
+  it('переключение без ключа в состоянии берёт тему по умолчанию, а не NaN', () => {
+    const s = reducer({ ...initialState, params: {} }, { type: 'THEME_TOGGLE' })
+
+    expect(s.params[THEME_PARAM]).toBe(1)
+  })
 })

@@ -22,7 +22,7 @@ import {
 import { useEffect, useRef, type ReactNode } from 'react'
 import { JOG_STEPS, RAPID_STEPS, WORKPLACE_LABEL } from '@/lib/cnc/data'
 import type { Action } from '@/lib/cnc/machine'
-import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM } from '@/lib/cnc/service-data'
+import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
 import { MPG_STEPS, WORKPLACES, type Axis, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { WORKPLACE_ICON } from '../header-bar'
@@ -312,13 +312,13 @@ function OverridePanel({ state, dispatch }: { state: MachineState; dispatch: (a:
         <OverrideControl
           label="Подача"
           value={state.feedOverride}
-          max={state.params[MAX_FEED_PARAM] ?? 150}
+          max={paramValue(state.params, MAX_FEED_PARAM)}
           onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'feed', dir })}
         />
         <OverrideControl
           label="Шпиндель"
           value={state.spindleOverride}
-          max={state.params[MAX_SPINDLE_PARAM] ?? 120}
+          max={paramValue(state.params, MAX_SPINDLE_PARAM)}
           onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'spindle', dir })}
         />
         <OverrideControl

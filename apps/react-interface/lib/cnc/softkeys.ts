@@ -60,7 +60,7 @@ import {
 import { PROBE_STEP_MEASURE, PROBE_STEP_RESULT, PROBE_TOOL } from './probe'
 import { AUTO_VIEW_LABEL } from './data'
 import type { Action } from './machine'
-import { defaultParams, paramAt, TOOLPATH_PARAM, unsavedIds } from './service-data'
+import { paramAt, paramValue, TOOLPATH_PARAM, unsavedIds } from './service-data'
 import { AUTO_VIEWS, type MachineState, type ServiceSection } from './types'
 
 export const SERVICE_ICON: Record<ServiceSection, LucideIcon> = {
@@ -448,7 +448,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       const focused =
         sv.focus === 'list' && !sv.editing && !sv.auth ? paramAt(sv.section, s.cursor.service, sv.axis) : null
       const canReset =
-        !!focused && s.params[focused.id] !== defaultParams()[focused.id] && (focused.free || (sv.write && !busy))
+        !!focused && paramValue(s.params, focused.id) !== focused.default && (focused.free || (sv.write && !busy))
       keys = [
         { label: 'Назад', icon: Undo2, action: { type: 'SERVICE_BACK' } },
         {

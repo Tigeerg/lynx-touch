@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { TOOLPATH_PARAM, SCREEN_SIZE_PARAM } from '@/lib/cnc/service-data'
+import { SCREEN_SIZE_PARAM, TOOLPATH_PARAM, paramValue } from '@/lib/cnc/service-data'
 import { WORKPLACE_LABEL } from '@/lib/cnc/data'
 import { MODE_LOCKED_SCREENS } from '@/lib/cnc/types'
 import { FhdStage } from './fhd-stage'
@@ -41,7 +41,7 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
   const [hardware, setHardware] = useState(true)
 
   const showPath = state.params[TOOLPATH_PARAM] === 1 || state.sim.active
-  const screenSize = state.params[SCREEN_SIZE_PARAM] ?? 0
+  const screenSize = paramValue(state.params, SCREEN_SIZE_PARAM)
   const screenScale = screenSize === 1 ? 10 / 7 : 1
   const DISPLAY_W = Math.round(SCREEN_W * screenScale)
   const DISPLAY_H = Math.round(SCREEN_H * screenScale)

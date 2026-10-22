@@ -16,6 +16,7 @@ import { motionSpeed, toWork, type Action } from '@/lib/cnc/machine'
 import { evaluateLadder } from '@/lib/cnc/ladder-scan'
 import {
   formatParam,
+  formatValue,
   HAL_GROUPS,
   INI_FILE,
   JOINT_PARAMS,
@@ -24,6 +25,7 @@ import {
   LINUXCNC_PARAMS,
   MESA_PARAMS,
   MOTION_PARAMS,
+  paramValue,
   PID_PARAMS,
   SERVICE_HINT,
   SERVICE_LABEL,
@@ -478,7 +480,7 @@ function ParamTable({ state, defs }: { state: MachineState; defs: ParamDef[] }) 
         </thead>
         <tbody>
           {defs.map((def, i) => {
-            const value = state.params[def.id]
+            const value = paramValue(state.params, def.id)
             const selected = i === cursor && focus === 'list'
             const isEditing = editing?.id === def.id
             const changed = value !== def.default
@@ -544,7 +546,7 @@ function ParamTable({ state, defs }: { state: MachineState; defs: ParamDef[] }) 
                         isEditing && 'border-warning bg-warning text-warning-foreground ring-2 ring-warning/40',
                       )}
                     >
-                      {formatParam(def, value)}
+                      {formatParam(def, state.params)}
                       {def.unit && (
                         <span
                           className={cn(
@@ -563,7 +565,7 @@ function ParamTable({ state, defs }: { state: MachineState; defs: ParamDef[] }) 
                   </div>
                 </td>
                 <td className="px-3 py-2 text-right font-mono text-sm tabular-nums text-muted-foreground">
-                  {formatParam(def, def.default)}
+                  {formatValue(def, def.default)}
                 </td>
               </tr>
             )

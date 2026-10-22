@@ -1,7 +1,7 @@
 import { FlaskConical, Play, TriangleAlert, Wrench, type LucideIcon } from 'lucide-react'
 import { MACHINE_NAME, RUN_LABEL, WORKPLACE_LABEL } from '@/lib/cnc/data'
 import { currentFile } from '@/lib/cnc/machine'
-import { THEME_OPTIONS, THEME_PARAM } from '@/lib/cnc/service-data'
+import { paramValue, THEME_OPTIONS, THEME_PARAM } from '@/lib/cnc/service-data'
 import { WORKPLACES, type MachineState, type Workplace } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 
@@ -144,8 +144,8 @@ export function HeaderBar({
           tabIndex={-1}
           onMouseDown={(e) => e.preventDefault()}
           onClick={onToggleTheme}
-          title={`Тема: ${THEME_OPTIONS[state.params[THEME_PARAM]]}. Нажмите, чтобы сменить`}
-          aria-label={`Сменить тему. Сейчас: ${THEME_OPTIONS[state.params[THEME_PARAM]]}`}
+          title={`Тема: ${THEME_OPTIONS[paramValue(state.params, THEME_PARAM)]}. Нажмите, чтобы сменить`}
+          aria-label={`Сменить тему. Сейчас: ${THEME_OPTIONS[paramValue(state.params, THEME_PARAM)]}`}
           className="flex h-7 items-center rounded-sm border bg-muted px-2 text-[11px] font-semibold transition-colors hover:bg-accent"
         >
           Тема

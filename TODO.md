@@ -187,9 +187,11 @@
   единицы. Проверка — `lib/cnc/service-data.test.ts` (на прежнем коде краснеют 3 из 13). Исходное описание:
   `service-data.ts:40-49`, `:51-59`, `:63-66` переключали `section` каждое по-своему и расходились
   (`serviceListLength('hal') = 30` при 0 строк, `help` 1/0), `return 1` — магия.
-* [ ] **Данные каталога изменяемы снаружи.** `AXES` (`types.ts:4`), `MODES`, `TABS`, `SCREENS`, `MPG_STEPS`,
-  `JOG_FEEDS`, `OFF_ON` (`params/def.ts:37`), все `*_PARAMS` экспортируются как обычные массивы: один
-  `.sort()` в любом экране портит каталог всему. Нужны `readonly`/`as const`.
+* [x] **Данные каталога изменяемы снаружи.** Исправлено в `0.18.29`: `AXES`, `MODES`, `TABS`, `SCREENS`,
+  `MPG_STEPS`, `JOG_FEEDS` (`types.ts`), `OFF_ON` (`params/def.ts`) и все `*_PARAMS` (`params/*`) объявлены
+  `readonly` и заморожены через `Object.freeze`; `ParamDef.options` — `readonly string[]`,
+  `sectionParams`/`ParamTable` — `readonly ParamDef[]`. Проверка — `lib/cnc/catalogue.test.ts` (на прежнем
+  коде краснеют все 14 случаев). Исходное описание: один `.sort()` в любом экране портил каталог всему.
 * [ ] **Лишняя работа на каждый рендер.** В `0.18.23` закрыта часть: значения каталога считаются один раз
   (`PARAM_DEFAULTS`), и `getSoftkeys` больше не пересобирает карту на 201 ключ. Осталось: `TICK` идёт 20 раз
   в секунду (`use-cnc-machine.ts:140`), а

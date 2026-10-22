@@ -30,20 +30,20 @@ import { AXES, SERVICE_SECTIONS, isParamSection, type ParamSection } from './typ
 
 type PlainParamSection = 'system' | 'linuxcnc' | 'motion' | 'mesa'
 
-const TABLES: Record<PlainParamSection, ParamDef[]> = {
+const TABLES: Record<PlainParamSection, readonly ParamDef[]> = {
   system: SYSTEM_PARAMS,
   linuxcnc: LINUXCNC_PARAMS,
   motion: MOTION_PARAMS,
   mesa: MESA_PARAMS,
 }
 
-const JOINT_TABLES: Record<'joints' | 'pid', JointParamDef[]> = { joints: JOINT_PARAMS, pid: PID_PARAMS }
+const JOINT_TABLES: Record<'joints' | 'pid', readonly JointParamDef[]> = { joints: JOINT_PARAMS, pid: PID_PARAMS }
 
 const PARAM_SECTION_NAMES: ParamSection[] = ['system', 'linuxcnc', 'motion', 'joints', 'pid', 'mesa']
 
 describe('service catalogue', () => {
   it('resolves every section with a table to its rows', () => {
-    for (const [section, rows] of Object.entries(TABLES) as [PlainParamSection, ParamDef[]][]) {
+    for (const [section, rows] of Object.entries(TABLES) as [PlainParamSection, readonly ParamDef[]][]) {
       expect(serviceListLength(section), section).toBe(rows.length)
       rows.forEach((row, i) => expect(paramAt(section, i, 'X'), `${section}[${i}]`).toEqual(row))
       expect(paramAt(section, rows.length, 'X')).toBeNull()
@@ -53,7 +53,7 @@ describe('service catalogue', () => {
   })
 
   it('expands the joint rows per axis', () => {
-    for (const [section, rows] of Object.entries(JOINT_TABLES) as ['joints' | 'pid', JointParamDef[]][]) {
+    for (const [section, rows] of Object.entries(JOINT_TABLES) as ['joints' | 'pid', readonly JointParamDef[]][]) {
       expect(serviceListLength(section)).toBe(rows.length)
       const a = paramAt(section, 0, 'A')
       expect(a?.id).toBe(`A.${rows[0].key}`)
@@ -65,12 +65,12 @@ describe('service catalogue', () => {
 
   it('gives every row a unique id and a default', () => {
     const defaults = defaultParams()
-    for (const [section, rows] of Object.entries(TABLES) as [PlainParamSection, ParamDef[]][]) {
+    for (const [section, rows] of Object.entries(TABLES) as [PlainParamSection, readonly ParamDef[]][]) {
       const ids = rows.map((r) => r.id)
       expect(new Set(ids).size, section).toBe(ids.length)
       for (const row of rows) expect(defaults[row.id], `${section} ${row.id}`).toBe(row.default)
     }
-    for (const [section, rows] of Object.entries(JOINT_TABLES) as ['joints' | 'pid', JointParamDef[]][]) {
+    for (const [section, rows] of Object.entries(JOINT_TABLES) as ['joints' | 'pid', readonly JointParamDef[]][]) {
       for (const row of rows) {
         for (const a of AXES) {
           expect(defaults[`${a}.${row.key}`], `${section} ${a}.${row.key}`).toBe(row.defaults[a])

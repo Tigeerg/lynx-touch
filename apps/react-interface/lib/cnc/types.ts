@@ -1,11 +1,11 @@
 import type { PathView } from './toolpath'
 
 export type Axis = 'X' | 'Y' | 'Z' | 'A'
-export const AXES: Axis[] = ['X', 'Y', 'Z', 'A']
+export const AXES: readonly Axis[] = Object.freeze(['X', 'Y', 'Z', 'A'])
 export type Axes = Record<Axis, number>
 
 export type Mode = 'AUTO' | 'MDI' | 'JOG' | 'MPG'
-export const MODES: Mode[] = ['AUTO', 'MDI', 'JOG', 'MPG']
+export const MODES: readonly Mode[] = Object.freeze(['AUTO', 'MDI', 'JOG', 'MPG'])
 
 // Operator workplace: the top level of the panel. It defines the set of softkeys and the
 // screen layout, independently of the machine mode (Mode) and the screen (Screen).
@@ -16,7 +16,7 @@ export const WORKPLACES: Workplace[] = ['RUN', 'TEST', 'SETUP']
 // Screen tabs: the Work tab merges the former Position and Program; the workplace chooses its
 // content (Setup / PROGON / Auto).
 export type Tab = 'work' | 'offset' | 'tool' | 'alarm' | 'service'
-export const TABS: Tab[] = ['work', 'offset', 'tool', 'alarm', 'service']
+export const TABS: readonly Tab[] = Object.freeze(['work', 'offset', 'tool', 'alarm', 'service'])
 export const TAB_LABEL: Record<Tab, string> = {
   work: 'Работа',
   offset: 'Смещения',
@@ -31,7 +31,7 @@ export const screenOfTab = (tab: Tab, workplace: Workplace): Screen =>
 export type RunState = 'IDLE' | 'RUN' | 'HOLD' | 'ALARM' | 'ESTOP'
 
 export type Screen = 'pos' | 'prog' | 'offset' | 'tool' | 'alarm' | 'service'
-export const SCREENS: Screen[] = ['pos', 'prog', 'offset', 'tool', 'alarm', 'service']
+export const SCREENS: readonly Screen[] = Object.freeze(['pos', 'prog', 'offset', 'tool', 'alarm', 'service'])
 
 export const MODE_START_SCREEN: Record<Mode, Screen> = { AUTO: 'prog', MDI: 'pos', JOG: 'pos', MPG: 'pos' }
 export const MODE_LOCKED_SCREENS: Record<Mode, Screen[]> = {
@@ -41,9 +41,9 @@ export const MODE_LOCKED_SCREENS: Record<Mode, Screen[]> = {
   MPG: [],
 }
 
-export const MPG_STEPS = [0.001, 0.01, 0.1]
+export const MPG_STEPS: readonly number[] = Object.freeze([0.001, 0.01, 0.1])
 export const mpgMultiplier = (step: number) => Math.round(step / 0.001)
-export const JOG_FEEDS = [100, 500, 1000, 3000]
+export const JOG_FEEDS: readonly number[] = Object.freeze([100, 500, 1000, 3000])
 export const MDI_HISTORY_SIZE = 10
 
 // The service sections split by what they hold: a catalogue row each (ParamSection), a list

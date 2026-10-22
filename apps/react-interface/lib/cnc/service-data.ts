@@ -58,7 +58,7 @@ const SECTION_LENGTH: Record<ListSection, number> = {
 export const serviceListLength = (section: ListSection): number => SECTION_LENGTH[section]
 
 /** The catalogue rows of a parameter section, built from its table: no filter drops rows. */
-const SECTION_PARAMS: Record<ParamSection, (axis: Axis) => ParamDef[]> = {
+const SECTION_PARAMS: Record<ParamSection, (axis: Axis) => readonly ParamDef[]> = {
   system: () => SYSTEM_PARAMS,
   linuxcnc: () => LINUXCNC_PARAMS,
   motion: () => MOTION_PARAMS,
@@ -67,7 +67,7 @@ const SECTION_PARAMS: Record<ParamSection, (axis: Axis) => ParamDef[]> = {
   pid: (axis) => PID_PARAMS.map((def) => toParam(def, axis)),
 }
 
-export const sectionParams = (section: ParamSection, axis: Axis): ParamDef[] => SECTION_PARAMS[section](axis)
+export const sectionParams = (section: ParamSection, axis: Axis): readonly ParamDef[] => SECTION_PARAMS[section](axis)
 
 /**
  * The catalogue row at an index; past the end is null (a stale screen cursor). A section without

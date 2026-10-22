@@ -6,7 +6,7 @@ import { p, type ParamDef } from './def'
 export const MESA_BOARD_PARAM = 'HOSTMOT2.BOARD'
 export const MESA_IPADDR_PARAM = 'HOSTMOT2.IPADDR'
 
-export const MESA_PARAMS: ParamDef[] = [
+export const MESA_PARAMS: readonly ParamDef[] = Object.freeze([
   p({
     group: 'HOSTMOT2',
     key: 'BOARD',
@@ -172,4 +172,4 @@ export const MESA_PARAMS: ParamDef[] = [
     default: 1,
     options: ['Выкл', 'Вкл'],
   }),
-]
+])

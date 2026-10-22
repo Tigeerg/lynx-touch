@@ -2,7 +2,7 @@
 // EMCIO groups. Data only; the row shape and the builders live in ./def.
 import { OFF_ON, p, type ParamDef } from './def'
 
-export const LINUXCNC_PARAMS: ParamDef[] = [
+export const LINUXCNC_PARAMS: readonly ParamDef[] = Object.freeze([
   p({
     group: 'KINS',
     key: 'KINEMATICS',
@@ -152,4 +152,4 @@ export const LINUXCNC_PARAMS: ParamDef[] = [
     default: 0,
     options: OFF_ON,
   }),
-]
+])

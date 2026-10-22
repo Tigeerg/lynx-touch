@@ -2,7 +2,7 @@
 // built from the axis, so ./def expands a row per axis. Data only.
 import { ax, OFF_ON, type JointParamDef } from './def'
 
-export const JOINT_PARAMS: JointParamDef[] = [
+export const JOINT_PARAMS: readonly JointParamDef[] = Object.freeze([
   {
     key: 'TYPE',
     label: 'Тип оси',
@@ -174,4 +174,4 @@ export const JOINT_PARAMS: JointParamDef[] = [
     defaults: ax(0, 0, 0, 0),
   },
   { key: 'HOME_SEQUENCE', label: 'Порядок поиска', step: 1, min: 0, max: 9, digits: 0, defaults: ax(1, 1, 0, 2) },
-]
+])

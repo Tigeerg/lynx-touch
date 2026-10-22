@@ -2,7 +2,7 @@
 // EMCIO groups. Data only; the row shape and the builders live in ./def.
 import { p, type ParamDef } from './def'
 
-export const MOTION_PARAMS: ParamDef[] = [
+export const MOTION_PARAMS: readonly ParamDef[] = Object.freeze([
   p({
     group: 'EMCMOT',
     key: 'SERVO_PERIOD',
@@ -260,4 +260,4 @@ export const MOTION_PARAMS: ParamDef[] = [
     default: 0,
     options: ['Нет', 'Да'],
   }),
-]
+])

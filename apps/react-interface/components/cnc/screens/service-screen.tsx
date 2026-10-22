@@ -465,7 +465,7 @@ function AxisSelector({ state }: { state: MachineState }) {
 
 const th = 'px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground'
 
-function ParamTable({ state, defs }: { state: MachineState; defs: ParamDef[] }) {
+function ParamTable({ state, defs }: { state: MachineState; defs: readonly ParamDef[] }) {
   const cursor = state.cursor.service
   const selectedRef = useRef<HTMLTableRowElement>(null)
   const { section, axis, focus, editing, saved, write } = state.service

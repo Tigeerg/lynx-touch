@@ -3,7 +3,7 @@
 import { THEME_OPTIONS } from './display'
 import { p, type ParamDef } from './def'
 
-export const SYSTEM_PARAMS: ParamDef[] = [
+export const SYSTEM_PARAMS: readonly ParamDef[] = Object.freeze([
   p({
     group: 'DISPLAY',
     key: 'THEME',
@@ -276,4 +276,4 @@ export const SYSTEM_PARAMS: ParamDef[] = [
     options: ['мм', 'дюйм'],
     restart: true,
   }),
-]
+])

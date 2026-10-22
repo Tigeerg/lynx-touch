@@ -2,7 +2,7 @@
 // so ./def expands a row per axis. Data only.
 import { ax, type JointParamDef } from './def'
 
-export const PID_PARAMS: JointParamDef[] = [
+export const PID_PARAMS: readonly JointParamDef[] = Object.freeze([
   { key: 'P', label: 'Пропорц.', step: 10, min: 0, max: 10000, digits: 0, defaults: ax(1000, 1000, 1200, 800) },
   { key: 'I', label: 'Интеграл.', step: 0.1, min: 0, max: 100, digits: 1, defaults: ax(0, 0, 0, 0) },
   { key: 'D', label: 'Дифференц.', step: 0.1, min: 0, max: 100, digits: 1, defaults: ax(0, 0, 0, 0) },
@@ -48,4 +48,4 @@ export const PID_PARAMS: JointParamDef[] = [
     digits: 3,
     defaults: ax(0, 0, 0, 0),
   },
-]
+])

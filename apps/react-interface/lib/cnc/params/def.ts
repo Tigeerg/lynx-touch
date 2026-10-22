@@ -14,7 +14,7 @@ export interface ParamDef {
   max: number
   digits: number
   default: number
-  options?: string[]
+  options?: readonly string[]
   free?: boolean
   restart?: boolean
 }
@@ -34,7 +34,7 @@ export const p = (def: Omit<ParamDef, 'id' | 'digits'> & { digits?: number }): P
 export const ax = (X: number, Y: number, Z: number, A: number): Axes => ({ X, Y, Z, A })
 
 /** Off/on labels of a boolean parameter. */
-export const OFF_ON = ['Нет', 'Да']
+export const OFF_ON: readonly string[] = Object.freeze(['Нет', 'Да'])
 
 const AXIS_JOINT: Record<Axis, number> = { X: 0, Y: 1, Z: 2, A: 3 }
 

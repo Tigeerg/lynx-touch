@@ -1,5 +1,5 @@
-// Проверка слоя редьюсера: поведение станка фиксируется здесь, а не глазами на экране.
-// Тесты держатся за состояние станка и слова сообщений — то, что видит оператор.
+// Reducer layer check: the machine behaviour is fixed here, not by eye on the screen.
+// The tests hold the machine state and the message words - what the operator sees.
 import { describe, expect, it } from 'vitest'
 import { MODE_LABEL } from './data'
 import { currentFile, initialState, reducer, type Action } from './machine'

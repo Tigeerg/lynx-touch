@@ -1,5 +1,5 @@
-// Проверка строки сообщений: уровень задаёт время жизни; ошибка держится до
-// следующего сообщения или сброса, прочие гаснут по таймеру.
+// Message line check: the level sets the lifetime; an error stays until the next message or a
+// reset, the others fade on the timer.
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer } from './machine'
 

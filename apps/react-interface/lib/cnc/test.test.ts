@@ -1,5 +1,5 @@
-// Проверка рабочего места ПРОГОН: переключение шторки, габаритов, очистки графики
-// и ракурса, плюс набор F1-F8. Тесты держатся за состояние и слова сообщений.
+// PROGON workplace check: switching the curtain, the bounding box, graphics clearing and the
+// view angle, plus the F1-F8 set. The tests hold the state and the message words.
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer, type Action } from './machine'
 import { getSoftkeys } from './softkeys'

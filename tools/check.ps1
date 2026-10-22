@@ -1,16 +1,16 @@
-﻿# tools/check.ps1 — сторож стиля и структуры проекта (правила — CLAUDE.md).
+﻿# tools/check.ps1 - the guard of the project style and structure (rules - CLAUDE.md).
 #
-# Запуск: pnpm guard
-# Текстовые правила проверяются здесь и сейчас. Проверки, которым нужны pnpm/node,
-# выполняются, если инструмент действительно найден, иначе печатают skip.
+# Run: pnpm guard
+# The text rules are checked here and now. Checks that need pnpm/node run only if the tool is
+# really found, otherwise they print skip.
 #
-# Метки ниже — не цель роста. Метку понижают в том же коммите, в котором её перешагнули.
+# The marks below are not a growth target. A mark is lowered in the same commit that crossed it.
 
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath (Split-Path -Parent $PSScriptRoot)
 
 $marks = @{
-  'apps/react-interface/lib/cnc/machine.ts' = 626  # редуктор сводит, а не впитывает: подсистема -> свой редьюсер
+  'apps/react-interface/lib/cnc/machine.ts' = 626  # the reducer composes, it does not absorb: a subsystem -> its own reducer
 }
 
 $fail = New-Object System.Collections.Generic.List[string]
@@ -45,8 +45,8 @@ $sources = @(
     Where-Object { $_.Extension -in '.ts', '.tsx', '.js', '.mjs', '.qml', '.vert', '.frag' }
 )
 
-# 1. В КОММЕНТАРИИ стрелка «ведёт к» — только ASCII '->': '->' читается в консоли распорядителя (cp866) и в логах.
-#    Глифы клавиш (влево/вправо/вверх/вниз) — изображение клавиш, а не текст: их не трогают.
+# 1. In a COMMENT the "leads to" arrow is ASCII '->' only: '->' reads in the dispatcher's console (cp866) and in the logs.
+#    Key glyphs (left/right/up/down) are a picture of the keys, not text: they are not touched.
 $arrowHits = New-Object System.Collections.Generic.List[string]
 foreach ($file in $sources) {
   $lines = Get-Content -LiteralPath $file.FullName -Encoding UTF8
@@ -64,9 +64,10 @@ if ($arrowHits.Count -gt 0) {
   Ok 'в комментариях стрелок Unicode нет'
 }
 
-# 2. Глиф паузы U+23F8 приложенные шрифты (Inter, JetBrains Mono) не рисуют: в кадре на его месте
-#    пустой квадрат (замер и разбор - GcodeViewer3D.qml). В строках QML его не ставят; упоминание
-#    глифа в комментарии, которое называет запрещённый символ, находкой не считается.
+# 2. The bundled fonts (Inter, JetBrains Mono) do not draw the pause glyph U+23F8: in a frame an
+#    empty square stands in its place (measurement and analysis - GcodeViewer3D.qml). In QML
+#    strings it is not set; a mention of the glyph in a comment that names the forbidden
+#    character is not a hit.
 $pauseHits = New-Object System.Collections.Generic.List[string]
 foreach ($file in $sources) {
   if ($file.Extension -ne '.qml') { continue }
@@ -84,7 +85,7 @@ if ($pauseHits.Count -gt 0) {
   Ok 'глифа паузы U+23F8 в строках QML нет'
 }
 
-# 3. Иконки только lucide (`lucide-react` в React, fonts/lucide.ttf в QML).
+# 3. Icons are lucide only (`lucide-react` in React, fonts/lucide.ttf in QML).
 $iconPattern = 'react-icons|@heroicons|feather-icons|phosphor-icons|@tabler/icons|bootstrap-icons|@radix-ui/react-icons'
 $iconHits = $sources | Select-String -Pattern $iconPattern -ErrorAction SilentlyContinue
 if ($iconHits) {
@@ -93,7 +94,7 @@ if ($iconHits) {
   Ok 'набор иконок — lucide'
 }
 
-# 4. Метки размера: держатся равенством, растут и падают с правкой метки.
+# 4. Size marks: held by equality, they grow and fall with the mark edit.
 foreach ($rel in $marks.Keys) {
   $count = (Get-Content -LiteralPath $rel).Count
   $mark = $marks[$rel]
@@ -106,7 +107,7 @@ foreach ($rel in $marks.Keys) {
   }
 }
 
-# 5. Инструментальные проверки — если инструмент настоящий, а не заглушка.
+# 5. Tool checks - if the tool is real, not a stub.
 $pnpmReal = $false
 if (Get-Command pnpm -ErrorAction SilentlyContinue) {
   if ((Get-ToolVersion 'pnpm' @('-v')) -match '^\d+\.') { $pnpmReal = $true }
@@ -119,12 +120,12 @@ if ($pnpmReal) {
   Skipped 'pnpm: typecheck, test, format:check'
 }
 
-# 6. Сборка C++ (ядро gvcore, геометрии gvqtgeom, слой STEP gvstep, плагин
-#    CNC.Edges, контроллер MockBackend, точка входа gcodeviewer) и прогон
-#    пробников напрямую, ключом --manifest: сверка рёбер STEP, супа, обводки STL,
-#    топологии силуэта, аналитических поверхностей и семейств касательных с
-#    эталоном oracle_manifest.json без интерпретатора. Нужен полный C++-тулчейн:
-#    Qt6, OCCT, cmake, ninja, vcvars64. Тулчейна нет - шаг пропускается.
+# 6. C++ build (the gvcore core, the gvqtgeom geometries, the gvstep STEP layer, the CNC.Edges
+#    plugin, the MockBackend controller, the gcodeviewer entry point) and running the probes
+#    directly, with the --manifest key: comparing the STEP edges, the soup, the STL outline, the
+#    silhouette topology, the analytic surfaces and the tangent families with the
+#    oracle_manifest.json reference without an interpreter. Needs the full C++ toolchain:
+#    Qt6, OCCT, cmake, ninja, vcvars64. Without the toolchain the step is skipped.
 $qtDir = if ($env:CNC_QT_DIR) { $env:CNC_QT_DIR } else { 'C:\Qt\6.12.0\msvc2022_64' }
 $occDir = if ($env:CNC_OCC_DIR) { $env:CNC_OCC_DIR }
           elseif ($env:CONDA_PREFIX) { Join-Path $env:CONDA_PREFIX 'Library' }
@@ -154,7 +155,7 @@ if ($cppReady) {
   } else {
     Bad 'модуль CNC.Edges не собран: нет build/edges/CNC/Edges/qmldir'
   }
-  # Пробники линкуются с DLL OCCT и Qt: их каталоги идут в PATH до прогонов.
+  # The probes link against the OCCT and Qt DLLs: their directories go to PATH before the runs.
   $env:QT_QPA_PLATFORM = 'offscreen'
   $env:PATH = "$(Join-Path $qtDir 'bin');$(Join-Path $occDir 'bin');$PWD\build\edges;$PWD\build\edges\CNC\Edges;$PWD\build\qmlbackend;" + $env:PATH
   $manifest = 'modules/gcode-viewer/oracle_manifest.json'
@@ -173,10 +174,10 @@ if ($cppReady) {
   Skipped 'сборка C++ и прогоны пробников: нет тулчейна (Qt6, OCCT, cmake, ninja, vcvars64)'
 }
 
-# 7. C++-точка входа вьювера (build/viewer/gcodeviewer.exe): offscreen-прогон на
-#    реальном УП. Нужны собранный exe и Qt в PATH (exe линкуется с Qt6Core.dll);
-#    каталог плагина и DLL OCCT точка входа добавляет себе сама. Нет exe или Qt -
-#    шаг пропускается.
+# 7. The C++ viewer entry point (build/viewer/gcodeviewer.exe): an offscreen run on the real NC
+#    program. Needs the built exe and Qt in PATH (the exe links against Qt6Core.dll); the entry
+#    point adds the plugin directory and the OCCT DLLs itself. Without the exe or Qt the step is
+#    skipped.
 $viewerExe = 'build/viewer/gcodeviewer.exe'
 if ((Test-Path -LiteralPath $viewerExe) -and (Test-Path -LiteralPath (Join-Path $qtDir 'bin'))) {
   Run-Tool 'gcodeviewer.exe offscreen' {
@@ -191,12 +192,11 @@ if ((Test-Path -LiteralPath $viewerExe) -and (Test-Path -LiteralPath (Join-Path 
   Skipped 'gcodeviewer.exe offscreen: нет собранной точки входа или Qt'
 }
 
-# 8. Пробник горячих клавиш вьювера (build/viewer/keyprobe.exe): подаёт клавиши с
-#    признаками настоящего события (скан-код, VK и символ по раскладке) на русской и
-#    английской раскладках и сверяет, что каждая горячая клавиша переключила своё
-#    свойство. Дефект «горячие клавиши требовательны к языку» ловится здесь: до фикса
-#    на русской раскладке не срабатывает ни одна буква. Платформа offscreen, живой
-#    сессии не нужно. Нет пробника или Qt - шаг пропускается.
+# 8. The viewer hotkey probe (build/viewer/keyprobe.exe): feeds keys with the signs of a real
+#    event (scan code, VK and the symbol by layout) in the Russian and English layouts and
+#    checks that each hotkey switched its own property. The "hotkeys require the language"
+#    defect is caught here: before the fix not a single letter works in the Russian layout. The
+#    platform is offscreen, no live session is needed. Without the probe or Qt the step is skipped.
 $keyProbeExe = 'build/viewer/keyprobe.exe'
 if ((Test-Path -LiteralPath $keyProbeExe) -and (Test-Path -LiteralPath (Join-Path $qtDir 'bin'))) {
   Run-Tool 'keyprobe.exe (раскладки ru и en)' {

@@ -11,7 +11,7 @@ const STORAGE_KEY = 'cnc-ui-mode'
 
 const toValue = (m: UiMode) => (m === 'touch' ? 1 : 0)
 
-// forceMode: /classic всегда панельный вариант — сохранённый режим не берётся и не перезаписывается.
+// forceMode: /classic is always the panel variant - the saved mode is neither read nor overwritten.
 export function CncApp({ initialMode = 'panel', forceMode = false }: { initialMode?: UiMode; forceMode?: boolean }) {
   const machine = useCncMachine()
   const { dispatch } = machine

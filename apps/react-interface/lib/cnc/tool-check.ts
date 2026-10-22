@@ -1,13 +1,13 @@
 import type { MachineState } from './types'
 
-/** Допуск на расхождение длины инструмента при проверке слома, мм. */
+/** Tolerance on a tool-length mismatch in the break check, mm. */
 export const BROKEN_TOL_MM = 0.3
 
 /**
- * Длина, которую читает датчик обмера инструмента. Таблица инструмента выставлена
- * этим же датчиком, поэтому в норме расхождение — доли миллиметра: заметная усадка
- * или исчерпанный ресурс означают слом. Формула детерминирована: расхождение зависит
- * от положения Z, как у настоящего касания.
+ * The length the tool-setting sensor reads. The tool table is set with the same sensor, so
+ * normally the mismatch is a fraction of a millimetre: noticeable shrinkage or an exhausted
+ * life means a break. The formula is deterministic: the mismatch depends on the Z position,
+ * as with a real touch.
  */
 export function sensorLength(s: MachineState, toolIndex: number): number {
   const stored = s.tools[toolIndex].length

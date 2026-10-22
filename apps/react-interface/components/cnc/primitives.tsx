@@ -91,7 +91,7 @@ export function formatTime(ms: number) {
   return [h, m, sec].map((n) => String(n).padStart(2, '0')).join(':')
 }
 
-/** Короткая длительность в минутах и секундах: для оценки времени обработки. */
+/** A short duration in minutes and seconds: for the machining-time estimate. */
 export function formatDuration(ms: number) {
   const total = Math.max(0, Math.round(ms / 1000))
   return [Math.floor(total / 60), total % 60].map((n) => String(n).padStart(2, '0')).join(':')

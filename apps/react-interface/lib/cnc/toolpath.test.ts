@@ -1,4 +1,4 @@
-// Проверка расчёта остатка пути: по нему оценивается время до конца программы.
+// Remaining-path check: it feeds the time estimate to the end of the program.
 import { describe, expect, it } from 'vitest'
 import { remainingLength } from './toolpath'
 

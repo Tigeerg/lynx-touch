@@ -1,5 +1,5 @@
-// Проверка наработки инструмента: время копится, пока шпиндель вращается в цикле,
-// и обнуляется вместе с ресурсом.
+// Tool run-time check: the time accumulates while the spindle turns in a cycle, and is reset
+// together with the life.
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer, type Action } from './machine'
 import type { MachineState } from './types'

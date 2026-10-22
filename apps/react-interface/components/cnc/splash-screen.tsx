@@ -8,7 +8,7 @@ const LEAVE_MS = 500
 
 type Phase = 'shown' | 'leaving' | 'gone'
 
-// Module-level so switching Пульт/Сенсор (which remounts the panel) doesn't replay the boot splash.
+// Module-level so switching Panel/Touch (which remounts the panel) doesn't replay the boot splash.
 let splashDone = false
 
 export function SplashScreen() {

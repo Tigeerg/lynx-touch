@@ -10,10 +10,9 @@ import { formatCoord, formatDuration, Lamp, Panel } from '../primitives'
 import { ToolpathView, ViewBadges } from '../toolpath-view'
 import { ProgramList } from './program-screen'
 
-// Рабочее место «АВТО»: компактная полоса остатка пути (Distance to Go) и оценка
-// времени; под ней — один общий заголовок «Траектория» и вьювер. Код программы
-// ложится поверх вьювера прозрачным окном на левой половине; клавиша «Вид» (F8)
-// показывает и убирает его.
+// The AUTO workplace: a compact Distance-to-Go strip and the time estimate; below it a single
+// common "Toolpath" header and the viewer. The program code lies over the viewer as a
+// transparent window on the left half; the "View" key (F8) shows and hides it.
 
 export function AutoScreen({
   state,

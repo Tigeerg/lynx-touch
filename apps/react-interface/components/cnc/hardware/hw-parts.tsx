@@ -170,7 +170,7 @@ export function Knob({
 }: {
   label: string
   readout: string
-  /** Шагов от 100% (вверх по центру): 0 — 100%, отрицательные — влево, положительные — вправо */
+  /** Steps from 100% (up at the centre): 0 is 100%, negative to the left, positive to the right. */
   offset: number
   minOffset: number
   maxOffset: number

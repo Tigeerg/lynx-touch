@@ -1,7 +1,7 @@
-// Файлы управляющих программ и правка строк УП: общий источник для машины
-// (machine.ts) и подсистемы экрана «Программа» (prog.ts). Вынесено, чтобы редуктор
-// сводил подсистемы и не рос (метка tools/check.ps1); компоненты берут
-// currentFile/programLines из machine.ts (реэкспорт).
+// NC program files and program-line editing: a shared source for the machine (machine.ts)
+// and the Program screen subsystem (prog.ts). Extracted so the reducer composes the
+// subsystems and does not grow (tools/check.ps1 mark); components take currentFile/
+// programLines from machine.ts (re-export).
 import type { MachineState } from './types'
 
 export const currentFile = (s: MachineState) => s.files[s.activeFile]

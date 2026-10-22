@@ -1,6 +1,6 @@
-// Правка сервисных параметров: отмена изменения, отметка сохранения и установка
-// значения с пересчётом пределов корректоров. Вынесено из machine.ts, чтобы
-// редуктор сводил подсистемы и не рос (метка tools/check.ps1).
+// Service parameter editing: cancelling an edit, marking a value saved and setting a value
+// while re-clamping the override limits. Extracted from machine.ts so the reducer composes
+// the subsystems and does not grow (tools/check.ps1 mark).
 import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, type ParamDef } from './service-data'
 import type { MachineState } from './types'
 

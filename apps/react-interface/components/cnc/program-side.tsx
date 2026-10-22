@@ -57,8 +57,8 @@ function Chip({ label, value, hot }: { label: string; value: string; hot: boolea
   )
 }
 
-// «Активные коды» — модальные G/M текущего кадра. Общий блок для экрана
-// программы и правой колонки «Наладки».
+// "Active codes" - the modal G/M of the current block. A shared block for the program screen
+// and the right column of Setup.
 export function ActiveCodes({ state }: { state: MachineState }) {
   const lines = programLines(state)
   const started = state.run !== 'IDLE' || state.line > 0

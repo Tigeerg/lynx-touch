@@ -1,5 +1,5 @@
-// Проверка рабочего места и макроса прогрева: поведение фиксируется здесь, а не
-// глазами на экране. Рабочее место задаёт режим, холостой ход и набор софт-кеев.
+// Workplace and warm-up macro check: the behaviour is fixed here, not by eye on the screen.
+// The workplace sets the mode, dry run and the set of softkeys.
 import { describe, expect, it } from 'vitest'
 import { WORKPLACE_LABEL } from './data'
 import { initialState, reducer, type Action } from './machine'

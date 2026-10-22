@@ -39,7 +39,7 @@ export function buildToolpath(lines: string[]): Segment[] {
 
 export type Waypoint = { pos: Point3; dtg: Point3 | null }
 
-// Длина оставшихся перемещений от кадра fromLine: ориентир для оценки времени.
+// Length of the remaining moves from the fromLine block: a guide for the time estimate.
 export function remainingLength(lines: string[], fromLine: number): number {
   return buildToolpath(lines)
     .filter((s) => s.line >= fromLine)

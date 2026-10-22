@@ -1,5 +1,5 @@
-// Проверка слома выполняет обмер, а не просто пишет сообщение: исправный инструмент
-// проходит, исчерпанный ресурс даёт аварию, щуп в шпинделе проверять нечего.
+// The break check performs a measurement, not just a message: a good tool passes, an exhausted
+// life gives an alarm, and there is nothing to check with a probe in the spindle.
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer } from './machine'
 import type { MachineState } from './types'

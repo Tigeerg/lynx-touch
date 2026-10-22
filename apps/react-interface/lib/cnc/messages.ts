@@ -1,7 +1,7 @@
-// Сообщения оператору и аварии станка: единая точка записи строки сообщений и
-// журнала аварий. Вынесено из machine.ts (метка tools/check.ps1). Уровень задаёт
-// время жизни строки: у ошибки оно не ограничено — держится до следующего сообщения
-// или сброса, чтобы оператор успел прочитать.
+// Operator messages and machine alarms: the single place that writes the message line and
+// the alarm log. Extracted from machine.ts (tools/check.ps1 mark). The level sets the
+// lifetime of the line: an error has no limit - it stays until the next message or a reset,
+// so the operator has time to read it.
 import type { AlarmLevel, MachineState, Message } from './types'
 
 const TTL_MS: Record<Message['level'], number> = { info: 3500, warn: 6000, error: 0 }

@@ -1,7 +1,7 @@
-// Координатные функции станка: рабочее смещение, перевод в рабочие координаты,
-// остаток пути и скорость текущего перемещения. Вынесены из machine.ts, чтобы
-// редуктор сводил подсистемы и не рос (метка tools/check.ps1); компоненты берут их
-// из machine.ts (реэкспорт).
+// Machine coordinate helpers: the work offset, the conversion to work coordinates, the
+// distance to go and the speed of the current move. Extracted from machine.ts so the reducer
+// composes the subsystems and does not grow (tools/check.ps1 mark); components take them from
+// machine.ts (re-export).
 import { DRY_RUN_RATE, RAPID_RATE } from './data'
 import type { Axes, MachineState } from './types'
 

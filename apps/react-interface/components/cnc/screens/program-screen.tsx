@@ -274,7 +274,7 @@ export function ProgramList({
   state: MachineState
   dispatch: Dispatch<Action>
   className?: string
-  /** Без своей рамки и заголовка: список кадров для общего заголовка. */
+  /** Without its own frame and header: the block list for the common header. */
   bare?: boolean
 }) {
   const listRef = useRef<HTMLOListElement>(null)

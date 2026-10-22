@@ -1,6 +1,6 @@
-// Разбор слов кадра УП (адресная буква + число). Один источник для машины
-// (machine.ts) и подсистемы прогона маховиком (mpg.ts), чтобы обе стороны читали
-// кадр одинаково. Комментарии в скобках отброшены, регистр приведён к верхнему.
+// Parsing the words of a program block (address letter + number). A single source for the
+// machine (machine.ts) and the handwheel run subsystem (mpg.ts), so both sides read a block
+// the same way. Parenthesised comments are dropped, the case is upper-cased.
 
 export interface Word {
   letter: string

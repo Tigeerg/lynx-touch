@@ -83,14 +83,14 @@ export interface Softkey {
   action: Action
   active?: boolean
   disabled?: boolean
-  /** Причина, по которой кей отключён: показывается подсказкой и в строке сообщений. */
+  /** Why the key is disabled: shown as a hint and in the message line. */
   reason?: string
 }
 
 const FALLBACK_REASON = 'Сейчас недоступно'
 
-// Выравнивает набор до восьми слотов и заполняет причину у отключённых кеев, чтобы
-// отключённый кей не молчал (правило проекта).
+// Pads the set to eight slots and fills in the reason for disabled keys, so a disabled key
+// does not stay silent (project rule).
 const slots = (keys: (Softkey | null)[]): (Softkey | null)[] =>
   [...keys, ...Array<null>(Math.max(0, SOFTKEY_SLOTS - keys.length)).fill(null)].map((k) =>
     k && k.disabled && !k.reason ? { ...k, reason: FALLBACK_REASON } : k,
@@ -131,9 +131,9 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
     return slots(keys)
   }
 
-  // Рабочее место «НАЛАДКА»: набор F1-F8 для ручной подготовки (обмер, привязка
-  // баз, парковка) на стартовом экране «Позиция». Экраны с собственным мастером
-  // (смещения, сервис, редактор) сохраняют свои софт-кеи.
+  // The SETUP workplace: the F1-F8 set for manual preparation (tool measuring, base setting,
+  // parking) on the start Position screen. Screens with their own wizard (offsets, service,
+  // editor) keep their softkeys.
   if (s.workplace === 'SETUP' && s.screen === 'pos') {
     keys = [
       {
@@ -163,8 +163,8 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
     return slots(keys)
   }
 
-  // Рабочее место «ПРОГОН»: проверка УП без движения осей. Набор F1-F8 ведёт по
-  // каталогу, правке, поиску, прогону, габаритам, очистке графики, виду и шторке.
+  // The PROGON workplace: checking the NC program without moving the axes. The F1-F8 set walks
+  // through the catalogue, editing, search, run, bounding box, graphics clearing, view and curtain.
   if (s.workplace === 'TEST' && !s.editMode) {
     keys = [
       { label: 'Каталог УП', icon: FolderOpen, action: { type: 'FILE_DIALOG', open: true }, disabled: busy },
@@ -185,8 +185,8 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
     return slots(keys)
   }
 
-  // Рабочее место «АВТО»: набор F1-F8 для боевой обработки на экране программы.
-  // Резерв (F7) оставлен пустым под макрос пользователя.
+  // The AUTO workplace: the F1-F8 set for real machining on the program screen.
+  // The spare slot (F7) is left empty for a user macro.
   if (s.workplace === 'RUN' && s.screen === 'prog' && !s.editMode) {
     keys = [
       { label: 'Каталог УП', icon: FolderOpen, action: { type: 'FILE_DIALOG', open: true }, disabled: busy },

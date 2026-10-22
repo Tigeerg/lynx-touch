@@ -1,6 +1,6 @@
-// Исполнение измерительного цикла щупа: подвод по локальной траектории цикла и
-// запись результата. Вынесено из machine.ts (метка tools/check.ps1); сообщение
-// показывает machine.ts, как и у других подсистем.
+// Running the probe measurement cycle: the approach along the local cycle path and writing
+// the result. Extracted from machine.ts (tools/check.ps1 mark); machine.ts shows the message,
+// as in the other subsystems.
 import {
   computeProbeResult,
   localToMachine,

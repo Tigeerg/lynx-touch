@@ -1,5 +1,5 @@
-// Длина списка активного экрана — для навигации курсором. Вынесено из machine.ts,
-// чтобы редуктор не рос (метка tools/check.ps1).
+// Length of the active screen list, for cursor navigation. Extracted from machine.ts so the
+// reducer does not grow (tools/check.ps1 mark).
 import { programLines } from './files'
 import { ladderRungs } from './ladder'
 import { serviceListLength } from './service-data'

@@ -16,7 +16,7 @@ const address = (pairs: string): KeyDef[] =>
 const numeric = (pairs: string): KeyDef[] =>
   pairs.split(' ').map(([letter, alt]) => ({ letter, alt, block: 'numeric' }))
 
-// Левый блок: адреса G-кода и знаки. Правый блок: буквы с цифрами в раскладке цифровой клавиатуры.
+// The left block: G-code addresses and signs. The right block: letters with digits in the numeric-keypad layout.
 const ROWS: KeyDef[][] = [
   [...address('O# N% G('), ...numeric('A7 B8 C9')],
   [...address('X) Y[ Z]'), ...numeric('D4 H5 L6')],

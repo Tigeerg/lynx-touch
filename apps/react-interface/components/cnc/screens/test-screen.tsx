@@ -13,8 +13,8 @@ import { ProgramList, SearchBar } from './program-screen'
 
 const BBOX_AXES = ['X', 'Y', 'Z'] as const
 
-// Габариты УП: экстремумы X/Y/Z в машинных числах (рабочие координаты программы
-// плюс действующее смещение) и отметка выхода за программный предел станка.
+// NC bounding box: the X/Y/Z extremes in machine numbers (the program work coordinates plus
+// the work offset in force) and a mark when a soft limit is exceeded.
 function BBoxOverlay({ state }: { state: MachineState }) {
   const lines = programLines(state)
   const segments = useMemo(() => buildToolpath(lines), [lines])

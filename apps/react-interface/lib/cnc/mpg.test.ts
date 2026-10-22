@@ -1,6 +1,6 @@
-// Проверка подсистемы прогона маховиком: поведение фиксируется здесь, а не глазами.
-// Тесты держатся за координаты машины, курсор кадра и слово сообщения — то, что видит
-// оператор. Прогон идёт только в АВТО и только при включённом холостом ходе.
+// Handwheel run subsystem check: the behaviour is fixed here, not by eye.
+// The tests hold the machine coordinates, the block cursor and the message word - what the
+// operator sees. The run goes only in AUTO and only with dry run on.
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer, type Action } from './machine'
 

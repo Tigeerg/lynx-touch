@@ -10,8 +10,8 @@ import { Keycap, Panel } from './primitives'
 
 const VIEW_LABEL: Record<PathView, string> = { ISO: 'Изометрия', XY: 'План XY', XZ: 'Вид XZ' }
 
-// Переключатель ракурса с подсказкой клавиши `V`. Общий для панели вьювера и
-// общего заголовка в АВТО.
+// View-angle switch with the `V` key hint. Shared by the viewer panel and the common header
+// in AUTO.
 export function ViewBadges({ view }: { view: PathView }) {
   return (
     <div className="flex items-center gap-1.5 text-xs font-medium">
@@ -42,7 +42,7 @@ export function ToolpathView({
   state: MachineState
   view: PathView
   className?: string
-  /** Без своей рамки и заголовка: содержимое вьювера для общего заголовка. */
+  /** Without its own frame and header: the viewer content for the common header. */
   bare?: boolean
 }) {
   const lines = programLines(state)

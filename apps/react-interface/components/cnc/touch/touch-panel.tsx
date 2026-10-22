@@ -23,8 +23,9 @@ import { TouchDeck } from './touch-deck'
 import { TouchHeader } from './touch-header'
 import { TouchTabs } from './touch-tabs'
 
-// Панель 15.6" FHD 16:9 повёрнута в портрет (1080x1920, ~141 PPI, 0.18 мм/px). Логический холст 1.25x
-// (родной масштаб Windows для этой панели) -> 1 логический px ~= 0.225 мм; элемент 44 px ~= 10 мм сенсорной цели.
+// The 15.6" FHD 16:9 panel is rotated to portrait (1080x1920, ~141 PPI, 0.18 mm/px). The logical
+// canvas is 1.25x (the panel's native Windows scale) -> 1 logical px ~= 0.225 mm; a 44 px element
+// ~= a 10 mm touch target.
 const SCREEN_W = 864
 const SCREEN_H = 1536
 

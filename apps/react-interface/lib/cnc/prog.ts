@@ -1,7 +1,7 @@
-// Подсистема экрана «Программа»: симуляция прогона без движения осей и правка
-// текста (поиск/замена, перенумерация). Вынесена из машины по образцу ladder.ts:
-// machine.ts сводит подсистемы, а не впитывает их — размер редуктора держит метка
-// tools/check.ps1. Возвращаем { s, msg, level }, сообщение показывает machine.ts.
+// Program screen subsystem: the run simulation without moving the axes and the text editing
+// (search/replace, renumbering). Extracted from the machine after the pattern of ladder.ts:
+// machine.ts composes the subsystems instead of absorbing them - the reducer size is held by
+// the tools/check.ps1 mark. A result is { s, msg, level }; machine.ts shows the message.
 import { SCREEN_LABEL, WORKPLACE_LABEL } from './data'
 import { programLines, setLines } from './files'
 import { pushAlarm } from './messages'
@@ -48,7 +48,7 @@ export const isProgAction = (a: { type: string }): a is ProgAction => PROG_TYPES
 
 export type Result = { s: MachineState; msg?: string; level?: Message['level'] }
 
-// Шаг симуляции на TICK: кадры идут по таймеру, пока станок не выполняет программу.
+// Simulation step on TICK: the blocks advance on a timer while the machine is not running a program.
 export function tickSim(s: MachineState, dt: number): MachineState {
   if (!s.sim.active || s.run === 'RUN') return s
   const total = programLines(s).length

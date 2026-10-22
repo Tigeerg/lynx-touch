@@ -1283,13 +1283,13 @@ export interface LadderBranchResult {
 export interface LadderRungResult {
   closed: boolean[]
   branches: LadderBranchResult[]
-  /** Ток на входе катушки (хотя бы одна ветвь замкнута) */
+  /** Coil input current (at least one branch closed). */
   out: boolean
-  /** Состояние выхода катушки: для таймера — бит Q, для Set/Reset — защёлка */
+  /** Coil output state: for a timer the Q bit, for Set/Reset the latch. */
   on: boolean
-  /** Накопленное время таймера, мс */
+  /** Accumulated timer time, ms. */
   acc?: number
-  /** Текущее значение счётчика */
+  /** Current counter value. */
   count?: number
 }
 
@@ -1359,7 +1359,7 @@ function evalContact(
   return c.nc ? !signals[c.addr] : !!signals[c.addr]
 }
 
-/** Один скан ПЛК. `dt` — прошедшее время в мс (0 — только отображение без продвижения таймеров). */
+/** One PLC scan. `dt` is the elapsed time in ms (0 - display only, without advancing timers). */
 export function evaluateLadder(s: MachineState, ladder: LadderRung[] = savedRungs(s), dt = 0): LadderResult {
   const signals: Record<string, boolean> = {
     'I0.0': s.run !== 'ESTOP',

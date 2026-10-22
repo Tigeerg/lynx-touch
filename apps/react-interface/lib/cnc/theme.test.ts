@@ -1,4 +1,4 @@
-// Проверка цикла тем: «Минимал» — тема по умолчанию, оба варианта достижимы, круг замыкается.
+// Theme cycle check: "Minimal" is the default theme, both variants are reachable, the cycle closes.
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer } from './machine'
 import { THEME_OPTIONS, THEME_PARAM } from './service-data'

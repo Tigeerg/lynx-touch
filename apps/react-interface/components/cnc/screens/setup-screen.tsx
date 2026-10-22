@@ -8,9 +8,9 @@ import { ActiveCodes } from '../program-side'
 import { formatCoord, formatTime, Lamp, Panel } from '../primitives'
 import { LoadRow, OperatorPad, OverrideRow, RapidRow, Section } from '../side-status'
 
-// Рабочее место «НАЛАДКА»: слева — крупные рабочие и машинные координаты, строка
-// MDI и индикация щупа; справа — инструмент, нагрузка, активные коды, корректоры.
-// Графика траектории здесь скрыта: наладка идёт по числам.
+// The SETUP workplace: on the left the large work and machine coordinates, the MDI line and
+// the probe indication; on the right the tool, the load, the active codes, the overrides. The
+// toolpath graphics are hidden here: setup goes by the numbers.
 
 function AxisLoad({ axis, value }: { axis: Axis; value: number }) {
   const tone = value > 80 ? 'bg-destructive' : value > 60 ? 'bg-warning' : 'bg-primary'

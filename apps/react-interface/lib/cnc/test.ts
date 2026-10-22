@@ -1,6 +1,7 @@
-// Подсистема рабочего места ПРОГОН: показ графики и шторки кода, габариты УП,
-// ракурс траектории. Вынесена из machine.ts по образцу prog.ts и mpg.ts: редуктор
-// сводит подсистемы, а размер машины держит метка tools/check.ps1.
+// Workpiece PROGON (test) subsystem: showing the graphics and the code curtain, the NC
+// bounding box, the toolpath view angle. Extracted from machine.ts after the pattern of
+// prog.ts and mpg.ts: the reducer composes the subsystems, and the size of the machine is
+// held by the tools/check.ps1 mark.
 import { AUTO_VIEW_LABEL } from './data'
 import { PATH_VIEWS } from './toolpath'
 import { AUTO_VIEWS, type MachineState, type Message, type TestState } from './types'

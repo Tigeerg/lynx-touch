@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
-// Общая оболочка модальных окон панели: затемнение, центрирование и закрытие по
-// клику вне окна. Все диалоги рисуются через неё, иначе поведение (z-слой,
-// закрытие по фону) расходится от копии к копии.
+// The common shell for the panel's modal windows: dimming, centring and closing on a click
+// outside. Every dialog is drawn through it, otherwise the behaviour (z-layer, closing on the
+// backdrop) drifts from copy to copy.
 export function Overlay({
   onClose,
   label,

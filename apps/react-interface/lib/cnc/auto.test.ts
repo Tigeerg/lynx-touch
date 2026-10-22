@@ -1,5 +1,5 @@
-// Проверка рабочего места АВТО и единой вкладки «Работа»: набор F1-F8, действия
-// ресурса/счётчиков/слома и перевод вкладки в экран по рабочему месту.
+// AUTO workplace and the single Work tab check: the F1-F8 set, the tool life/counters/break
+// actions and the tab-to-screen mapping by workplace.
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer } from './machine'
 import { getSoftkeys } from './softkeys'

@@ -7,14 +7,14 @@ export type Axes = Record<Axis, number>
 export type Mode = 'AUTO' | 'MDI' | 'JOG' | 'MPG'
 export const MODES: Mode[] = ['AUTO', 'MDI', 'JOG', 'MPG']
 
-// Рабочее место оператора: верхний уровень панели. Определяет набор софт-кеев и
-// компоновку экрана, независимо от режима станка (Mode) и экрана (Screen).
+// Operator workplace: the top level of the panel. It defines the set of softkeys and the
+// screen layout, independently of the machine mode (Mode) and the screen (Screen).
 export type Workplace = 'SETUP' | 'TEST' | 'RUN'
-// Порядок задаёт порядок кнопок на пульте и в шапке (справа налево): АВТО, ПРОГОН, НАЛАДКА.
+// The order sets the order of the buttons on the console and in the header (right to left): RUN, TEST, SETUP.
 export const WORKPLACES: Workplace[] = ['RUN', 'TEST', 'SETUP']
 
-// Вкладки экрана: «Работа» объединяет прежние «Позиция» и «Программа»; её
-// содержимое выбирает рабочее место (Наладка/Прогон/Авто).
+// Screen tabs: the Work tab merges the former Position and Program; the workplace chooses its
+// content (Setup / PROGON / Auto).
 export type Tab = 'work' | 'offset' | 'tool' | 'alarm' | 'service'
 export const TABS: Tab[] = ['work', 'offset', 'tool', 'alarm', 'service']
 export const TAB_LABEL: Record<Tab, string> = {
@@ -62,20 +62,21 @@ export interface SimState {
   timer: number
 }
 
-// Рабочее место ПРОГОН: показ графики и шторки кода, габариты УП, ракурс.
+// Workpiece PROGON (test) state: showing the graphics and the code curtain, the NC bounding
+// box, the view angle.
 export interface TestState {
-  /** Шторка с G-кодом скрыта (F8 «Скрыть код»). */
+  /** The G-code curtain is hidden (F8 "Hide code"). */
   curtain: boolean
-  /** Показаны габариты УП (F5). */
+  /** The NC bounding box is shown (F5). */
   bbox: boolean
-  /** Графика очищена: траектория не рисуется (F6). */
+  /** The graphics are cleared: the toolpath is not drawn (F6). */
   hidePath: boolean
-  /** Работа: что показывать на экране (F8 «Вид»). */
+  /** Work: what to show on the screen (F8 "View"). */
   autoView: AutoView
   view: PathView
 }
 
-// Режимы вида в АВТО, друг за другом по F8: траектория, gcode, совместно.
+// Auto view modes, cycled by F8: toolpath, gcode, both.
 export type AutoView = 'trajectory' | 'gcode' | 'both'
 export const AUTO_VIEWS: AutoView[] = ['trajectory', 'gcode', 'both']
 
@@ -169,7 +170,7 @@ export interface LadderContact {
   addr: string
   label: string
   nc?: boolean
-  /** Если задано — элемент является блоком сравнения, а не контактом */
+  /** When set, the element is a comparison block, not a contact. */
   cmp?: LadderCompare
 }
 
@@ -177,7 +178,7 @@ export type CoilKind = 'coil' | 'set' | 'reset' | 'ton' | 'tof' | 'ctu' | 'ctd'
 
 export interface LadderCoil extends LadderContact {
   kind?: CoilKind
-  /** Уставка таймера (мс) или счётчика (импульсы) */
+  /** Timer preset (ms) or counter preset (pulses). */
   preset?: number
 }
 
@@ -185,7 +186,7 @@ export interface LadderRung {
   title: string
   contacts: LadderContact[]
   coil: LadderCoil
-  /** Параллельные ветви (ИЛИ): каждая ветвь — последовательность контактов (И) */
+  /** Parallel branches (OR): each branch is a sequence of contacts (AND). */
   or?: LadderContact[][]
 }
 
@@ -212,7 +213,7 @@ export interface LadderState {
   draft: LadderRung[] | null
   dirty: boolean
   col: number
-  /** Индекс ветви: 0 — основная линия, 1.. — параллельные (ИЛИ) ветви */
+  /** Branch index: 0 is the main line, 1.. are the parallel (OR) branches. */
   path: number
   manager: boolean
   pick: number

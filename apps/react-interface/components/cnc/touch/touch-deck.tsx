@@ -60,6 +60,9 @@ function HoldButton({
       aria-label={label}
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId)
+        // A second pointer on the same key used to orphan the first delay: its interval kept
+        // firing after the stop, and only one handle is kept (the review found the leak).
+        stop()
         onFire()
         timers.current.delay = window.setTimeout(() => {
           timers.current.repeat = window.setInterval(onFire, HOLD_REPEAT_MS)

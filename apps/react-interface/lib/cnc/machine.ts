@@ -16,6 +16,7 @@ import { editorReducer, isEditorAction, type EditorAction } from './editor'
 import { isSetupAction, setupReducer, type SetupAction } from './setup'
 import { controlReducer, isControlAction, type ControlAction } from './control'
 import { isProbeWizardAction, probeWizardReducer, type ProbeWizardAction } from './probe-wizard'
+import { isServiceAction, serviceReducer, type ServiceAction } from './service'
 import { isMpgAction, mpgReducer, type MpgAction } from './mpg'
 import { initialTest, isTestAction, testReducer, type TestAction } from './test'
 import {
@@ -23,15 +24,10 @@ import {
   evaluateLadder,
   formatParam,
   sameLadderMem,
-  INI_FILE,
-  hasServiceList,
-  paramAt,
-  SERVICE_PASSWORD,
   THEME_OPTIONS,
   THEME_PARAM,
   TOOLPATH_PARAM,
   UI_MODE_PARAM,
-  unsavedIds,
   type ParamDef,
 } from './service-data'
 import {
@@ -49,14 +45,13 @@ import {
   type MachineState,
   type Mode,
   type Screen,
-  type ServiceSection,
   type Workplace,
 } from './types'
 
 import { distanceToGo, motionSpeed, toWork, workOffset, zeroAxes } from './coords'
 import { currentFile, programLines } from './files'
 import { listLength } from './list'
-import { cancelEdit, markSaved, setParam } from './service-edit'
+import { cancelEdit, markSaved } from './service-edit'
 import { notify, pushAlarm } from './messages'
 import { isBusy } from './guards'
 
@@ -80,16 +75,6 @@ export type Action =
   | { type: 'ALARM_ACK' }
   | { type: 'ALARM_CLEAR_ALL' }
   | { type: 'HELP'; open?: boolean }
-  | { type: 'SERVICE_SECTION'; section: ServiceSection }
-  | { type: 'SERVICE_AXIS'; axis: Axis }
-  | { type: 'SERVICE_ENTER' }
-  | { type: 'SERVICE_CANCEL' }
-  | { type: 'SERVICE_BACK' }
-  | { type: 'SERVICE_LOCK' }
-  | { type: 'SERVICE_AUTH_INPUT'; value: string }
-  | { type: 'SERVICE_SAVE' }
-  | { type: 'SERVICE_DEFAULTS' }
-  | { type: 'PARAM_ADJUST'; dir: 1 | -1; coarse?: boolean }
   | { type: 'THEME_TOGGLE' }
   | { type: 'UI_MODE_SET'; value: 0 | 1 }
   | { type: 'TOOLPATH_TOGGLE' }
@@ -102,6 +87,7 @@ export type Action =
   | SetupAction
   | ControlAction
   | ProbeWizardAction
+  | ServiceAction
 
 export const initialState: MachineState = {
   ladder: initialLadder,
@@ -343,6 +329,10 @@ export function reducer(state: MachineState, a: Action): MachineState {
     const r = probeWizardReducer(s, a)
     return r.msg ? notify(r.s, r.msg, r.level) : r.s
   }
+  if (isServiceAction(a)) {
+    const r = serviceReducer(s, a, reducer)
+    return r.msg ? notify(r.s, r.msg, r.level) : r.s
+  }
   switch (a.type) {
     case 'TICK': {
       let n = s
@@ -528,138 +518,6 @@ export function reducer(state: MachineState, a: Action): MachineState {
         return notify({ ...s, screen: a.screen, editMode: false, editor: null }, `Файл ${currentFile(s).name} сохранён`)
       }
       return { ...s, screen: a.screen }
-
-    case 'SERVICE_SECTION': {
-      const base = cancelEdit(s)
-      return {
-        ...base,
-        service: { ...base.service, section: a.section, focus: 'nav' },
-        cursor: { ...base.cursor, service: 0 },
-      }
-    }
-
-    case 'SERVICE_AXIS':
-      if (s.service.editing || s.service.auth) return s
-      return { ...s, service: { ...s.service, axis: a.axis } }
-
-    case 'SERVICE_ENTER': {
-      const sv = s.service
-      if (sv.auth) {
-        if (sv.auth.input === SERVICE_PASSWORD) {
-          return notify({ ...s, service: { ...sv, auth: null, write: true } }, 'Запись параметров разрешена', 'warn')
-        }
-        return { ...s, service: { ...sv, auth: { input: '', error: true } } }
-      }
-      if (sv.editing) {
-        const def = paramAt(sv.section, s.cursor.service, sv.axis)
-        const committed: MachineState = { ...s, service: { ...sv, editing: null } }
-        return def?.free ? markSaved(committed, def.id, s.params[def.id]) : committed
-      }
-      if (sv.focus === 'nav') {
-        if (!hasServiceList(sv.section)) return notify(s, 'В этом разделе нет редактируемых параметров')
-        return { ...s, service: { ...sv, focus: 'list' } }
-      }
-      if (sv.section === 'ladder') return reducer(s, { type: 'LADDER_EDIT', on: true })
-      const def = paramAt(sv.section, s.cursor.service, sv.axis)
-      if (!def) return s
-      if (!def.free) {
-        if (isBusy(s)) return notify(s, 'Изменение параметров во время цикла запрещено', 'warn')
-        if (!sv.write) return { ...s, service: { ...sv, auth: { input: '', error: false } } }
-      }
-      return { ...s, service: { ...sv, editing: { id: def.id, original: s.params[def.id] } } }
-    }
-
-    case 'SERVICE_CANCEL': {
-      const sv = s.service
-      if (sv.auth) return { ...s, service: { ...sv, auth: null } }
-      if (sv.editing) return notify(cancelEdit(s), 'Изменение отменено')
-      if (sv.focus === 'list') return { ...s, service: { ...sv, focus: 'nav' } }
-      return s
-    }
-
-    case 'SERVICE_BACK': {
-      const sv = s.service
-      if (sv.auth || sv.editing || sv.focus === 'list') return reducer(s, { type: 'SERVICE_CANCEL' })
-      if (sv.section !== SERVICE_SECTIONS[0])
-        return reducer(s, { type: 'SERVICE_SECTION', section: SERVICE_SECTIONS[0] })
-      return reducer(s, { type: 'SET_SCREEN', screen: 'pos' })
-    }
-
-    case 'SERVICE_LOCK': {
-      const sv = s.service
-      if (sv.auth) return s
-      if (sv.write) {
-        if (sv.editing || unsavedIds(s.params, sv.saved).length > 0) {
-          return notify(s, 'Есть несохранённые изменения — сначала нажмите «Сохранить»', 'warn')
-        }
-        return notify({ ...s, service: { ...sv, write: false } }, 'Запись параметров заблокирована')
-      }
-      if (isBusy(s)) return notify(s, 'Запись параметров недоступна во время цикла', 'warn')
-      return { ...s, service: { ...sv, auth: { input: '', error: false } } }
-    }
-
-    case 'SERVICE_AUTH_INPUT':
-      if (!s.service.auth) return s
-      return { ...s, service: { ...s.service, auth: { input: a.value.slice(0, 12), error: false } } }
-
-    case 'SERVICE_SAVE': {
-      const sv = s.service
-      if (!sv.write) return notify(s, 'Запись заблокирована — разрешите запись (F2)', 'warn')
-      if (sv.editing) return notify(s, 'Завершите правку параметра: Ввод или Отмена', 'warn')
-      if (isBusy(s)) return notify(s, 'Сохранение недоступно во время цикла', 'warn')
-      const count = unsavedIds(s.params, sv.saved).length
-      if (count === 0) return notify(s, 'Нет несохранённых изменений')
-      return notify(
-        { ...s, service: { ...sv, saved: { ...s.params } } },
-        sv.restartPending
-          ? `Сохранено в ${INI_FILE}: ${count}. Требуется перезапуск LinuxCNC`
-          : `Сохранено в ${INI_FILE}: ${count}`,
-        sv.restartPending ? 'warn' : 'info',
-      )
-    }
-
-    case 'SERVICE_DEFAULTS': {
-      const sv = s.service
-      if (sv.auth || sv.editing || sv.focus !== 'list') return s
-      const def = paramAt(sv.section, s.cursor.service, sv.axis)
-      if (!def) return s
-      const value = defaultParams()[def.id]
-      if (s.params[def.id] === value) return notify(s, 'Параметр уже имеет значение по умолчанию')
-      if (!def.free) {
-        if (isBusy(s)) return notify(s, 'Изменение параметров во время цикла запрещено', 'warn')
-        if (!sv.write) return notify(s, 'Параметр защищён — разрешите запись (F2)', 'warn')
-      }
-      let n = setParam(s, def, value)
-      if (def.free) n = markSaved(n, def.id, value)
-      return notify(
-        n,
-        def.free ? 'Сброшено по умолчанию' : 'Сброшено по умолчанию. Нажмите «Сохранить», чтобы записать',
-      )
-    }
-
-    case 'PARAM_ADJUST': {
-      const sv = s.service
-      if (sv.section === 'ladder') return sv.focus === 'list' ? reducer(s, { type: 'LADDER_COL', dir: a.dir }) : s
-      if (sv.auth) return s
-      if (!sv.editing) {
-        if (sv.focus === 'list' && (sv.section === 'joints' || sv.section === 'pid')) {
-          const axis = AXES[(AXES.indexOf(sv.axis) + a.dir + AXES.length) % AXES.length]
-          return { ...s, service: { ...sv, axis } }
-        }
-        return s
-      }
-      const def = paramAt(sv.section, s.cursor.service, sv.axis)
-      if (!def || def.id !== sv.editing.id) return s
-      const cur = s.params[def.id]
-      let next: number
-      if (def.options) {
-        next = (cur + a.dir + def.options.length) % def.options.length
-      } else {
-        const k = 10 ** Math.max(def.digits, 4)
-        next = Math.round(clamp(cur + a.dir * def.step * (a.coarse ? 10 : 1), def.min, def.max) * k) / k
-      }
-      return next === cur ? s : setParam(s, def, next)
-    }
 
     case 'THEME_TOGGLE':
       return markSaved(

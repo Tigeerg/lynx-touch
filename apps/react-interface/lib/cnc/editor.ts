@@ -20,11 +20,11 @@ export type EditorAction =
   | { type: 'FILE_OPEN' }
   | { type: 'EDIT_MODE'; on?: boolean }
   | { type: 'EDIT_BEGIN' }
-  | { type: 'EDIT_INSERT' }
-  | { type: 'EDIT_DELETE' }
+  | { type: 'EDIT_INSERT'; at?: number }
+  | { type: 'EDIT_DELETE'; at?: number }
   | { type: 'EDIT_BUFFER'; value: string }
-  | { type: 'EDIT_COMMIT' }
-  | { type: 'EDIT_CANCEL' }
+  | { type: 'EDIT_COMMIT'; at?: number }
+  | { type: 'EDIT_CANCEL'; at?: number }
 
 const EDITOR_TYPES = new Set<string>([
   'FILE_DIALOG',
@@ -101,7 +101,7 @@ export function editorReducer(s: MachineState, a: EditorAction): Result {
       const i = s.cursor.prog + 1
       const lines = [...programLines(s)]
       lines.splice(i, 0, '')
-      const n = setLines(s, lines)
+      const n = setLines(s, lines, a.at)
       return { s: { ...n, cursor: { ...s.cursor, prog: i }, editor: { line: i, buffer: '', inserted: true } } }
     }
 
@@ -113,6 +113,7 @@ export function editorReducer(s: MachineState, a: EditorAction): Result {
       const n = setLines(
         s,
         lines.filter((_, idx) => idx !== i),
+        a.at,
       )
       return {
         s: { ...n, cursor: { ...s.cursor, prog: clampIndex(i, 0, lines.length - 1) }, line: 0, nextLine: 0 },
@@ -129,7 +130,7 @@ export function editorReducer(s: MachineState, a: EditorAction): Result {
       if (!value) return editorReducer(s, { type: 'EDIT_CANCEL' })
       const line = s.editor.line
       const lines = programLines(s).map((l, idx) => (idx === line ? value : l))
-      return { s: { ...setLines(s, lines), editor: null }, msg: `Кадр ${line + 1} изменён` }
+      return { s: { ...setLines(s, lines, a.at), editor: null }, msg: `Кадр ${line + 1} изменён` }
     }
 
     case 'EDIT_CANCEL': {
@@ -139,6 +140,7 @@ export function editorReducer(s: MachineState, a: EditorAction): Result {
         const n = setLines(
           s,
           programLines(s).filter((_, idx) => idx !== i),
+          a.at,
         )
         return { s: { ...n, editor: null, cursor: { ...s.cursor, prog: Math.max(0, i - 1) } } }
       }

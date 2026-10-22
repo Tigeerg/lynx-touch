@@ -5,6 +5,27 @@
 
 Формат и правила — в [`VERSIONING.md`](VERSIONING.md).
 
+## 0.18.31 — 2026-10-22
+
+### Изменено
+- **Редьюсер больше не читает часы.** `files.ts` (`stamp`), `messages.ts` (`timeNow`) и `ladder.ts` брали
+  время внутри редьюсера: тесты зависели от момента запуска, а StrictMode писал два разных штампа в один
+  журнал аварий. Отметка приходит в экшене: у пишущих действий (`EDIT_INSERT/DELETE/COMMIT/CANCEL`,
+  `SEARCH_REPLACE_ALL`, `PROG_RENUMBER`, `BROKEN_TOOL_CHECK`, `LADDER_NEW/COPY/SAVE`, `ESTOP`) появилось
+  поле `at` (эпоха, мс), а заполняет его `stampAction` (`lib/cnc/time.ts`) в обёртке `useReducer`
+  (`use-cnc-machine.ts`) — до чистого редьюсера. `formatStamp`/`formatTime` чистые; без `at` редьюсер
+  отметку не выдумывает. Проверка — `lib/cnc/time.test.ts` (на прежнем коде краснеют 3 из 5).
+
+### Версии
+- продукт — `0.18.31`; `react-interface` — `0.14.15`; остальные проекты — без изменений.
+
+### Совместимость УП
+- Влияния нет: отметки времени те же, изменилось место их чтения.
+
+### Документация
+- `ARCHITECTURE.md`/`ARCHITECTURE.en.md`: в списке `lib/cnc/` назван `time.ts`.
+- `TODO.md` §7: пункт «редьюсер зовёт `new Date()`» закрыт.
+
 ## 0.18.30 — 2026-10-22
 
 ### Изменено

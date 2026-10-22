@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useReducer, useState } from 'react'
 import { initialState, reducer, type Action } from '@/lib/cnc/machine'
 import { paramValue, THEME_PARAM } from '@/lib/cnc/service-data'
 import { getSoftkeys } from '@/lib/cnc/softkeys'
+import { stampAction } from '@/lib/cnc/time'
 import { TABS, WORKPLACES, screenOfTab, type Axis, type MachineState } from '@/lib/cnc/types'
 
 const TICK_MS = 50
@@ -130,7 +131,8 @@ function keyToAction(state: MachineState, e: KeyboardEvent): Action | null {
 }
 
 export function useCncMachine() {
-  const [state, dispatch] = useReducer(reducer, initialState)
+  // Every action goes through stampAction once: the clock is read here, the reducer stays pure.
+  const [state, dispatch] = useReducer((s: MachineState, a: Action) => reducer(s, stampAction(a)), initialState)
   const [focused, setFocused] = useState(true)
   const softkeys = getSoftkeys(state)
   const cycleView = () => dispatch({ type: 'PATH_VIEW_CYCLE' })

@@ -1,6 +1,6 @@
 import { clampIndex } from './clamp'
-import { stamp } from './files'
 import { isBusy } from './guards'
+import { formatStamp } from './time'
 import type { Result } from './subsystem'
 import type {
   CoilKind,
@@ -157,7 +157,7 @@ export const withPathContacts = (rung: LadderRung, path: number, contacts: Ladde
 
 export type LadderAction =
   | { type: 'LADDER_EDIT'; on: boolean }
-  | { type: 'LADDER_SAVE' }
+  | { type: 'LADDER_SAVE'; at?: number }
   | { type: 'LADDER_COL'; dir: 1 | -1 }
   | { type: 'LADDER_ADD_CONTACT' }
   | { type: 'LADDER_ADD_COMPARE' }
@@ -174,8 +174,8 @@ export type LadderAction =
   | { type: 'LADDER_MANAGER'; open: boolean }
   | { type: 'LADDER_PICK_MOVE'; delta: number }
   | { type: 'LADDER_LOAD' }
-  | { type: 'LADDER_NEW' }
-  | { type: 'LADDER_COPY' }
+  | { type: 'LADDER_NEW'; at?: number }
+  | { type: 'LADDER_COPY'; at?: number }
   | { type: 'LADDER_RENAME' }
   | { type: 'LADDER_REMOVE' }
 
@@ -599,7 +599,7 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
         name: uniqueName(L.schemes, 'plc_new'),
         title: 'Новая схема',
         rungs,
-        modified: stamp(),
+        modified: a.at === undefined ? '' : formatStamp(a.at),
       }
       const schemes = [...L.schemes, scheme]
       const index = schemes.length - 1
@@ -630,7 +630,7 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
         name: uniqueName(L.schemes, `${src.name}_copy`),
         title: `${src.title} (копия)`,
         rungs: cloneRungs(src.rungs),
-        modified: stamp(),
+        modified: a.at === undefined ? '' : formatStamp(a.at),
       }
       const at = L.pick + 1
       const schemes = [...L.schemes.slice(0, at), copy, ...L.schemes.slice(at)]
@@ -679,7 +679,11 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
         seen.set(r.coil.addr, { row: i, kind })
       }
       const scheme = activeScheme(s)
-      const schemes = replaceAt(L.schemes, L.active, { ...scheme, rungs: L.draft, modified: stamp() })
+      const schemes = replaceAt(L.schemes, L.active, {
+        ...scheme,
+        rungs: L.draft,
+        modified: a.at === undefined ? scheme.modified : formatStamp(a.at),
+      })
       return {
         s: patch(s, { schemes, draft: null, dirty: false, form: null, manager: false, col: 0, mem: emptyMem() }),
         msg: `Схема ${scheme.name}.lad сохранена и загружена в ПЛК`,

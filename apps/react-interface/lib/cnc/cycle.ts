@@ -137,7 +137,7 @@ export type CycleAction =
   | { type: 'CYCLE_START' }
   | { type: 'FEED_HOLD' }
   | { type: 'RESET' }
-  | { type: 'ESTOP' }
+  | { type: 'ESTOP'; at?: number }
   | { type: 'SPINDLE_WARMUP' }
 
 const CYCLE_TYPES = new Set<string>(['TICK', 'CYCLE_START', 'FEED_HOLD', 'RESET', 'ESTOP', 'SPINDLE_WARMUP'])
@@ -291,6 +291,7 @@ export function cycleReducer(s: MachineState, a: CycleAction): Result {
         1001,
         'error',
         'Нажата кнопка аварийного останова',
+        a.at,
       )
       return { s: n, msg: 'АВАРИЙНЫЙ СТОП', level: 'error' }
     }

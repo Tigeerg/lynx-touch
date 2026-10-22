@@ -39,7 +39,8 @@ Layers, top to bottom:
   `data.ts` and `softkeys.ts` (texts and icons), `service-data.ts` (the catalogue API: `ParamDef` types and
   the sections), `params/` (the section tables, one file per section: `def.ts`, `display.ts`, `system.ts`,
   `motion.ts`, `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`; a directory of its own so the tables stay
-  apart from the logic), `hal.ts` (the HAL pin reference), `messages.ts`, `toolpath.ts`, `tool-check.ts`,
+  apart from the logic), `hal.ts` (the HAL pin reference), `messages.ts`, `time.ts` (the stamps from the
+  action), `toolpath.ts`, `tool-check.ts`,
   `probe.ts`, `mpg.ts`, `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, theme logic.
 * `public/` — images and static assets of the project.
 * Tests live next to the logic (`lib/cnc/*.test.ts`), in the same layer as the defect.

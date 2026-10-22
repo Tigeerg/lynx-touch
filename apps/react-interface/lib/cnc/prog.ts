@@ -23,11 +23,11 @@ export type ProgAction =
   | { type: 'SEARCH_QUERY'; value: string }
   | { type: 'SEARCH_REPLACE'; value: string }
   | { type: 'SEARCH_FIND' }
-  | { type: 'SEARCH_REPLACE_ALL' }
-  | { type: 'PROG_RENUMBER' }
+  | { type: 'SEARCH_REPLACE_ALL'; at?: number }
+  | { type: 'PROG_RENUMBER'; at?: number }
   | { type: 'TOOL_LIFE' }
   | { type: 'PART_COUNTER_RESET' }
-  | { type: 'BROKEN_TOOL_CHECK' }
+  | { type: 'BROKEN_TOOL_CHECK'; at?: number }
   | { type: 'HINT'; text: string }
 
 const PROG_TYPES = new Set<string>([
@@ -113,7 +113,7 @@ export function progReducer(s: MachineState, a: ProgAction): Result {
         return l.replace(re, () => replacement)
       })
       if (touched === 0) return { s, msg: `Не найдено: ${q}`, level: 'error' }
-      return { s: setLines(s, lines), msg: `Заменено в кадрах: ${touched}` }
+      return { s: setLines(s, lines, a.at), msg: `Заменено в кадрах: ${touched}` }
     }
 
     case 'PROG_RENUMBER': {
@@ -138,7 +138,7 @@ export function progReducer(s: MachineState, a: ProgAction): Result {
         return out
       })
       if (changed === 0) return { s, msg: 'Нумерация уже по порядку' }
-      return { s: setLines(s, nextLines), msg: `Перенумеровано кадров: ${changed}` }
+      return { s: setLines(s, nextLines, a.at), msg: `Перенумеровано кадров: ${changed}` }
     }
 
     case 'TOOL_LIFE': {
@@ -175,6 +175,7 @@ export function progReducer(s: MachineState, a: ProgAction): Result {
           4010,
           'error',
           `Возможен слом ${num}: отклонение длины ${delta.toFixed(3)} мм`,
+          a.at,
         )
         return {
           s: alarmed,

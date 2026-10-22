@@ -14,6 +14,7 @@ import type { ProgAction } from './prog'
 import type { ServiceAction } from './service'
 import type { SetupAction } from './setup'
 import type { TestAction } from './test'
+import type { ToolMeasureAction } from './tool-measure'
 import type { MachineState, Message } from './types'
 
 /** What a subsystem hands back: the new state and an optional operator message. */
@@ -43,6 +44,7 @@ export type Action =
   | ServiceAction
   | CycleAction
   | NavAction
+  | ToolMeasureAction
 
 const MACHINE_TYPES = new Set<string>([
   'ALARM_ACK',

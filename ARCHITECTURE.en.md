@@ -41,7 +41,8 @@ Layers, top to bottom:
   `motion.ts`, `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`; a directory of its own so the tables stay
   apart from the logic), `hal.ts` (the HAL pin reference), `messages.ts`, `time.ts` (the stamps from the
   action), `toolpath.ts`, `tool-check.ts`,
-  `probe.ts`, `mpg.ts`, `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, theme logic.
+  `probe.ts`, `mpg.ts`, `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, `tool-measure.ts` (tool measuring
+  with the setter), `machine-branches.ts` (the machine's own keys: alarms, help, theme), theme logic.
 * `public/` — images and static assets of the project.
 * Tests live next to the logic (`lib/cnc/*.test.ts`), in the same layer as the defect.
 

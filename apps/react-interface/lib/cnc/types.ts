@@ -91,6 +91,16 @@ export interface TestState {
 export type AutoView = 'trajectory' | 'gcode' | 'both'
 export const AUTO_VIEWS: AutoView[] = ['trajectory', 'gcode', 'both']
 
+// Tool-length measurement (the tool setter): a modal run with animated phases.
+export interface ToolMeasureState {
+  open: boolean
+  running: boolean
+  /** Seconds elapsed in the run (MEASURE_TOTAL_S is the whole run). */
+  elapsed: number
+  /** The measured length, mm; null until the run finishes. */
+  length: number | null
+}
+
 export interface SearchState {
   open: boolean
   query: string
@@ -304,6 +314,7 @@ export interface MachineState {
   probe: ProbeState
   sim: SimState
   test: TestState
+  toolMeasure: ToolMeasureState
   search: SearchState
   /**
    * Parameter values by catalogue id. A key may be absent (an older machine INI, a section added

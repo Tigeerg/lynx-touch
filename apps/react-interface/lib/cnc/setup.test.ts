@@ -48,12 +48,6 @@ describe('наладка: смещения, инструмент, обнулен
     expect(busy.msg).toBe('Смена инструмента в режиме РУЧНОЙ / MDI')
   })
 
-  it('измерение задаёт длину инструмента под курсором', () => {
-    const s = run({ ...initialState, cursor: { ...initialState.cursor, tool: 0 } }, { type: 'TOOL_MEASURE' })
-
-    expect(s.tools[0].length).toBeGreaterThan(0)
-  })
-
   it('ресурс инструмента сбрасывается на 100 и наработка обнуляется', () => {
     const s = run(
       { ...initialState, cursor: { ...initialState.cursor, tool: 0 }, toolTime: { 1: 5000 } },
@@ -90,13 +84,10 @@ describe('наладка: пустой список не роняет экран
     },
   )
 
-  it.each([{ type: 'TOOL_CALL' }, { type: 'TOOL_MEASURE' }] as const)(
-    'инструмент под курсором: $type отвечает сообщением',
-    (action) => {
-      const r = setupReducer({ ...empty, mode: 'JOG' }, action)
+  it.each([{ type: 'TOOL_CALL' }] as const)('инструмент под курсором: $type отвечает сообщением', (action) => {
+    const r = setupReducer({ ...empty, mode: 'JOG' }, action)
 
-      expect(r.msg).toBeTruthy()
-      expect(r.s.tools).toEqual([])
-    },
-  )
+    expect(r.msg).toBeTruthy()
+    expect(r.s.tools).toEqual([])
+  })
 })

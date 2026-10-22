@@ -14,6 +14,7 @@ import { PROBE_STEP_MEASURE, PROBE_TOOL } from './probe'
 import { abortProbe, probeTick } from './probe-exec'
 import { idleSim, tickSim } from './prog'
 import { evaluateLadder, sameLadderMem, sameLadderSignals } from './ladder-scan'
+import { tickToolMeasure } from './tool-measure'
 import type { Result } from './subsystem'
 import { AXES, MDI_HISTORY_SIZE, type Axes, type MachineState } from './types'
 
@@ -162,6 +163,10 @@ export function cycleReducer(s: MachineState, a: CycleAction): Result {
       if (!sameLadderMem(scan.mem, n.ladder.mem) || !sameLadderSignals(scan.signals, n.ladder.signals))
         n = { ...n, ladder: { ...n.ladder, mem: scan.mem, signals: scan.signals } }
       n = tickSim(n, a.dt)
+      if (n.toolMeasure.running) {
+        const m = tickToolMeasure(n, a.dt)
+        return { s: m.msg ? notify(m.s, m.msg) : m.s }
+      }
       if (n.run !== 'RUN') return { s: n }
       if (n.probe.running) {
         const r = probeTick(n, a.dt)

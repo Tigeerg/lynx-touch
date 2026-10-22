@@ -147,6 +147,19 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
     return slots(keys)
   }
 
+  if (s.toolMeasure.open) {
+    keys = [
+      {
+        label: s.toolMeasure.length === null ? 'Пуск замера' : 'Повторить',
+        icon: Play,
+        action: { type: 'TOOL_MEASURE_START' },
+        disabled: s.toolMeasure.running,
+      },
+      { label: s.toolMeasure.running ? 'Прервать' : 'Закрыть', icon: X, action: { type: 'TOOL_MEASURE_CLOSE' } },
+    ]
+    return slots(keys)
+  }
+
   // The SETUP workplace: the F1-F8 set for manual preparation (tool measuring, base setting,
   // parking) on the start Position screen. Screens with their own wizard (offsets, service,
   // editor) keep their softkeys.

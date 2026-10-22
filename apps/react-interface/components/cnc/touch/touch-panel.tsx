@@ -5,6 +5,7 @@ import { MODE_LOCKED_SCREENS } from '@/lib/cnc/types'
 import { FhdStage } from '../fhd-stage'
 import { FileDialog } from '../file-dialog'
 import { CalcOverlay } from '../calc-overlay'
+import { ToolMeasureDialog } from '../tool-measure-dialog'
 import { ToolCallDialog } from '../tool-call-dialog'
 import { HelpOverlay } from '../help-overlay'
 import { ProgramSide } from '../program-side'
@@ -97,6 +98,7 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
         {state.fileDialog && <FileDialog state={state} dispatch={dispatch} />}
         {state.toolDialog && <ToolCallDialog state={state} dispatch={dispatch} />}
         {state.calc && <CalcOverlay dispatch={dispatch} />}
+        {state.toolMeasure.open && <ToolMeasureDialog state={state} dispatch={dispatch} />}
         {state.help && <HelpOverlay onClose={() => dispatch({ type: 'HELP', open: false })} />}
         <SplashScreen />
       </div>

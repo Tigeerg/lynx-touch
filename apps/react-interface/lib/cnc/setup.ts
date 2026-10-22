@@ -22,7 +22,6 @@ export type SetupAction =
   | { type: 'TOOL_BACK' }
   | { type: 'TOOL_RUN' }
   | { type: 'TOOL_CALL' }
-  | { type: 'TOOL_MEASURE' }
   | { type: 'TOOL_RESET_LIFE' }
 
 const SETUP_TYPES = new Set<string>([
@@ -39,7 +38,6 @@ const SETUP_TYPES = new Set<string>([
   'TOOL_BACK',
   'TOOL_RUN',
   'TOOL_CALL',
-  'TOOL_MEASURE',
   'TOOL_RESET_LIFE',
 ])
 
@@ -151,19 +149,6 @@ export function setupReducer(s: MachineState, a: SetupAction): Result {
       return {
         s: { ...s, tool: tool.number, pendingTool: tool.number },
         msg: `Инструмент T${String(tool.number).padStart(2, '0')} в шпинделе`,
-      }
-    }
-
-    case 'TOOL_MEASURE': {
-      if (isBusy(s)) return { s, msg: 'Остановите программу', level: 'warn' }
-      const i = s.cursor.tool
-      const measured = s.tools[i]
-      if (!measured) return { s, msg: 'Инструмент не выбран', level: 'warn' }
-      const length = Math.round((60 + ((Math.abs(s.machine.Z) * 7.31 + i * 13.7) % 70)) * 1000) / 1000
-      const tools = s.tools.map((t, idx) => (idx === i ? { ...t, length } : t))
-      return {
-        s: { ...s, tools },
-        msg: `T${String(measured.number).padStart(2, '0')}: длина ${length.toFixed(3)} мм`,
       }
     }
 

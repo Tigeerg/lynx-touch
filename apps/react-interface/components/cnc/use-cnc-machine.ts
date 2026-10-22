@@ -11,6 +11,13 @@ const TICK_MS = 50
 const AXIS_KEYS: Record<string, Axis> = { KeyX: 'X', KeyY: 'Y', KeyZ: 'Z', KeyA: 'A' }
 
 function keyToAction(state: MachineState, e: KeyboardEvent): Action | null {
+  if (state.toolMeasure.open) {
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter') && !state.toolMeasure.running) {
+      return { type: 'TOOL_MEASURE_START' }
+    }
+    if (e.code === 'Escape') return { type: 'TOOL_MEASURE_CLOSE' }
+    return null
+  }
   if (state.toolDialog) {
     const digit = /^(?:Digit|Numpad)([0-9])$/.exec(e.code)
     if (digit) return { type: 'TOOL_INPUT', value: digit[1] }

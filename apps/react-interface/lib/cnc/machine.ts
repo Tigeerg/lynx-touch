@@ -1,21 +1,21 @@
-import { clampIndex } from './clamp'
 import { controlReducer, isControlAction } from './control'
 import { zeroAxes } from './coords'
 import { cycleReducer, isCycleAction } from './cycle'
 import { INITIAL_ALARMS, INITIAL_OFFSETS, INITIAL_TOOLS, PROGRAM_FILES } from './data'
 import { editorReducer, isEditorAction } from './editor'
 import { initialLadder, isLadderAction, ladderReducer } from './ladder'
+import { machineReducer } from './machine-branches'
 import { notify } from './messages'
 import { isMpgAction, mpgReducer } from './mpg'
 import { isNavAction, navReducer } from './nav'
 import { isProbeWizardAction, probeWizardReducer } from './probe-wizard'
 import { idleSim, isProgAction, progReducer } from './prog'
 import { isServiceAction, serviceReducer } from './service'
-import { defaultParams, THEME_OPTIONS, THEME_PARAM, TOOLPATH_PARAM, UI_MODE_PARAM } from './service-data'
-import { markSaved } from './service-edit'
+import { defaultParams } from './service-data'
 import { isSetupAction, setupReducer } from './setup'
 import { defineSubsystem, isMachineAction, type Action, type MachineAction, type Subsystem } from './subsystem'
 import { initialTest, isTestAction, testReducer } from './test'
+import { initialToolMeasure, isToolMeasureAction, toolMeasureReducer } from './tool-measure'
 import { MODE_START_SCREEN, type MachineState } from './types'
 
 export { distanceToGo, motionSpeed, toWork, workOffset } from './coords'
@@ -109,6 +109,7 @@ export const initialState: MachineState = {
   },
   sim: idleSim(),
   test: initialTest,
+  toolMeasure: initialToolMeasure,
   search: { open: false, query: '', replace: '' },
   params: defaultParams(),
 }
@@ -121,6 +122,7 @@ const SUBSYSTEMS: Subsystem[] = [
   defineSubsystem({ claims: isProgAction, reduce: progReducer }),
   defineSubsystem({ claims: isMpgAction, reduce: mpgReducer }),
   defineSubsystem({ claims: isTestAction, reduce: testReducer }),
+  defineSubsystem({ claims: isToolMeasureAction, reduce: toolMeasureReducer }),
   defineSubsystem({ claims: isEditorAction, reduce: editorReducer }),
   defineSubsystem({ claims: isSetupAction, reduce: setupReducer }),
   defineSubsystem({ claims: isControlAction, reduce: controlReducer }),
@@ -136,45 +138,4 @@ export function reducer(state: MachineState, a: Action): MachineState {
     if (r) return r.msg ? notify(r.s, r.msg, r.level) : r.s
   }
   return isMachineAction(a) ? machineReducer(state, a) : state
-}
-
-/** The machine's own branches: the console keys no subsystem claims. */
-function machineReducer(s: MachineState, a: MachineAction): MachineState {
-  switch (a.type) {
-    case 'THEME_TOGGLE': {
-      // A missing key (an older state) takes the first theme, not NaN.
-      const next = ((s.params[THEME_PARAM] ?? 0) + 1) % THEME_OPTIONS.length
-      return markSaved({ ...s, params: { ...s.params, [THEME_PARAM]: next } }, THEME_PARAM, next)
-    }
-    case 'UI_MODE_SET':
-      if (s.params[UI_MODE_PARAM] === a.value) return s
-      return markSaved({ ...s, params: { ...s.params, [UI_MODE_PARAM]: a.value } }, UI_MODE_PARAM, a.value)
-    case 'TOOLPATH_TOGGLE': {
-      const show = s.params[TOOLPATH_PARAM] ? 0 : 1
-      return notify(
-        markSaved({ ...s, params: { ...s.params, [TOOLPATH_PARAM]: show } }, TOOLPATH_PARAM, show),
-        show ? 'Предпросмотр траектории включён' : 'Предпросмотр траектории скрыт',
-      )
-    }
-
-    case 'CALC':
-      return { ...s, calc: a.open ?? !s.calc }
-
-    case 'ALARM_ACK': {
-      const i = s.cursor.alarm
-      if (!s.alarms[i]) return s
-      return { ...s, alarms: s.alarms.map((al, idx) => (idx === i ? { ...al, active: false } : al)) }
-    }
-
-    case 'ALARM_CLEAR_ALL': {
-      const alarms = s.alarms.filter((al) => al.active)
-      return { ...s, alarms, cursor: { ...s.cursor, alarm: clampIndex(s.cursor.alarm, 0, alarms.length) } }
-    }
-
-    case 'HELP':
-      return { ...s, help: a.open ?? !s.help }
-
-    default:
-      return s
-  }
 }

@@ -8,6 +8,8 @@ import {
   HAL_ROW_COUNT,
   JOINT_PARAMS,
   LINUXCNC_PARAMS,
+  MESA_BOARD_PARAM,
+  MESA_IPADDR_PARAM,
   MESA_PARAMS,
   MOTION_PARAMS,
   PARAM_DEFAULTS,
@@ -72,6 +74,15 @@ describe('service catalogue', () => {
 
   it('holds the HAL pin count as a number, not as the definition against itself', () => {
     expect(HAL_ROW_COUNT).toBe(30)
+  })
+
+  it('names the Mesa rows the screen reads instead of counting positions', () => {
+    for (const id of [MESA_BOARD_PARAM, MESA_IPADDR_PARAM]) {
+      const def = MESA_PARAMS.find((d) => d.id === id)
+
+      expect(def?.options?.length, id).toBeGreaterThan(0)
+    }
+    expect(MESA_PARAMS[0].id).toBe(MESA_BOARD_PARAM)
   })
 
   it('keeps the identifiers unique across the whole catalogue, axes included', () => {

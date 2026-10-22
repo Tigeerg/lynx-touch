@@ -12,7 +12,7 @@ import {
   RotateCcw,
   Settings,
 } from 'lucide-react'
-import { motionSpeed, toWork, type Action } from '@/lib/cnc/machine'
+import type { Action } from '@/lib/cnc/machine'
 import { evaluateLadder } from '@/lib/cnc/ladder-scan'
 import {
   formatParam,
@@ -23,6 +23,8 @@ import {
   jointGroup,
   jointParam,
   LINUXCNC_PARAMS,
+  MESA_BOARD_PARAM,
+  MESA_IPADDR_PARAM,
   MESA_PARAMS,
   MOTION_PARAMS,
   paramValue,
@@ -36,6 +38,7 @@ import {
   type ParamDef,
 } from '@/lib/cnc/service-data'
 import { LadderView } from './ladder-view'
+import { halValues } from '@/lib/cnc/hal'
 import { SERVICE_ICON } from '@/lib/cnc/softkeys'
 import { AXES, SERVICE_PAGE_LABEL, SERVICE_PAGES, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
@@ -346,14 +349,18 @@ function linuxcncInfo(s: MachineState): InfoItem[] {
   ]
 }
 
+/** The text of an option row of the catalogue, looked up by key rather than by row position. */
+function optionText(s: MachineState, id: string): string {
+  const def = MESA_PARAMS.find((d) => d.id === id)
+  return def?.options?.[paramValue(s.params, id)] ?? '—'
+}
+
 function mesaInfo(s: MachineState): InfoItem[] {
-  const board = MESA_PARAMS[0].options![s.params['HOSTMOT2.BOARD']]
-  const ip = MESA_PARAMS[1].options![s.params['HOSTMOT2.IPADDR']]
   const linked = s.run !== 'ESTOP'
   return [
-    { label: 'Плата', value: board },
+    { label: 'Плата', value: optionText(s, MESA_BOARD_PARAM) },
     { label: 'Драйвер', value: 'hm2_eth' },
-    { label: 'IP-адрес', value: ip },
+    { label: 'IP-адрес', value: optionText(s, MESA_IPADDR_PARAM) },
     { label: 'Связь', value: linked ? '100 Мбит/с' : 'Нет', tone: linked ? 'ok' : 'warn' },
     { label: 'Прошивка', value: '7i96s_d.bin' },
     { label: 'Watchdog', value: linked ? 'OK · 0 сраб.' : 'BITE', tone: linked ? 'ok' : 'warn' },
@@ -576,37 +583,6 @@ function ParamTable({ state, defs }: { state: MachineState; defs: ParamDef[] }) 
   )
 }
 
-function halValues(s: MachineState): Record<string, boolean | number> {
-  const moving = !!s.motion
-  const homed = !s.homing
-  const values: Record<string, boolean | number> = {
-    'iocontrol.0.emc-enable-in': s.run !== 'ESTOP',
-    'halui.estop.is-activated': s.run === 'ESTOP',
-    'halui.machine.is-on': s.run !== 'ESTOP' && s.run !== 'ALARM',
-    'halui.mode.is-auto': s.mode === 'AUTO',
-    'halui.mode.is-mdi': s.mode === 'MDI',
-    'halui.mode.is-manual': s.mode === 'JOG' || s.mode === 'MPG',
-    'halui.program.is-running': s.run === 'RUN',
-    'halui.program.is-paused': s.run === 'HOLD',
-    'halui.program.is-idle': s.run === 'IDLE',
-    'motion.program-line': s.run === 'IDLE' ? 0 : s.line + 1,
-    'halui.feed-override.value': s.feedOverride / 100,
-    'motion.in-position': !moving,
-    'motion.current-vel': motionSpeed(s) / 60,
-    'axis.z.pos-cmd (раб.)': toWork(s).Z,
-    'spindle.0.on': s.spindleOn,
-    'spindle.0.speed-out': s.spindleOn ? (s.spindleSet * s.spindleOverride) / 100 : 0,
-    'iocontrol.0.coolant-flood': s.coolant,
-    'iocontrol.0.tool-number': s.tool,
-  }
-  AXES.forEach((a, i) => {
-    values[`joint.${i}.pos-fb`] = s.machine[a]
-    values[`joint.${i}.f-error`] = moving ? 0.0021 + i * 0.0004 : 0.0001
-    values[`joint.${i}.homed`] = homed
-  })
-  return values
-}
-
 function PinValue({ type, value }: { type: HalPinType; value: boolean | number }) {
   if (type === 'bit') {
     return (
@@ -673,11 +649,14 @@ function HalMonitor({ state }: { state: MachineState }) {
                     selected && 'bg-accent outline-2 -outline-offset-2 outline-primary',
                   )}
                 >
-                  <td className="px-3 py-1.5 font-mono text-xs">{pin.name}</td>
+                  <td className="px-3 py-1.5 font-mono text-xs">
+                    {pin.name}
+                    {pin.note && <span className="ml-2 font-sans text-muted-foreground">{pin.note}</span>}
+                  </td>
                   <td className="px-3 py-1.5 font-mono text-xs text-muted-foreground">{pin.type}</td>
                   <td className="px-3 py-1.5 font-mono text-xs text-muted-foreground">{pin.dir}</td>
                   <td className="px-3 py-1.5 text-right">
-                    <PinValue type={pin.type} value={values[pin.name] ?? 0} />
+                    <PinValue type={pin.type} value={values[pin.name]} />
                   </td>
                 </tr>
               )

@@ -2,6 +2,10 @@
 // Data only; the row shape and the builders live in ./def.
 import { p, type ParamDef } from './def'
 
+/** The keys the Mesa screen reads by name: the board and its address, not by row position. */
+export const MESA_BOARD_PARAM = 'HOSTMOT2.BOARD'
+export const MESA_IPADDR_PARAM = 'HOSTMOT2.IPADDR'
+
 export const MESA_PARAMS: ParamDef[] = [
   p({
     group: 'HOSTMOT2',

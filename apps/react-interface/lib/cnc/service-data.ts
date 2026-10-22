@@ -112,7 +112,7 @@ export {
 } from './params/display'
 export { JOINT_PARAMS } from './params/joints'
 export { LINUXCNC_PARAMS } from './params/linuxcnc'
-export { MESA_PARAMS } from './params/mesa'
+export { MESA_BOARD_PARAM, MESA_IPADDR_PARAM, MESA_PARAMS } from './params/mesa'
 export { MOTION_PARAMS } from './params/motion'
 export { PID_PARAMS } from './params/pid'
 export { SYSTEM_PARAMS } from './params/system'

@@ -9,7 +9,7 @@ import { MESA_PARAMS } from './params/mesa'
 import { MOTION_PARAMS } from './params/motion'
 import { PID_PARAMS } from './params/pid'
 import { SYSTEM_PARAMS } from './params/system'
-import { AXES, type Axis, type ServiceSection } from './types'
+import { AXES, type Axis, type ParamSection, type ServiceSection } from './types'
 
 export const INI_FILE = 'vmc850.ini'
 
@@ -37,33 +37,46 @@ export const SERVICE_HINT: Record<ServiceSection, string> = {
   help: 'Раскладка пульта и клавиши',
 }
 
-export function serviceListLength(section: ServiceSection) {
-  if (section === 'hal') return HAL_ROW_COUNT
-  if (section === 'system') return SYSTEM_PARAMS.length
-  if (section === 'linuxcnc') return LINUXCNC_PARAMS.length
-  if (section === 'mesa') return MESA_PARAMS.length
-  if (section === 'motion') return MOTION_PARAMS.length
-  if (section === 'joints') return JOINT_PARAMS.length
-  if (section === 'pid') return PID_PARAMS.length
-  return 1
+/** Sections whose list length is a constant: every one but the ladder, whose list is state-driven
+ * (ladderRungs, through list.ts) and has no number to give here. */
+export type ListSection = Exclude<ServiceSection, 'ladder'>
+
+// One registry per question, so the length, the row lookup and the displayed list cannot drift:
+// three separate switches over the section used to disagree (serviceListLength('hal') said 30 while
+// sectionParams('hal') returned no rows).
+const SECTION_LENGTH: Record<ListSection, number> = {
+  system: SYSTEM_PARAMS.length,
+  linuxcnc: LINUXCNC_PARAMS.length,
+  motion: MOTION_PARAMS.length,
+  joints: JOINT_PARAMS.length,
+  pid: PID_PARAMS.length,
+  mesa: MESA_PARAMS.length,
+  hal: HAL_ROW_COUNT,
+  help: 0,
 }
 
-export function paramAt(section: ServiceSection, index: number, axis: Axis): ParamDef | null {
-  if (section === 'system') return SYSTEM_PARAMS[index] ?? null
-  if (section === 'linuxcnc') return LINUXCNC_PARAMS[index] ?? null
-  if (section === 'mesa') return MESA_PARAMS[index] ?? null
-  if (section === 'motion') return MOTION_PARAMS[index] ?? null
-  if (section === 'joints') return JOINT_PARAMS[index] ? toParam(JOINT_PARAMS[index], axis) : null
-  if (section === 'pid') return PID_PARAMS[index] ? toParam(PID_PARAMS[index], axis) : null
-  return null
+export const serviceListLength = (section: ListSection): number => SECTION_LENGTH[section]
+
+/** The catalogue rows of a parameter section, built from its table: no filter drops rows. */
+const SECTION_PARAMS: Record<ParamSection, (axis: Axis) => ParamDef[]> = {
+  system: () => SYSTEM_PARAMS,
+  linuxcnc: () => LINUXCNC_PARAMS,
+  motion: () => MOTION_PARAMS,
+  mesa: () => MESA_PARAMS,
+  joints: (axis) => JOINT_PARAMS.map((def) => toParam(def, axis)),
+  pid: (axis) => PID_PARAMS.map((def) => toParam(def, axis)),
 }
+
+export const sectionParams = (section: ParamSection, axis: Axis): ParamDef[] => SECTION_PARAMS[section](axis)
+
+/**
+ * The catalogue row at an index; past the end is null (a stale screen cursor). A section without
+ * parameters is a type error to ask, not an empty list.
+ */
+export const paramAt = (section: ParamSection, index: number, axis: Axis): ParamDef | null =>
+  sectionParams(section, axis)[index] ?? null
 
 export const SERVICE_PASSWORD = '1234'
-
-export const sectionParams = (section: ServiceSection, axis: Axis): ParamDef[] =>
-  Array.from({ length: serviceListLength(section) }, (_, i) => paramAt(section, i, axis)).filter(
-    (d): d is ParamDef => d !== null,
-  )
 
 export const unsavedIds = (params: Record<string, number>, saved: Record<string, number>) =>
   Object.keys(params).filter((id) => params[id] !== saved[id])

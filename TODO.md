@@ -179,11 +179,14 @@
   `clamp` (7), `isBusy` (3) и `stamp` (2) сведены одним источником в `0.18.20` (`lib/cnc/clamp.ts`,
   `guards.ts`, `files.ts`). Тест реестра добавлен в `0.18.25` (`lib/cnc/action.test.ts` держит объединение
   и набор предиката каждой подсистемы, обе формы — набор типов и приставка имени).
-* [ ] **Каталог параметров: три параллельных знания о разделе.** `service-data.ts:40-49`, `:51-59`, `:63-66`
-  переключают `section` каждое по-своему и расходятся (проверено: `serviceListLength('ladder') = 1` при 0
-  строк, `serviceListLength('hal') = 30` при 0 строк, `help` тоже 1/0), `return 1` — магия. Направление:
-  один реестр разделов и типы `ParamSection | MonitorSection | HelpSection`, чтобы `paramAt('hal', …)` не
-  компилировалось; `sectionParams` не должен терять строки через `filter` (`:65`).
+* [x] **Каталог параметров: три параллельных знания о разделе.** Исправлено в `0.18.28`: один реестр на
+  вопрос (`SECTION_LENGTH`, `SECTION_PARAMS` в `service-data.ts`), `sectionParams` строит список прямо из
+  таблицы без `filter`, `paramAt` — чтение по индексу. Разделы разделены типами `ParamSection` /
+  `MonitorSection` / `HelpSection` (`types.ts`), так что `paramAt('hal', …)` не компилируется;
+  `isParamSection` — общий страж (в `service.ts` и `softkeys.ts`). `help` получил длину 0 вместо запасной
+  единицы. Проверка — `lib/cnc/service-data.test.ts` (на прежнем коде краснеют 3 из 13). Исходное описание:
+  `service-data.ts:40-49`, `:51-59`, `:63-66` переключали `section` каждое по-своему и расходились
+  (`serviceListLength('hal') = 30` при 0 строк, `help` 1/0), `return 1` — магия.
 * [ ] **Данные каталога изменяемы снаружи.** `AXES` (`types.ts:4`), `MODES`, `TABS`, `SCREENS`, `MPG_STEPS`,
   `JOG_FEEDS`, `OFF_ON` (`params/def.ts:37`), все `*_PARAMS` экспортируются как обычные массивы: один
   `.sort()` в любом экране портит каталог всему. Нужны `readonly`/`as const`.

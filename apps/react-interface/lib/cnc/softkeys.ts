@@ -61,7 +61,7 @@ import { PROBE_STEP_MEASURE, PROBE_STEP_RESULT, PROBE_TOOL } from './probe'
 import { AUTO_VIEW_LABEL } from './data'
 import type { Action } from './subsystem'
 import { paramAt, paramValue, TOOLPATH_PARAM, unsavedIds } from './service-data'
-import { AUTO_VIEWS, type MachineState, type ServiceSection } from './types'
+import { AUTO_VIEWS, isParamSection, type MachineState, type ServiceSection } from './types'
 
 export const SERVICE_ICON: Record<ServiceSection, LucideIcon> = {
   system: MonitorCog,
@@ -446,7 +446,9 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       const sv = s.service
       const unsaved = unsavedIds(s.params, sv.saved).length
       const focused =
-        sv.focus === 'list' && !sv.editing && !sv.auth ? paramAt(sv.section, s.cursor.service, sv.axis) : null
+        sv.focus === 'list' && !sv.editing && !sv.auth && isParamSection(sv.section)
+          ? paramAt(sv.section, s.cursor.service, sv.axis)
+          : null
       const canReset =
         !!focused && paramValue(s.params, focused.id) !== focused.default && (focused.free || (sv.write && !busy))
       keys = [

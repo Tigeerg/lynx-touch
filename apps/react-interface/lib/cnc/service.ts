@@ -13,7 +13,7 @@ import { isBusy } from './guards'
 import { cancelEdit, markSaved, setParam } from './service-edit'
 import { INI_FILE, SERVICE_PASSWORD, hasServiceList, paramAt, paramValue, unsavedIds } from './service-data'
 import type { Dispatch, Result } from './subsystem'
-import { AXES, SERVICE_SECTIONS, type Axis, type MachineState, type ServiceSection } from './types'
+import { AXES, SERVICE_SECTIONS, isParamSection, type Axis, type MachineState, type ServiceSection } from './types'
 
 export type ServiceAction =
   | { type: 'SERVICE_SECTION'; section: ServiceSection }
@@ -72,8 +72,9 @@ export function serviceReducer(s: MachineState, a: ServiceAction, dispatch: Disp
         return { s: { ...s, service: { ...sv, auth: { input: '', error: true } } } }
       }
       if (sv.editing) {
-        const def = paramAt(sv.section, s.cursor.service, sv.axis)
         const committed: MachineState = { ...s, service: { ...sv, editing: null } }
+        if (!isParamSection(sv.section)) return { s: committed }
+        const def = paramAt(sv.section, s.cursor.service, sv.axis)
         return { s: def?.free ? markSaved(committed, def.id, paramValue(s.params, def.id)) : committed }
       }
       if (sv.focus === 'nav') {
@@ -81,6 +82,7 @@ export function serviceReducer(s: MachineState, a: ServiceAction, dispatch: Disp
         return { s: { ...s, service: { ...sv, focus: 'list' } } }
       }
       if (sv.section === 'ladder') return { s: dispatch(s, { type: 'LADDER_EDIT', on: true }) }
+      if (!isParamSection(sv.section)) return { s, msg: 'В этом разделе нет редактируемых параметров' }
       const def = paramAt(sv.section, s.cursor.service, sv.axis)
       if (!def) return { s }
       if (!def.free) {
@@ -142,6 +144,7 @@ export function serviceReducer(s: MachineState, a: ServiceAction, dispatch: Disp
     case 'SERVICE_DEFAULTS': {
       const sv = s.service
       if (sv.auth || sv.editing || sv.focus !== 'list') return { s }
+      if (!isParamSection(sv.section)) return { s }
       const def = paramAt(sv.section, s.cursor.service, sv.axis)
       if (!def) return { s }
       // The row's own default is the catalogue default: no lookup in the defaults map, and no
@@ -172,6 +175,7 @@ export function serviceReducer(s: MachineState, a: ServiceAction, dispatch: Disp
         }
         return { s }
       }
+      if (!isParamSection(sv.section)) return { s }
       const def = paramAt(sv.section, s.cursor.service, sv.axis)
       if (!def || def.id !== sv.editing.id) return { s }
       const cur = paramValue(s.params, def.id)

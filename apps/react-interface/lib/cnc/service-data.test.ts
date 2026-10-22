@@ -1,7 +1,9 @@
 // Service catalogue: the section tables live in lib/cnc/params/* and the HAL reference in
 // hal.ts, and service-data.ts stays their single entry point. These checks pin the contract the
 // screens and the reducer rely on: every section resolves to its rows, the ids are unique and
-// the defaults cover every row.
+// the defaults cover every row. The sections are read as their kinds, so a section without
+// catalogue rows cannot be asked for one (ParamSection / MonitorSection / HelpSection).
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   HAL_GROUPS,
@@ -21,49 +23,54 @@ import {
   paramValue,
   sectionParams,
   serviceListLength,
+  type JointParamDef,
   type ParamDef,
 } from './service-data'
-import { AXES, type ServiceSection } from './types'
+import { AXES, SERVICE_SECTIONS, isParamSection, type ParamSection } from './types'
 
-const TABLES: Record<string, ParamDef[]> = {
+type PlainParamSection = 'system' | 'linuxcnc' | 'motion' | 'mesa'
+
+const TABLES: Record<PlainParamSection, ParamDef[]> = {
   system: SYSTEM_PARAMS,
   linuxcnc: LINUXCNC_PARAMS,
   motion: MOTION_PARAMS,
   mesa: MESA_PARAMS,
 }
 
-const JOINT_TABLES = { joints: JOINT_PARAMS, pid: PID_PARAMS }
+const JOINT_TABLES: Record<'joints' | 'pid', JointParamDef[]> = { joints: JOINT_PARAMS, pid: PID_PARAMS }
+
+const PARAM_SECTION_NAMES: ParamSection[] = ['system', 'linuxcnc', 'motion', 'joints', 'pid', 'mesa']
 
 describe('service catalogue', () => {
   it('resolves every section with a table to its rows', () => {
-    for (const [section, rows] of Object.entries(TABLES)) {
-      expect(serviceListLength(section as ServiceSection), section).toBe(rows.length)
-      rows.forEach((row, i) => expect(paramAt(section as ServiceSection, i, 'X'), `${section}[${i}]`).toEqual(row))
-      expect(paramAt(section as ServiceSection, rows.length, 'X')).toBeNull()
+    for (const [section, rows] of Object.entries(TABLES) as [PlainParamSection, ParamDef[]][]) {
+      expect(serviceListLength(section), section).toBe(rows.length)
+      rows.forEach((row, i) => expect(paramAt(section, i, 'X'), `${section}[${i}]`).toEqual(row))
+      expect(paramAt(section, rows.length, 'X')).toBeNull()
     }
     expect(serviceListLength('hal')).toBe(HAL_ROW_COUNT)
     expect(HAL_ROW_COUNT).toBe(HAL_GROUPS.reduce((n, g) => n + g.pins.length, 0))
   })
 
   it('expands the joint rows per axis', () => {
-    for (const [section, rows] of Object.entries(JOINT_TABLES)) {
-      expect(serviceListLength(section as ServiceSection)).toBe(rows.length)
-      const a = paramAt(section as ServiceSection, 0, 'A')
+    for (const [section, rows] of Object.entries(JOINT_TABLES) as ['joints' | 'pid', JointParamDef[]][]) {
+      expect(serviceListLength(section)).toBe(rows.length)
+      const a = paramAt(section, 0, 'A')
       expect(a?.id).toBe(`A.${rows[0].key}`)
       expect(a?.default).toBe(rows[0].defaults.A)
       expect(a?.group).toBe('JOINT_3')
-      expect(paramAt(section as ServiceSection, rows.length, 'X')).toBeNull()
+      expect(paramAt(section, rows.length, 'X')).toBeNull()
     }
   })
 
   it('gives every row a unique id and a default', () => {
     const defaults = defaultParams()
-    for (const [section, rows] of Object.entries(TABLES)) {
+    for (const [section, rows] of Object.entries(TABLES) as [PlainParamSection, ParamDef[]][]) {
       const ids = rows.map((r) => r.id)
       expect(new Set(ids).size, section).toBe(ids.length)
       for (const row of rows) expect(defaults[row.id], `${section} ${row.id}`).toBe(row.default)
     }
-    for (const [section, rows] of Object.entries(JOINT_TABLES)) {
+    for (const [section, rows] of Object.entries(JOINT_TABLES) as ['joints' | 'pid', JointParamDef[]][]) {
       for (const row of rows) {
         for (const a of AXES) {
           expect(defaults[`${a}.${row.key}`], `${section} ${a}.${row.key}`).toBe(row.defaults[a])
@@ -95,7 +102,6 @@ describe('service catalogue', () => {
     expect(paramAt('system', 0.5, 'X')).toBeNull()
     expect(paramAt('system', Number.NaN, 'X')).toBeNull()
     expect(paramAt('system', SYSTEM_PARAMS.length, 'X')).toBeNull()
-    expect(paramAt('help', 0, 'X')).toBeNull()
   })
 
   it('reads a value from the state and falls back to the catalogue default', () => {
@@ -115,12 +121,38 @@ describe('service catalogue', () => {
     expect(formatParam(numeric, {})).toBe(numeric.default.toFixed(numeric.digits))
   })
 
-  it('fills the section lists without holes', () => {
-    for (const section of [...Object.keys(TABLES), ...Object.keys(JOINT_TABLES)]) {
-      const s = section as ServiceSection
-      expect(sectionParams(s, 'X').length, section).toBe(serviceListLength(s))
+  it('classifies the sections by what they hold', () => {
+    expect(SERVICE_SECTIONS.filter((s) => isParamSection(s))).toEqual(PARAM_SECTION_NAMES)
+    // hal, ladder and help carry no catalogue row: asking paramAt for them does not compile.
+    for (const section of ['hal', 'ladder', 'help'] as const) expect(isParamSection(section), section).toBe(false)
+  })
+
+  it('lists no rows for help, which has none', () => {
+    expect(serviceListLength('help')).toBe(0)
+  })
+
+  it('fills the parameter section lists without holes', () => {
+    for (const section of PARAM_SECTION_NAMES) {
+      const rows = sectionParams(section, 'X')
+      const table = section === 'joints' ? JOINT_PARAMS : section === 'pid' ? PID_PARAMS : TABLES[section]
+
+      expect(rows.length, section).toBe(serviceListLength(section))
+      expect(rows.length, section).toBe(table.length)
+      rows.forEach((row, i) => {
+        expect(row, `${section}[${i}]`).toBeDefined()
+        expect(paramAt(section, i, 'X'), `${section}[${i}]`).toEqual(row)
+      })
     }
-    // hal is a pin monitor: the screen renders HAL_GROUPS, there are no ParamDef rows.
-    expect(sectionParams('hal', 'X')).toHaveLength(0)
+  })
+
+  it('keeps one registry per question instead of a switch per section', () => {
+    const src = readFileSync(new URL('./service-data.ts', import.meta.url), 'utf8')
+
+    expect(src).toMatch(/const SECTION_LENGTH: Record<ListSection, number>/)
+    expect(src).toMatch(/const SECTION_PARAMS: Record<ParamSection/)
+    expect(src).toMatch(/export const paramAt = \(section: ParamSection/)
+    expect(src).toMatch(/export const sectionParams = \(section: ParamSection/)
+    // A per-section `if` over the section is exactly the drift this replaced.
+    expect(src).not.toMatch(/if \(section === '(hal|system|ladder|help)'\)/)
   })
 })

@@ -13,7 +13,7 @@ import { motionSpeed, toWork, workOffset, zeroAxes } from './coords'
 import { PROBE_STEP_MEASURE, PROBE_TOOL } from './probe'
 import { abortProbe, probeTick } from './probe-exec'
 import { idleSim, tickSim } from './prog'
-import { evaluateLadder, sameLadderMem } from './service-data'
+import { evaluateLadder, sameLadderMem } from './ladder-scan'
 import { AXES, MDI_HISTORY_SIZE, type Axes, type MachineState, type Message } from './types'
 
 export function executeLine(state: MachineState, index: number): MachineState {

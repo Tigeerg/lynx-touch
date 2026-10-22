@@ -1,0 +1,51 @@
+// The PID section: the per-joint regulation loops. The group and the id are built from the axis,
+// so ./def expands a row per axis. Data only.
+import { ax, type JointParamDef } from './def'
+
+export const PID_PARAMS: JointParamDef[] = [
+  { key: 'P', label: 'Пропорц.', step: 10, min: 0, max: 10000, digits: 0, defaults: ax(1000, 1000, 1200, 800) },
+  { key: 'I', label: 'Интеграл.', step: 0.1, min: 0, max: 100, digits: 1, defaults: ax(0, 0, 0, 0) },
+  { key: 'D', label: 'Дифференц.', step: 0.1, min: 0, max: 100, digits: 1, defaults: ax(0, 0, 0, 0) },
+  { key: 'FF0', label: 'Упреждение 0', step: 0.01, min: 0, max: 10, digits: 2, defaults: ax(0, 0, 0, 0) },
+  { key: 'FF1', label: 'Упреждение 1', step: 0.01, min: 0, max: 10, digits: 2, defaults: ax(1, 1, 1, 1) },
+  {
+    key: 'FF2',
+    label: 'Упреждение 2',
+    step: 0.0001,
+    min: 0,
+    max: 1,
+    digits: 4,
+    defaults: ax(0.0001, 0.0001, 0.0002, 0),
+  },
+  {
+    key: 'DEADBAND',
+    label: 'Мёртвая зона',
+    unit: 'мм',
+    step: 0.0001,
+    min: 0,
+    max: 0.1,
+    digits: 4,
+    defaults: ax(0.0005, 0.0005, 0.0005, 0.001),
+  },
+  { key: 'BIAS', label: 'Смещение', step: 0.01, min: -10, max: 10, digits: 2, defaults: ax(0, 0, 0, 0) },
+  {
+    key: 'MAX_OUTPUT',
+    label: 'Огр. выхода',
+    unit: 'мм/с',
+    step: 5,
+    min: 0,
+    max: 1000,
+    digits: 0,
+    defaults: ax(300, 300, 250, 400),
+  },
+  {
+    key: 'MAX_ERROR',
+    label: 'Огр. ошибки',
+    unit: 'мм',
+    step: 0.01,
+    min: 0,
+    max: 5,
+    digits: 3,
+    defaults: ax(0, 0, 0, 0),
+  },
+]

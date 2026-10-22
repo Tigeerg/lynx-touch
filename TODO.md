@@ -30,11 +30,24 @@
   (`probe-wizard.ts`), служба параметров (`service.ts`), цикл программы (`cycle.ts`) и навигация
   (`nav.ts`). В редьюсере остались инициализация, диспетчер и мелкие группы (аварии, справка/калькулятор,
   тема/режим/траектория) — это свод, а не подсистема; метку держит `tools/check.ps1`.
+* [x] **`apps/react-interface/lib/cnc/service-data.ts`** — 1437 -> 104 строки: каталог параметров разобран.
+  Таблицы разделов — в `lib/cnc/params/` (по файлу на раздел: `def.ts` — форма строки и построители,
+  `display.ts` — ключи DISPLAY, `system.ts`, `motion.ts`, `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`),
+  справочник пинов — в `hal.ts`, скан ПЛК — в `ladder-scan.ts`, сам `service-data.ts` остался API и единой
+  точкой входа. Контракт каталога держит `lib/cnc/service-data.test.ts`.
+* [ ] **Остальные большие файлы панели** (число строк на 21.10.2026): компоненты —
+  `screens/service-screen.tsx` 688, `screens/ladder-view.tsx` 528, `side-status.tsx` 427,
+  `probe/probe-wizard.tsx` 373, `screens/program-screen.tsx` 367, `probe/probe-schematic.tsx` 353,
+  `touch/touch-deck.tsx` 346, `hardware/hardware-panel.tsx` 325; логика — `ladder.ts` 661, `softkeys.ts` 510,
+  `cycle.ts` 296, `types.ts` 294, `probe.ts` 272; таблицы `params/system.ts` 279 и `params/motion.ts` 263 —
+  один раздел каталога в файле, это одна задача. План: у компонентов вынести вложенные части (полосы,
+  ячейки, диалоги) в соседние файлы, у логики отделить данные от редьюсера; `machine.test.ts` 402 —
+  свод редьюсера.
 * [ ] **`modules/gcode-viewer/GcodeViewer3D.qml`** — крупный QML-слой (сцена, камера, материалы, панель
   режимов, клавиши). Разбить на компоненты, состояние оставить в C++-контроллере.
 * [ ] **`modules/gcode-viewer/cpp/core/*`** — оценить крупные единицы (`stock_sim`, `gcode_parser`,
   `tooling`) на SRP; вынести связные группы в отдельные единицы, проверив пробниками.
-* [ ] Остальные файлы свыше 250 строк — вносить сюда по мере обнаружения, с числом строк и планом разбиения.
+
 
 ## 3. Инструменты и проверки
 

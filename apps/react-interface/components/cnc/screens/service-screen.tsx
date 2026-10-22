@@ -13,8 +13,8 @@ import {
   Settings,
 } from 'lucide-react'
 import { motionSpeed, toWork, type Action } from '@/lib/cnc/machine'
+import { evaluateLadder } from '@/lib/cnc/ladder-scan'
 import {
-  evaluateLadder,
   formatParam,
   HAL_GROUPS,
   INI_FILE,

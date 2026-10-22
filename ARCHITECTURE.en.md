@@ -32,9 +32,13 @@ Layers, top to bottom:
   overlays, `primitives.tsx`. Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
   `ui-mode-context.ts`.
 * `lib/cnc/` — **pure machine logic, no JSX, React, or DOM**: `machine.ts` (reducer that composes
-  subsystems), `ladder.ts` (sample subsystem), `types.ts`, `coords.ts`, `guards.ts` (input checks), `data.ts`
-  and `softkeys.ts` (texts and icons), `service-data.ts` (`ParamDef` types), `messages.ts`, `toolpath.ts`,
-  `tool-check.ts`, `probe.ts`, `mpg.ts`, `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, theme logic.
+  subsystems) and the subsystems next to it (`ladder.ts` is the sample, `ladder-scan.ts` is the PLC scan,
+  `nav.ts`, `cycle.ts`, `control.ts`, `service.ts`), `types.ts`, `coords.ts`, `guards.ts` (input checks),
+  `data.ts` and `softkeys.ts` (texts and icons), `service-data.ts` (the catalogue API: `ParamDef` types and
+  the sections), `params/` (the section tables, one file per section: `def.ts`, `display.ts`, `system.ts`,
+  `motion.ts`, `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`; a directory of its own so the tables stay
+  apart from the logic), `hal.ts` (the HAL pin reference), `messages.ts`, `toolpath.ts`, `tool-check.ts`,
+  `probe.ts`, `mpg.ts`, `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, theme logic.
 * `public/` — images and static assets of the project.
 * Tests live next to the logic (`lib/cnc/*.test.ts`), in the same layer as the defect.
 

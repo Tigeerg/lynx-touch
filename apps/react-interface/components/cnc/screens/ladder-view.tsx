@@ -15,7 +15,7 @@ import {
   rungBranches,
 } from '@/lib/cnc/ladder'
 import type { Action } from '@/lib/cnc/machine'
-import { evaluateLadder, type LadderRungResult } from '@/lib/cnc/service-data'
+import { evaluateLadder, type LadderRungResult } from '@/lib/cnc/ladder-scan'
 import type { LadderCoil, LadderContact, LadderForm, LadderRung, MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { Keycap } from '../primitives'

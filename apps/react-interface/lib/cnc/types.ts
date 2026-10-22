@@ -178,8 +178,10 @@ export type CoilKind = 'coil' | 'set' | 'reset' | 'ton' | 'tof' | 'ctu' | 'ctd'
 
 export interface LadderCoil extends LadderContact {
   kind?: CoilKind
-  /** Timer preset (ms) or counter preset (pulses). */
-  preset?: number
+  /** Timer preset, ms (ton/tof). Missing means DEFAULT_PRESET_MS. */
+  presetMs?: number
+  /** Counter preset, pulses (ctu/ctd). Missing means DEFAULT_PRESET_COUNT. */
+  presetCount?: number
 }
 
 export interface LadderRung {

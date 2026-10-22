@@ -8,6 +8,7 @@ import {
   isCounterKind,
   isLatchKind,
   isTimerKind,
+  NUMBER_RE,
   rungBranches,
   savedRungs,
 } from './ladder'
@@ -58,7 +59,7 @@ function resolveOperand(
   counters: LadderMem['counters'],
 ): number {
   const t = x.replace(/\s/g, '')
-  if (/^-?\d+$/.test(t)) return Number(t)
+  if (NUMBER_RE.test(t)) return Number(t)
   if (/^T\d{1,2}$/.test(t)) return timers[t]?.acc ?? 0
   if (/^C\d{1,2}$/.test(t)) return counters[t]?.acc ?? 0
   return signals[t] ? 1 : 0
@@ -133,7 +134,7 @@ export function evaluateLadder(s: MachineState, ladder: LadderRung[] = savedRung
     const kind = coilKind(rung.coil)
 
     if (isTimerKind(kind)) {
-      const preset = rung.coil.preset ?? DEFAULT_PRESET_MS
+      const preset = rung.coil.presetMs ?? DEFAULT_PRESET_MS
       const before = prev.timers[addr]?.acc ?? (kind === 'tof' ? preset : 0)
       let acc: number
       let q: boolean
@@ -150,7 +151,7 @@ export function evaluateLadder(s: MachineState, ladder: LadderRung[] = savedRung
     }
 
     if (isCounterKind(kind)) {
-      const preset = rung.coil.preset ?? DEFAULT_PRESET_COUNT
+      const preset = rung.coil.presetCount ?? DEFAULT_PRESET_COUNT
       const before = prev.counters[addr]
       const acc0 = before?.acc ?? (kind === 'ctd' ? preset : 0)
       const rising = out && !(before?.prev ?? false)

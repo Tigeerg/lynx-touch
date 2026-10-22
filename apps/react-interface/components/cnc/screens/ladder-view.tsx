@@ -94,7 +94,7 @@ function Coil({ c, result, selected }: { c: LadderCoil; result: LadderRungResult
 
   if (isTimerKind(kind) || isCounterKind(kind)) {
     const counter = isCounterKind(kind)
-    const preset = c.preset ?? (counter ? DEFAULT_PRESET_COUNT : DEFAULT_PRESET_MS)
+    const preset = counter ? (c.presetCount ?? DEFAULT_PRESET_COUNT) : (c.presetMs ?? DEFAULT_PRESET_MS)
     const cur = counter ? (result.count ?? 0) : (result.acc ?? 0)
     const fill = Math.min(100, preset > 0 ? (cur / preset) * 100 : 0)
     const bottom = counter ? `${cur} / ${preset}` : `${seconds(result.acc ?? 0)} / ${seconds(preset)} с`

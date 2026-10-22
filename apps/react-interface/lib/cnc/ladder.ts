@@ -22,7 +22,10 @@ export const LADDER_MAX_BRANCHES = 6
 const ADDR_RE = /^[IQM]\d{1,2}\.[0-7]$/
 const TIMER_RE = /^T\d{1,2}$/
 const CTR_RE = /^C\d{1,2}$/
-const OPERAND_RE = /^(?:-?\d+|[IQM]\d{1,2}\.[0-7]|[CT]\d{1,2})$/
+/** A constant in a comparison: whole or fractional (mm, seconds, pulses). */
+export const NUMBER_RE = /^-?\d+(?:\.\d+)?$/
+const SIGNAL_RE = /^[IQM]\d{1,2}\.[0-7]$/
+const OPERAND_RE = /^(?:-?\d+(?:\.\d+)?|[IQM]\d{1,2}\.[0-7]|[CT]\d{1,2})$/
 const CMP_RE = /^\s*([A-Za-z0-9_.+-]+)\s*(>=|<=|<>|=|>|<)\s*([A-Za-z0-9_.+-]+)\s*$/
 const NAME_RE = /^[a-z0-9_]{1,24}$/
 
@@ -98,7 +101,7 @@ const MAIN_RUNGS: LadderRung[] = [
   {
     title: 'Пауза перед смазкой',
     contacts: [sig('Q0.0'), sig('M0.2')],
-    coil: { addr: 'T0', label: 'Пауза смазки', kind: 'ton', preset: 3000 },
+    coil: { addr: 'T0', label: 'Пауза смазки', kind: 'ton', presetMs: 3000 },
   },
   { title: 'Централизованная смазка', contacts: [sig('Q0.0'), sig('T0'), sig('I0.4')], coil: sig('Q0.3') },
   { title: 'Колонна: красный', contacts: [sig('M0.3')], coil: sig('Q0.4') },
@@ -126,19 +129,23 @@ export const initialLadder: LadderState = {
   mem: emptyMem(),
 }
 
-export const activeScheme = (s: MachineState) => s.ladder.schemes[s.ladder.active]
-export const savedRungs = (s: MachineState) => activeScheme(s).rungs
+/** The active scheme; a stale index falls back to the first one rather than reading undefined. */
+export const activeScheme = (s: MachineState) => s.ladder.schemes[s.ladder.active] ?? s.ladder.schemes[0]
+export const savedRungs = (s: MachineState) => activeScheme(s)?.rungs ?? []
 export const ladderRungs = (s: MachineState) => s.ladder.draft ?? savedRungs(s)
+
+/** What the editor and the views read when a scheme has no rungs at all (invalid state). */
+const EMPTY_RUNG: LadderRung = { title: '', contacts: [], coil: { addr: 'M1.0', label: '' } }
 
 export function ladderCursor(s: MachineState) {
   const rungs = ladderRungs(s)
-  const row = Math.min(Math.max(s.cursor.service, 0), rungs.length - 1)
-  const rung = rungs[row]
+  const row = clampIndex(s.cursor.service, 0, rungs.length)
+  const rung = rungs[row] ?? EMPTY_RUNG
   const branches = rungBranches(rung)
-  const path = Math.min(Math.max(s.ladder.path, 0), branches.length - 1)
-  const contacts = branches[path]
+  const path = clampIndex(s.ladder.path, 0, branches.length)
+  const contacts = branches[path] ?? []
   const maxCol = path === 0 ? contacts.length : Math.max(0, contacts.length - 1)
-  const col = Math.min(Math.max(s.ladder.col, 0), maxCol)
+  const col = clampIndex(s.ladder.col, 0, maxCol + 1)
   return { rungs, row, rung, branches, path, contacts, col, onCoil: path === 0 && col === contacts.length }
 }
 
@@ -213,9 +220,9 @@ function freeCounter(rungs: LadderRung[]) {
 
 const presetText = (c: LadderCoil) =>
   isTimerKind(coilKind(c))
-    ? String((c.preset ?? DEFAULT_PRESET_MS) / 1000)
+    ? String((c.presetMs ?? DEFAULT_PRESET_MS) / 1000)
     : isCounterKind(coilKind(c))
-      ? String(c.preset ?? DEFAULT_PRESET_COUNT)
+      ? String(c.presetCount ?? DEFAULT_PRESET_COUNT)
       : ''
 
 function uniqueName(schemes: LadderScheme[], base: string) {
@@ -245,6 +252,10 @@ const elementForm = (rung: LadderRung, path: number, col: number) => {
 
 const DIRTY_BLOCK = 'Сначала сохраните (F7) или отмените правку (Esc)'
 
+/** Addresses the scan can read: the reference list plus the coils this scheme defines. */
+const knownSignals = (rungs: LadderRung[]) =>
+  new Set([...LADDER_SIGNALS.map((s) => s.addr), ...rungs.map((r) => r.coil.addr)])
+
 export function ladderReducer(s: MachineState, a: LadderAction): Result {
   const L = s.ladder
 
@@ -252,8 +263,10 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
     case 'LADDER_EDIT': {
       if (a.on) {
         if (L.draft) return { s }
+        const rungs = savedRungs(s)
+        if (rungs.length === 0) return { s, msg: 'В схеме нет ступеней — правка невозможна', level: 'warn' }
         return {
-          s: patch(s, { draft: cloneRungs(savedRungs(s)), dirty: false, col: 0, path: 0, form: null }),
+          s: patch(s, { draft: cloneRungs(rungs), dirty: false, col: 0, path: 0, form: null }),
           msg: 'Правка: ←→ элемент, Shift+↑↓ — ветвь, Enter — свойства, Ins — контакт, Del — удалить',
         }
       }
@@ -333,16 +346,18 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
       if (onCoil) {
         const kind = coilKind(rung.coil)
         const next = COIL_KINDS[(COIL_KINDS.indexOf(kind) + 1) % COIL_KINDS.length]
-        const { preset: _preset, kind: _kind, ...base } = rung.coil
+        const { kind: _kind, ...base } = rung.coil
         let coil: LadderCoil
         if (isTimerKind(next) || isCounterKind(next)) {
           const counter = isCounterKind(next)
           const keep = counter ? isCounterAddr(base.addr) : isTimerAddr(base.addr)
+          // The presets ride along, each in its own field: a timer's milliseconds are never read
+          // as a counter's pulses (the scan takes the unit's own default when the field is absent).
           coil = {
+            ...base,
             addr: keep ? base.addr : counter ? freeCounter(rungs) : freeTimer(rungs),
             label: keep ? base.label : counter ? 'Счётчик' : 'Таймер',
             kind: next,
-            preset: rung.coil.preset ?? (counter ? DEFAULT_PRESET_COUNT : DEFAULT_PRESET_MS),
           }
         } else if (isTimerKind(kind) || isCounterKind(kind)) {
           coil = { addr: freeFlag(rungs), label: 'Новый флаг', ...(next === 'coil' ? {} : { kind: next }) }
@@ -455,6 +470,7 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
           return { s, msg: `Схема ${name} уже существует`, level: 'error' }
         }
         const target = L.schemes[form.target]
+        if (!target) return { s: patch(s, { form: null }), msg: 'Схема не найдена', level: 'warn' }
         const schemes = replaceAt(L.schemes, form.target, { ...target, name, title: title || target.title })
         return { s: patch(s, { schemes, form: null }), msg: `Схема переименована: ${name}.lad` }
       }
@@ -465,8 +481,14 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
 
       if (form.compare) {
         const cmp = parseCompare(form.values[0])
-        if (!cmp) return { s, msg: 'Условие вида: T0 >= 1, C0 = 5, M0.1 > 0', level: 'error' }
+        if (!cmp) return { s, msg: 'Условие вида: T0 >= 1, C0 = 5, M0.1 > 0, 0.5 > 0.1', level: 'error' }
         if (onCoil) return { s, msg: 'Блок сравнения нельзя поставить в катушку', level: 'error' }
+        // An address the scheme does not define reads as zero in the scan, and the operator then
+        // sees a comparison that is quietly false: refuse it here, where it can be explained.
+        const unknown = [cmp.a, cmp.b].find((x) => SIGNAL_RE.test(x) && !knownSignals(rungs).has(x))
+        if (unknown) {
+          return { s, msg: `Сигнал ${unknown} в схеме не задан — сравнение читалось бы нулём`, level: 'error' }
+        }
         const label = form.values[1].trim() || `${cmp.a} ${cmp.op} ${cmp.b}`
         const list = replaceAt(contacts, col, { addr: 'CMP', label, cmp } as LadderContact)
         return {
@@ -502,23 +524,31 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
       if (onCoil && !timerCoil && !counterCoil && addr.startsWith('I')) {
         return { s, msg: 'Катушка пишет только в выход Q или флаг M', level: 'error' }
       }
-      let preset = rung.coil.preset
+      let presetMs = rung.coil.presetMs
+      let presetCount = rung.coil.presetCount
       if (timerCoil) {
         const sec = Number.parseFloat(form.values[3].replace(',', '.'))
         if (!Number.isFinite(sec) || sec < 0.1 || sec > 3600) {
           return { s, msg: 'Уставка таймера: от 0,1 до 3600 с', level: 'error' }
         }
-        preset = Math.round(sec * 1000)
+        presetMs = Math.round(sec * 1000)
       } else if (counterCoil) {
         const n = Math.round(Number.parseFloat(form.values[3].replace(',', '.')))
         if (!Number.isFinite(n) || n < 1 || n > 9999) {
           return { s, msg: 'Уставка счётчика: целое от 1 до 9999', level: 'error' }
         }
-        preset = n
+        presetCount = n
       }
       const label = form.values[1].trim() || knownLabel(addr) || addr
       if (onCoil) {
-        const coil: LadderCoil = { ...rung.coil, addr, label, ...(timerCoil || counterCoil ? { preset } : {}) }
+        // Each unit keeps its own field: a timer's milliseconds never become a counter's pulses.
+        const coil: LadderCoil = {
+          ...rung.coil,
+          addr,
+          label,
+          ...(timerCoil ? { presetMs } : {}),
+          ...(counterCoil ? { presetCount } : {}),
+        }
         return {
           s: patch(s, { draft: replaceAt(rungs, row, { ...rung, title, coil }), dirty: true, form: null }),
           msg: `Катушка ${addr} — ${label}`,
@@ -545,6 +575,7 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
       if (L.dirty) return { s, msg: DIRTY_BLOCK, level: 'warn' }
       if (isBusy(s)) return { s, msg: 'Загрузка схемы в ПЛК во время цикла запрещена', level: 'warn' }
       const scheme = L.schemes[L.pick]
+      if (!scheme) return { s, msg: 'Схема не выбрана', level: 'warn' }
       return {
         s: {
           ...patch(s, {
@@ -594,6 +625,7 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
 
     case 'LADDER_COPY': {
       const src = L.schemes[L.pick]
+      if (!src) return { s, msg: 'Схема не выбрана', level: 'warn' }
       const copy: LadderScheme = {
         ...src,
         name: uniqueName(L.schemes, `${src.name}_copy`),
@@ -611,6 +643,7 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
 
     case 'LADDER_RENAME': {
       const target = L.schemes[L.pick]
+      if (!target) return { s, msg: 'Схема не выбрана', level: 'warn' }
       return { s: patch(s, { form: { kind: 'scheme', target: L.pick, values: [target.name, target.title] } }) }
     }
 

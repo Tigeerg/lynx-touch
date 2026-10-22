@@ -243,7 +243,7 @@ describe('макросы наладки — экран «Позиция»', () =
     expect(free.machine.A).toBeCloseTo(0.1, 3)
   })
 
-  it('«Поиск детали» открывает мастер щупа на экране смещений', () => {
+  it('«3D щуп» открывает мастер щупа на экране смещений', () => {
     const s = run(manual, { type: 'PROBE_OPEN', open: true })
 
     expect(s.screen).toBe('offset')
@@ -254,8 +254,8 @@ describe('макросы наладки — экран «Позиция»', () =
     const keys = getSoftkeys({ ...initialState, screen: 'pos', mode: 'JOG' })
 
     expect(keys.map((k) => k?.label)).toEqual([
-      'Замер инструмента',
-      'Поиск детали',
+      'Обмер инструмента',
+      '3D щуп',
       'СК G54',
       'Безопасный отвод',
       'В ноль детали',

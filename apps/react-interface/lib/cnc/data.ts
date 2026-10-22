@@ -176,3 +176,14 @@ export const SCREEN_LABEL: Record<Screen, string> = {
   alarm: 'Сообщения',
   service: 'Сервис',
 }
+
+// The softkey label of an operation, named once: the same action was labelled two ways inside
+// softkeys.ts (tool measuring, safe retract, probe open), so the Qt port had to guess which one to
+// copy (CLAUDE.md, section 5: a word needed in two places has one source, not a copy).
+export const SOFTKEY_LABEL = {
+  TOOL_PROBE: 'Обмер инструмента',
+  PROBE_OPEN: '3D щуп',
+  GO_SAFE: 'Безопасный отвод',
+  TOOL_LIFE: 'Ресурс инструмента',
+  PART_COUNTER_RESET: 'Счётчики деталей',
+} as const

@@ -58,7 +58,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { PROBE_STEP_MEASURE, PROBE_STEP_RESULT, PROBE_TOOL } from './probe'
-import { AUTO_VIEW_LABEL } from './data'
+import { AUTO_VIEW_LABEL, SOFTKEY_LABEL } from './data'
 import type { Action } from './subsystem'
 import { paramAt, paramValue, TOOLPATH_PARAM, unsavedIds } from './service-data'
 import { AUTO_VIEWS, isParamSection, type MachineState, type ServiceSection } from './types'
@@ -153,16 +153,21 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
   if (s.workplace === 'SETUP' && s.screen === 'pos') {
     keys = [
       {
-        label: 'Обмер инструмента',
+        label: SOFTKEY_LABEL.TOOL_PROBE,
         icon: Ruler,
         action: { type: 'TOOL_PROBE' },
         disabled: busy || s.spindleOn || s.tool === PROBE_TOOL,
       },
-      { label: 'Центроискатель', icon: LocateFixed, action: { type: 'PROBE_OPEN', open: true }, disabled: busy },
+      {
+        label: SOFTKEY_LABEL.PROBE_OPEN,
+        icon: LocateFixed,
+        action: { type: 'PROBE_OPEN', open: true },
+        disabled: busy,
+      },
       { label: 'Запись базы', icon: Save, action: { type: 'OFFSET_TEACH', axis: s.jogAxis }, disabled: busy },
       { label: 'Таблица баз', icon: Table, action: { type: 'SET_SCREEN', screen: 'offset' } },
       {
-        label: 'Парковка',
+        label: SOFTKEY_LABEL.GO_SAFE,
         icon: House,
         action: { type: 'GO_SAFE' },
         disabled: s.run === 'ESTOP' || s.run === 'ALARM' || busy || s.machineLock,
@@ -207,9 +212,9 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
     keys = [
       { label: 'Каталог УП', icon: FolderOpen, action: { type: 'FILE_DIALOG', open: true }, disabled: busy },
       { label: 'Старт с кадра', icon: ArrowRightToLine, action: { type: 'PROG_TO_CURSOR' }, disabled: busy },
-      { label: 'Ресурс инструмента', icon: Wrench, action: { type: 'TOOL_LIFE' } },
+      { label: SOFTKEY_LABEL.TOOL_LIFE, icon: Wrench, action: { type: 'TOOL_LIFE' } },
       null,
-      { label: 'Счётчики деталей', icon: Package, action: { type: 'PART_COUNTER_RESET' } },
+      { label: SOFTKEY_LABEL.PART_COUNTER_RESET, icon: Package, action: { type: 'PART_COUNTER_RESET' } },
       { label: 'Проверка слома', icon: ScanSearch, action: { type: 'BROKEN_TOOL_CHECK' } },
       null,
       {
@@ -225,12 +230,17 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
     case 'pos':
       keys = [
         {
-          label: 'Замер инструмента',
+          label: SOFTKEY_LABEL.TOOL_PROBE,
           icon: Ruler,
           action: { type: 'TOOL_PROBE' },
           disabled: busy || s.spindleOn || s.tool === PROBE_TOOL,
         },
-        { label: 'Поиск детали', icon: LocateFixed, action: { type: 'PROBE_OPEN', open: true }, disabled: busy },
+        {
+          label: SOFTKEY_LABEL.PROBE_OPEN,
+          icon: LocateFixed,
+          action: { type: 'PROBE_OPEN', open: true },
+          disabled: busy,
+        },
         {
           label: `СК ${s.offsets[s.activeOffset].code}`,
           icon: Repeat,
@@ -238,7 +248,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
           disabled: busy,
         },
         {
-          label: 'Безопасный отвод',
+          label: SOFTKEY_LABEL.GO_SAFE,
           icon: House,
           action: { type: 'GO_SAFE' },
           disabled: s.run === 'ESTOP' || s.run === 'ALARM' || busy || s.machineLock,
@@ -368,7 +378,12 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
           action: { type: 'OFFSET_CLEAR' },
           disabled: busy,
         },
-        { label: '3D щуп', icon: LocateFixed, action: { type: 'PROBE_OPEN', open: true }, disabled: busy },
+        {
+          label: SOFTKEY_LABEL.PROBE_OPEN,
+          icon: LocateFixed,
+          action: { type: 'PROBE_OPEN', open: true },
+          disabled: busy,
+        },
         {
           label: 'Обнулить по позиции',
           icon: Crosshair,

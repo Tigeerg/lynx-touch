@@ -1,8 +1,8 @@
-// Softkey labels: a label is drawn in a fixed-width slot and silently truncated when it does
-// not fit (CLAUDE.md, section 5: the panel is 1024 wide, the slot is a fixed width, so the
-// length of the line is part of the check, not taste). SOFTKEY_LABEL_MAX is the character cap
-// measured for that slot; the states below cover every softkey layout of getSoftkeys, so a new
-// overlong label fails here instead of being cut off on the panel.
+// Softkey labels: the label wraps inside the slot (two lines), so what has to fit on one line
+// is a single word (CLAUDE.md, section 5: the panel is 1024 wide, the slot is a fixed width, so
+// the length of the line is part of the check, not taste). SOFTKEY_LABEL_MAX is the character
+// cap of a line measured for that slot; the states below cover every softkey layout of
+// getSoftkeys, so a new overlong word fails here instead of being broken on the panel.
 import { describe, expect, it } from 'vitest'
 import { initialState } from './machine'
 import { getSoftkeys, SOFTKEY_LABEL_MAX } from './softkeys'
@@ -56,17 +56,18 @@ const states: MachineState[] = [
 ]
 
 describe('софт-кеи: подпись влезает в слот', () => {
-  it('ни одна подпись не длиннее потолка слота', () => {
+  it('ни одно слово подписи не длиннее потолка строки слота', () => {
+    const longestWord = (label: string) => Math.max(...label.split(/\s+/).map((w) => w.length))
     const over = states
       .flatMap((s) => getSoftkeys(s))
       .filter((k): k is NonNullable<typeof k> => !!k)
       .map((k) => k.label)
-      .filter((label) => label.length > SOFTKEY_LABEL_MAX)
+      .filter((label) => longestWord(label) > SOFTKEY_LABEL_MAX)
 
     expect(over).toEqual([])
   })
 
-  it('потолок — 14 символов: замер слота панели, а не вкус', () => {
+  it('потолок — 14 символов: замер строки слота панели, а не вкус', () => {
     expect(SOFTKEY_LABEL_MAX).toBe(14)
   })
 })

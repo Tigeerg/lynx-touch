@@ -317,18 +317,18 @@ Item {
         ];
         }
         if (screen === "tool") return [
-            { id: "call", label: "В шпиндель", icon: "\ue1b1", disabled: machineMode === "AUTO" },
+            { id: "call", label: "Вызвать в шпиндель", icon: "\ue1b1", disabled: machineMode === "AUTO" },
             { id: "measure", label: "Замер длины", icon: "\ue14b" },
             { id: "resetLife", label: "Сброс ресурса", icon: "\ue144" }
         ];
         if (screen === "alarm") return [
             { id: "ack", label: "Квитировать", icon: "\ue06c" },
-            { id: "alarmClearAll", label: "Очистить", icon: "\ue18d" }
+            { id: "alarmClearAll", label: "Удалить квитир.", icon: "\ue18d" }
         ];
         if (screen === "service") {
             var keys2 = [
                 { id: "svcBack", label: "Назад", icon: "\ue2a1" },
-                { id: "svcLock", label: serviceWrite ? "Блок. записи" : "Открыть запись", icon: serviceWrite ? "\ue10c" : "\ue10b" },
+                { id: "svcLock", label: serviceWrite ? "Блок. записи" : "Разрешить запись", icon: serviceWrite ? "\ue10c" : "\ue10b" },
                 { id: "svcSave", label: "Сохранить", icon: "\ue14d" },
                 { id: "svcDefaults", label: "По умолчанию", icon: "\ue148" },
                 serviceSection === "ladder" ? { id: "ladderEdit", label: "Правка схемы", icon: "\ue1f9" } : null

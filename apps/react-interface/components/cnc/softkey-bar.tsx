@@ -42,7 +42,7 @@ export function SoftkeyBar({ keys, onPress }: { keys: (Softkey | null)[]; onPres
           return (
             <div
               key={label}
-              className="flex h-[52px] flex-col rounded-md border border-dashed bg-muted/50 p-1.5"
+              className="flex h-11 items-center rounded-md border border-dashed bg-muted/50 px-1.5"
               aria-hidden="true"
             >
               <Keycap className="h-5 min-w-5 px-1 text-[10px] opacity-40">{label}</Keycap>
@@ -60,7 +60,7 @@ export function SoftkeyBar({ keys, onPress }: { keys: (Softkey | null)[]; onPres
             aria-pressed={k.active ?? undefined}
             onClick={() => onPress(k)}
             className={cn(
-              'relative flex h-[52px] flex-col justify-between overflow-hidden rounded-md border bg-card p-1.5 text-left transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-card',
+              'relative flex h-11 items-center gap-1.5 overflow-hidden rounded-md border bg-card px-1.5 text-left transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-card',
               k.active && 'border-primary bg-accent',
             )}
           >
@@ -76,7 +76,7 @@ export function SoftkeyBar({ keys, onPress }: { keys: (Softkey | null)[]; onPres
                 />
               )}
             </div>
-            <span className="truncate text-xs font-semibold leading-tight">{k.label}</span>
+            <span className="line-clamp-2 min-w-0 break-words text-xs font-semibold leading-tight">{k.label}</span>
           </button>
         )
       })}

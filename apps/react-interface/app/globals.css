@@ -168,10 +168,10 @@
   --ring: oklch(0.5 0.1 180);
 }
 
-/* Минимал — оформление в духе промышленных ЧПУ: два цвета контраста, прямые
-   углы, 1px-линии вместо карточек, никаких теней, градиентов и анимаций.
-   Светлая (theme-minimal) и тёмная (theme-minimal + theme-minimal-dark) —
-   одна и та же геометрия, меняется только палитра. */
+/* Minimal - the look of an industrial CNC: two contrast colours, right angles,
+   1px lines instead of cards, no shadows, gradients or animations.
+   Light (theme-minimal) and dark (theme-minimal + theme-minimal-dark) -
+   the same geometry, only the palette changes. */
 :root.theme-minimal {
   color-scheme: light;
   --background: #d9d9d5;
@@ -180,7 +180,7 @@
   --card-foreground: #182027;
   --popover: #f1f2ee;
   --popover-foreground: #182027;
-  --primary: #168447;
+  --primary: #1c5fc2;
   --primary-foreground: #ffffff;
   --secondary: #c5c9c7;
   --secondary-foreground: #182027;
@@ -194,7 +194,7 @@
   --warning-foreground: #182027;
   --border: #182027;
   --input: #536068;
-  --ring: #168447;
+  --ring: #1c5fc2;
   --radius: 0rem;
   --panel-gap: 0rem;
   --splash: #182027;
@@ -208,8 +208,8 @@
   --card-foreground: #eef1ed;
   --popover: #252e34;
   --popover-foreground: #eef1ed;
-  --primary: #35c878;
-  --primary-foreground: #102017;
+  --primary: #4da3ff;
+  --primary-foreground: #08182b;
   --secondary: #344047;
   --secondary-foreground: #eef1ed;
   --muted: #20292f;
@@ -222,19 +222,25 @@
   --warning-foreground: #182027;
   --border: #b7c0bd;
   --input: #aeb9b8;
-  --ring: #35c878;
+  --ring: #4da3ff;
 }
 
-/* Экран в духе промышленного ЧПУ: моноширинный шрифт, одна линия 1px между
-   блоками (соседние рамки накладываются), заголовок блока — инверсная плашка,
-   активное состояние — инверсия, без теней, скруглений, градиентов и анимаций. */
+/* A screen in the spirit of an industrial CNC: a monospace font, one 1px line between
+   blocks (neighbouring frames overlap), the block header is an inverted plate,
+   the active state is an inversion, no shadows, rounding, gradients or animations. */
 .theme-minimal .cnc-screen {
   position: relative;
   padding: 0 !important;
-  background: var(--background);
-  color: var(--foreground);
+  background: #071014;
+  color: #d8f5ee;
   font-family: var(--font-mono), ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.015em;
+}
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen {
+  border: 1px solid #0d1a1f;
+  background: #f7f8f5;
+  color: #0d1a1f;
 }
 .theme-minimal .cnc-screen::after {
   content: '';
@@ -260,26 +266,31 @@
   backdrop-filter: none !important;
 }
 
-/* Общие границы: соседние блоки делят одну линию. */
+/* Common borders: neighbouring blocks share one line. */
 .theme-minimal .cnc-screen > header > *,
 .theme-minimal .cnc-screen nav[aria-label='Экраны'] > button,
 .theme-minimal .cnc-screen [role='toolbar'] > *,
 .theme-minimal .cnc-screen .cnc-box {
-  border: 1px solid var(--foreground);
+  border: 1px solid var(--divider, var(--foreground));
   margin: 0 -1px -1px 0;
 }
 .theme-minimal .cnc-screen > header {
   height: 40px;
 }
 
-/* Заголовок блока: инверсная плашка слева, под ним линия. */
+/* Block header: an inverted plate on the left, a line under it. */
 .theme-minimal .cnc-screen .cnc-box > header {
   height: 24px;
   padding: 0 !important;
   gap: 0 !important;
-  background: var(--background);
-  color: var(--foreground);
-  border-bottom: 1px solid var(--foreground);
+  background: #111c20;
+  color: #d8f5ee;
+  border-bottom: 1px solid #53656a;
+}
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen .cnc-box > header {
+  background: #172126;
+  color: #effff8;
+  border-bottom-color: #65777b;
 }
 .theme-minimal .cnc-screen .cnc-box > header > svg {
   display: none;
@@ -290,23 +301,35 @@
   align-items: center;
   height: 100%;
   padding: 0 10px;
-  background: var(--foreground);
-  color: var(--background);
-  font-weight: 700;
+  background: #d7ad18;
+  color: #081012;
+  font-weight: 800;
   letter-spacing: 0.1em;
+}
+.theme-minimal .cnc-screen .cnc-box > header > div {
+  color: #8cc8ff;
 }
 .theme-minimal .cnc-screen .cnc-box > header > div {
   padding-right: 6px;
 }
 
-/* Вкладки: номер без рамки, активная — инверсия, недоступная — серая. */
+/* Tabs: a number without a frame, the active one is an inversion, a disabled one is grey. */
 .theme-minimal .cnc-screen nav[aria-label='Экраны'] > button {
   height: 28px;
   padding-inline: 8px;
   gap: 6px;
+  background: #101b20;
+  color: #b7d2d0;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 700;
+}
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen nav[aria-label='Экраны'] > button {
+  background: #e3e6e0;
+  color: #0d1a1f;
+}
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen nav[aria-label='Экраны'] > button:disabled {
+  color: #7b868b;
 }
 .theme-minimal .cnc-screen nav[aria-label='Экраны'] > button:disabled {
   text-decoration: none;
@@ -324,11 +347,32 @@
   font-weight: 700;
 }
 
-/* Функциональные клавиши. */
+/* Function keys. */
 .theme-minimal .cnc-screen [role='toolbar'] > * {
-  height: 48px;
+  height: 42px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 0 6px;
+  line-height: 1.15;
+  background: #111b20;
+  color: #cde7e2;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+.theme-minimal .cnc-screen [role='toolbar'] > button > span:last-child {
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen [role='toolbar'] > * {
+  background: #e3e6e0;
+  color: #0d1a1f;
+}
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen [role='toolbar'] > button:disabled {
+  background: #f1f2ee;
+  color: #7b868b;
 }
 .theme-minimal .cnc-screen [role='toolbar'] > div {
   border-style: solid !important;
@@ -343,7 +387,11 @@
 }
 .theme-minimal .cnc-screen .text-success,
 .theme-minimal .cnc-screen [class*='text-green'] {
-  color: var(--success) !important;
+  color: #39e879 !important;
+}
+.theme-minimal .cnc-screen [class*='text-cyan'],
+.theme-minimal .cnc-screen [class*='text-blue'] {
+  color: #b8fff4 !important;
 }
 .theme-minimal .cnc-screen .text-warning,
 .theme-minimal .cnc-screen [class*='text-amber'],
@@ -358,6 +406,158 @@
   opacity: 1;
   color: color-mix(in oklab, var(--foreground) 40%, var(--background));
   background: var(--background);
+}
+
+/* Light theme: the signal colours are dark and saturated to keep contrast
+   on a light background (the pale "neon" shades are for the dark LCD only). */
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen .text-success,
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen [class*='text-green'] {
+  color: #0a6b32 !important;
+}
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen [class*='text-cyan'],
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen [class*='text-blue'] {
+  color: #0a4f8f !important;
+}
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen .text-warning,
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen [class*='text-amber'],
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen [class*='text-yellow'] {
+  color: #8a5a00 !important;
+}
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen .text-destructive,
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen [class*='text-red'] {
+  color: #b3200f !important;
+}
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen [class*='text-muted-foreground'],
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen [class*='text-foreground/'] {
+  color: #3d4a50 !important;
+  opacity: 1 !important;
+}
+
+/* Dark minimal theme, the screen only (the physical keys are not affected).
+   Neutral graphite without a colour cast. The colour roles are the same as in the light
+   one: blue - bars, sliders, coordinates and pressed keys; amber - only the
+   active (tab, current line, tool); green and red - statuses.
+   Block headers - a light inverted plate, dividers - one light grey. */
+.theme-minimal-dark .cnc-screen {
+  --background: #121417;
+  --foreground: #f1f3f4;
+  --card: #1a1d21;
+  --card-foreground: #f1f3f4;
+  --muted: #23272c;
+  --muted-foreground: #b8c0c7;
+  --primary: #5aa9ff;
+  --primary-foreground: #08111c;
+  --accent: #f2b84b;
+  --accent-foreground: #1b1400;
+  --warning: #f2b84b;
+  --warning-foreground: #1b1400;
+  --success: #4cd388;
+  --destructive: #ff6b5e;
+  --border: #8a949e;
+  --input: #8a949e;
+  --divider: #8a949e;
+  --ring: #f2b84b;
+  background: var(--background);
+  color: var(--foreground);
+}
+.theme-minimal-dark .cnc-screen [class*='text-muted-foreground'],
+.theme-minimal-dark .cnc-screen [class*='text-foreground/'] {
+  color: #b8c0c7 !important;
+  opacity: 1 !important;
+}
+.theme-minimal-dark .cnc-screen .text-success,
+.theme-minimal-dark .cnc-screen [class*='text-green'] {
+  color: #4cd388 !important;
+}
+.theme-minimal-dark .cnc-screen [class*='text-cyan'],
+.theme-minimal-dark .cnc-screen [class*='text-blue'],
+.theme-minimal-dark .cnc-screen .text-primary {
+  color: #7dbcff !important;
+}
+.theme-minimal-dark .cnc-screen .text-warning,
+.theme-minimal-dark .cnc-screen [class*='text-amber'],
+.theme-minimal-dark .cnc-screen [class*='text-yellow'] {
+  color: #f2b84b !important;
+}
+.theme-minimal-dark .cnc-screen .text-destructive,
+.theme-minimal-dark .cnc-screen [class*='text-red'] {
+  color: #ff7b6e !important;
+}
+
+/* Text on solid fills is always dark and contrasty. */
+.theme-minimal-dark .cnc-screen .bg-warning,
+.theme-minimal-dark .cnc-screen .bg-warning *,
+.theme-minimal-dark .cnc-screen .bg-accent,
+.theme-minimal-dark .cnc-screen .bg-accent *,
+.theme-minimal-dark .cnc-screen .bg-primary,
+.theme-minimal-dark .cnc-screen .bg-primary * {
+  color: #0d1014 !important;
+  opacity: 1 !important;
+}
+.theme-minimal-dark .cnc-screen .bg-destructive,
+.theme-minimal-dark .cnc-screen .bg-destructive * {
+  color: #1a0603 !important;
+}
+
+/* All bars and sliders are one blue, the track is noticeably darker. */
+.theme-minimal-dark .cnc-screen [role='meter'] > div:first-child,
+.theme-minimal-dark .cnc-screen [role='progressbar'] > div:first-child,
+.theme-minimal-dark .cnc-screen div[class*='transition-[width']:not([role]) {
+  background: #5aa9ff !important;
+}
+.theme-minimal-dark .cnc-screen [role='meter'],
+.theme-minimal-dark .cnc-screen [role='progressbar'],
+.theme-minimal-dark .cnc-screen [role='presentation'].overflow-hidden {
+  background: #0b0d0f !important;
+  border: 1px solid #8a949e;
+}
+
+/* Block headers and dividers. */
+.theme-minimal-dark .cnc-screen .cnc-box > header {
+  background: #1a1d21;
+  color: #f1f3f4;
+  border-bottom-color: var(--divider);
+}
+.theme-minimal-dark .cnc-screen .cnc-box > header > h2 {
+  background: #dfe4e8;
+  color: #121417;
+}
+.theme-minimal-dark .cnc-screen .cnc-box > header > div {
+  color: #d5dbe0;
+}
+.theme-minimal-dark .cnc-screen .cnc-box,
+.theme-minimal-dark .cnc-screen > header > *,
+.theme-minimal-dark .cnc-screen nav[aria-label='Экраны'] > button,
+.theme-minimal-dark .cnc-screen [role='toolbar'] > * {
+  border-color: var(--divider);
+}
+
+/* Tabs: inactive dark, active amber. */
+.theme-minimal-dark .cnc-screen nav[aria-label='Экраны'] > button {
+  background: #1a1d21;
+  color: #d5dbe0;
+}
+.theme-minimal-dark .cnc-screen nav[aria-label='Экраны'] > button:disabled {
+  background: #15181b;
+  color: #6c757d;
+}
+.theme-minimal-dark .cnc-screen nav[aria-label='Экраны'] > button[aria-current='page'] {
+  background: #f2b84b;
+  color: #1b1400;
+}
+
+/* Function keys. */
+.theme-minimal-dark .cnc-screen [role='toolbar'] > * {
+  background: #23272c;
+  color: #f1f3f4;
+}
+.theme-minimal-dark .cnc-screen [role='toolbar'] > button:disabled {
+  background: #15181b;
+  color: #6c757d;
+}
+.theme-minimal-dark .cnc-screen [role='toolbar'] > button[aria-pressed='true'] {
+  background: #5aa9ff;
+  color: #08111c;
 }
 
 .theme-minimal .cnc-screen button {
@@ -384,7 +584,7 @@
   padding-inline: 6px;
 }
 
-/* Координатная сетка траектории: сплошные линии вместо точек. */
+/* The toolpath coordinate grid: solid lines instead of dots. */
 .theme-minimal .toolpath-grid {
   background-image:
     linear-gradient(to right, color-mix(in oklab, var(--foreground) 14%, transparent) 1px, transparent 1px),

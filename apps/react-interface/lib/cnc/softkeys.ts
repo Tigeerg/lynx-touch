@@ -77,11 +77,13 @@ export const SERVICE_ICON: Record<ServiceSection, LucideIcon> = {
 
 export const SOFTKEY_SLOTS = 8
 
-// The label has to fit the slot on one line (CLAUDE.md, section 5). The panel is 1024 wide,
-// the bar is eight columns with a 0.375rem gap and 0.375rem panel padding, so the label
-// budget is 115 px; measured in the panel with its font and letter-spacing 0.64px, that is 14
-// characters at 12 px (a longer label is silently truncated, so the length is held by the
-// guard, not by eye). Reference: "Вид: совместно" (14) fits, "Вид: траектория" (15) does not.
+// The label wraps inside the slot, so what must fit on one line is a single word (CLAUDE.md,
+// section 5: the panel is 1024 wide, the slot is a fixed width, so the length of the line is
+// part of the check, not taste). The panel is 1024 wide, the bar is eight columns with a
+// 0.375rem gap and 0.375rem panel padding, so the line budget is 115 px; measured in the panel
+// with its font and letter-spacing 0.64px, that is 14 characters at 12 px. A longer word is
+// broken or clipped, so the guard holds the longest word of a label, not the whole label.
+// Reference: "инструмента" (11) fits, a 15-character word does not.
 export const SOFTKEY_LABEL_MAX = 14
 
 export interface Softkey {
@@ -144,7 +146,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
   if (s.workplace === 'SETUP' && s.screen === 'pos') {
     keys = [
       {
-        label: 'Обмер',
+        label: 'Обмер инструмента',
         icon: Ruler,
         action: { type: 'TOOL_PROBE' },
         disabled: busy || s.spindleOn || s.tool === PROBE_TOOL,
@@ -185,7 +187,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
         disabled: busy || s.run === 'ESTOP' || s.run === 'ALARM',
       },
       { label: 'Габариты УП', icon: Ruler, action: { type: 'TEST_BBOX' }, active: s.test.bbox },
-      { label: 'Очистить', icon: EyeOff, action: { type: 'TEST_CLEAR_PATH' }, active: s.test.hidePath },
+      { label: 'Очистка графики', icon: EyeOff, action: { type: 'TEST_CLEAR_PATH' }, active: s.test.hidePath },
       { label: 'Вид', icon: Eye, action: { type: 'PATH_VIEW_CYCLE' } },
       { label: 'Скрыть код', icon: Eye, action: { type: 'TEST_CURTAIN' }, active: s.test.curtain },
     ]
@@ -198,9 +200,9 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
     keys = [
       { label: 'Каталог УП', icon: FolderOpen, action: { type: 'FILE_DIALOG', open: true }, disabled: busy },
       { label: 'Старт с кадра', icon: ArrowRightToLine, action: { type: 'PROG_TO_CURSOR' }, disabled: busy },
-      { label: 'Ресурс', icon: Wrench, action: { type: 'TOOL_LIFE' } },
+      { label: 'Ресурс инструмента', icon: Wrench, action: { type: 'TOOL_LIFE' } },
       null,
-      { label: 'Счётчики', icon: Package, action: { type: 'PART_COUNTER_RESET' } },
+      { label: 'Счётчики деталей', icon: Package, action: { type: 'PART_COUNTER_RESET' } },
       { label: 'Проверка слома', icon: ScanSearch, action: { type: 'BROKEN_TOOL_CHECK' } },
       null,
       {
@@ -216,7 +218,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
     case 'pos':
       keys = [
         {
-          label: 'Замер',
+          label: 'Замер инструмента',
           icon: Ruler,
           action: { type: 'TOOL_PROBE' },
           disabled: busy || s.spindleOn || s.tool === PROBE_TOOL,
@@ -229,7 +231,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
           disabled: busy,
         },
         {
-          label: 'Парковка',
+          label: 'Безопасный отвод',
           icon: House,
           action: { type: 'GO_SAFE' },
           disabled: s.run === 'ESTOP' || s.run === 'ALARM' || busy || s.machineLock,
@@ -246,8 +248,8 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
           action: { type: 'TOGGLE', key: 'aBrake' },
           active: s.aBrake,
         },
-        { label: 'Вызвать', icon: Wrench, action: { type: 'TOOL_DIALOG', open: true }, disabled: busy },
-        { label: 'Калькулятор', icon: Calculator, action: { type: 'CALC', open: true }, active: s.calc },
+        { label: 'Вызов инструмента', icon: Wrench, action: { type: 'TOOL_DIALOG', open: true }, disabled: busy },
+        { label: 'Калькулятор режимов', icon: Calculator, action: { type: 'CALC', open: true }, active: s.calc },
       ]
       break
     case 'prog':
@@ -266,7 +268,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
           { label: 'Кадр выше', icon: ChevronUp, action: { type: 'CURSOR', delta: -1 } },
           { label: 'Кадр ниже', icon: ChevronDown, action: { type: 'CURSOR', delta: 1 } },
           null,
-          { label: 'Сохранить', icon: Save, action: { type: 'EDIT_MODE', on: false }, active: true },
+          { label: 'Сохранить и выйти', icon: Save, action: { type: 'EDIT_MODE', on: false }, active: true },
         ]
         break
       }
@@ -275,7 +277,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
         { label: 'Редактировать', icon: SquarePen, action: { type: 'EDIT_MODE', on: true }, disabled: busy },
         { label: 'Поиск / Замена', icon: Search, action: { type: 'SEARCH', open: true } },
         {
-          label: s.sim.active ? 'Стоп' : 'Симуляция',
+          label: s.sim.active ? 'Симуляция: стоп' : 'Симуляция',
           icon: Play,
           action: { type: 'SIM' },
           active: s.sim.active,
@@ -361,7 +363,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
         },
         { label: '3D щуп', icon: LocateFixed, action: { type: 'PROBE_OPEN', open: true }, disabled: busy },
         {
-          label: 'Обнулить СК',
+          label: 'Обнулить по позиции',
           icon: Crosshair,
           action: { type: 'ZERO_WORK' },
           disabled: s.mode !== 'JOG' || busy,
@@ -371,7 +373,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
     case 'tool':
       keys = [
         {
-          label: 'В шпиндель',
+          label: 'Вызвать в шпиндель',
           icon: Wrench,
           action: { type: 'TOOL_CALL' },
           disabled: s.mode === 'AUTO' || busy,
@@ -403,7 +405,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       if (s.service.section === 'ladder' && L.manager) {
         const picked = L.pick
         keys = [
-          { label: 'Загрузить', icon: Upload, action: { type: 'LADDER_LOAD' }, disabled: L.dirty || busy },
+          { label: 'Загрузить в ПЛК', icon: Upload, action: { type: 'LADDER_LOAD' }, disabled: L.dirty || busy },
           { label: 'Новая схема', icon: FilePlus2, action: { type: 'LADDER_NEW' }, disabled: L.dirty || busy },
           { label: 'Копия', icon: Copy, action: { type: 'LADDER_COPY' } },
           { label: 'Переименовать', icon: Pencil, action: { type: 'LADDER_RENAME' } },
@@ -430,7 +432,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
           { label: 'Ступень +', icon: ListPlus, action: { type: 'LADDER_ADD_RUNG' } },
           { label: 'Схемы', icon: FolderOpen, action: { type: 'LADDER_MANAGER', open: true } },
           { label: 'Сохранить', icon: Save, action: { type: 'LADDER_SAVE' }, active: L.dirty, disabled: busy },
-          { label: 'Удалить', icon: Trash2, action: { type: 'LADDER_DELETE' } },
+          { label: 'Удалить элемент', icon: Trash2, action: { type: 'LADDER_DELETE' } },
         ]
         break
       }
@@ -443,7 +445,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       keys = [
         { label: 'Назад', icon: Undo2, action: { type: 'SERVICE_BACK' } },
         {
-          label: sv.write ? 'Блок. записи' : 'Открыть запись',
+          label: sv.write ? 'Блок. записи' : 'Разрешить запись',
           icon: sv.write ? LockOpen : Lock,
           action: { type: 'SERVICE_LOCK' },
           active: sv.write,
@@ -493,7 +495,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
           action: { type: 'ALARM_ACK' },
           disabled: !s.alarms[s.cursor.alarm]?.active,
         },
-        { label: 'Очистить', icon: Trash2, action: { type: 'ALARM_CLEAR_ALL' } },
+        { label: 'Удалить квитир.', icon: Trash2, action: { type: 'ALARM_CLEAR_ALL' } },
         { label: 'Сброс', icon: RotateCcw, action: { type: 'RESET' }, disabled: s.run === 'ESTOP' },
         null,
         null,

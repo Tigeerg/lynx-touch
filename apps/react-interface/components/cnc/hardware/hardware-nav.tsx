@@ -12,7 +12,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { Action } from '@/lib/cnc/machine'
-import { MODE_LOCKED_SCREENS, TAB_LABEL, TABS, screenOfTab, tabOfScreen, type MachineState } from '@/lib/cnc/types'
+import { TAB_LABEL, TABS, screenOfTab, tabOfScreen, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { TAB_ICON } from '../screen-tabs'
 import { HwKey } from './hw-parts'
@@ -79,7 +79,6 @@ export function HardwareNav({
               icon={TAB_ICON[tab]}
               title={TAB_LABEL[tab]}
               lit={tabOfScreen(state.screen) === tab}
-              disabled={MODE_LOCKED_SCREENS[state.mode].includes(target)}
               tone="primary"
               onClick={() => dispatch({ type: 'SET_SCREEN', screen: target })}
               className="font-mono"

@@ -16,15 +16,11 @@ export function ScreenTabs({
   workplace,
   onSelect,
   alarmCount,
-  locked = [],
-  lockedTitle = 'Недоступно в текущем режиме',
 }: {
   screen: Screen
   workplace: Workplace
   onSelect: (s: Screen) => void
   alarmCount: number
-  locked?: Screen[]
-  lockedTitle?: string
 }) {
   const active = tabOfScreen(screen)
   return (
@@ -32,21 +28,16 @@ export function ScreenTabs({
       {TABS.map((tab, i) => {
         const Icon = TAB_ICON[tab]
         const target = screenOfTab(tab, workplace)
-        const isLocked = locked.includes(target)
         return (
           <button
             key={tab}
             type="button"
             tabIndex={-1}
-            disabled={isLocked}
-            title={isLocked ? lockedTitle : undefined}
-            aria-disabled={isLocked || undefined}
             onClick={() => onSelect(target)}
             aria-current={tab === active ? 'page' : undefined}
             className={cn(
               'flex h-9 items-center gap-1 rounded-md border px-1.5 text-left text-xs font-semibold transition-colors',
               tab === active ? 'border-primary bg-primary text-primary-foreground' : 'bg-card hover:bg-accent',
-              isLocked && 'cursor-not-allowed opacity-40 line-through hover:bg-card',
             )}
           >
             <Keycap

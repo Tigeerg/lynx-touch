@@ -34,12 +34,6 @@ export type Screen = 'pos' | 'prog' | 'offset' | 'tool' | 'alarm' | 'service'
 export const SCREENS: readonly Screen[] = Object.freeze(['pos', 'prog', 'offset', 'tool', 'alarm', 'service'])
 
 export const MODE_START_SCREEN: Record<Mode, Screen> = { AUTO: 'prog', MDI: 'pos', JOG: 'pos', MPG: 'pos' }
-export const MODE_LOCKED_SCREENS: Record<Mode, Screen[]> = {
-  AUTO: ['offset', 'tool', 'service'],
-  MDI: ['prog', 'service'],
-  JOG: [],
-  MPG: [],
-}
 
 export const MPG_STEPS: readonly number[] = Object.freeze([0.001, 0.01, 0.1])
 export const mpgMultiplier = (step: number) => Math.round(step / 0.001)

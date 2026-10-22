@@ -2,14 +2,13 @@
 // (search/replace, renumbering). Extracted from the machine after the pattern of ladder.ts:
 // machine.ts composes the subsystems instead of absorbing them - the reducer size is held by
 // the tools/check.ps1 mark. A result is { s, msg, level }; machine.ts shows the message.
-import { SCREEN_LABEL, WORKPLACE_LABEL } from './data'
 import { programLines, setLines } from './files'
 import { isBusy } from './guards'
 import { pushAlarm } from './messages'
 import { PROBE_TOOL } from './probe'
 import { BROKEN_TOL_MM, sensorLength } from './tool-check'
 import type { Result } from './subsystem'
-import { MODE_LOCKED_SCREENS, type MachineState } from './types'
+import type { MachineState } from './types'
 
 const SIM_STEP_MS = 120
 
@@ -96,13 +95,6 @@ export function progReducer(s: MachineState, a: ProgAction): Result {
       const q = s.search.query.trim()
       if (!q) return { s, msg: 'Введите, что заменить', level: 'warn' }
       if (isBusy(s)) return { s, msg: 'Замена недоступна во время выполнения', level: 'warn' }
-      if (MODE_LOCKED_SCREENS[s.mode].includes('prog')) {
-        return {
-          s,
-          msg: `В режиме «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL.prog}» заблокирован`,
-          level: 'warn',
-        }
-      }
       const re = new RegExp(escapeRegExp(q), 'gi')
       const replacement = s.search.replace
       let touched = 0
@@ -118,13 +110,6 @@ export function progReducer(s: MachineState, a: ProgAction): Result {
 
     case 'PROG_RENUMBER': {
       if (isBusy(s)) return { s, msg: 'Перенумерация недоступна во время выполнения', level: 'warn' }
-      if (MODE_LOCKED_SCREENS[s.mode].includes('prog')) {
-        return {
-          s,
-          msg: `В режиме «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL.prog}» заблокирован`,
-          level: 'warn',
-        }
-      }
       const lines = programLines(s)
       let changed = 0
       const nextLines = lines.map((l, i) => {

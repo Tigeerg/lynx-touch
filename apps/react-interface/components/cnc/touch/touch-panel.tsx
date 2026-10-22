@@ -1,7 +1,6 @@
 'use client'
 
 import { TOOLPATH_PARAM } from '@/lib/cnc/service-data'
-import { MODE_LOCKED_SCREENS } from '@/lib/cnc/types'
 import { FhdStage } from '../fhd-stage'
 import { FileDialog } from '../file-dialog'
 import { CalcOverlay } from '../calc-overlay'
@@ -59,7 +58,6 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
           workplace={state.workplace}
           onSelect={(screen) => dispatch({ type: 'SET_SCREEN', screen })}
           alarmCount={activeAlarms}
-          locked={MODE_LOCKED_SCREENS[state.mode]}
         />
 
         <div className="relative flex min-h-0 flex-1 flex-col gap-1.5">
@@ -93,7 +91,7 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
           <SoftkeyBar keys={softkeys} onPress={(k) => !k.disabled && dispatch(k.action)} />
         </div>
 
-        <TouchDeck state={state} dispatch={dispatch} />
+        <TouchDeck state={state} dispatch={dispatch} screen={state.screen} />
 
         {state.fileDialog && <FileDialog state={state} dispatch={dispatch} />}
         {state.toolDialog && <ToolCallDialog state={state} dispatch={dispatch} />}

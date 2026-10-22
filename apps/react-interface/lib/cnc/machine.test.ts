@@ -5,7 +5,7 @@ import { MODE_LABEL } from './data'
 import { currentFile, initialState, reducer, type Action } from './machine'
 import { getSoftkeys, SOFTKEY_SLOTS } from './softkeys'
 import { buildToolpath, simPose } from './toolpath'
-import { MODE_LOCKED_SCREENS, MODE_START_SCREEN, MODES, SCREENS, type MachineState } from './types'
+import { MODE_START_SCREEN, MODES, SCREENS, type MachineState } from './types'
 
 const run = (state: MachineState, ...actions: Action[]) => actions.reduce(reducer, state)
 const from = (...actions: Action[]) => run(initialState, ...actions)
@@ -81,21 +81,14 @@ describe('режимы и экраны', () => {
     expect(s.mode).toBe(MODES[0])
   })
 
-  it('закрытый в режиме экран не открывается и говорит почему', () => {
-    const locked = MODE_LOCKED_SCREENS.AUTO[0]
-    const s = from({ type: 'SET_SCREEN', screen: locked })
+  it('все экраны доступны в любом режиме', () => {
+    for (const mode of MODES) {
+      for (const screen of SCREENS) {
+        const s = run({ ...initialState, mode }, { type: 'SET_SCREEN', screen })
 
-    expect(s.screen).toBe(initialState.screen)
-    expect(s.message?.text).toContain('заблокирован')
-  })
-
-  it('разрешённый экран открывается', () => {
-    const allowed = SCREENS.find((sc) => sc !== 'service' && !MODE_LOCKED_SCREENS.AUTO.includes(sc))
-
-    expect(allowed).toBeTruthy()
-    const s = from({ type: 'SET_SCREEN', screen: allowed! })
-
-    expect(s.screen).toBe(allowed)
+        expect(s.screen).toBe(screen)
+      }
+    }
   })
 })
 

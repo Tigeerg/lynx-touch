@@ -34,9 +34,9 @@ export function AutoScreen({
   const restMs = (rest / (state.programFeed || 1000)) * MS_PER_MINUTE
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-1.5">
+    <div className="flex h-full min-h-0 flex-col gap-[var(--panel-gap)]">
       <Panel title="Остаток пути" icon={Route} className="shrink-0">
-        <div className="flex items-center gap-3 px-2 py-1">
+        <div className="flex items-center gap-3 px-2 py-0.5">
           <span className="font-mono text-3xl font-bold leading-none tabular-nums">
             {state.motion ? dist.toFixed(3) : '—'}
           </span>

@@ -23,7 +23,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { JOG_STEPS, RAPID_STEPS, WORKPLACE_LABEL } from '@/lib/cnc/data'
 import type { Action } from '@/lib/cnc/machine'
 import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
-import { MPG_STEPS, WORKPLACES, type Axis, type MachineState } from '@/lib/cnc/types'
+import { MPG_STEPS, WORKPLACES, type Axis, type MachineState, type Screen } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { WORKPLACE_ICON } from '../header-bar'
 import { OverrideBar, Panel } from '../primitives'
@@ -87,24 +87,24 @@ function CycleRow({ state, dispatch }: { state: MachineState; dispatch: (a: Acti
       label: 'Пуск',
       icon: Play,
       lit: state.run === 'RUN',
-      tone: 'border-success bg-success text-white',
-      idle: 'border-success/60 text-success',
+      tone: 'border-hw-start bg-hw-start text-hw-ink brightness-95',
+      idle: 'border-hw-start bg-hw-start text-hw-ink',
       action: { type: 'CYCLE_START' },
     },
     {
       label: 'Стоп',
       icon: Pause,
       lit: state.run === 'HOLD',
-      tone: 'border-warning bg-warning text-warning-foreground',
-      idle: 'border-warning/70 text-warning-foreground',
+      tone: 'border-hw-stop bg-hw-stop text-hw-ink brightness-95',
+      idle: 'border-hw-stop bg-hw-stop text-hw-ink',
       action: { type: 'FEED_HOLD' },
     },
     {
       label: 'Сброс',
       icon: RotateCcw,
       lit: state.run === 'ALARM',
-      tone: 'border-primary bg-primary text-primary-foreground',
-      idle: 'border-primary/60 text-primary',
+      tone: 'border-hw-reset bg-hw-reset text-hw-ink brightness-95',
+      idle: 'border-hw-reset bg-hw-reset text-hw-ink',
       action: { type: 'RESET' },
     },
     {
@@ -112,7 +112,7 @@ function CycleRow({ state, dispatch }: { state: MachineState; dispatch: (a: Acti
       icon: OctagonX,
       lit: state.run === 'ESTOP',
       tone: 'border-destructive bg-destructive text-white',
-      idle: 'border-destructive/60 text-destructive',
+      idle: 'border-destructive bg-destructive/15 text-destructive',
       action: { type: 'ESTOP' },
     },
   ]
@@ -127,8 +127,8 @@ function CycleRow({ state, dispatch }: { state: MachineState; dispatch: (a: Acti
           onClick={() => dispatch(action)}
           className={cn(
             KEY_BASE,
-            'gap-2.5 border-2 border-b-4 text-lg uppercase tracking-wide',
-            lit ? tone : cn('bg-card', idle),
+            'gap-2.5 border-2 border-b-4 px-3 text-lg uppercase tracking-wide',
+            lit ? tone : idle,
           )}
         >
           <Icon className="size-7" aria-hidden="true" />
@@ -335,7 +335,16 @@ function OverridePanel({ state, dispatch }: { state: MachineState; dispatch: (a:
   )
 }
 
-export function TouchDeck({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
+export function TouchDeck({
+  state,
+  dispatch,
+  screen,
+}: {
+  state: MachineState
+  dispatch: (a: Action) => void
+  screen: Screen
+}) {
+  const cycle = screen === 'pos' || screen === 'prog'
   return (
     <section aria-label="Сенсорный пульт" className="flex shrink-0 flex-col gap-1.5">
       <div className="flex h-[212px] gap-1.5">
@@ -343,7 +352,7 @@ export function TouchDeck({ state, dispatch }: { state: MachineState; dispatch: 
         <JogPanel state={state} dispatch={dispatch} />
         <OverridePanel state={state} dispatch={dispatch} />
       </div>
-      <CycleRow state={state} dispatch={dispatch} />
+      {cycle && <CycleRow state={state} dispatch={dispatch} />}
     </section>
   )
 }

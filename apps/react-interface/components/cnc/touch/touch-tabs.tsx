@@ -1,4 +1,3 @@
-import { Lock } from 'lucide-react'
 import { TAB_LABEL, TABS, screenOfTab, tabOfScreen, type Screen, type Workplace } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { TAB_ICON } from '../screen-tabs'
@@ -8,13 +7,11 @@ export function TouchTabs({
   workplace,
   onSelect,
   alarmCount,
-  locked,
 }: {
   screen: Screen
   workplace: Workplace
   onSelect: (s: Screen) => void
   alarmCount: number
-  locked: Screen[]
 }) {
   const active = tabOfScreen(screen)
   return (
@@ -22,24 +19,20 @@ export function TouchTabs({
       {TABS.map((tab) => {
         const Icon = TAB_ICON[tab]
         const target = screenOfTab(tab, workplace)
-        const isLocked = locked.includes(target)
         return (
           <button
             key={tab}
             type="button"
             tabIndex={-1}
-            disabled={isLocked}
             onClick={() => onSelect(target)}
             aria-current={tab === active ? 'page' : undefined}
             className={cn(
               'relative flex flex-col items-center justify-center gap-1 rounded-md border text-xs font-semibold transition-colors active:scale-[0.97]',
               tab === active ? 'border-primary bg-primary text-primary-foreground' : 'bg-card active:bg-accent',
-              isLocked && 'opacity-40',
             )}
           >
-            {isLocked ? <Lock className="size-5" aria-hidden="true" /> : <Icon className="size-5" aria-hidden="true" />}
+            <Icon className="size-5" aria-hidden="true" />
             <span className="max-w-full truncate px-1">{TAB_LABEL[tab]}</span>
-            {isLocked && <span className="sr-only">(недоступно в текущем режиме)</span>}
             {tab === 'alarm' && alarmCount > 0 && (
               <span
                 className={cn(

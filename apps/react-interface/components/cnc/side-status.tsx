@@ -322,8 +322,10 @@ type PadItem = {
   keyLabel: string
   icon: LucideIcon
   lit: boolean
+  /** The face of the key while the state is off: a pale tint of the key's own colour. */
+  cap: string
+  /** The face of the key while the state is on: the same colour, saturated. */
   tone: string
-  idle?: string
   action: Action
 }
 
@@ -343,7 +345,8 @@ export function OperatorPad({
       keyLabel: 'Enter',
       icon: Play,
       lit: state.run === 'RUN',
-      tone: 'bg-success text-white border-success',
+      cap: 'border-hw-start bg-hw-start text-hw-ink',
+      tone: 'border-success bg-success text-white',
       action: { type: 'CYCLE_START' },
     },
     {
@@ -352,7 +355,8 @@ export function OperatorPad({
       keyLabel: 'Space',
       icon: Pause,
       lit: state.run === 'HOLD',
-      tone: 'bg-warning text-warning-foreground border-warning',
+      cap: 'border-hw-stop bg-hw-stop text-hw-ink',
+      tone: 'border-warning bg-warning text-warning-foreground',
       action: { type: 'FEED_HOLD' },
     },
     {
@@ -361,7 +365,8 @@ export function OperatorPad({
       keyLabel: 'Esc',
       icon: RotateCcw,
       lit: state.run === 'ALARM',
-      tone: 'bg-primary text-primary-foreground border-primary',
+      cap: 'border-hw-reset bg-hw-reset text-hw-ink',
+      tone: 'border-primary bg-primary text-primary-foreground',
       action: { type: 'RESET' },
     },
     {
@@ -370,8 +375,8 @@ export function OperatorPad({
       keyLabel: 'Shift+Esc',
       icon: OctagonX,
       lit: state.run === 'ESTOP',
-      tone: 'bg-destructive text-white border-destructive',
-      idle: 'border-destructive/50 text-destructive',
+      cap: 'border-destructive bg-destructive/15 text-destructive',
+      tone: 'border-destructive bg-destructive text-white',
       action: { type: 'ESTOP' },
     },
   ]
@@ -382,8 +387,10 @@ export function OperatorPad({
   ))
 
   if (compact) {
+    // One gutter for the whole pad: the same 6 px between the keys and to the edges of the block,
+    // as in the framed layout below.
     return (
-      <div className="grid shrink-0 grid-cols-4 gap-1" role="group" aria-label="Пульт оператора">
+      <div className="grid shrink-0 grid-cols-4 gap-1.5 p-1.5" role="group" aria-label="Пульт оператора">
         {buttons}
       </div>
     )
@@ -406,11 +413,11 @@ function OperatorButton({ item, compact, onClick }: { item: PadItem; compact: bo
       aria-pressed={item.lit}
       title={`${item.label} (${item.keyLabel})`}
       className={cn(
-        'rounded-md border-2 bg-card transition-colors',
+        'rounded-md border-2 transition-colors',
         compact
-          ? 'flex h-10 flex-col items-center justify-center gap-0.5 px-1'
-          : 'flex h-11 items-center gap-2 px-2 text-left',
-        item.lit ? item.tone : (item.idle ?? 'hover:bg-accent'),
+          ? 'flex h-10 flex-col items-center justify-center gap-0.5 px-2'
+          : 'flex h-11 items-center gap-2 px-2.5 text-left',
+        item.lit ? item.tone : item.cap,
       )}
     >
       <Icon className={cn('shrink-0', compact ? 'size-4' : 'size-5')} aria-hidden="true" />

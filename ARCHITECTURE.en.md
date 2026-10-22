@@ -57,6 +57,8 @@ is local (when an API request appears, add and name that layer here).
 * `assets/` — project images; `fonts/` — `Inter`, `JetBrains Mono`, `lucide.ttf`.
 * There is no run entry point in the repository: the `qml` runtime does not load the `MockBackend` module.
 * Texts match `react-interface` word for word; icons are lucide only, from the bundled font.
+* The port lags the React panel by several passes (workplaces, the Work tab, 8 softkeys, the AUTO screen,
+  Minimal, touch mode); the plan to catch up is [docs/PORT-QML.md](docs/PORT-QML.md).
 
 ## 4. `gcode-viewer` (3D viewer for NC programs)
 

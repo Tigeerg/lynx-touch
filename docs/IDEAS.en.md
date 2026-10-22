@@ -229,9 +229,9 @@ being rolled back. **Estimate: S-M** — it fits the current reducer.
 **Idea.** On an error (for example, a Following Error inside metal) the interface walks the operator step by step,
 with 3D hints, through a safe tool extraction, blocking dangerous presses.
 
-**Where we are.** There are alarms (`lib/cnc/messages.ts`), input checks (`guards.ts`) and screen locking by mode
-(`MODE_LOCKED_SCREENS`). Added here is a "code -> recovery scenario" table (an example of alarm interpretation is
-section 6).
+**Where we are.** There are alarms (`lib/cnc/messages.ts`), input checks (`guards.ts`) and refusal of dangerous
+actions while the machine is busy (screens are no longer locked by mode). Added here is a "code -> recovery
+scenario" table (an example of alarm interpretation is section 6).
 
 **What is needed.** 1) Scenarios by alarm codes; 2) a step-by-step screen that blocks dangerous actions; 3) a 3D
 extraction hint. **Estimate: M**.
@@ -354,7 +354,7 @@ idea.
 | Near | Volumetric Wear Tracking | M | the `stock_sim` removal field |
 | Near | Swept Volume Collision | M | the "holder vs stock" collision |
 | Near | Visual G68 | M | the parser state + the scene |
-| Near | Recovery Wizard | M | alarms, guards, screen locking |
+| Near | Recovery Wizard | M | alarms, guards, refusal reasons |
 | Medium | Drag-and-Drop Retracts | M | the parser + picking (the segment-line link) |
 | Medium | Click-to-Probe | L | OCCT + the probing generator |
 | Medium | Smart Block Search | M-L | the safe-continuation generator |

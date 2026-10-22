@@ -60,18 +60,20 @@ export function HardwarePanel({ state, dispatch }: { state: MachineState; dispat
       <span aria-hidden="true" className={PANEL_GAP} />
 
       <HwGroup title="Цикл и режим" className="w-[375px] shrink-0">
-        <div className="flex flex-1 flex-col justify-center gap-2">
-          <div className="grid grid-cols-3 gap-2 pt-4">
+        <div className="flex flex-1 flex-col justify-center gap-2 px-4">
+          {/* The three cycle keys share one gutter: the same 16 px between the keys and to the
+              edges of the group, and 24 px above for the state lamp over each key. */}
+          <div className="grid grid-cols-3 gap-4 pb-4 pt-6">
             <HwKey
               label="Пуск"
               sub="Enter"
               icon={Play}
               lit={state.run === 'RUN'}
               tone="success"
-              cap="bg-hw-green text-hw-ink"
+              cap="bg-hw-start text-hw-ink"
               large
               onClick={() => dispatch({ type: 'CYCLE_START' })}
-              className="h-[150px] w-full py-1.5 [&_svg]:mb-1 [&_svg]:size-9"
+              className="h-[128px] w-full gap-1.5 px-3 py-2 [&_svg]:size-9"
             />
             <HwKey
               label="Стоп"
@@ -79,10 +81,10 @@ export function HardwarePanel({ state, dispatch }: { state: MachineState; dispat
               icon={Pause}
               lit={state.run === 'HOLD'}
               tone="warning"
-              cap="bg-hw-amber text-hw-ink"
+              cap="bg-hw-stop text-hw-ink"
               large
               onClick={() => dispatch({ type: 'FEED_HOLD' })}
-              className="h-[150px] w-full py-1.5 [&_svg]:mb-1 [&_svg]:size-9"
+              className="h-[128px] w-full gap-1.5 px-3 py-2 [&_svg]:size-9"
             />
             <HwKey
               label="Сброс"
@@ -90,14 +92,16 @@ export function HardwarePanel({ state, dispatch }: { state: MachineState; dispat
               icon={RotateCcw}
               lit={state.run === 'ALARM'}
               tone="primary"
-              cap="bg-hw-blue text-hw-ink"
+              cap="bg-hw-reset text-hw-ink"
               large
               onClick={() => dispatch({ type: 'RESET' })}
-              className="h-[150px] w-full py-1.5 [&_svg]:mb-1 [&_svg]:size-9"
+              className="h-[128px] w-full gap-1.5 px-3 py-2 [&_svg]:size-9"
             />
           </div>
 
-          <div role="group" aria-label="Режим" className="flex justify-between pt-5">
+          {/* The same three-column grid as the cycle keys above: one gutter between the keys and
+              to the edges of the group. */}
+          <div role="group" aria-label="Режим" className="grid grid-cols-3 gap-4">
             {WORKPLACES.map((w) => (
               <HwKey
                 key={w}
@@ -105,8 +109,9 @@ export function HardwarePanel({ state, dispatch }: { state: MachineState; dispat
                 icon={WORKPLACE_ICON[w]}
                 lit={state.workplace === w}
                 tone="primary"
+                stretch
                 onClick={() => dispatch({ type: 'SET_WORKPLACE', workplace: w })}
-                className="gap-1 px-0 text-[12px] tracking-tight [&_svg]:size-6"
+                className="gap-1 px-1.5 text-[12px] tracking-tight [&_svg]:size-6"
               />
             ))}
           </div>

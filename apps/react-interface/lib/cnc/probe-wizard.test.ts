@@ -30,11 +30,11 @@ describe('щуп: мастер измерения', () => {
     expect(r.msg).toBe('Остановите программу')
   })
 
-  it('в авто экран щупа заблокирован', () => {
+  it('в авто щуп открывается, пока станок свободен', () => {
     const r = probeWizardReducer({ ...initialState, mode: 'AUTO' }, { type: 'PROBE_OPEN', open: true })
 
-    expect(r.s.probe.open).toBe(false)
-    expect(r.msg).toContain('недоступен')
+    expect(r.s.probe.open).toBe(true)
+    expect(r.s.screen).toBe('offset')
   })
 
   it('шаг измерения требует щуп в шпинделе', () => {

@@ -35,12 +35,13 @@ describe('авто: F1-F8 и действия', () => {
     ])
   })
 
-  it('смена рабочего места сохраняет текущую вкладку, если она разрешена', () => {
-    const kept = reducer({ ...initialState, screen: 'offset' }, { type: 'SET_WORKPLACE', workplace: 'SETUP' })
-    const bounced = reducer({ ...initialState, screen: 'offset' }, { type: 'SET_WORKPLACE', workplace: 'TEST' })
+  it('смена рабочего места сохраняет текущую вкладку в любом режиме', () => {
+    const setup = reducer({ ...initialState, screen: 'offset' }, { type: 'SET_WORKPLACE', workplace: 'SETUP' })
+    const test = reducer({ ...initialState, screen: 'offset' }, { type: 'SET_WORKPLACE', workplace: 'TEST' })
 
-    expect(kept.screen).toBe('offset')
-    expect(bounced.screen).toBe('prog')
+    expect(setup.screen).toBe('offset')
+    expect(test.workplace).toBe('TEST')
+    expect(test.screen).toBe('offset')
   })
 
   it('вид в АВТО идёт по кругу: траектория, gcode, совместно', () => {

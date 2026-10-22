@@ -7,12 +7,11 @@
 // commit writes the buffer into the file, cancel drops it. The file write goes through
 // files.ts (setLines); the file state lives in MachineState.
 import { clampIndex } from './clamp'
-import { SCREEN_LABEL, WORKPLACE_LABEL } from './data'
 import { currentFile, programLines, setLines } from './files'
 import { isBusy } from './guards'
 import { idleSim } from './prog'
 import type { Result } from './subsystem'
-import { MODE_LOCKED_SCREENS, type MachineState } from './types'
+import type { MachineState } from './types'
 
 export type EditorAction =
   | { type: 'FILE_DIALOG'; open?: boolean }
@@ -60,7 +59,7 @@ export function editorReducer(s: MachineState, a: EditorAction): Result {
           ...s,
           activeFile: s.fileCursor,
           fileDialog: false,
-          screen: MODE_LOCKED_SCREENS[s.mode].includes('prog') ? s.screen : 'prog',
+          screen: 'prog',
           editMode: false,
           editor: null,
           line: 0,
@@ -76,12 +75,6 @@ export function editorReducer(s: MachineState, a: EditorAction): Result {
     case 'EDIT_MODE': {
       const on = a.on ?? !s.editMode
       if (on && isBusy(s)) return { s, msg: 'Редактирование доступно только в останове', level: 'warn' }
-      if (on && MODE_LOCKED_SCREENS[s.mode].includes('prog'))
-        return {
-          s,
-          msg: `В режиме «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL.prog}» заблокирован`,
-          level: 'warn',
-        }
       if (on)
         return {
           s: { ...s, editMode: true, screen: 'prog' },

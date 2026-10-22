@@ -5,11 +5,10 @@
 // (probeTick) lives in probe-exec.ts. A result is { s, msg, level }; machine.ts shows the
 // message.
 import { clamp } from './clamp'
-import { WORKPLACE_LABEL } from './data'
 import { isBusy } from './guards'
 import { PROBE_STEP_MEASURE, PROBE_STEP_RESULT, PROBE_TOOL } from './probe'
 import type { Result } from './subsystem'
-import { MODE_LOCKED_SCREENS, type MachineState } from './types'
+import type { MachineState } from './types'
 
 export type ProbeWizardAction =
   | { type: 'PROBE_OPEN'; open?: boolean }
@@ -28,8 +27,6 @@ export function probeWizardReducer(s: MachineState, a: ProbeWizardAction): Resul
       const open = a.open ?? !s.probe.open
       if (!open && s.probe.running) return { s, msg: 'Дождитесь окончания измерения или нажмите СБРОС', level: 'warn' }
       if (open && isBusy(s)) return { s, msg: 'Остановите программу', level: 'warn' }
-      if (open && MODE_LOCKED_SCREENS[s.mode].includes('offset'))
-        return { s, msg: `Щуп недоступен в режиме «${WORKPLACE_LABEL[s.workplace]}»`, level: 'warn' }
       return {
         s: {
           ...s,

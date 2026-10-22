@@ -7,7 +7,7 @@
 // result is { s, msg, level }; machine.ts shows the message.
 import { clampIndex } from './clamp'
 import { applyBlock } from './cycle'
-import { MODE_LABEL, SCREEN_LABEL, WORKPLACE_LABEL } from './data'
+import { MODE_LABEL, WORKPLACE_LABEL } from './data'
 import { currentFile, programLines } from './files'
 import { isBusy } from './guards'
 import { listLength } from './list'
@@ -16,7 +16,6 @@ import { idleSim } from './prog'
 import { cancelEdit } from './service-edit'
 import type { Dispatch, Result } from './subsystem'
 import {
-  MODE_LOCKED_SCREENS,
   MODE_START_SCREEN,
   MODES,
   MPG_STEPS,
@@ -63,8 +62,8 @@ export function navReducer(s: MachineState, a: NavAction, dispatch: Dispatch): R
     case 'SET_WORKPLACE': {
       if (isBusy(s)) return { s, msg: 'Смена режима во время выполнения запрещена', level: 'warn' }
       const mode: Mode = a.workplace === 'SETUP' ? 'JOG' : 'AUTO'
-      const kept = screenOfTab(tabOfScreen(s.screen), a.workplace)
-      const screen = MODE_LOCKED_SCREENS[mode].includes(kept) ? screenOfTab('work', a.workplace) : kept
+      // No screen is locked by mode: the workplace moves the same tab of the new workplace.
+      const screen = screenOfTab(tabOfScreen(s.screen), a.workplace)
       return {
         s: { ...s, workplace: a.workplace, mode, dryRun: a.workplace === 'TEST', screen },
         msg: `Режим: ${WORKPLACE_LABEL[a.workplace]}`,
@@ -77,13 +76,6 @@ export function navReducer(s: MachineState, a: NavAction, dispatch: Dispatch): R
     }
 
     case 'SET_SCREEN': {
-      if (MODE_LOCKED_SCREENS[s.mode].includes(a.screen)) {
-        return {
-          s,
-          msg: `В режиме «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL[a.screen]}» заблокирован`,
-          level: 'warn',
-        }
-      }
       if (a.screen !== 'service' && (s.service.editing || s.service.auth)) {
         const reverted = cancelEdit(s)
         return { s: dispatch({ ...reverted, service: { ...reverted.service, auth: null } }, a) }

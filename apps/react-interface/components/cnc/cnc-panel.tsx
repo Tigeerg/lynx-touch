@@ -2,8 +2,6 @@
 
 import { useState } from 'react'
 import { SCREEN_SIZE_PARAM, TOOLPATH_PARAM, paramValue } from '@/lib/cnc/service-data'
-import { WORKPLACE_LABEL } from '@/lib/cnc/data'
-import { MODE_LOCKED_SCREENS } from '@/lib/cnc/types'
 import { FhdStage } from './fhd-stage'
 import { useCncMachine } from './use-cnc-machine'
 
@@ -28,7 +26,7 @@ import { ScreenTabs } from './screen-tabs'
 import { SplashScreen } from './splash-screen'
 import { cn } from '@/lib/utils'
 import { ProgramSide } from './program-side'
-import { OperatorPad, SideStatus } from './side-status'
+import { SideStatus } from './side-status'
 import { MessageBar, SoftkeyBar } from './softkey-bar'
 import { SetupScreen, SetupSide } from './screens/setup-screen'
 import { ProgramScreen } from './screens/program-screen'
@@ -82,8 +80,6 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
         workplace={state.workplace}
         onSelect={(screen) => dispatch({ type: 'SET_SCREEN', screen })}
         alarmCount={activeAlarms}
-        locked={MODE_LOCKED_SCREENS[state.mode]}
-        lockedTitle={`Недоступно в режиме «${WORKPLACE_LABEL[state.workplace]}»`}
       />
 
       <div
@@ -93,9 +89,7 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
             ? 'grid-cols-1 grid-rows-[minmax(0,1fr)]'
             : showModes
               ? 'grid-cols-[minmax(0,1fr)_300px]'
-              : hardware
-                ? 'grid-cols-1 grid-rows-[minmax(0,1fr)]'
-                : 'grid-cols-1 grid-rows-[minmax(0,1fr)_auto]',
+              : 'grid-cols-1 grid-rows-[minmax(0,1fr)]',
         )}
       >
         <main className="min-h-0">
@@ -114,16 +108,13 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
           {state.screen === 'service' && <ServiceScreen state={state} dispatch={dispatch} />}
         </main>
         {!testMode &&
-          (showModes ? (
-            state.screen === 'prog' ? (
-              <ProgramSide state={state} dispatch={dispatch} showPad={!hardware} />
-            ) : state.workplace === 'SETUP' ? (
-              <SetupSide state={state} dispatch={dispatch} showPad={!hardware} />
-            ) : (
-              <SideStatus state={state} dispatch={dispatch} showPad={!hardware} />
-            )
+          showModes &&
+          (state.screen === 'prog' ? (
+            <ProgramSide state={state} dispatch={dispatch} showPad={!hardware} />
+          ) : state.workplace === 'SETUP' ? (
+            <SetupSide state={state} dispatch={dispatch} showPad={!hardware} />
           ) : (
-            !hardware && <OperatorPad state={state} dispatch={dispatch} layout="compact" />
+            <SideStatus state={state} dispatch={dispatch} showPad={!hardware} />
           ))}
       </div>
 

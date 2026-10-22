@@ -22,6 +22,9 @@
   --color-hw-base: var(--hw-base);
   --color-hw-cap: var(--hw-cap);
   --color-hw-cap-alt: var(--hw-cap-alt);
+  --color-hw-start: var(--hw-start);
+  --color-hw-stop: var(--hw-stop);
+  --color-hw-reset: var(--hw-reset);
   --color-splash: var(--splash);
   --color-success: var(--success);
   --color-warning: var(--warning);
@@ -90,6 +93,10 @@
   --hw-base: oklch(0.24 0.045 262);
   --hw-cap: oklch(0.95 0.006 250);
   --hw-cap-alt: oklch(0.87 0.035 245);
+  /* Pastel caps of the cycle keys: green start, amber hold, blue reset - pale, not saturated. */
+  --hw-start: oklch(0.85 0.1 150);
+  --hw-stop: oklch(0.87 0.12 78);
+  --hw-reset: oklch(0.85 0.09 252);
   --splash: #0f1620;
 }
 
@@ -195,7 +202,7 @@
   --border: #182027;
   --input: #536068;
   --ring: #1c5fc2;
-  --radius: 0rem;
+  --radius: 0.375rem;
   --panel-gap: 0rem;
   --splash: #182027;
 }
@@ -227,7 +234,9 @@
 
 /* A screen in the spirit of an industrial CNC: a monospace font, one 1px line between
    blocks (neighbouring frames overlap), the block header is an inverted plate,
-   the active state is an inversion, no shadows, rounding, gradients or animations. */
+   the active state is an inversion, no shadows, gradients or animations. The rounding
+   comes from --radius as in the other themes (0.375rem), only the shadows and the
+   gradients are dropped. */
 .theme-minimal .cnc-screen {
   position: relative;
   padding: 0 !important;
@@ -253,7 +262,6 @@
 .theme-minimal .cnc-screen * {
   box-shadow: none !important;
   text-shadow: none !important;
-  border-radius: 0 !important;
   transition: none !important;
   animation: none !important;
 }
@@ -327,15 +335,6 @@
 .theme-minimal:not(.theme-minimal-dark) .cnc-screen nav[aria-label='Экраны'] > button {
   background: #e3e6e0;
   color: #0d1a1f;
-}
-.theme-minimal:not(.theme-minimal-dark) .cnc-screen nav[aria-label='Экраны'] > button:disabled {
-  color: #7b868b;
-}
-.theme-minimal .cnc-screen nav[aria-label='Экраны'] > button:disabled {
-  text-decoration: none;
-  opacity: 1;
-  color: color-mix(in oklab, var(--foreground) 40%, var(--background));
-  cursor: not-allowed;
 }
 .theme-minimal .cnc-screen kbd {
   height: auto;
@@ -670,6 +669,10 @@
 }
 .touch-ui .text-\[14px\] {
   font-size: 16px;
+}
+/* The touch panel has no F-keys row: the keycap with the F-number is dropped from the softkeys. */
+.touch-ui [role='toolbar'] kbd {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

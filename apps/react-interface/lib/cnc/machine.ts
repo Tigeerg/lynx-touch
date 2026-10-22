@@ -1,14 +1,6 @@
-import {
-  INITIAL_ALARMS,
-  INITIAL_OFFSETS,
-  INITIAL_TOOLS,
-  MODE_LABEL,
-  PROGRAM_FILES,
-  SCREEN_LABEL,
-  WORKPLACE_LABEL,
-} from './data'
-import { PROBE_CYCLES, PROBE_TOOL } from './probe'
-import { applyBlock, cycleReducer, executeLine, isCycleAction, type CycleAction } from './cycle'
+import { INITIAL_ALARMS, INITIAL_OFFSETS, INITIAL_TOOLS, PROGRAM_FILES } from './data'
+import { cycleReducer, isCycleAction, type CycleAction } from './cycle'
+import { isNavAction, navReducer, type NavAction } from './nav'
 import { initialLadder, isLadderAction, ladderReducer, type LadderAction } from './ladder'
 import { idleSim, isProgAction, progReducer, type ProgAction } from './prog'
 import { editorReducer, isEditorAction, type EditorAction } from './editor'
@@ -18,49 +10,17 @@ import { isProbeWizardAction, probeWizardReducer, type ProbeWizardAction } from 
 import { isServiceAction, serviceReducer, type ServiceAction } from './service'
 import { isMpgAction, mpgReducer, type MpgAction } from './mpg'
 import { initialTest, isTestAction, testReducer, type TestAction } from './test'
-import {
-  defaultParams,
-  formatParam,
-  THEME_OPTIONS,
-  THEME_PARAM,
-  TOOLPATH_PARAM,
-  UI_MODE_PARAM,
-  type ParamDef,
-} from './service-data'
-import {
-  MODE_LOCKED_SCREENS,
-  MODE_START_SCREEN,
-  MODES,
-  MPG_STEPS,
-  SERVICE_SECTIONS,
-  screenOfTab,
-  tabOfScreen,
-  type Axis,
-  type MachineState,
-  type Mode,
-  type Screen,
-  type Workplace,
-} from './types'
+import { defaultParams, THEME_OPTIONS, THEME_PARAM, TOOLPATH_PARAM, UI_MODE_PARAM } from './service-data'
+import { MODE_START_SCREEN, type MachineState } from './types'
 
 import { zeroAxes } from './coords'
-import { currentFile, programLines } from './files'
-import { listLength } from './list'
-import { cancelEdit, markSaved } from './service-edit'
+import { markSaved } from './service-edit'
 import { notify } from './messages'
-import { isBusy } from './guards'
 
 export { distanceToGo, motionSpeed, toWork, workOffset } from './coords'
 export { currentFile, programLines } from './files'
 
 export type Action =
-  | { type: 'SET_MODE'; mode: Mode }
-  | { type: 'SET_WORKPLACE'; workplace: Workplace }
-  | { type: 'SPINDLE_WARMUP' }
-  | { type: 'CYCLE_MODE'; dir: 1 | -1 }
-  | { type: 'SET_SCREEN'; screen: Screen }
-  | { type: 'CURSOR'; delta: number }
-  | { type: 'PROG_REWIND' }
-  | { type: 'PROG_TO_CURSOR' }
   | { type: 'ALARM_ACK' }
   | { type: 'ALARM_CLEAR_ALL' }
   | { type: 'HELP'; open?: boolean }
@@ -78,6 +38,7 @@ export type Action =
   | ProbeWizardAction
   | ServiceAction
   | CycleAction
+  | NavAction
 
 export const initialState: MachineState = {
   ladder: initialLadder,
@@ -214,70 +175,11 @@ export function reducer(state: MachineState, a: Action): MachineState {
     const r = cycleReducer(s, a)
     return r.msg ? notify(r.s, r.msg, r.level) : r.s
   }
+  if (isNavAction(a)) {
+    const r = navReducer(s, a, reducer)
+    return r.msg ? notify(r.s, r.msg, r.level) : r.s
+  }
   switch (a.type) {
-    case 'SET_MODE': {
-      if (s.run === 'RUN') return notify(s, 'Смена режима во время выполнения запрещена', 'warn')
-      const screen = MODE_START_SCREEN[a.mode]
-      const jogStep = a.mode === 'MPG' && !MPG_STEPS.includes(s.jogStep) ? MPG_STEPS[MPG_STEPS.length - 1] : s.jogStep
-      const n = s.editMode && screen !== 'prog' ? { ...s, editMode: false, editor: null } : s
-      return notify({ ...n, mode: a.mode, screen, jogStep }, `Режим: ${MODE_LABEL[a.mode]}`)
-    }
-
-    case 'SET_WORKPLACE': {
-      if (isBusy(s)) return notify(s, 'Смена режима во время выполнения запрещена', 'warn')
-      const mode: Mode = a.workplace === 'SETUP' ? 'JOG' : 'AUTO'
-      const kept = screenOfTab(tabOfScreen(s.screen), a.workplace)
-      const screen = MODE_LOCKED_SCREENS[mode].includes(kept) ? screenOfTab('work', a.workplace) : kept
-      return notify(
-        { ...s, workplace: a.workplace, mode, dryRun: a.workplace === 'TEST', screen },
-        `Режим: ${WORKPLACE_LABEL[a.workplace]}`,
-      )
-    }
-
-    case 'SPINDLE_WARMUP': {
-      if (s.run === 'ESTOP' || s.run === 'ALARM') return notify(s, 'Сначала сбросьте аварию', 'error')
-      if (isBusy(s)) return notify(s, 'Сначала остановите программу', 'warn')
-      if (!s.toolClamped) return notify(s, 'Инструмент разжат — прогрев запрещён', 'error')
-      if (s.tool === PROBE_TOOL) return notify(s, 'В шпинделе щуп T99 — прогрев запрещён', 'error')
-      const idx = s.files.findIndex((f) => /ПРОГРЕВ/i.test(f.title))
-      if (idx < 0) return notify(s, 'Программа прогрева шпинделя не найдена', 'error')
-      const base: MachineState = {
-        ...s,
-        activeFile: idx,
-        workplace: 'RUN',
-        mode: 'AUTO',
-        dryRun: false,
-        screen: 'prog',
-        cursor: { ...s.cursor, prog: 0 },
-      }
-      return notify(
-        executeLine({ ...base, sim: idleSim(), run: 'RUN', line: 0, nextLine: 0 }, 0),
-        'Прогрев шпинделя запущен',
-      )
-    }
-
-    case 'CYCLE_MODE': {
-      const idx = (MODES.indexOf(s.mode) + a.dir + MODES.length) % MODES.length
-      return reducer(s, { type: 'SET_MODE', mode: MODES[idx] })
-    }
-
-    case 'SET_SCREEN':
-      if (MODE_LOCKED_SCREENS[s.mode].includes(a.screen)) {
-        return notify(
-          s,
-          `В режиме «${WORKPLACE_LABEL[s.workplace]}» экран «${SCREEN_LABEL[a.screen]}» заблокирован`,
-          'warn',
-        )
-      }
-      if (a.screen !== 'service' && (s.service.editing || s.service.auth)) {
-        const reverted = cancelEdit(s)
-        return reducer({ ...reverted, service: { ...reverted.service, auth: null } }, a)
-      }
-      if (a.screen !== 'prog' && s.editMode) {
-        return notify({ ...s, screen: a.screen, editMode: false, editor: null }, `Файл ${currentFile(s).name} сохранён`)
-      }
-      return { ...s, screen: a.screen }
-
     case 'THEME_TOGGLE':
       return markSaved(
         { ...s, params: { ...s.params, [THEME_PARAM]: (s.params[THEME_PARAM] + 1) % THEME_OPTIONS.length } },
@@ -297,73 +199,6 @@ export function reducer(state: MachineState, a: Action): MachineState {
 
     case 'CALC':
       return { ...s, calc: a.open ?? !s.calc }
-
-    case 'CURSOR': {
-      if (s.screen === 'offset' && s.probe.open && s.probe.step === 0) {
-        return {
-          ...s,
-          probe: { ...s.probe, cycle: clamp(s.probe.cycle + Math.sign(a.delta), 0, PROBE_CYCLES.length - 1) },
-        }
-      }
-      if (s.screen === 'service' && !s.help) {
-        const sv = s.service
-        if (sv.auth) return s
-        if (sv.editing) return reducer(s, { type: 'PARAM_ADJUST', dir: a.delta < 0 ? 1 : -1, coarse: true })
-        if (sv.focus === 'nav') {
-          const i = SERVICE_SECTIONS.indexOf(sv.section)
-          return reducer(s, {
-            type: 'SERVICE_SECTION',
-            section: SERVICE_SECTIONS[clamp(i + a.delta, 0, SERVICE_SECTIONS.length - 1)],
-          })
-        }
-      }
-      if (s.screen === 'service' && s.service.section === 'ladder') {
-        if (s.ladder.form) return s
-        if (s.ladder.manager) return reducer(s, { type: 'LADDER_PICK_MOVE', delta: a.delta })
-      }
-      const len = listLength(s, s.screen)
-      return { ...s, cursor: { ...s.cursor, [s.screen]: clamp(s.cursor[s.screen] + a.delta, 0, len - 1) } }
-    }
-
-    case 'PROG_REWIND':
-      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
-      return notify(
-        { ...s, line: 0, nextLine: 0, sim: idleSim(), cursor: { ...s.cursor, prog: 0 } },
-        'Программа в начале',
-      )
-
-    case 'PROG_TO_CURSOR': {
-      if (isBusy(s)) return notify(s, 'Остановите программу', 'warn')
-      const idx = s.cursor.prog
-      let base: MachineState = {
-        ...s,
-        sim: idleSim(),
-        motion: null,
-        dwell: 0,
-        homing: false,
-        stopAfterBlock: false,
-        programEnd: false,
-        message: null,
-      }
-      for (let i = 0; i < idx; i++) base = applyBlock(base, programLines(s)[i], false)
-      const codes = [base.offsets[base.activeOffset].code]
-      if (base.spindleOn) codes.push(`S${base.spindleSet} ${base.spindleDir === 1 ? 'M3' : 'M4'}`)
-      if (base.coolant) codes.push('M8')
-      return notify(
-        {
-          ...base,
-          line: idx,
-          nextLine: idx,
-          dwell: 0,
-          motion: null,
-          homing: false,
-          stopAfterBlock: false,
-          programEnd: false,
-          message: null,
-        },
-        `Старт с кадра ${idx + 1}: восстановлено ${codes.join(', ')}`,
-      )
-    }
 
     case 'ALARM_ACK': {
       const i = s.cursor.alarm

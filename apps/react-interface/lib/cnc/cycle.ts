@@ -6,6 +6,7 @@
 // starts a program through it. A result is { s, msg, level }; machine.ts shows the message.
 import { WORKPLACE_LABEL } from './data'
 import { programLines } from './files'
+import { isBusy } from './guards'
 import { parseWords } from './gcode'
 import { notify, pushAlarm } from './messages'
 import { motionSpeed, toWork, workOffset, zeroAxes } from './coords'
@@ -129,9 +130,14 @@ function completeBlock(s: MachineState): MachineState {
 }
 
 export type CycleAction =
-  { type: 'TICK'; dt: number } | { type: 'CYCLE_START' } | { type: 'FEED_HOLD' } | { type: 'RESET' } | { type: 'ESTOP' }
+  | { type: 'TICK'; dt: number }
+  | { type: 'CYCLE_START' }
+  | { type: 'FEED_HOLD' }
+  | { type: 'RESET' }
+  | { type: 'ESTOP' }
+  | { type: 'SPINDLE_WARMUP' }
 
-const CYCLE_TYPES = new Set<string>(['TICK', 'CYCLE_START', 'FEED_HOLD', 'RESET', 'ESTOP'])
+const CYCLE_TYPES = new Set<string>(['TICK', 'CYCLE_START', 'FEED_HOLD', 'RESET', 'ESTOP', 'SPINDLE_WARMUP'])
 
 export const isCycleAction = (a: { type: string }): a is CycleAction => CYCLE_TYPES.has(a.type)
 
@@ -238,6 +244,28 @@ export function cycleReducer(s: MachineState, a: CycleAction): Result {
           alarms: s.alarms.map((al) => (al.level === 'error' ? { ...al, active: false } : al)),
         },
         msg: 'Сброс выполнен',
+      }
+    }
+
+    case 'SPINDLE_WARMUP': {
+      if (s.run === 'ESTOP' || s.run === 'ALARM') return { s, msg: 'Сначала сбросьте аварию', level: 'error' }
+      if (isBusy(s)) return { s, msg: 'Сначала остановите программу', level: 'warn' }
+      if (!s.toolClamped) return { s, msg: 'Инструмент разжат — прогрев запрещён', level: 'error' }
+      if (s.tool === PROBE_TOOL) return { s, msg: 'В шпинделе щуп T99 — прогрев запрещён', level: 'error' }
+      const idx = s.files.findIndex((f) => /ПРОГРЕВ/i.test(f.title))
+      if (idx < 0) return { s, msg: 'Программа прогрева шпинделя не найдена', level: 'error' }
+      const base: MachineState = {
+        ...s,
+        activeFile: idx,
+        workplace: 'RUN',
+        mode: 'AUTO',
+        dryRun: false,
+        screen: 'prog',
+        cursor: { ...s.cursor, prog: 0 },
+      }
+      return {
+        s: executeLine({ ...base, sim: idleSim(), run: 'RUN', line: 0, nextLine: 0 }, 0),
+        msg: 'Прогрев шпинделя запущен',
       }
     }
 

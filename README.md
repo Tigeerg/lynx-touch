@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="apps/react-interface/public/lynx-logo.png" alt="Логотип проекта — стилизованная рысь" width="190">
+  <img src="apps/react-interface/public/lynx-logo.png" alt="Логотип Lynx Touch — стилизованная рысь" width="190">
 </p>
 
-<h1 align="center">CNC Панель оператора</h1>
+<h1 align="center">Lynx Touch — CNC Панель оператора</h1>
 
 <p align="center">
-  Панель оператора ЧПУ с интерактивным 3D-вьювером управляющих программ.<br>
+  Интерактивный 3D-вьювер управляющих программ.<br>
   Траектория, заготовка и деталь, инструмент и столкновения — до пуска станка.
 </p>
 

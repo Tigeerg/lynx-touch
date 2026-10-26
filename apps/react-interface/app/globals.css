@@ -336,6 +336,13 @@
   background: #e3e6e0;
   color: #0d1a1f;
 }
+/* The active tab must stay distinct in the light theme: the rule above paints every tab the same
+   grey and outranks the component's own bg-primary class. */
+.theme-minimal:not(.theme-minimal-dark) .cnc-screen nav[aria-label='Экраны'] > button[aria-current='page'] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
 .theme-minimal .cnc-screen kbd {
   height: auto;
   min-width: 0;

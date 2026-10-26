@@ -35,7 +35,8 @@ Layers, top to bottom:
   subsystems through a registry), `subsystem.ts` (the action layer's leaf: `Action`, `Result`, `Dispatch`,
   the registry entry), and the subsystems next to it (`ladder.ts` is the sample, `ladder-scan.ts` is the
   PLC scan,
-  `nav.ts`, `cycle.ts`, `control.ts`, `service.ts`), `types.ts`, `coords.ts`, `guards.ts` (input checks),
+  `nav.ts`, `cycle.ts`, `control.ts`, `service.ts`), `types.ts`, `coords.ts`, `keys.ts` (the console key
+  map: `keyToAction`), `guards.ts` (input checks),
   `data.ts` and `softkeys.ts` (texts and icons), `service-data.ts` (the catalogue API: `ParamDef` types and
   the sections), `params/` (the section tables, one file per section: `def.ts`, `display.ts`, `system.ts`,
   `motion.ts`, `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`; a directory of its own so the tables stay

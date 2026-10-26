@@ -2,7 +2,7 @@
 
 import { FileCode, Route } from 'lucide-react'
 import { useMemo } from 'react'
-import { currentFile, distanceToGo, programLines, type Action } from '@/lib/cnc/machine'
+import { currentFile, distanceToGo, programLines, toWork, type Action } from '@/lib/cnc/machine'
 import { MS_PER_MINUTE } from '@/lib/cnc/data'
 import { remainingLength, type PathView } from '@/lib/cnc/toolpath'
 import { AXES, type MachineState } from '@/lib/cnc/types'
@@ -32,37 +32,59 @@ export function AutoScreen({
   )
   const file = currentFile(state)
   const restMs = (rest / (state.programFeed || 1000)) * MS_PER_MINUTE
+  const work = toWork(state)
+  const offsetCode = state.offsets[state.activeOffset].code
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-[var(--panel-gap)]">
       <Panel title="Остаток пути" icon={Route} className="shrink-0">
-        <div className="flex items-center gap-3 px-2 py-0.5">
-          <span className="font-mono text-3xl font-bold leading-none tabular-nums">
-            {state.motion ? dist.toFixed(3) : '—'}
-          </span>
-          <span className="text-xs font-medium text-muted-foreground">мм до кадра</span>
+        <div className="flex flex-col gap-1 px-2 py-1">
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-3xl font-bold leading-none tabular-nums">
+              {state.motion ? dist.toFixed(3) : '—'}
+            </span>
+            <span className="text-xs font-medium text-muted-foreground">мм до кадра</span>
 
-          <div className="ml-2 flex items-baseline gap-3">
-            {AXES.map((ax) => (
-              <span key={ax} className="flex items-baseline gap-1">
-                <span className="font-mono text-[10px] font-bold uppercase text-muted-foreground">{ax}</span>
-                <span
-                  className={cn('font-mono text-sm font-bold tabular-nums', !state.motion && 'text-muted-foreground')}
-                >
-                  {state.motion ? formatCoord(dtg[ax]) : '—'}
+            <div className="ml-2 flex items-baseline gap-3">
+              {AXES.map((ax) => (
+                <span key={ax} className="flex items-baseline gap-1">
+                  <span className="font-mono text-[10px] font-bold uppercase text-muted-foreground">{ax}</span>
+                  <span
+                    className={cn('font-mono text-sm font-bold tabular-nums', !state.motion && 'text-muted-foreground')}
+                  >
+                    {state.motion ? formatCoord(dtg[ax]) : '—'}
+                  </span>
                 </span>
-              </span>
-            ))}
+              ))}
+            </div>
+
+            <div className="ml-auto text-right leading-tight">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Осталось программы
+              </p>
+              <p className="font-mono text-sm font-bold tabular-nums">
+                ≈ {formatDuration(restMs)}
+                <span className="ml-1 font-sans text-xs font-medium text-muted-foreground">· {rest.toFixed(1)} мм</span>
+              </p>
+            </div>
           </div>
 
-          <div className="ml-auto text-right leading-tight">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Осталось программы
-            </p>
-            <p className="font-mono text-sm font-bold tabular-nums">
-              ≈ {formatDuration(restMs)}
-              <span className="ml-1 font-sans text-xs font-medium text-muted-foreground">· {rest.toFixed(1)} мм</span>
-            </p>
+          {/* The work DRO is permanent: the operator reads the position in AUTO even at rest, not
+              only while the axes move. The offset code and the unit are part of the reading. */}
+          <div className="flex items-center gap-2 border-t pt-1">
+            <span className="font-mono text-xs font-bold tabular-nums text-foreground">{offsetCode}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Рабочие координаты · мм
+            </span>
+            <div className="ml-auto flex items-baseline gap-3">
+              {AXES.map((ax) => (
+                <span key={ax} className="flex items-baseline gap-1">
+                  <span className="font-mono text-[10px] font-bold uppercase text-muted-foreground">{ax}</span>
+                  <span className="font-mono text-base font-bold tabular-nums">{formatCoord(work[ax])}</span>
+                  {ax === 'A' && <span className="font-sans text-[10px] text-muted-foreground">°</span>}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       </Panel>

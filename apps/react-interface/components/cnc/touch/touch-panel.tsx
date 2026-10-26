@@ -91,7 +91,7 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
           <SoftkeyBar keys={softkeys} onPress={(k) => !k.disabled && dispatch(k.action)} />
         </div>
 
-        <TouchDeck state={state} dispatch={dispatch} screen={state.screen} />
+        <TouchDeck state={state} dispatch={dispatch} />
 
         {state.fileDialog && <FileDialog state={state} dispatch={dispatch} />}
         {state.toolDialog && <ToolCallDialog state={state} dispatch={dispatch} />}

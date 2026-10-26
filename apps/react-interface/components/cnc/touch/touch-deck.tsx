@@ -23,7 +23,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import { JOG_STEPS, RAPID_STEPS, WORKPLACE_LABEL } from '@/lib/cnc/data'
 import type { Action } from '@/lib/cnc/machine'
 import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
-import { MPG_STEPS, WORKPLACES, type Axis, type MachineState, type Screen } from '@/lib/cnc/types'
+import { MPG_STEPS, WORKPLACES, type Axis, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { WORKPLACE_ICON } from '../header-bar'
 import { OverrideBar, Panel } from '../primitives'
@@ -335,16 +335,7 @@ function OverridePanel({ state, dispatch }: { state: MachineState; dispatch: (a:
   )
 }
 
-export function TouchDeck({
-  state,
-  dispatch,
-  screen,
-}: {
-  state: MachineState
-  dispatch: (a: Action) => void
-  screen: Screen
-}) {
-  const cycle = screen === 'pos' || screen === 'prog'
+export function TouchDeck({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
   return (
     <section aria-label="Сенсорный пульт" className="flex shrink-0 flex-col gap-1.5">
       <div className="flex h-[212px] gap-1.5">
@@ -352,7 +343,7 @@ export function TouchDeck({
         <JogPanel state={state} dispatch={dispatch} />
         <OverridePanel state={state} dispatch={dispatch} />
       </div>
-      {cycle && <CycleRow state={state} dispatch={dispatch} />}
+      <CycleRow state={state} dispatch={dispatch} />
     </section>
   )
 }

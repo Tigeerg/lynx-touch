@@ -14,7 +14,7 @@ again**, so a drift must fail a test instead of surfacing on the operator's scre
 workplaces (SETUP/TEST/RUN), the merge of Position and Program into a single Work tab, per-workplace
 F1-F8 sets, the AUTO screen with Distance-to-Go and a transparent code window, the animated tool
 measure, the Minimal theme, the removal of tab locking. The Qt port stayed at roughly React
-`0.12.0`-`0.14.x`. Current numbers: React `0.16.1`, Qt `0.5.8`.
+`0.12.0`-`0.14.x`. Current numbers: React `0.17.0`, Qt `0.5.8`.
 
 ## 1. Inventory: what Qt has and what it lacks
 

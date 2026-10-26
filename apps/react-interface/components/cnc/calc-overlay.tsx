@@ -2,10 +2,9 @@
 
 import { Calculator, X } from 'lucide-react'
 import { useState, type Dispatch } from 'react'
+import { CALC_DEFAULTS, cuttingFeed, cuttingRpm } from '@/lib/cnc/calc'
 import type { Action } from '@/lib/cnc/machine'
 import { Overlay } from './overlay'
-
-const rpm = (vc: number, d: number): number => (d > 0 && vc > 0 ? Math.round((1000 * vc) / (Math.PI * d)) : 0)
 
 function NumField({
   label,
@@ -40,12 +39,12 @@ function NumField({
 }
 
 export function CalcOverlay({ dispatch }: { dispatch: Dispatch<Action> }) {
-  const [vc, setVc] = useState(150)
-  const [d, setD] = useState(10)
-  const [fz, setFz] = useState(0.06)
-  const [flutes, setFlutes] = useState(3)
-  const n = rpm(vc, d)
-  const feed = Math.round(fz * flutes * n)
+  const [vc, setVc] = useState<number>(CALC_DEFAULTS.vc)
+  const [d, setD] = useState<number>(CALC_DEFAULTS.d)
+  const [fz, setFz] = useState<number>(CALC_DEFAULTS.fz)
+  const [flutes, setFlutes] = useState<number>(CALC_DEFAULTS.flutes)
+  const n = cuttingRpm(vc, d)
+  const feed = cuttingFeed(fz, flutes, n)
 
   return (
     <Overlay

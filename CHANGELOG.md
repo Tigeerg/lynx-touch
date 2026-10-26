@@ -5,6 +5,33 @@
 
 Формат и правила — в [`VERSIONING.md`](VERSIONING.md).
 
+## 0.24.1 — 2026-10-26
+
+### Изменено
+- **Логика монитора и G-кодов перенесена в `lib/cnc`.** Новые `spindle.ts` (`spindleRpm`, `isCutting`,
+  `spindleLoad`), `calc.ts` (`cuttingRpm`, `cuttingFeed`, `CALC_DEFAULTS`) и дополненный `gcode.ts`
+  (`modalCodes`, `programTools`) заменили три копии формулы нагрузки, локальный разбор кадра в
+  `program-side.tsx` и формулу калькулятора в `calc-overlay.tsx`. Поведение экранов не менялось; у каждой
+  единицы есть тест.
+- **Максимумы корректоров S%/F% читаются из параметров станка.** «Режимы», «Программа» и «Наладка» берут
+  `DISPLAY.MAX_SPINDLE_OVERRIDE` и `DISPLAY.MAX_FEED_OVERRIDE`, как уже делал сенсор; при дефолтах 120/150
+  вид прежний, после правки параметра шкала меняется везде одинаково.
+
+### Проверки
+- `pnpm typecheck` — 0; `pnpm test` — 264 теста в 32 файлах; `pnpm format:check` — чисто; `pnpm build` —
+  код 0 на Next.js 16.4.1; `pnpm guard` — React-проверки зелёные, FAIL только на старых бинарях вьювера
+  (`gcodeviewer.exe`, `keyprobe.exe`), Qt/OCCT пропущены (ENV).
+- Живой прогон: АВТО показывает «Нагрузку», НАЛАДКА — координаты, нагрузку и корректоры, калькулятор
+  `150/10/0.06/3` даёт `S 4775`, `F 860`; ошибок в консоли нет. `git diff --check` чист.
+
+### Версии
+- продукт — `0.24.1`; `react-interface` — `0.17.1` (PATCH: внутренний перенос без смены поведения) —
+  `VERSION`, `projects.json`, `package.json`, `README.md`, `VERSIONING.md`, `docs/PORT-QML*.md`,
+  `ARCHITECTURE.md` и зеркало (`gcode.ts`, `spindle.ts`, `calc.ts`).
+
+### Совместимость УП
+- Влияния нет: формат кадров и теги `UI_*` не тронуты.
+
 ## 0.24.0 — 2026-10-26
 
 ### Добавлено

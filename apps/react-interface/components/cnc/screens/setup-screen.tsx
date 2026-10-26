@@ -1,6 +1,8 @@
 import { Fan, Move, Radio, SlidersHorizontal, Wrench } from 'lucide-react'
 import { toWork, type Action } from '@/lib/cnc/machine'
 import { PROBE_STEP_MEASURE, PROBE_TOOL } from '@/lib/cnc/probe'
+import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
+import { isCutting, spindleLoad } from '@/lib/cnc/spindle'
 import { AXES, type Axis, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { MdiInput } from '../mdi-input'
@@ -124,11 +126,8 @@ export function SetupSide({
   showPad?: boolean
 }) {
   const tool = state.tools.find((x) => x.number === state.tool)
-  const rpm =
-    state.spindleOn && state.run !== 'ESTOP' ? Math.round((state.spindleSet * state.spindleOverride) / 100) : 0
-  const cutting = state.run === 'RUN' && state.motion !== null && !state.motion.rapid
-  const t = state.cycleTime / 400
-  const load = rpm === 0 ? 0 : cutting ? Math.round(38 + Math.sin(t) * 9 + Math.sin(t * 2.7) * 5) : 6
+  const cutting = isCutting(state)
+  const load = spindleLoad(state)
   const axisLoad = (ax: Axis): number => {
     if (!cutting || !state.motion) return 0
     const d = Math.abs(state.motion.target[ax] - state.machine[ax])
@@ -168,8 +167,18 @@ export function SetupSide({
           <ActiveCodes state={state} />
 
           <Section icon={SlidersHorizontal} title="Корректоры">
-            <OverrideRow label="S%" value={state.spindleOverride} max={120} keys={['[', ']']} />
-            <OverrideRow label="F%" value={state.feedOverride} max={150} keys={['−', '=']} />
+            <OverrideRow
+              label="S%"
+              value={state.spindleOverride}
+              max={paramValue(state.params, MAX_SPINDLE_PARAM)}
+              keys={['[', ']']}
+            />
+            <OverrideRow
+              label="F%"
+              value={state.feedOverride}
+              max={paramValue(state.params, MAX_FEED_PARAM)}
+              keys={['−', '=']}
+            />
             <RapidRow value={state.rapidOverride} />
           </Section>
         </div>

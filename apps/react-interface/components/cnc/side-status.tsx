@@ -18,6 +18,8 @@ import {
 import type { ReactNode } from 'react'
 import { MAX_RPM, RAPID_STEPS } from '@/lib/cnc/data'
 import { motionSpeed, programLines, type Action } from '@/lib/cnc/machine'
+import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
+import { spindleLoad, spindleRpm } from '@/lib/cnc/spindle'
 import { JOG_FEEDS, MPG_STEPS, mpgMultiplier, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { formatTime, Keycap, Lamp, OverrideBar, Panel } from './primitives'
@@ -165,11 +167,8 @@ export function SideStatus({
   showPad?: boolean
   wide?: boolean
 }) {
-  const rpm =
-    state.spindleOn && state.run !== 'ESTOP' ? Math.round((state.spindleSet * state.spindleOverride) / 100) : 0
-  const cutting = state.run === 'RUN' && state.motion && !state.motion.rapid
-  const t = state.cycleTime / 400
-  const load = rpm === 0 ? 0 : cutting ? Math.round(38 + Math.sin(t) * 9 + Math.sin(t * 2.7) * 5) : 6
+  const rpm = spindleRpm(state)
+  const load = spindleLoad(state)
   const feed = state.run === 'RUN' ? Math.round(motionSpeed(state)) : 0
   const tool = state.tools.find((x) => x.number === state.tool)
   const program = programLines(state)
@@ -210,14 +209,24 @@ export function SideStatus({
             }
           >
             <Reading value={rpm} unit="об/мин" set={state.spindleSet} setLabel="S" />
-            <OverrideRow label="S%" value={state.spindleOverride} max={120} keys={['[', ']']} />
+            <OverrideRow
+              label="S%"
+              value={state.spindleOverride}
+              max={paramValue(state.params, MAX_SPINDLE_PARAM)}
+              keys={['[', ']']}
+            />
             <LoadRow value={load} />
             <p className="sr-only">Максимум {MAX_RPM} об/мин</p>
           </Section>
 
           <Section icon={Gauge} title="Подача">
             <Reading value={feed} unit="мм/мин" set={state.programFeed} setLabel="F" />
-            <OverrideRow label="F%" value={state.feedOverride} max={150} keys={['−', '=']} />
+            <OverrideRow
+              label="F%"
+              value={state.feedOverride}
+              max={paramValue(state.params, MAX_FEED_PARAM)}
+              keys={['−', '=']}
+            />
             <RapidRow value={state.rapidOverride} />
           </Section>
 

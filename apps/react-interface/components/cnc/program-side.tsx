@@ -1,46 +1,14 @@
 import { Braces, Fan, FileCode, History, Package, SlidersHorizontal, Timer, Wrench } from 'lucide-react'
+import { modalCodes, programTools } from '@/lib/cnc/gcode'
 import { programLines, type Action } from '@/lib/cnc/machine'
+import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
+import { spindleLoad } from '@/lib/cnc/spindle'
 import type { MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { formatTime, Panel } from './primitives'
 import { LoadRow, OperatorPad, OverrideRow, ProdStat, RapidRow, Section, WIDE_SECTIONS } from './side-status'
 
-function words(line: string) {
-  const code = line.replace(/\(.*?\)/g, '').toUpperCase()
-  return [...code.matchAll(/([A-Z])\s*(-?\d+(?:\.\d+)?)/g)].map((m) => ({
-    letter: m[1],
-    value: Number.parseFloat(m[2]),
-  }))
-}
-
 const g = (n: number) => `G${String(n).padStart(2, '0')}`
-
-function modalCodes(lines: string[], executedUpTo: number) {
-  const modal = { motion: 0, plane: 17, unit: 21, distance: 90, radius: 40, length: 49, cycle: 80 }
-  for (let i = 0; i <= executedUpTo && i < lines.length; i++) {
-    for (const { letter, value } of words(lines[i])) {
-      if (letter !== 'G') continue
-      if (value >= 0 && value <= 3) modal.motion = value
-      else if (value >= 17 && value <= 19) modal.plane = value
-      else if (value === 20 || value === 21) modal.unit = value
-      else if (value === 90 || value === 91) modal.distance = value
-      else if (value >= 40 && value <= 42) modal.radius = value
-      else if (value === 43 || value === 49) modal.length = value
-      else if (value >= 80 && value <= 89) modal.cycle = value
-    }
-  }
-  return modal
-}
-
-function programTools(lines: string[]) {
-  const seen: number[] = []
-  for (const line of lines) {
-    for (const { letter, value } of words(line)) {
-      if (letter === 'T' && !seen.includes(value)) seen.push(value)
-    }
-  }
-  return seen
-}
 
 function Chip({ label, value, hot }: { label: string; value: string; hot: boolean }) {
   return (
@@ -102,11 +70,7 @@ export function ProgramSide({
   const nextLine = lines[state.nextLine]
   const tools = programTools(lines)
   const toolList = tools.length > 0 ? tools : [state.tool]
-  const rpm =
-    state.spindleOn && state.run !== 'ESTOP' ? Math.round((state.spindleSet * state.spindleOverride) / 100) : 0
-  const cutting = state.run === 'RUN' && state.motion !== null && !state.motion.rapid
-  const t = state.cycleTime / 400
-  const load = rpm === 0 ? 0 : cutting ? Math.round(38 + Math.sin(t) * 9 + Math.sin(t * 2.7) * 5) : 6
+  const load = spindleLoad(state)
 
   return (
     <aside className="flex min-h-0 flex-col gap-2" aria-label="Обработка программы">
@@ -188,8 +152,18 @@ export function ProgramSide({
           </Section>
 
           <Section icon={SlidersHorizontal} title="Корректоры">
-            <OverrideRow label="S%" value={state.spindleOverride} max={120} keys={['[', ']']} />
-            <OverrideRow label="F%" value={state.feedOverride} max={150} keys={['−', '=']} />
+            <OverrideRow
+              label="S%"
+              value={state.spindleOverride}
+              max={paramValue(state.params, MAX_SPINDLE_PARAM)}
+              keys={['[', ']']}
+            />
+            <OverrideRow
+              label="F%"
+              value={state.feedOverride}
+              max={paramValue(state.params, MAX_FEED_PARAM)}
+              keys={['−', '=']}
+            />
             <RapidRow value={state.rapidOverride} />
           </Section>
         </div>

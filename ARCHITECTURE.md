@@ -34,7 +34,8 @@
   через реестр), `subsystem.ts` (листовой слой действий: `Action`, `Result`, `Dispatch`, запись реестра)
   и подсистемы рядом (`ladder.ts` — образец, `ladder-scan.ts` — скан ПЛК, `nav.ts`, `cycle.ts`,
   `control.ts`, `service.ts`), `types.ts`, `coords.ts`, `keys.ts` (раскладка пульта: `keyToAction`),
-  `guards.ts` (проверки входа), `data.ts` и
+  `gcode.ts` (разбор кадра, модальные коды, инструменты программы), `spindle.ts` (обороты, резание,
+  нагрузка), `calc.ts` (расчёт режимов), `guards.ts` (проверки входа), `data.ts` и
   `softkeys.ts` (тексты и иконки), `service-data.ts` (API каталога: типы `ParamDef` и разделы),
   `params/` (таблицы разделов, по файлу на раздел: `def.ts`, `display.ts`, `system.ts`, `motion.ts`,
   `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`; отдельный каталог — чтобы таблицы не смешивались с

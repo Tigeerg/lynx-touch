@@ -55,7 +55,9 @@ export function ServiceScreen({ state, dispatch }: { state: MachineState; dispat
   const jointDefs = useMemo(() => JOINT_PARAMS.map((d) => jointParam(d, state.service.axis)), [state.service.axis])
   const pidDefs = useMemo(() => PID_PARAMS.map((d) => jointParam(d, state.service.axis)), [state.service.axis])
   const activeNavRef = useRef<HTMLButtonElement>(null)
-  const [collapsed, setCollapsed] = useState(false)
+  // The section list starts as a narrow icon strip: on the 1080 portrait touch panel the full list
+  // took a third of the width from the parameter table.
+  const [collapsed, setCollapsed] = useState(true)
   const [prevFocus, setPrevFocus] = useState(focus)
   if (focus !== prevFocus) {
     setPrevFocus(focus)
@@ -105,16 +107,17 @@ export function ServiceScreen({ state, dispatch }: { state: MachineState; dispat
           aria-label="Разделы сервиса"
           className={cn(
             'flex min-h-0 shrink-0 flex-col border-r bg-muted/50 transition-[width] duration-200 ease-out motion-reduce:transition-none',
-            collapsed ? 'w-16' : 'w-64',
+            collapsed ? 'w-14' : 'w-64',
           )}
         >
           <button
             type="button"
+            tabIndex={-1}
             onClick={() => setCollapsed((c) => !c)}
             aria-expanded={!collapsed}
             aria-controls="service-nav"
-            aria-label={collapsed ? 'Развернуть список разделов' : 'Свернуть список разделов'}
-            title={collapsed ? 'Развернуть' : 'Свернуть'}
+            aria-label={collapsed ? 'Развернуть разделы' : 'Свернуть разделы'}
+            title={collapsed ? 'Развернуть разделы' : 'Свернуть разделы'}
             className={cn(
               'flex h-11 shrink-0 items-center gap-2 border-b px-2 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:bg-accent hover:text-accent-foreground',
               collapsed ? 'justify-center' : 'justify-between pl-3',
@@ -156,6 +159,7 @@ export function ServiceScreen({ state, dispatch }: { state: MachineState; dispat
                       key={sec}
                       ref={active ? activeNavRef : undefined}
                       type="button"
+                      tabIndex={-1}
                       aria-current={active ? 'true' : undefined}
                       aria-label={collapsed ? SERVICE_LABEL[sec] : undefined}
                       title={collapsed ? `${SERVICE_LABEL[sec]} — ${SERVICE_HINT[sec]}` : undefined}
@@ -490,10 +494,10 @@ function ParamTable({ state, defs }: { state: MachineState; defs: readonly Param
       <table className="w-full table-fixed border-collapse">
         <thead className="sticky top-0 z-10">
           <tr className="border-b bg-card">
-            <th className={cn(th, 'w-[38%]')}>Параметр</th>
-            <th className={th}>Ключ INI</th>
-            <th className={cn(th, 'w-48 text-center')}>Значение</th>
-            <th className={cn(th, 'w-24 text-right')}>По умолч.</th>
+            <th className={cn(th, 'w-[31%]')}>Параметр</th>
+            <th className={cn(th, 'w-[24%]')}>Ключ INI</th>
+            <th className={cn(th, 'w-[25%] text-center')}>Значение</th>
+            <th className={cn(th, 'w-[20%] text-right')}>По умолч.</th>
           </tr>
         </thead>
         <tbody>
@@ -504,6 +508,7 @@ function ParamTable({ state, defs }: { state: MachineState; defs: readonly Param
             const changed = value !== def.default
             const unsaved = value !== saved[def.id]
             const locked = !def.free && !write
+            const defaultValue = formatValue(def, def.default)
             return (
               <tr
                 key={def.id}
@@ -517,7 +522,7 @@ function ParamTable({ state, defs }: { state: MachineState; defs: readonly Param
               >
                 <td className="px-3 py-2">
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className="line-clamp-2 text-sm font-semibold leading-snug" title={def.label}>
+                    <span className="line-clamp-2 min-w-0 text-xs font-semibold leading-snug" title={def.label}>
                       {def.label}
                     </span>
                     <span className="ml-auto flex w-16 shrink-0 items-center justify-end gap-1.5">
@@ -546,20 +551,22 @@ function ParamTable({ state, defs }: { state: MachineState; defs: readonly Param
                   </div>
                 </td>
                 <td
-                  className="truncate px-3 py-2 font-mono text-xs text-muted-foreground"
+                  className="px-3 py-2 font-mono text-[11px] text-muted-foreground"
                   title={`[${def.group}] ${def.key}`}
                 >
-                  [{def.group}] {def.key}
+                  <span className="line-clamp-2 break-words">
+                    [{def.group}] {def.key}
+                  </span>
                 </td>
                 <td className="px-3 py-1.5">
                   <div className="flex items-center justify-center gap-1">
                     <ChevronLeft
-                      className={cn('size-4', isEditing ? 'text-warning' : 'text-transparent')}
+                      className={cn('size-4 shrink-0', isEditing ? 'text-warning' : 'text-transparent')}
                       aria-hidden="true"
                     />
                     <span
                       className={cn(
-                        'min-w-32 rounded-sm border px-2 py-0.5 text-center font-mono text-base font-bold tabular-nums',
+                        'min-w-24 rounded-sm border px-2 py-0.5 text-center font-mono text-sm font-bold tabular-nums',
                         changed ? 'border-primary/40 bg-primary/10 text-primary' : 'bg-muted',
                         isEditing && 'border-warning bg-warning text-warning-foreground ring-2 ring-warning/40',
                       )}
@@ -568,7 +575,7 @@ function ParamTable({ state, defs }: { state: MachineState; defs: readonly Param
                       {def.unit && (
                         <span
                           className={cn(
-                            'ml-1 font-sans text-xs font-medium',
+                            'ml-1 font-sans text-[11px] font-medium',
                             isEditing ? 'text-warning-foreground/80' : 'text-muted-foreground',
                           )}
                         >
@@ -577,13 +584,16 @@ function ParamTable({ state, defs }: { state: MachineState; defs: readonly Param
                       )}
                     </span>
                     <ChevronRight
-                      className={cn('size-4', isEditing ? 'text-warning' : 'text-transparent')}
+                      className={cn('size-4 shrink-0', isEditing ? 'text-warning' : 'text-transparent')}
                       aria-hidden="true"
                     />
                   </div>
                 </td>
-                <td className="px-3 py-2 text-right font-mono text-sm tabular-nums text-muted-foreground">
-                  {formatValue(def, def.default)}
+                <td
+                  className="px-3 py-2 text-right font-mono text-xs tabular-nums text-muted-foreground"
+                  title={defaultValue}
+                >
+                  <span className="line-clamp-2 break-words">{defaultValue}</span>
                 </td>
               </tr>
             )

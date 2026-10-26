@@ -315,6 +315,10 @@ is allowed only with a report entry and a target date.
 | M7 | Architect | Coder, Integrator, Tester, Reviewer, CNC Technologist | G4-G6: setup without manual files |
 | M8 | Integrator | Coder, CNC Technologist, Tester, Reviewer, dispatcher | G4-G6: bench and full run |
 
+In chat these roles are grouped into four profiles from `AI_WORKFLOW.md`, section 9: `lead` (Product Manager +
+Architect), `builder` (Coder + Integrator), `product-ux` (UI + CNC Technologist), `verifier` (Tester +
+Reviewer). The dispatcher talks only to `lead`.
+
 ## 8. Risks and how we hold them
 
 | Risk | What we do |

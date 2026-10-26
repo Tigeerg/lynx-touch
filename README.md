@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img alt="Версия" src="https://img.shields.io/badge/версия-0.22.0-blue">
+  <img alt="Версия" src="https://img.shields.io/badge/версия-0.23.0-blue">
   <img alt="Лицензия" src="https://img.shields.io/badge/лицензия-Apache--2.0-green">
   <img alt="Платформы" src="https://img.shields.io/badge/платформы-Windows%20%7C%20Linux-lightgrey">
   <img alt="Стек" src="https://img.shields.io/badge/стек-React%20%7C%20Qt%2FQML%20%7C%20C%2B%2B%2FOCCT-informational">
@@ -44,7 +44,7 @@ QtQuick3D и OpenCASCADE.
 ## 🧩 Состав
 
 **Lynx Touch** — продукт из четырёх независимо версионируемых проектов (манифест — [`projects.json`](projects.json)).
-Версия продукта — `0.22.0` ([`VERSION`](VERSION)); правила ведения — [`VERSIONING.md`](VERSIONING.md).
+Версия продукта — `0.23.0` ([`VERSION`](VERSION)); правила ведения — [`VERSIONING.md`](VERSIONING.md).
 
 | Проект | Версия | Стек | Что это |
 |---|---|---|---|
@@ -169,6 +169,8 @@ bash scripts/build-viewer.sh
   ([`docs/ROADMAP.en.md`](docs/ROADMAP.en.md))
 - [`.opencode/skills/`](.opencode/skills/) — ролевые скилы (менеджер, архитектор, исполнитель, UI,
   интегратор, тестировщик, ревьюер, технолог ЧПУ) и чек-листы панели и вьювера
+- [`.opencode/agents/`](.opencode/agents/) — четыре профиля агентов: `lead`, `builder`, `product-ux`,
+  `verifier`; вы говорите только с `lead`
 - [`TODO.md`](TODO.md) — технический долг
 - [`docs/`](docs/README.md) — планы и исследования; идеи — [`docs/IDEAS.md`](docs/IDEAS.md)
 - [`CHANGELOG.md`](CHANGELOG.md) — журнал изменений

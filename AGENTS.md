@@ -13,6 +13,9 @@
 * [`.opencode/skills/`](.opencode/skills/) — ролевые скилы (`product-manager`, `architect`, `coder`,
   `ui-specialist`, `integrator`, `tester`, `reviewer`, `cnc-domain-expert`) и тематические чек-листы
   (`panel-ui`, `viewer-cpp`); скил загружают по точному id.
+* [`.opencode/agents/`](.opencode/agents/) — профили агентов: `lead` (Продуктовый менеджер + Архитектор,
+  единственная точка входа), `builder` (Исполнитель + Интегратор), `product-ux` (UI + Технолог ЧПУ),
+  `verifier` (Тестировщик + Ревьюер). Субагентов вызывает только `lead`; `default_agent` — `lead`.
 * [VERSIONING.md](VERSIONING.md) — порядок внесения изменения и ведения версий.
 * [ARCHITECTURE.md](ARCHITECTURE.md) — карта модулей и слоёв продукта.
 * [TODO.md](TODO.md) — технический долг.

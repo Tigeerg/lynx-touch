@@ -1,7 +1,6 @@
 # Форматируются только исходники интерфейса и конфиги.
 node_modules
 .next
-.kilo
 public
 img
 ZIP

@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils'
 import { MdiInput } from '../mdi-input'
 import { ActiveCodes } from '../program-side'
 import { formatCoord, Lamp, Panel } from '../primitives'
-import { OperatorPad, OverrideRow, RapidRow, Section, ToolSection, WIDE_SECTIONS } from '../side-status'
+import { OperatorPad, OverrideRow, RapidRow, Section, SETUP_SECTIONS, ToolSection } from '../side-status'
 
 // The SETUP workplace: on the left the large work and machine coordinates, the MDI line and
 // the probe indication; on the right the tool, the active codes, the overrides. The toolpath
@@ -23,19 +23,40 @@ function Indicator({ label, on }: { label: string; on: boolean }) {
   )
 }
 
-function ProbeSensors({ state }: { state: MachineState }) {
+export function ProbeSensors({ state, className }: { state: MachineState; className?: string }) {
   return (
-    <Panel title="Датчики щупа" icon={Radio} className="w-[248px] shrink-0">
-      <ul className="flex flex-col gap-1.5 p-2 text-xs">
+    <Section icon={Radio} title="Датчики щупа" area="load" className={className}>
+      <ul className="flex flex-col gap-1 p-1 text-xs">
         <Indicator label="Щуп T99 в шпинделе" on={state.tool === PROBE_TOOL} />
         <Indicator label="Измерение идёт" on={state.probe.running} />
         <Indicator label="Есть результат" on={state.probe.result !== null && state.probe.step >= PROBE_STEP_MEASURE} />
       </ul>
-    </Panel>
+    </Section>
   )
 }
 
-export function SetupScreen({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
+export function SetupMdi({
+  state,
+  dispatch,
+  className,
+}: {
+  state: MachineState
+  dispatch: (a: Action) => void
+  className?: string
+}) {
+  return <MdiInput state={state} dispatch={dispatch} className={cn('h-full min-w-0 flex-1', className)} />
+}
+
+export function SetupScreen({
+  state,
+  dispatch,
+  showMdi = true,
+}: {
+  state: MachineState
+  dispatch: (a: Action) => void
+  /** The touch panel moves the MDI row into the fixed lower zone; the 1024 panel keeps it here. */
+  showMdi?: boolean
+}) {
   const work = toWork(state)
   const offsetCode = state.offsets[state.activeOffset].code
   const manual = state.mode === 'JOG' || state.mode === 'MPG'
@@ -85,10 +106,12 @@ export function SetupScreen({ state, dispatch }: { state: MachineState; dispatch
         </div>
       </Panel>
 
-      <div className="flex shrink-0 gap-1.5">
-        <MdiInput state={state} dispatch={dispatch} className="min-w-0 flex-1" />
-        <ProbeSensors state={state} />
-      </div>
+      {showMdi && (
+        <div className="flex shrink-0 gap-1.5">
+          <MdiInput state={state} dispatch={dispatch} className="min-w-0 flex-1" />
+          <ProbeSensors state={state} className="w-[248px] shrink-0" />
+        </div>
+      )}
     </div>
   )
 }
@@ -108,13 +131,15 @@ export function SetupSide({
 }) {
   return (
     <aside className={cn('flex min-h-0 flex-col gap-2', className)} aria-label="Наладка: состояние">
-      <Panel title="Наладка" className="min-h-0 flex-1">
-        <div className={wide ? WIDE_SECTIONS : 'flex h-full flex-col overflow-y-auto'}>
+      <section className="cnc-box flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-card">
+        <div className={wide ? SETUP_SECTIONS : 'flex h-full flex-col overflow-y-auto'}>
           <ToolSection state={state} className={wide ? 'border-r' : undefined} />
+
+          {wide && <ProbeSensors state={state} className="border-r" />}
 
           <ActiveCodes state={state} area="codes" className={wide ? 'border-r' : undefined} />
 
-          <Section icon={SlidersHorizontal} title="Корректоры" area="correctors">
+          <Section icon={SlidersHorizontal} title="Корректоры" area="correctors" className="border">
             <OverrideRow
               label="S%"
               value={state.spindleOverride}
@@ -130,7 +155,7 @@ export function SetupSide({
             <RapidRow value={state.rapidOverride} />
           </Section>
         </div>
-      </Panel>
+      </section>
 
       {showPad && <OperatorPad state={state} dispatch={dispatch} layout="compact" />}
     </aside>

@@ -749,3 +749,39 @@
     transform: none !important;
   }
 }
+
+/* The completed part of the AUTO progress bar: a green diagonal zebra, not a flat fill. */
+.progress-zebra {
+  background-color: var(--success);
+  background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.42) 0 4px, transparent 4px 9px);
+}
+
+/* UP over the toolpath: dark at the left edge, fully transparent towards the screen centre. */
+.up-overlay {
+  background: linear-gradient(to right, rgba(8, 12, 18, 0.64) 0%, rgba(8, 12, 18, 0.32) 46%, rgba(8, 12, 18, 0) 100%);
+  color: #f8fafc;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.up-overlay ol {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.up-overlay .text-muted-foreground {
+  color: rgba(255, 255, 255, 0.72);
+}
+.up-overlay .text-primary {
+  color: #8fc7ff;
+}
+.up-overlay .text-destructive {
+  color: #ff9f95;
+}
+.up-overlay .text-success {
+  color: #8fe0a8;
+}
+.up-overlay .text-warning {
+  color: #ffd28a;
+}
+.up-overlay .bg-accent {
+  background-color: rgba(255, 255, 255, 0.12);
+}

@@ -69,7 +69,8 @@ export function controlReducer(s: MachineState, a: ControlAction): Result {
       if (s.run !== 'IDLE') return { s, msg: 'Перемещение заблокировано', level: 'warn' }
       if (s.machineLock) return { s, msg: MACHINE_LOCK_MSG, level: 'warn' }
       const ax = a.axis ?? s.jogAxis
-      if (ax === 'A' && s.aBrake) return { s, msg: 'Тормоз оси A включён — снимите его клавишей F6', level: 'error' }
+      if (ax === 'A' && s.aBrake)
+        return { s, msg: 'Тормоз оси A включён — снимите его перед перемещением', level: 'error' }
       const distance = s.jogRapid ? s.jogStep * RAPID_JOG_MULT : s.jogStep
       const next = Math.round((s.machine[ax] + a.dir * distance) * 1000) / 1000
       const [min, max] = SOFT_LIMITS[ax]

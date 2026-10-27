@@ -7,7 +7,11 @@ import {
   ArrowUp,
   ChevronsDown,
   ChevronsUp,
-  Gauge,
+  CloudFog,
+  Droplets,
+  Lightbulb,
+  Lock,
+  LockOpen,
   Minus,
   Move3d,
   OctagonX,
@@ -16,6 +20,8 @@ import {
   Plus,
   RotateCcw,
   RotateCw,
+  Shovel,
+  Square,
   Zap,
   type LucideIcon,
 } from 'lucide-react'
@@ -200,75 +206,98 @@ function JogPanel({ state, dispatch }: { state: MachineState; dispatch: (a: Acti
         </span>
       }
     >
-      <div className={cn('flex h-full gap-1.5 p-1.5', !manual && 'opacity-50')}>
-        <div className="grid flex-1 grid-cols-3 grid-rows-3 gap-1.5">
-          {JOG_GRID.map((k) => {
-            if (k === 'rapid') {
+      <div className="flex h-full min-h-0 flex-col gap-1.5 p-1.5">
+        <div className={cn('flex min-h-0 flex-1 gap-1.5', !manual && 'opacity-50')}>
+          <div className="grid flex-1 grid-cols-3 grid-rows-3 gap-1.5">
+            {JOG_GRID.map((k) => {
+              if (k === 'rapid') {
+                return (
+                  <button
+                    key="rapid"
+                    type="button"
+                    tabIndex={-1}
+                    aria-pressed={state.jogRapid}
+                    onClick={() => dispatch({ type: 'TOGGLE', key: 'jogRapid' })}
+                    className={cn(
+                      KEY_BASE,
+                      'flex-col gap-0.5 text-xs',
+                      state.jogRapid ? 'border-warning bg-warning text-warning-foreground' : 'bg-card active:bg-accent',
+                    )}
+                  >
+                    <Zap className="size-5" aria-hidden="true" />
+                    Ускор.
+                  </button>
+                )
+              }
+              const Icon = k.icon
+              const selected = manual && state.jogAxis === k.axis
               return (
-                <button
-                  key="rapid"
-                  type="button"
-                  tabIndex={-1}
-                  aria-pressed={state.jogRapid}
-                  onClick={() => dispatch({ type: 'TOGGLE', key: 'jogRapid' })}
+                <HoldButton
+                  key={`${k.axis}${k.dir}`}
+                  label={`${k.axis}${k.dir > 0 ? '+' : '−'}`}
+                  onFire={() => dispatch({ type: 'JOG', axis: k.axis, dir: k.dir })}
                   className={cn(
-                    KEY_BASE,
-                    'flex-col gap-0.5 text-xs',
-                    state.jogRapid ? 'border-warning bg-warning text-warning-foreground' : 'bg-card active:bg-accent',
+                    'gap-1 bg-card font-mono text-lg font-bold active:bg-accent',
+                    selected && 'border-primary/60 text-primary',
                   )}
                 >
-                  <Zap className="size-5" aria-hidden="true" />
-                  Ускор.
+                  <Icon className="size-5" aria-hidden="true" />
+                  {k.axis}
+                  {k.dir > 0 ? '+' : '−'}
+                </HoldButton>
+              )
+            })}
+          </div>
+          <div className="grid w-[68px] shrink-0 grid-rows-3 gap-1.5" role="radiogroup" aria-label="Шаг перемещения">
+            {steps.map((step, i) => {
+              const active = manual && state.jogStep === step
+              return (
+                <button
+                  key={step}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  tabIndex={-1}
+                  onClick={() => dispatch({ type: 'SET_STEP', step })}
+                  className={cn(
+                    KEY_BASE,
+                    'font-mono text-sm font-bold',
+                    active ? 'border-primary bg-primary text-primary-foreground' : 'bg-card active:bg-accent',
+                  )}
+                >
+                  {mpg ? `×${10 ** i}` : step}
                 </button>
               )
-            }
-            const Icon = k.icon
-            const selected = manual && state.jogAxis === k.axis
-            return (
-              <HoldButton
-                key={`${k.axis}${k.dir}`}
-                label={`${k.axis}${k.dir > 0 ? '+' : '−'}`}
-                onFire={() => dispatch({ type: 'JOG', axis: k.axis, dir: k.dir })}
-                className={cn(
-                  'gap-1 bg-card font-mono text-lg font-bold active:bg-accent',
-                  selected && 'border-primary/60 text-primary',
-                )}
-              >
-                <Icon className="size-5" aria-hidden="true" />
-                {k.axis}
-                {k.dir > 0 ? '+' : '−'}
-              </HoldButton>
-            )
-          })}
+            })}
+          </div>
         </div>
-        <div className="grid w-[68px] shrink-0 grid-rows-3 gap-1.5" role="radiogroup" aria-label="Шаг перемещения">
-          {steps.map((step, i) => {
-            const active = manual && state.jogStep === step
-            return (
-              <button
-                key={step}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                tabIndex={-1}
-                onClick={() => dispatch({ type: 'SET_STEP', step })}
-                className={cn(
-                  KEY_BASE,
-                  'font-mono text-sm font-bold',
-                  active ? 'border-primary bg-primary text-primary-foreground' : 'bg-card active:bg-accent',
-                )}
-              >
-                {mpg ? `×${10 ** i}` : step}
-              </button>
-            )
-          })}
+
+        <div className="grid shrink-0 grid-cols-3 gap-1.5">
+          <CompactOverride
+            label="Подача"
+            value={state.feedOverride}
+            max={paramValue(state.params, MAX_FEED_PARAM)}
+            onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'feed', dir })}
+          />
+          <CompactOverride
+            label="Шпин."
+            value={state.spindleOverride}
+            max={paramValue(state.params, MAX_SPINDLE_PARAM)}
+            onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'spindle', dir })}
+          />
+          <CompactOverride
+            label="Ускор. G0"
+            value={state.rapidOverride}
+            max={RAPID_STEPS[RAPID_STEPS.length - 1]}
+            onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'rapid', dir })}
+          />
         </div>
       </div>
     </Panel>
   )
 }
 
-function OverrideControl({
+function CompactOverride({
   label,
   value,
   max,
@@ -280,56 +309,83 @@ function OverrideControl({
   onStep: (dir: 1 | -1) => void
 }) {
   return (
-    <div className="flex min-h-0 items-center gap-1.5">
-      <HoldButton
-        label={`${label} меньше`}
-        onFire={() => onStep(-1)}
-        className="h-full w-12 shrink-0 bg-card active:bg-accent"
-      >
-        <Minus className="size-5" aria-hidden="true" />
-      </HoldButton>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex items-baseline justify-between gap-1.5">
-          <span className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {label}
-          </span>
-          <span className="w-12 shrink-0 text-right font-mono text-base font-bold tabular-nums">{value}%</span>
-        </div>
-        <OverrideBar value={value} max={max} />
+    <div className="flex min-w-0 flex-col gap-1 rounded-md border bg-card p-1">
+      <div className="flex items-baseline justify-between gap-1">
+        <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </span>
+        <span className="shrink-0 font-mono text-sm font-bold tabular-nums">{value}%</span>
       </div>
-      <HoldButton
-        label={`${label} больше`}
-        onFire={() => onStep(1)}
-        className="h-full w-12 shrink-0 bg-card active:bg-accent"
-      >
-        <Plus className="size-5" aria-hidden="true" />
-      </HoldButton>
+      <div className="flex items-center gap-1">
+        <HoldButton label={`${label} меньше`} onFire={() => onStep(-1)} className="h-8 w-8 shrink-0 bg-card">
+          <Minus className="size-4" aria-hidden="true" />
+        </HoldButton>
+        <div className="min-w-0 flex-1">
+          <OverrideBar value={value} max={max} />
+        </div>
+        <HoldButton label={`${label} больше`} onFire={() => onStep(1)} className="h-8 w-8 shrink-0 bg-card">
+          <Plus className="size-4" aria-hidden="true" />
+        </HoldButton>
+      </div>
     </div>
   )
 }
 
-function OverridePanel({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
+function FunctionsPanel({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
+  const keys: {
+    label: string
+    icon: LucideIcon
+    active: boolean
+    action: Action
+    disabled?: boolean
+  }[] = [
+    {
+      label: 'M3',
+      icon: RotateCw,
+      active: state.spindleOn && state.spindleDir === 1,
+      action: { type: 'SPINDLE_MANUAL', dir: 1 },
+    },
+    {
+      label: 'M4',
+      icon: RotateCcw,
+      active: state.spindleOn && state.spindleDir === -1,
+      action: { type: 'SPINDLE_MANUAL', dir: -1 },
+    },
+    { label: 'M5', icon: Square, active: !state.spindleOn, action: { type: 'SPINDLE_STOP' } },
+    { label: 'СОЖ', icon: Droplets, active: state.coolant, action: { type: 'TOGGLE', key: 'coolant' } },
+    { label: 'Туман', icon: CloudFog, active: state.mist, action: { type: 'TOGGLE', key: 'mist' } },
+    { label: 'Свет', icon: Lightbulb, active: state.workLight, action: { type: 'TOGGLE', key: 'workLight' } },
+    { label: 'Стружка', icon: Shovel, active: state.chipConveyor, action: { type: 'TOGGLE', key: 'chipConveyor' } },
+    { label: 'Смазка', icon: Droplets, active: state.lube > 0, action: { type: 'LUBE' } },
+    {
+      label: state.toolClamped ? 'Разжим' : 'Зажим',
+      icon: state.toolClamped ? LockOpen : Lock,
+      active: state.toolClamped,
+      action: { type: 'TOOL_CLAMP', clamp: !state.toolClamped },
+    },
+  ]
+
   return (
-    <Panel title="Корректоры" icon={Gauge} className="w-[264px] shrink-0">
-      <div className="grid h-full grid-rows-3 gap-2 p-1.5">
-        <OverrideControl
-          label="Подача"
-          value={state.feedOverride}
-          max={paramValue(state.params, MAX_FEED_PARAM)}
-          onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'feed', dir })}
-        />
-        <OverrideControl
-          label="Шпиндель"
-          value={state.spindleOverride}
-          max={paramValue(state.params, MAX_SPINDLE_PARAM)}
-          onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'spindle', dir })}
-        />
-        <OverrideControl
-          label="Ускор. G0"
-          value={state.rapidOverride}
-          max={RAPID_STEPS[RAPID_STEPS.length - 1]}
-          onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'rapid', dir })}
-        />
+    <Panel title="Функции" className="w-[300px] shrink-0">
+      <div className="grid h-full grid-cols-3 grid-rows-3 gap-1.5 p-1.5">
+        {keys.map(({ label, icon: Icon, active, action, disabled }) => (
+          <button
+            key={label}
+            type="button"
+            tabIndex={-1}
+            disabled={disabled}
+            aria-pressed={active}
+            onClick={() => dispatch(action)}
+            className={cn(
+              KEY_BASE,
+              'flex-col gap-0.5 px-1 text-[11px]',
+              active ? 'border-primary bg-primary text-primary-foreground' : 'bg-card active:bg-accent',
+            )}
+          >
+            <Icon className="size-5" aria-hidden="true" />
+            {label}
+          </button>
+        ))}
       </div>
     </Panel>
   )
@@ -338,10 +394,10 @@ function OverridePanel({ state, dispatch }: { state: MachineState; dispatch: (a:
 export function TouchDeck({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
   return (
     <section aria-label="Сенсорный пульт" className="flex shrink-0 flex-col gap-1.5">
-      <div className="flex h-[212px] gap-1.5">
+      <div className="flex h-[260px] gap-1.5">
         <WorkplaceColumn state={state} dispatch={dispatch} />
         <JogPanel state={state} dispatch={dispatch} />
-        <OverridePanel state={state} dispatch={dispatch} />
+        <FunctionsPanel state={state} dispatch={dispatch} />
       </div>
       <CycleRow state={state} dispatch={dispatch} />
     </section>

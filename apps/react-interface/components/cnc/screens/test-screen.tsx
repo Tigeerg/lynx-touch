@@ -102,7 +102,7 @@ export function TestScreen({
             <ToolpathView state={state} view={pathView} className="h-full" />
             {state.test.bbox && <BBoxOverlay state={state} />}
             {overlay && (
-              <div className="absolute inset-y-0 left-0 z-10 w-1/2 min-w-[18rem] border-r border-border bg-card/90 backdrop-blur-[2px]">
+              <div className="up-overlay absolute inset-y-0 left-0 z-10 w-1/2 min-w-[18rem]">
                 <ProgramList bare state={state} dispatch={dispatch} className="h-full" />
               </div>
             )}

@@ -14,6 +14,7 @@ import {
   ProdStat,
   RapidRow,
   Section,
+  SETUP_SECTIONS,
   ToolSection,
   WIDE_SECTIONS,
 } from './side-status'
@@ -111,10 +112,10 @@ export function ExecutionBody({ state }: { state: MachineState }) {
   return (
     <>
       <div className="flex items-center gap-2 text-xs">
-        <div className="h-2 flex-1 overflow-hidden rounded-sm border bg-muted">
-          <div className="h-full bg-primary transition-[width]" style={{ width: `${progress}%` }} />
+        <div className="h-4 flex-1 overflow-hidden rounded-sm border bg-muted">
+          <div className="progress-zebra h-full transition-[width]" style={{ width: `${progress}%` }} />
         </div>
-        <span className="w-10 text-right font-mono text-xs font-bold tabular-nums">{progress}%</span>
+        <span className="w-10 text-right font-mono text-sm font-bold tabular-nums">{progress}%</span>
       </div>
       <p className="flex min-w-0 items-baseline gap-1.5 text-xs">
         <span className="shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Далее</span>
@@ -166,8 +167,10 @@ export function ProgramSide({
 
   return (
     <aside className={cn('flex min-h-0 flex-col gap-2', className)} aria-label="Обработка программы">
-      <Panel title="Обработка" className="min-h-0 flex-1">
-        <div className={wide ? WIDE_SECTIONS : 'flex h-full flex-col overflow-y-auto'}>
+      <section className="cnc-box flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-card">
+        <div
+          className={wide ? (showExecution ? WIDE_SECTIONS : SETUP_SECTIONS) : 'flex h-full flex-col overflow-y-auto'}
+        >
           <ToolSection state={state} className={wide ? 'border-r' : undefined} />
 
           <Section icon={Fan} title="Нагрузка (имитация)" area="load">
@@ -179,7 +182,7 @@ export function ProgramSide({
 
           <ActiveCodes state={state} area="codes" className={wide ? 'border-r' : undefined} />
 
-          <Section icon={SlidersHorizontal} title="Корректоры" area="correctors">
+          <Section icon={SlidersHorizontal} title="Корректоры" area="correctors" className="border">
             <OverrideRow
               label="S%"
               value={state.spindleOverride}
@@ -201,7 +204,7 @@ export function ProgramSide({
             </Section>
           )}
         </div>
-      </Panel>
+      </section>
 
       {showPad && <OperatorPad state={state} dispatch={dispatch} layout="compact" />}
     </aside>

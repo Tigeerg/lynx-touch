@@ -265,7 +265,12 @@ export function RapidRow({ value }: { value: number }) {
 // block leaves its zone empty instead of shifting the others. The execution strip spans the
 // bottom only in AUTO (its area is declared there, so the spare row stays empty in SETUP).
 export const WIDE_SECTIONS =
-  "grid h-full grid-cols-2 grid-rows-[auto_auto_auto] content-start overflow-y-auto [grid-template-areas:'tool_load'_'codes_correctors'_'execution_execution'] [&>section]:py-1.5"
+  "grid h-full grid-cols-2 grid-rows-[auto_auto_auto] content-start overflow-y-auto [grid-template-areas:'tool_load'_'codes_correctors'_'execution_execution'] [&>section]:border-r [&>section]:border-b [&>section]:py-1.5"
+
+// SETUP has no execution row: the second row stretches to the bottom, so the correctors box
+// reaches the panel frame instead of hanging above it.
+export const SETUP_SECTIONS =
+  "grid h-full grid-cols-2 grid-rows-[auto_minmax(0,1fr)] content-start overflow-y-auto [grid-template-areas:'tool_load'_'codes_correctors'] [&>section]:border-r [&>section]:border-b [&>section]:py-1.5"
 
 // The status column still flows in reading order: it has no fixed zones.
 export const SIDE_FLOW =

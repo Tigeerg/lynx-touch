@@ -330,10 +330,33 @@ export function ProgramList({
   )
 
   const list = (
-    <div className="flex h-full min-h-0">
+    <div className="flex h-full min-h-0 gap-1.5">
+      {touch && (
+        <div className="flex w-12 shrink-0 flex-col gap-1.5" role="group" aria-label="Прокрутка кадров">
+          {(
+            [
+              { label: 'Страница кадров вверх', icon: ChevronsUp, delta: -10 },
+              { label: 'Кадр вверх', icon: ArrowUp, delta: -1 },
+              { label: 'Кадр вниз', icon: ArrowDown, delta: 1 },
+              { label: 'Страница кадров вниз', icon: ChevronsDown, delta: 10 },
+            ] as const
+          ).map(({ label, icon: Icon, delta }) => (
+            <button
+              key={label}
+              type="button"
+              tabIndex={-1}
+              aria-label={label}
+              onClick={() => dispatch({ type: 'CURSOR', delta })}
+              className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-md border border-b-[3px] bg-card font-semibold text-foreground transition-colors active:translate-y-px active:border-b active:bg-accent"
+            >
+              <Icon className="size-5" aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      )}
       <ol
         ref={listRef}
-        className={cn('h-full min-w-0 flex-1 overflow-hidden py-0.5 font-mono text-sm', touch && 'pr-1.5')}
+        className="h-full min-w-0 flex-1 overflow-hidden py-0.5 font-mono text-sm"
         aria-label="Кадры программы"
       >
         {file.lines.map((line, i) => {
@@ -372,29 +395,6 @@ export function ProgramList({
           )
         })}
       </ol>
-      {touch && (
-        <div className="flex w-12 shrink-0 flex-col gap-1.5 pl-1.5" role="group" aria-label="Прокрутка кадров">
-          {(
-            [
-              { label: 'Страница кадров вверх', icon: ChevronsUp, delta: -10 },
-              { label: 'Кадр вверх', icon: ArrowUp, delta: -1 },
-              { label: 'Кадр вниз', icon: ArrowDown, delta: 1 },
-              { label: 'Страница кадров вниз', icon: ChevronsDown, delta: 10 },
-            ] as const
-          ).map(({ label, icon: Icon, delta }) => (
-            <button
-              key={label}
-              type="button"
-              tabIndex={-1}
-              aria-label={label}
-              onClick={() => dispatch({ type: 'CURSOR', delta })}
-              className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-md border border-b-[3px] bg-card font-semibold transition-colors active:translate-y-px active:border-b active:bg-accent"
-            >
-              <Icon className="size-5" aria-hidden="true" />
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   )
 

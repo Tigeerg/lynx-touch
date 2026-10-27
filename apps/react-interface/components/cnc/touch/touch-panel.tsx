@@ -9,7 +9,7 @@ import { ToolMeasureDialog } from '../tool-measure-dialog'
 import { ToolCallDialog } from '../tool-call-dialog'
 import { HelpOverlay } from '../help-overlay'
 import { ExecutionPanel, ProgramSide } from '../program-side'
-import { SetupScreen, SetupSide } from '../screens/setup-screen'
+import { SetupMdi, SetupScreen, SetupSide } from '../screens/setup-screen'
 import { ProgramScreen } from '../screens/program-screen'
 import { TestScreen } from '../screens/test-screen'
 import { AutoScreen } from '../screens/auto-screen'
@@ -63,7 +63,7 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
 
         <div className="relative flex min-h-0 flex-1 flex-col gap-1.5">
           <main className="min-h-0 flex-1">
-            {state.screen === 'pos' && <SetupScreen state={state} dispatch={dispatch} />}
+            {state.screen === 'pos' && <SetupScreen state={state} dispatch={dispatch} showMdi={false} />}
             {state.screen === 'prog' &&
               (testMode ? (
                 <TestScreen state={state} dispatch={dispatch} pathView={pathView} />
@@ -106,7 +106,7 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
                 )
               ) : state.workplace === 'SETUP' ? (
                 <>
-                  <div aria-hidden="true" />
+                  <SetupMdi state={state} dispatch={dispatch} className="h-full min-h-0" />
                   <SetupSide state={state} dispatch={dispatch} showPad={false} wide className="h-full" />
                 </>
               ) : (

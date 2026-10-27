@@ -38,6 +38,7 @@ import {
   ChevronRight,
   ChevronUp,
   CornerDownRight,
+  Disc3,
   FlaskConical,
   StepForward,
   CirclePause,
@@ -64,7 +65,15 @@ import { AUTO_VIEW_LABEL, SOFTKEY_LABEL } from './data'
 import type { Action } from './subsystem'
 import { paramAt, paramValue, TOOLPATH_PARAM, unsavedIds } from './service-data'
 import { TEST_RUN_MODE_LABEL } from './test'
-import { AUTO_VIEWS, isParamSection, type MachineState, type ServiceSection } from './types'
+import { AUTO_VIEWS, isParamSection, type MachineState, type ServiceSection, type TestRunMode } from './types'
+
+/** The F4 key shows what ПУСК will do: a flask, a play, a step, or the handwheel. */
+const TEST_RUN_MODE_ICON: Record<TestRunMode, LucideIcon> = {
+  sim: FlaskConical,
+  dry: Play,
+  step: StepForward,
+  mpg: Disc3,
+}
 
 export const SERVICE_ICON: Record<ServiceSection, LucideIcon> = {
   system: MonitorCog,
@@ -205,7 +214,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
   }
 
   // The PROGON workplace: checking the NC program without a real cut. F4 chooses what ПУСК
-  // starts (the simulation or the dry run), F5/F6 are the block modes, F7 the NC bounding box
+  // starts (simulation, dry run, step run or handwheel run), F5/F6 are the block modes, F7 the NC bounding box
   // and F8 the AUTO view cycle (same words as AUTO, so there is one "Отображение" and no duplicate key).
   // The start itself is the console's ПУСК, not a softkey: one way to start a run on the panel.
   if (s.workplace === 'TEST' && !s.editMode) {
@@ -215,7 +224,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       { label: 'Поиск / Замена', icon: Search, action: { type: 'SEARCH', open: true } },
       {
         label: `Режим: ${TEST_RUN_MODE_LABEL[s.test.runMode]}`,
-        icon: s.test.runMode === 'sim' ? FlaskConical : Play,
+        icon: TEST_RUN_MODE_ICON[s.test.runMode],
         action: { type: 'TEST_RUN_MODE' },
         active: true,
         // The mode decides what ПУСК will start, so it is chosen before the run, never inside it.

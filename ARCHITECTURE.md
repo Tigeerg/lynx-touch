@@ -41,7 +41,8 @@
   `params/` (таблицы разделов, по файлу на раздел: `def.ts`, `display.ts`, `system.ts`, `motion.ts`,
   `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`; отдельный каталог — чтобы таблицы не смешивались с
   логикой), `hal.ts` (справочник пинов HAL), `messages.ts`, `time.ts` (отметки времени из экшена), `toolpath.ts`, `tool-check.ts`, `probe.ts`,
-  `mpg.ts`, `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, `tool-measure.ts` (замер инструмента по
+  `mpg.ts`, `test.ts` (ПРОГОН: четыре способа прогона — симуляция, холостой, по шагам, по маховику),
+  `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, `tool-measure.ts` (замер инструмента по
   датчику), `machine-branches.ts` (собственные ветки машины: аварии, справка, тема), `theme`-логика.
 * `public/` — картинки и статика проекта.
 * Тесты — рядом с логикой (`lib/cnc/*.test.ts`), слой тот же, что и дефект.

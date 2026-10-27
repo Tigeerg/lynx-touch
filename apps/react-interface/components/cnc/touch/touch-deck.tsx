@@ -195,23 +195,9 @@ function JogPanel({ state, dispatch }: { state: MachineState; dispatch: (a: Acti
       icon={Move3d}
       className="min-w-0 flex-1"
       right={
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            tabIndex={-1}
-            aria-pressed={mpg}
-            onClick={() => dispatch({ type: 'SET_MODE', mode: mpg ? 'JOG' : 'MPG' })}
-            className={cn(
-              'rounded-sm border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-              mpg ? 'border-primary bg-primary text-primary-foreground' : 'bg-card active:bg-accent',
-            )}
-          >
-            {mpg ? 'РУЧНОЙ' : 'МАХОВИК'}
-          </button>
-          <span className={cn('font-mono text-xs font-semibold', manual ? 'text-foreground' : 'text-muted-foreground')}>
-            {manual ? `шаг ${state.jogStep} мм` : 'только РУЧНОЙ / МАХОВИК'}
-          </span>
-        </div>
+        <span className={cn('font-mono text-xs font-semibold', manual ? 'text-foreground' : 'text-muted-foreground')}>
+          {manual ? `шаг ${state.jogStep} мм` : 'только РУЧНОЙ / МАХОВИК'}
+        </span>
       }
     >
       <div className={cn('flex h-full gap-1.5 p-1.5', !manual && 'opacity-50')}>

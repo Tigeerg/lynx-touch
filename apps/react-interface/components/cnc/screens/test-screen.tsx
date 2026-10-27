@@ -1,6 +1,6 @@
 'use client'
 
-import { Move } from 'lucide-react'
+import { Disc3, Move } from 'lucide-react'
 import { useMemo } from 'react'
 import { SOFT_LIMITS } from '@/lib/cnc/data'
 import { programLines, type Action } from '@/lib/cnc/machine'
@@ -13,6 +13,41 @@ import { useUiMode } from '../ui-mode-context'
 import { ProgramList, SearchBar } from './program-screen'
 
 const BBOX_AXES = ['X', 'Y', 'Z'] as const
+
+const HANDWHEEL_KEY = 'rounded-sm border bg-card px-2 py-0.5 text-xs font-semibold active:bg-accent'
+
+// The handwheel run stand-in: the real MPG is a knob on the pendant, so the screen gives the same
+// two directions and the operator can walk the fourth PROGON mode without the hardware.
+function HandwheelRun({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
+  const total = programLines(state).length
+  return (
+    <div className="flex shrink-0 items-center gap-2 rounded-md border bg-card px-2 py-1">
+      <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <Disc3 className="size-3.5" aria-hidden="true" />
+        Маховик
+      </span>
+      <button
+        type="button"
+        onClick={() => dispatch({ type: 'MPG_HANDWHEEL', dir: -1 })}
+        className={HANDWHEEL_KEY}
+        title="Повернуть маховик назад"
+      >
+        − кадр
+      </button>
+      <button
+        type="button"
+        onClick={() => dispatch({ type: 'MPG_HANDWHEEL', dir: 1 })}
+        className={HANDWHEEL_KEY}
+        title="Повернуть маховик вперёд"
+      >
+        + кадр
+      </button>
+      <span className="font-mono text-xs tabular-nums">
+        кадр {state.line + 1} из {total}
+      </span>
+    </div>
+  )
+}
 
 // NC bounding box: the X/Y/Z extremes in machine numbers (the program work coordinates plus
 // the work offset in force) and a mark when a soft limit is exceeded.
@@ -79,6 +114,8 @@ export function TestScreen({
       <div className="flex shrink-0 items-center rounded-md border bg-card px-2 py-1">
         <PositionStrip state={state} compact className="min-w-0" />
       </div>
+
+      {state.test.runMode === 'mpg' && <HandwheelRun state={state} dispatch={dispatch} />}
 
       {/* Both on the portrait touch panel: the code above, the trajectory below, each at full
           width. The code row keeps a floor of ten block rows (a touch row is 44 px plus the panel

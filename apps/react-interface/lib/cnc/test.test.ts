@@ -1,6 +1,6 @@
-// PROGON workplace check: the bounding box, the view angle, the run mode F4 cycles (the
-// simulation or the dry run), what ПУСК starts in each mode, and the F1-F8 set. The tests hold
-// the state and the message words.
+// PROGON workplace check: the bounding box, the view angle, the run modes F4 cycles (simulation,
+// dry run, step run, handwheel run), what ПУСК starts in each mode, and the F1-F8 set. The tests
+// hold the state and the message words.
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer, type Action } from './machine'
 import { getSoftkeys } from './softkeys'
@@ -8,6 +8,12 @@ import { AUTO_VIEWS, type MachineState } from './types'
 
 const run = (state: MachineState, ...actions: Action[]) => actions.reduce(reducer, state)
 const test = (...actions: Action[]) => run(initialState, { type: 'SET_WORKPLACE', workplace: 'TEST' }, ...actions)
+
+// F4 starts on the dry run: one press selects the step run, two the handwheel run, three the
+// simulation. The named helpers keep the tests about behaviour instead of press counts.
+const toStep = (state: MachineState) => run(state, { type: 'TEST_RUN_MODE' })
+const toMpg = (state: MachineState) => run(toStep(state), { type: 'TEST_RUN_MODE' })
+const toSim = (state: MachineState) => run(toMpg(state), { type: 'TEST_RUN_MODE' })
 
 describe('прогон: габариты и вид', () => {
   it('ПРОГОН включает АВТО и холостой ход', () => {
@@ -64,26 +70,72 @@ describe('прогон: габариты и вид', () => {
     expect(keys[6]?.active).toBe(false)
   })
 
-  it('режим прогона переключается sim ↔ dry и меняет подпись F4', () => {
+  it('режим прогона идёт по кругу: Холостой, По шагам, По маховику, Симуляция', () => {
     const dry = test()
-    const sim = run(dry, { type: 'TEST_RUN_MODE' })
-
-    expect(dry.test.runMode).toBe('dry')
-    expect(getSoftkeys(dry)[3]?.label).toBe('Режим: Холостой')
-    expect(sim.test.runMode).toBe('sim')
-    expect(sim.message?.text).toBe('Режим прогона: Симуляция')
-    expect(getSoftkeys(sim)[3]?.label).toBe('Режим: Симуляция')
-    expect(getSoftkeys(sim)[3]?.action).toEqual({ type: 'TEST_RUN_MODE' })
-
+    const step = toStep(dry)
+    const mpg = toMpg(dry)
+    const sim = toSim(dry)
     const back = run(sim, { type: 'TEST_RUN_MODE' })
 
+    expect([dry, step, mpg, sim].map((s) => s.test.runMode)).toEqual(['dry', 'step', 'mpg', 'sim'])
+    expect([dry, step, mpg, sim].map((s) => getSoftkeys(s)[3]?.label)).toEqual([
+      'Режим: Холостой',
+      'Режим: По шагам',
+      'Режим: По маховику',
+      'Режим: Симуляция',
+    ])
+    expect(step.message?.text).toBe('Режим прогона: По шагам')
+    expect(mpg.message?.text).toBe('Режим прогона: По маховику')
+    expect(sim.message?.text).toBe('Режим прогона: Симуляция')
+    expect(getSoftkeys(mpg)[3]?.action).toEqual({ type: 'TEST_RUN_MODE' })
     expect(back.test.runMode).toBe('dry')
     expect(back.message?.text).toBe('Режим прогона: Холостой')
-    expect(getSoftkeys(back)[3]?.label).toBe('Режим: Холостой')
+  })
+
+  it('холостой ход включён только у холостого прогона и у прогона по маховику', () => {
+    expect([test().dryRun, toStep(test()).dryRun, toMpg(test()).dryRun, toSim(test()).dryRun]).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ])
+  })
+
+  it('ПУСК в режиме «По шагам» выполняет один кадр и останавливается', () => {
+    const step = toStep(test())
+    const started = run(step, { type: 'CYCLE_START' })
+
+    expect(started.run).toBe('RUN')
+    expect(started.stopAfterBlock).toBe(true)
+    // The step run stops the block itself: the F5 single-block key is not silently switched on.
+    expect(started.singleBlock).toBe(false)
+    expect(started.message?.text).toBe('По шагам: кадр 1. ПУСК — следующий кадр')
+
+    let done = started
+    for (let i = 0; i < 400 && done.run === 'RUN'; i += 1) done = reducer(done, { type: 'TICK', dt: 50 })
+
+    expect(done.run).toBe('IDLE')
+    // The run stopped on the same block instead of walking on to the next one.
+    expect(done.line).toBe(started.line)
+    expect(done.nextLine).toBe(started.line + 1)
+  })
+
+  it('ПУСК в режиме «По маховику» взводит прогон, кадры идут поворотом маховика', () => {
+    const mpg = toMpg(test())
+    const armed = run(mpg, { type: 'CYCLE_START' })
+
+    expect(armed.run).toBe('IDLE')
+    expect(armed.dryRun).toBe(true)
+    expect(armed.message?.text).toBe('Прогон маховиком: кадр 1. Вращайте маховик')
+
+    const turned = run(armed, { type: 'MPG_HANDWHEEL', dir: 1 })
+
+    expect(turned.line).toBe(3)
+    expect(turned.message?.text).toBe('Прогон маховиком: кадр 4')
   })
 
   it('ПУСК в режиме «Симуляция» идёт по кадрам, не двигая оси', () => {
-    const s = test({ type: 'TEST_RUN_MODE' }, { type: 'CYCLE_START' })
+    const s = run(toSim(test()), { type: 'CYCLE_START' })
 
     expect(s.test.runMode).toBe('sim')
     expect(s.sim.active).toBe(true)
@@ -97,12 +149,7 @@ describe('прогон: габариты и вид', () => {
 
   it('ПУСК в режиме «Симуляция» на пустой УП даёт предупреждение', () => {
     const empty: MachineState = { ...initialState, files: [{ ...initialState.files[0], lines: ['O1024'] }] }
-    const s = run(
-      empty,
-      { type: 'SET_WORKPLACE', workplace: 'TEST' },
-      { type: 'TEST_RUN_MODE' },
-      { type: 'CYCLE_START' },
-    )
+    const s = run(toSim(run(empty, { type: 'SET_WORKPLACE', workplace: 'TEST' })), { type: 'CYCLE_START' })
 
     expect(s.sim.active).toBe(false)
     expect(s.run).toBe('IDLE')
@@ -122,7 +169,7 @@ describe('прогон: габариты и вид', () => {
   })
 
   it('СТОП подачи останавливает симуляцию прогона', () => {
-    const s = test({ type: 'TEST_RUN_MODE' }, { type: 'CYCLE_START' }, { type: 'FEED_HOLD' })
+    const s = run(toSim(test()), { type: 'CYCLE_START' }, { type: 'FEED_HOLD' })
 
     expect(s.sim.active).toBe(false)
     expect(s.message?.text).toBe('Симуляция остановлена')

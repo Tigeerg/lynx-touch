@@ -220,12 +220,27 @@ export function cycleReducer(s: MachineState, a: CycleAction, dispatch: Dispatch
         }
       }
       if (s.editMode) return { s, msg: 'Выйдите из режима редактирования', level: 'warn' }
-      // The PROGON chooses what ПУСК runs (F4): the axis-free simulation or the dry run. The
-      // branch is before the AUTO one, because the workplace keeps the AUTO mode.
+      // The PROGON chooses what ПУСК runs (F4): the axis-free simulation, the dry run, the step
+      // run or the handwheel run. The branch is before the AUTO one, because the workplace keeps
+      // the AUTO mode.
       if (s.workplace === 'TEST') {
+        const start = s.nextLine >= programLines(s).length ? 0 : s.nextLine
         if (s.test.runMode === 'dry') {
-          const start = s.nextLine >= programLines(s).length ? 0 : s.nextLine
           return { s: executeLine({ ...s, sim: idleSim(), run: 'RUN', dryRun: true }, start) }
+        }
+        if (s.test.runMode === 'step') {
+          // One block per ПУСК: the block stops the run when it is done, whatever the F5 toggle
+          // says, so a stray single-block key cannot turn the step run into an uninterrupted one.
+          const next = executeLine({ ...s, sim: idleSim(), run: 'RUN', dryRun: false }, start)
+          return { s: { ...next, stopAfterBlock: true }, msg: `По шагам: кадр ${start + 1}. ПУСК — следующий кадр` }
+        }
+        if (s.test.runMode === 'mpg') {
+          // The handwheel run has no feed of its own: it is armed here and the MPG advances the
+          // toolpath block by block (mpg.ts needs the dry run, so it is switched on).
+          return {
+            s: { ...s, sim: idleSim(), run: 'IDLE', dryRun: true },
+            msg: `Прогон маховиком: кадр ${s.line + 1}. Вращайте маховик`,
+          }
         }
         // The SIM branch owns the guards (an empty program) and the message words; the PROGON
         // adds only one thing: no dry run is left on while the axes stand still.

@@ -67,10 +67,11 @@ export interface SimState {
   timer: number
 }
 
-// The PROGON run modes: the simulation walks the blocks without moving the axes; the dry run
-// executes them with dryRun on (a slow feed, the axes do move) - the way the PROGON used to
-// start. A named union, not a flag: a third mode must be added here, not guessed at call sites.
-export type TestRunMode = 'sim' | 'dry'
+// The PROGON run modes (F4 cycles them in this order): the simulation walks the blocks without
+// moving the axes; the dry run executes them with dryRun on (a slow feed, the axes do move); the
+// step run stops after every block (one block per ПУСК, the F5 toggle stays untouched); the
+// handwheel run arms the run for the MPG so the operator advances the toolpath by turning it.
+export type TestRunMode = 'sim' | 'dry' | 'step' | 'mpg'
 
 // Workpiece PROGON (test) state: the NC bounding box, the view angle, and the run mode the
 // ПУСК uses.
@@ -80,7 +81,7 @@ export interface TestState {
   /** Work: what to show on the screen (F8 "View"). */
   autoView: AutoView
   view: PathView
-  /** What ПУСК runs: the axis-free simulation or the dry run (F4 cycles it). */
+  /** What ПУСК runs: simulation, dry run, step run or the handwheel run (F4 cycles it). */
   runMode: TestRunMode
 }
 

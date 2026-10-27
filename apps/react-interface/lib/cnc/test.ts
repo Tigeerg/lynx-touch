@@ -8,10 +8,18 @@ import type { Result } from './subsystem'
 import { AUTO_VIEWS, type MachineState, type TestRunMode, type TestState } from './types'
 
 /** The run mode as the operator sees it: the F4 label and the message use one word each. */
-export const TEST_RUN_MODE_LABEL: Record<TestRunMode, string> = { sim: 'Симуляция', dry: 'Холостой' }
+export const TEST_RUN_MODE_LABEL: Record<TestRunMode, string> = {
+  sim: 'Симуляция',
+  dry: 'Холостой',
+  step: 'По шагам',
+  mpg: 'По маховику',
+}
 
-/** The carousel order of F4: a simulation first, then the dry run, then back. */
-const TEST_RUN_MODES: readonly TestRunMode[] = ['sim', 'dry']
+/** The carousel order of F4: simulation, dry run, step run, handwheel run, then back. */
+const TEST_RUN_MODES: readonly TestRunMode[] = ['sim', 'dry', 'step', 'mpg']
+
+/** The handwheel run turns the toolpath through the dry run feed, so it needs dryRun on too. */
+const modeNeedsDryRun = (mode: TestRunMode): boolean => mode === 'dry' || mode === 'mpg'
 
 export const initialTest: TestState = {
   bbox: false,
@@ -47,10 +55,10 @@ export function testReducer(s: MachineState, a: TestAction): Result {
 
     case 'TEST_RUN_MODE': {
       const runMode = TEST_RUN_MODES[(TEST_RUN_MODES.indexOf(s.test.runMode) + 1) % TEST_RUN_MODES.length]
-      // dryRun follows the mode, so the dry run keeps its slow feed and the simulation does not
-      // leave a stale "холостой ход" on the panel.
+      // dryRun follows the mode, so the dry and handwheel runs keep their slow feed and the other
+      // modes do not leave a stale "холостой ход" on the panel.
       return {
-        s: { ...s, test: { ...s.test, runMode }, dryRun: runMode === 'dry' },
+        s: { ...s, test: { ...s.test, runMode }, dryRun: modeNeedsDryRun(runMode) },
         msg: `Режим прогона: ${TEST_RUN_MODE_LABEL[runMode]}`,
       }
     }

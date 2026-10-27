@@ -8,6 +8,7 @@ import {
   ChevronsDown,
   ChevronsUp,
   CirclePause,
+  Disc3,
   FastForward,
   House,
   Lock,
@@ -211,6 +212,15 @@ function ProgramModeBlock({ state, dispatch }: { state: MachineState; dispatch: 
             className={SMALL_KEY}
           />
         ))}
+        <HwKey
+          label={state.mode === 'MPG' ? 'РУЧНОЙ' : 'МАХОВИК'}
+          icon={Disc3}
+          title={state.mode === 'MPG' ? 'Вернуться в ручной режим' : 'Прогон по маховику'}
+          lit={state.mode === 'MPG'}
+          tone="primary"
+          onClick={() => dispatch({ type: 'SET_MODE', mode: state.mode === 'MPG' ? 'JOG' : 'MPG' })}
+          className={SMALL_KEY}
+        />
         <HwKey
           label="Безоп. т."
           icon={House}

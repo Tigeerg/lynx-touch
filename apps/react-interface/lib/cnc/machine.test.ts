@@ -5,7 +5,7 @@ import { MODE_LABEL } from './data'
 import { currentFile, initialState, reducer, type Action } from './machine'
 import { getSoftkeys, SOFTKEY_SLOTS } from './softkeys'
 import { buildToolpath, simPose } from './toolpath'
-import { MODE_START_SCREEN, MODES, SCREENS, type MachineState } from './types'
+import { MODE_START_SCREEN, MODES, MPG_STEPS, SCREENS, type MachineState } from './types'
 
 const run = (state: MachineState, ...actions: Action[]) => actions.reduce(reducer, state)
 const from = (...actions: Action[]) => run(initialState, ...actions)
@@ -391,5 +391,16 @@ describe('экран «Программа»: поиск, симуляция, з�
     const keys = getSoftkeys({ ...initialState, screen: 'prog', search: { open: true, query: 'T5', replace: '' } })
 
     expect(keys.map((k) => k?.action?.type).slice(0, 3)).toEqual(['SEARCH_FIND', 'SEARCH_REPLACE_ALL', 'SEARCH'])
+  })
+})
+
+describe('режим МАХОВИК', () => {
+  it('SET_MODE MPG переводит на позицию и оставляет допустимый шаг маховика', () => {
+    const s = reducer({ ...initialState, jogStep: 1 }, { type: 'SET_MODE', mode: 'MPG' })
+
+    expect(s.mode).toBe('MPG')
+    expect(s.screen).toBe(MODE_START_SCREEN.MPG)
+    expect(MPG_STEPS).toContain(s.jogStep)
+    expect(s.message?.text).toBe(`Режим: ${MODE_LABEL.MPG}`)
   })
 })

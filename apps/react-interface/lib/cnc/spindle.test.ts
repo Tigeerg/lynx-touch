@@ -2,13 +2,15 @@
 // not three times on the screen components. The tests hold the numbers the operator sees.
 import { describe, expect, it } from 'vitest'
 import { initialState } from './machine'
-import { isCutting, spindleLoad, spindleRpm } from './spindle'
+import { axisLoad, isCutting, spindleLoad, spindleRpm } from './spindle'
 import type { MachineState } from './types'
 
 const machine = (patch: Partial<MachineState>): MachineState => ({ ...initialState, ...patch })
 
 const cuttingMotion = { target: { X: 0, Y: 0, Z: -1, A: 0 }, rapid: false, feed: 500 }
 const rapidMotion = { target: { X: 10, Y: 0, Z: 0, A: 0 }, rapid: true, feed: 5000 }
+const stillMotion = { target: { X: 0, Y: 0, Z: 0, A: 0 }, rapid: false, feed: 500 }
+const feedTo = (X: number, Y: number, Z: number, A: number) => ({ target: { X, Y, Z, A }, rapid: false, feed: 500 })
 
 describe('spindleRpm', () => {
   it('выключенный шпиндель даёт 0, даже если заданы обороты и переопределение', () => {
@@ -71,5 +73,36 @@ describe('spindleLoad', () => {
       expect(load).toBeGreaterThanOrEqual(0)
       expect(load).toBeLessThanOrEqual(100)
     }
+  })
+})
+
+describe('axisLoad', () => {
+  it('покой, быстрый ход и отсутствие движения не грузят ось', () => {
+    expect(axisLoad(machine({ run: 'IDLE', motion: cuttingMotion }), 'X')).toBe(0)
+    expect(axisLoad(machine({ run: 'RUN', motion: rapidMotion }), 'X')).toBe(0)
+    expect(axisLoad(machine({ run: 'RUN', motion: null }), 'X')).toBe(0)
+  })
+
+  it('резание на месте — остаточная нагрузка 4', () => {
+    expect(axisLoad(machine({ run: 'RUN', motion: stillMotion }), 'X')).toBe(4)
+  })
+
+  it('5 мм хода дают 80 %, 10 мм упираются в потолок 100', () => {
+    expect(axisLoad(machine({ run: 'RUN', motion: feedTo(5, 0, 0, 0) }), 'X')).toBe(80)
+    expect(axisLoad(machine({ run: 'RUN', motion: feedTo(10, 0, 0, 0) }), 'X')).toBe(100)
+  })
+
+  it('путь считается по модулю: отход на 5 мм грузит так же', () => {
+    const state = machine({ run: 'RUN', machine: { X: 10, Y: 0, Z: 0, A: 0 }, motion: feedTo(5, 0, 0, 0) })
+
+    expect(axisLoad(state, 'X')).toBe(80)
+  })
+
+  it('оси считаются независимо', () => {
+    const state = machine({ run: 'RUN', motion: feedTo(5, 0, 1, 0) })
+
+    expect([axisLoad(state, 'X'), axisLoad(state, 'Y'), axisLoad(state, 'Z'), axisLoad(state, 'A')]).toEqual([
+      80, 4, 32, 4,
+    ])
   })
 })

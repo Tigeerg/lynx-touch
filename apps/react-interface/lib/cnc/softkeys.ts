@@ -6,7 +6,6 @@ import {
   Crosshair,
   Eraser,
   Eye,
-  EyeOff,
   Flame,
   FolderOpen,
   ListOrdered,
@@ -39,6 +38,9 @@ import {
   ChevronRight,
   ChevronUp,
   CornerDownRight,
+  FlaskConical,
+  StepForward,
+  CirclePause,
   House,
   Minus,
   Play,
@@ -61,6 +63,7 @@ import { PROBE_STEP_MEASURE, PROBE_STEP_RESULT, PROBE_TOOL } from './probe'
 import { AUTO_VIEW_LABEL, SOFTKEY_LABEL } from './data'
 import type { Action } from './subsystem'
 import { paramAt, paramValue, TOOLPATH_PARAM, unsavedIds } from './service-data'
+import { TEST_RUN_MODE_LABEL } from './test'
 import { AUTO_VIEWS, isParamSection, type MachineState, type ServiceSection } from './types'
 
 export const SERVICE_ICON: Record<ServiceSection, LucideIcon> = {
@@ -197,24 +200,32 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
     return slots(keys)
   }
 
-  // The PROGON workplace: checking the NC program without moving the axes. The F1-F8 set walks
-  // through the catalogue, editing, search, run, bounding box, graphics clearing, view and curtain.
+  // The PROGON workplace: checking the NC program without a real cut. F4 chooses what ПУСК
+  // starts (the simulation or the dry run), F5/F6 are the block modes, F7 the NC bounding box
+  // and F8 the AUTO view cycle (same words as AUTO, so there is one "Вид" and no duplicate key).
+  // The start itself is the console's ПУСК, not a softkey: one way to start a run on the panel.
   if (s.workplace === 'TEST' && !s.editMode) {
     keys = [
       { label: 'Каталог УП', icon: FolderOpen, action: { type: 'FILE_DIALOG', open: true }, disabled: busy },
       { label: 'Редактор', icon: SquarePen, action: { type: 'EDIT_MODE', on: true }, disabled: busy },
       { label: 'Поиск / Замена', icon: Search, action: { type: 'SEARCH', open: true } },
       {
-        label: s.sim.active ? 'Прогон: стоп' : 'Мат. прогон',
-        icon: Play,
-        action: { type: 'SIM' },
-        active: s.sim.active,
-        disabled: busy || s.run === 'ESTOP' || s.run === 'ALARM',
+        label: `Режим: ${TEST_RUN_MODE_LABEL[s.test.runMode]}`,
+        icon: s.test.runMode === 'sim' ? FlaskConical : Play,
+        action: { type: 'TEST_RUN_MODE' },
+        active: true,
+        // The mode decides what ПУСК will start, so it is chosen before the run, never inside it.
+        disabled: busy || s.sim.active,
+        reason: 'Остановите прогон, чтобы сменить режим',
       },
+      { label: 'Покадр.', icon: StepForward, action: { type: 'TOGGLE', key: 'singleBlock' }, active: s.singleBlock },
+      { label: 'M01', icon: CirclePause, action: { type: 'TOGGLE', key: 'optStop' }, active: s.optStop },
       { label: 'Габариты УП', icon: Ruler, action: { type: 'TEST_BBOX' }, active: s.test.bbox },
-      { label: 'Очистка графики', icon: EyeOff, action: { type: 'TEST_CLEAR_PATH' }, active: s.test.hidePath },
-      { label: 'Вид', icon: Eye, action: { type: 'PATH_VIEW_CYCLE' } },
-      { label: 'Скрыть код', icon: Eye, action: { type: 'TEST_CURTAIN' }, active: s.test.curtain },
+      {
+        label: `Вид: ${AUTO_VIEW_LABEL[s.test.autoView]}`,
+        icon: Eye,
+        action: { type: 'AUTO_VIEW_CYCLE' },
+      },
     ]
     return slots(keys)
   }

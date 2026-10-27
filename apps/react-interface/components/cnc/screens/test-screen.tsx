@@ -7,8 +7,9 @@ import { programLines, type Action } from '@/lib/cnc/machine'
 import { buildToolpath, type PathView } from '@/lib/cnc/toolpath'
 import type { MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
-import { formatCoord } from '../primitives'
+import { formatCoord, PositionStrip } from '../primitives'
 import { ToolpathView } from '../toolpath-view'
+import { useUiMode } from '../ui-mode-context'
 import { ProgramList, SearchBar } from './program-screen'
 
 const BBOX_AXES = ['X', 'Y', 'Z'] as const
@@ -62,26 +63,41 @@ export function TestScreen({
   dispatch: (a: Action) => void
   pathView: PathView
 }) {
-  const showCurtain = !state.test.curtain
-  const showViewer = !state.test.hidePath
+  const touch = useUiMode()?.mode === 'touch'
+  const both = state.test.autoView === 'both'
+  const showCode = both || state.test.autoView === 'gcode'
+  const showViewer = both || state.test.autoView === 'trajectory'
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5">
       {state.search.open && <SearchBar state={state} dispatch={dispatch} />}
 
-      <div className={cn('grid min-h-0 flex-1 gap-1.5', showCurtain && showViewer ? 'grid-cols-2' : 'grid-cols-1')}>
-        {showCurtain && <ProgramList state={state} dispatch={dispatch} />}
+      {/* Only the work coordinates stay above the program: the run switches of PROGON live on
+          F4-F8 (mode, block modes, NC bounding box, view), not on a second copy of the strip. */}
+      <div className="flex shrink-0 items-center rounded-md border bg-card px-2 py-1">
+        <PositionStrip state={state} compact className="min-w-0" />
+      </div>
+
+      {/* Both on the portrait touch panel: the code above, the trajectory below, each at full
+          width. The code row keeps a floor of ten block rows (a touch row is 44 px plus the panel
+          header), so reading the program does not shrink to a keyhole; the rest goes to the
+          graphics. The 1024 panel keeps its two columns. */}
+      <div
+        className={cn(
+          'grid min-h-0 flex-1 gap-1.5',
+          both
+            ? touch
+              ? 'grid-cols-1 grid-rows-[minmax(30rem,0.9fr)_minmax(0,1.1fr)]'
+              : 'grid-cols-2'
+            : 'grid-cols-1',
+        )}
+      >
+        {showCode && <ProgramList state={state} dispatch={dispatch} />}
 
         {showViewer && (
           <div className="relative min-h-0">
             <ToolpathView state={state} view={pathView} className="h-full" />
             {state.test.bbox && <BBoxOverlay state={state} />}
-          </div>
-        )}
-
-        {!showCurtain && !showViewer && (
-          <div className="flex h-full items-center justify-center rounded-md border bg-card text-sm text-muted-foreground">
-            Графика очищена — клавиша F6 вернёт отрисовку
           </div>
         )}
       </div>

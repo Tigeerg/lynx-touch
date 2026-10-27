@@ -15,7 +15,7 @@ export function TouchTabs({
 }) {
   const active = tabOfScreen(screen)
   return (
-    <nav aria-label="Экраны" className="grid h-16 shrink-0 grid-cols-5 gap-[var(--panel-gap)]">
+    <nav aria-label="Экраны" className="grid h-10 shrink-0 grid-cols-5 gap-[var(--panel-gap)]">
       {TABS.map((tab) => {
         const Icon = TAB_ICON[tab]
         const target = screenOfTab(tab, workplace)
@@ -27,16 +27,16 @@ export function TouchTabs({
             onClick={() => onSelect(target)}
             aria-current={tab === active ? 'page' : undefined}
             className={cn(
-              'relative flex flex-col items-center justify-center gap-1 rounded-md border text-xs font-semibold transition-colors active:scale-[0.97]',
+              'relative flex flex-row items-center justify-center gap-1.5 rounded-md border px-1 text-[15px] font-semibold leading-none transition-colors active:scale-[0.97]',
               tab === active ? 'border-primary bg-primary text-primary-foreground' : 'bg-card active:bg-accent',
             )}
           >
-            <Icon className="size-5" aria-hidden="true" />
-            <span className="max-w-full truncate px-1">{TAB_LABEL[tab]}</span>
+            <Icon className="size-4 shrink-0" aria-hidden="true" />
+            <span className="whitespace-nowrap">{TAB_LABEL[tab]}</span>
             {tab === 'alarm' && alarmCount > 0 && (
               <span
                 className={cn(
-                  'absolute right-1 top-1 min-w-5 rounded-sm px-1 font-mono text-xs leading-5',
+                  'absolute right-1 top-0.5 min-w-5 rounded-sm px-1 text-center font-mono text-xs leading-4',
                   tab === active ? 'bg-primary-foreground text-primary' : 'bg-warning text-warning-foreground',
                 )}
               >

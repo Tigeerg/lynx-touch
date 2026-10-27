@@ -1,6 +1,6 @@
 'use client'
 
-import { FileCode, Play, Search, SquarePen, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronsDown, ChevronsUp, FileCode, Play, Search, SquarePen, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, type Dispatch } from 'react'
 import { currentFile, distanceToGo, programLines, toWork, type Action } from '@/lib/cnc/machine'
 import { MS_PER_MINUTE } from '@/lib/cnc/data'
@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { buildToolpath, remainingLength, simPose, type PathView } from '@/lib/cnc/toolpath'
 import { formatCoord, formatDuration, Lamp, Panel } from '../primitives'
 import { ToolpathView } from '../toolpath-view'
+import { useUiMode } from '../ui-mode-context'
 
 function highlight(line: string) {
   const comment = line.match(/\(.*\)/)?.[0]
@@ -279,6 +280,9 @@ export function ProgramList({
   bare?: boolean
 }) {
   const listRef = useRef<HTMLOListElement>(null)
+  // On the touch panel there are no physical arrow keys: a row is tapped to move the cursor and a
+  // scroll column next to the list pages it. The classic panel keeps the rows read-only.
+  const touch = useUiMode()?.mode === 'touch'
   const sim = state.sim.active
   const running = !sim && (state.run === 'RUN' || state.run === 'HOLD')
   const follow = sim ? state.sim.line : running ? state.line : state.cursor.prog
@@ -322,36 +326,72 @@ export function ProgramList({
   )
 
   const list = (
-    <ol ref={listRef} className="h-full overflow-hidden py-0.5 font-mono text-sm" aria-label="Кадры программы">
-      {file.lines.map((line, i) => {
-        const current = !state.editMode && (sim ? i === state.sim.line : i === state.line)
-        const cursor = i === state.cursor.prog
-        const editing = state.editor?.line === i
-        return (
-          <li
-            key={i}
-            data-index={i}
-            aria-current={current ? 'step' : undefined}
-            className={cn(
-              'flex items-center gap-2 border-l-4 border-transparent px-2 py-0.5',
-              current && 'border-primary bg-accent',
-              cursor && 'outline-2 -outline-offset-2 outline-foreground/40',
-              cursor && state.editMode && 'border-warning bg-warning/15',
-            )}
-          >
-            <span className="w-8 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{i + 1}</span>
-            <span className="flex w-4 shrink-0 text-primary" aria-hidden="true">
-              {current && <Play className="size-3.5 fill-current" />}
-            </span>
-            {editing ? (
-              <LineEditor value={state.editor!.buffer} dispatch={dispatch} />
-            ) : (
-              <span className="truncate">{highlight(line)}</span>
-            )}
-          </li>
-        )
-      })}
-    </ol>
+    <div className="flex h-full min-h-0">
+      <ol
+        ref={listRef}
+        className={cn('h-full min-w-0 flex-1 overflow-hidden py-0.5 font-mono text-sm', touch && 'pr-1.5')}
+        aria-label="Кадры программы"
+      >
+        {file.lines.map((line, i) => {
+          const current = !state.editMode && (sim ? i === state.sim.line : i === state.line)
+          const cursor = i === state.cursor.prog
+          const editing = state.editor?.line === i
+          return (
+            <li
+              key={i}
+              data-index={i}
+              aria-current={current ? 'step' : undefined}
+              role={touch ? 'button' : undefined}
+              onClick={() => {
+                if (!touch || state.editor || i === state.cursor.prog) return
+                dispatch({ type: 'CURSOR', delta: i - state.cursor.prog })
+              }}
+              className={cn(
+                'flex items-center gap-2 border-l-4 border-transparent px-2 py-0.5',
+                touch && 'min-h-11 cursor-pointer touch-manipulation active:bg-accent',
+                current && 'border-primary bg-accent',
+                cursor && 'outline-2 -outline-offset-2 outline-foreground/40',
+                cursor && touch && 'outline-primary',
+                cursor && state.editMode && 'border-warning bg-warning/15',
+              )}
+            >
+              <span className="w-8 shrink-0 text-right text-xs text-muted-foreground tabular-nums">{i + 1}</span>
+              <span className="flex w-4 shrink-0 text-primary" aria-hidden="true">
+                {current && <Play className="size-3.5 fill-current" />}
+              </span>
+              {editing ? (
+                <LineEditor value={state.editor!.buffer} dispatch={dispatch} />
+              ) : (
+                <span className="truncate">{highlight(line)}</span>
+              )}
+            </li>
+          )
+        })}
+      </ol>
+      {touch && (
+        <div className="flex w-12 shrink-0 flex-col gap-1.5 pl-1.5" role="group" aria-label="Прокрутка кадров">
+          {(
+            [
+              { label: 'Страница кадров вверх', icon: ChevronsUp, delta: -10 },
+              { label: 'Кадр вверх', icon: ArrowUp, delta: -1 },
+              { label: 'Кадр вниз', icon: ArrowDown, delta: 1 },
+              { label: 'Страница кадров вниз', icon: ChevronsDown, delta: 10 },
+            ] as const
+          ).map(({ label, icon: Icon, delta }) => (
+            <button
+              key={label}
+              type="button"
+              tabIndex={-1}
+              aria-label={label}
+              onClick={() => dispatch({ type: 'CURSOR', delta })}
+              className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-md border border-b-[3px] bg-card font-semibold transition-colors active:translate-y-px active:border-b active:bg-accent"
+            >
+              <Icon className="size-5" aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 
   if (bare) return <div className={cn('h-full', className)}>{list}</div>

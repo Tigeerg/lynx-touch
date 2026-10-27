@@ -141,7 +141,7 @@ function CycleRow({ state, dispatch }: { state: MachineState; dispatch: (a: Acti
 
 function WorkplaceColumn({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
   return (
-    <Panel title="Режим" className="w-[132px] shrink-0">
+    <Panel title="Режим" className="w-[150px] shrink-0">
       <div className="grid h-full grid-rows-3 gap-1.5 p-1.5" role="radiogroup" aria-label="Режим">
         {WORKPLACES.map((w) => {
           const Icon = WORKPLACE_ICON[w]
@@ -156,12 +156,12 @@ function WorkplaceColumn({ state, dispatch }: { state: MachineState; dispatch: (
               onClick={() => dispatch({ type: 'SET_WORKPLACE', workplace: w })}
               className={cn(
                 KEY_BASE,
-                'justify-start gap-2 px-2 text-sm',
+                'justify-center gap-1.5 px-1 text-center text-sm whitespace-nowrap',
                 active ? 'border-primary bg-primary text-primary-foreground' : 'bg-card active:bg-accent',
               )}
             >
               <Icon className="size-5 shrink-0" aria-hidden="true" />
-              <span className="truncate">{WORKPLACE_LABEL[w]}</span>
+              <span>{WORKPLACE_LABEL[w]}</span>
             </button>
           )
         })}
@@ -293,7 +293,7 @@ function OverrideControl({
           <span className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             {label}
           </span>
-          <span className="shrink-0 font-mono text-base font-bold tabular-nums">{value}%</span>
+          <span className="w-12 shrink-0 text-right font-mono text-base font-bold tabular-nums">{value}%</span>
         </div>
         <OverrideBar value={value} max={max} />
       </div>
@@ -310,7 +310,7 @@ function OverrideControl({
 
 function OverridePanel({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
   return (
-    <Panel title="Корректоры" icon={Gauge} className="w-[236px] shrink-0">
+    <Panel title="Корректоры" icon={Gauge} className="w-[264px] shrink-0">
       <div className="grid h-full grid-rows-3 gap-2 p-1.5">
         <OverrideControl
           label="Подача"

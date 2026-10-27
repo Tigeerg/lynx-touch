@@ -1,19 +1,23 @@
 'use client'
 
-import { FileCode, Route } from 'lucide-react'
+import { FileCode, Move, Route } from 'lucide-react'
 import { useMemo } from 'react'
-import { currentFile, distanceToGo, programLines, toWork, type Action } from '@/lib/cnc/machine'
-import { MS_PER_MINUTE } from '@/lib/cnc/data'
+import { currentFile, distanceToGo, programLines, type Action } from '@/lib/cnc/machine'
+import { MS_PER_MINUTE, SCREEN_LABEL } from '@/lib/cnc/data'
 import { remainingLength, type PathView } from '@/lib/cnc/toolpath'
-import { AXES, type MachineState } from '@/lib/cnc/types'
+import type { MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
-import { formatCoord, formatDuration, Lamp, Panel } from '../primitives'
+import { formatDuration, Lamp, Panel, PositionStrip } from '../primitives'
 import { ToolpathView, ViewBadges } from '../toolpath-view'
+import { useUiMode } from '../ui-mode-context'
 import { ProgramList } from './program-screen'
 
-// The AUTO workplace: a compact Distance-to-Go strip and the time estimate; below it a single
-// common "Toolpath" header and the viewer. The program code lies over the viewer as a
-// transparent window on the left half; the "View" key (F8) shows and hides it.
+// The AUTO workplace: the work position first and large, the distance to the frame and the
+// remaining program below it in a quiet line; under that a single common "Toolpath" header and
+// the viewer. The "View" key (F8) switches the view: the code and the trajectory side by side on
+// the 1024 panel (the code lies over the viewer as a transparent window on the left half), and
+// one above the other on the portrait touch panel, where two columns would leave each of them too
+// narrow to read.
 
 export function AutoScreen({
   state,
@@ -32,66 +36,46 @@ export function AutoScreen({
   )
   const file = currentFile(state)
   const restMs = (rest / (state.programFeed || 1000)) * MS_PER_MINUTE
-  const work = toWork(state)
-  const offsetCode = state.offsets[state.activeOffset].code
+  const touch = useUiMode()?.mode === 'touch'
+  const gcode = state.test.autoView === 'gcode'
+  const stacked = touch && state.test.autoView === 'both'
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-[var(--panel-gap)]">
-      <Panel title="Остаток пути" icon={Route} className="shrink-0">
+      <Panel title={SCREEN_LABEL.pos} icon={Move} className="shrink-0">
         <div className="flex flex-col gap-1 px-2 py-1">
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-3xl font-bold leading-none tabular-nums">
+          {/* The work DRO is the primary reading in AUTO: the operator looks at the position more
+              often than at the estimate, so it takes the first line in a large face. */}
+          <PositionStrip state={state} large />
+
+          {/* The quiet line: the common distance to the frame (no per-axis split) and the
+              remaining program, both secondary to the position above. */}
+          <div className="flex items-baseline gap-2 border-t pt-0.5">
+            <span
+              className={cn('font-mono text-base font-bold tabular-nums', !state.motion && 'text-muted-foreground')}
+            >
               {state.motion ? dist.toFixed(3) : '—'}
             </span>
-            <span className="text-xs font-medium text-muted-foreground">мм до кадра</span>
+            <span className="text-[11px] font-medium text-muted-foreground">мм до кадра</span>
 
-            <div className="ml-2 flex items-baseline gap-3">
-              {AXES.map((ax) => (
-                <span key={ax} className="flex items-baseline gap-1">
-                  <span className="font-mono text-[10px] font-bold uppercase text-muted-foreground">{ax}</span>
-                  <span
-                    className={cn('font-mono text-sm font-bold tabular-nums', !state.motion && 'text-muted-foreground')}
-                  >
-                    {state.motion ? formatCoord(dtg[ax]) : '—'}
-                  </span>
-                </span>
-              ))}
-            </div>
-
-            <div className="ml-auto text-right leading-tight">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Осталось программы
-              </p>
-              <p className="font-mono text-sm font-bold tabular-nums">
+            <p className="ml-auto flex items-baseline gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Остаток пути
+              </span>
+              <span className="font-mono text-xs font-bold tabular-nums">
                 ≈ {formatDuration(restMs)}
-                <span className="ml-1 font-sans text-xs font-medium text-muted-foreground">· {rest.toFixed(1)} мм</span>
-              </p>
-            </div>
-          </div>
-
-          {/* The work DRO is permanent: the operator reads the position in AUTO even at rest, not
-              only while the axes move. The offset code and the unit are part of the reading. */}
-          <div className="flex items-center gap-2 border-t pt-1">
-            <span className="font-mono text-xs font-bold tabular-nums text-foreground">{offsetCode}</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Рабочие координаты · мм
-            </span>
-            <div className="ml-auto flex items-baseline gap-3">
-              {AXES.map((ax) => (
-                <span key={ax} className="flex items-baseline gap-1">
-                  <span className="font-mono text-[10px] font-bold uppercase text-muted-foreground">{ax}</span>
-                  <span className="font-mono text-base font-bold tabular-nums">{formatCoord(work[ax])}</span>
-                  {ax === 'A' && <span className="font-sans text-[10px] text-muted-foreground">°</span>}
+                <span className="ml-1 font-sans text-[11px] font-medium text-muted-foreground">
+                  · {rest.toFixed(1)} мм
                 </span>
-              ))}
-            </div>
+              </span>
+            </p>
           </div>
         </div>
       </Panel>
 
       <Panel
-        title={`${state.test.autoView === 'gcode' ? 'Программа' : 'Траектория'} · ${file.name}`}
-        icon={state.test.autoView === 'gcode' ? FileCode : Route}
+        title={`${gcode ? 'Программа' : stacked ? 'Программа и траектория' : 'Траектория'} · ${file.name}`}
+        icon={gcode ? FileCode : Route}
         className="min-h-0 flex-1"
         right={
           <div className="flex items-center gap-3 text-xs font-medium">
@@ -113,8 +97,17 @@ export function AutoScreen({
           </div>
         }
       >
-        {state.test.autoView === 'gcode' ? (
+        {gcode ? (
           <ProgramList bare state={state} dispatch={dispatch} className="h-full" />
+        ) : stacked ? (
+          <div className="grid h-full min-h-0 grid-rows-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-1">
+            {/* The code keeps ~10 readable rows: the row floor is set in fr units of the panel
+                height, and the trajectory takes the larger share below it. */}
+            <ProgramList bare state={state} dispatch={dispatch} className="min-h-0 border-b" />
+            <div className="relative min-h-0">
+              <ToolpathView bare state={state} view={pathView} className="h-full" />
+            </div>
+          </div>
         ) : (
           <div className="relative h-full">
             <ToolpathView bare state={state} view={pathView} className="h-full" />

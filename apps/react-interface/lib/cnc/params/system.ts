@@ -11,7 +11,8 @@ export const SYSTEM_PARAMS: readonly ParamDef[] = Object.freeze([
     step: 1,
     min: 0,
     max: THEME_OPTIONS.length - 1,
-    default: 0,
+    // «Светлая» is the panel's default: taken by name, so reordering the list cannot pick another.
+    default: THEME_OPTIONS.indexOf('Светлая'),
     options: THEME_OPTIONS,
     free: true,
   }),

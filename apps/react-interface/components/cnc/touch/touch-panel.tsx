@@ -81,7 +81,7 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
               {state.screen === 'prog' ? (
                 <ProgramSide state={state} dispatch={dispatch} showPad={false} wide />
               ) : state.workplace === 'SETUP' ? (
-                <SetupSide state={state} dispatch={dispatch} showPad={false} />
+                <SetupSide state={state} dispatch={dispatch} showPad={false} wide />
               ) : (
                 <SideStatus state={state} dispatch={dispatch} showPad={false} wide />
               )}

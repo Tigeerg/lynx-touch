@@ -88,7 +88,7 @@ describe('служба параметров: ключа нет в состоян
     const option = SYSTEM_PARAMS[0]
     const s = run(editing(option.id, option.default), { type: 'PARAM_ADJUST', dir: 1 })
 
-    expect(s.params[option.id]).toBe(1)
+    expect(s.params[option.id]).toBe(Math.min(option.max, option.default + option.step))
   })
 
   it('правка числа считает от значения по умолчанию', () => {

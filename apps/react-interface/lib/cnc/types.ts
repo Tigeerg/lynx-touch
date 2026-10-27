@@ -67,8 +67,13 @@ export interface SimState {
   timer: number
 }
 
+// The PROGON run modes: the simulation walks the blocks without moving the axes; the dry run
+// executes them with dryRun on (a slow feed, the axes do move) - the way the PROGON used to
+// start. A named union, not a flag: a third mode must be added here, not guessed at call sites.
+export type TestRunMode = 'sim' | 'dry'
+
 // Workpiece PROGON (test) state: showing the graphics and the code curtain, the NC bounding
-// box, the view angle.
+// box, the view angle, and the run mode the ПУСК uses.
 export interface TestState {
   /** The G-code curtain is hidden (F8 "Hide code"). */
   curtain: boolean
@@ -79,6 +84,8 @@ export interface TestState {
   /** Work: what to show on the screen (F8 "View"). */
   autoView: AutoView
   view: PathView
+  /** What ПУСК runs: the axis-free simulation or the dry run (F4 cycles it). */
+  runMode: TestRunMode
 }
 
 // Auto view modes, cycled by F8: toolpath, gcode, both.

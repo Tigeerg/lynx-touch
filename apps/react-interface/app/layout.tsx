@@ -27,8 +27,11 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  // No theme class here: the default theme is "Светлая" (param 2) and it is the base :root
+  // palette. A hard-coded theme-minimal painted the panel as "Минимал · светлая" until the
+  // theme effect ran, which was a flash of the wrong theme on the first frame.
   return (
-    <html lang="ru" className={`${inter.variable} ${jetbrains.variable} theme-minimal bg-background`}>
+    <html lang="ru" className={`${inter.variable} ${jetbrains.variable} bg-background`}>
       <body className="antialiased">
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}

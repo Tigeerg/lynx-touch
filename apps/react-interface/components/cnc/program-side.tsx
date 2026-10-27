@@ -1,14 +1,37 @@
-import { Braces, Fan, FileCode, History, Package, SlidersHorizontal, Timer, Wrench } from 'lucide-react'
-import { modalCodes, programTools } from '@/lib/cnc/gcode'
+import { Braces, Fan, FileCode, History, Package, SlidersHorizontal, Timer } from 'lucide-react'
+import { modalCodes } from '@/lib/cnc/gcode'
 import { programLines, type Action } from '@/lib/cnc/machine'
 import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
-import { spindleLoad } from '@/lib/cnc/spindle'
-import type { MachineState } from '@/lib/cnc/types'
+import { axisLoad, spindleLoad } from '@/lib/cnc/spindle'
+import { AXES, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { formatTime, Panel } from './primitives'
-import { LoadRow, OperatorPad, OverrideRow, ProdStat, RapidRow, Section, WIDE_SECTIONS } from './side-status'
+import {
+  AxisLoad,
+  LoadRow,
+  OperatorPad,
+  OverrideRow,
+  ProdStat,
+  RapidRow,
+  Section,
+  ToolSection,
+  WIDE_SECTIONS,
+} from './side-status'
 
 const g = (n: number) => `G${String(n).padStart(2, '0')}`
+
+const WORK_MOTION = new Set(['G01', 'G02', 'G03'])
+const WORK_OFFSET = /^G5[4-9]$/
+
+// Calm tones from the theme tokens: amber is attention, muted green is "safe working", neutral
+// stays for plane/units/corrections. M-codes are a running state rather than a deviation, so they
+// keep the neutral tone even when the spindle or coolant is on.
+function chipTone(value: string, hot: boolean) {
+  if (value === 'G00') return 'border-warning/70 bg-warning/30 text-foreground'
+  if (WORK_MOTION.has(value) || WORK_OFFSET.test(value)) return 'border-success/40 bg-success/15 text-foreground'
+  if (hot && !value.startsWith('M')) return 'border-warning/45 bg-warning/15 text-foreground'
+  return 'bg-muted text-muted-foreground'
+}
 
 function Chip({ label, value, hot }: { label: string; value: string; hot: boolean }) {
   return (
@@ -16,7 +39,7 @@ function Chip({ label, value, hot }: { label: string; value: string; hot: boolea
       title={label}
       className={cn(
         'rounded-sm border py-0.5 text-center font-mono text-xs font-bold tabular-nums',
-        hot ? 'border-primary bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+        chipTone(value, hot),
       )}
     >
       <span className="sr-only">{label}: </span>
@@ -27,7 +50,16 @@ function Chip({ label, value, hot }: { label: string; value: string; hot: boolea
 
 // "Active codes" - the modal G/M of the current block. A shared block for the program screen
 // and the right column of Setup.
-export function ActiveCodes({ state }: { state: MachineState }) {
+export function ActiveCodes({
+  state,
+  area,
+  className,
+}: {
+  state: MachineState
+  /** Named zone in the fixed side grid (WIDE_SECTIONS); the SETUP and AUTO sides use "codes". */
+  area?: string
+  className?: string
+}) {
   const lines = programLines(state)
   const started = state.run !== 'IDLE' || state.line > 0
   const modal = modalCodes(lines, started ? state.line : -1)
@@ -44,7 +76,7 @@ export function ActiveCodes({ state }: { state: MachineState }) {
     { label: 'СОЖ', value: state.coolant ? 'M08' : 'M09', hot: state.coolant },
   ]
   return (
-    <Section icon={Braces} title="Активные коды">
+    <Section icon={Braces} title="Активные коды" area={area} className={className}>
       <ul className="grid grid-cols-5 gap-1" aria-label="Активные G и M коды">
         {codes.map((c) => (
           <Chip key={c.label} {...c} />
@@ -68,17 +100,43 @@ export function ProgramSide({
   const lines = programLines(state)
   const progress = Math.round((state.line / Math.max(1, lines.length - 1)) * 100)
   const nextLine = lines[state.nextLine]
-  const tools = programTools(lines)
-  const toolList = tools.length > 0 ? tools : [state.tool]
   const load = spindleLoad(state)
 
   return (
     <aside className="flex min-h-0 flex-col gap-2" aria-label="Обработка программы">
       <Panel title="Обработка" className="min-h-0 flex-1">
         <div className={wide ? WIDE_SECTIONS : 'flex h-full flex-col overflow-y-auto'}>
+          <ToolSection state={state} className={wide ? 'border-r' : undefined} />
+
+          <Section icon={Fan} title="Нагрузка" area="load">
+            <LoadRow value={load} />
+            {AXES.map((ax) => (
+              <AxisLoad key={ax} axis={ax} value={axisLoad(state, ax)} />
+            ))}
+          </Section>
+
+          <ActiveCodes state={state} area="codes" className={wide ? 'border-r' : undefined} />
+
+          <Section icon={SlidersHorizontal} title="Корректоры" area="correctors">
+            <OverrideRow
+              label="S%"
+              value={state.spindleOverride}
+              max={paramValue(state.params, MAX_SPINDLE_PARAM)}
+              keys={['[', ']']}
+            />
+            <OverrideRow
+              label="F%"
+              value={state.feedOverride}
+              max={paramValue(state.params, MAX_FEED_PARAM)}
+              keys={['−', '=']}
+            />
+            <RapidRow value={state.rapidOverride} />
+          </Section>
+
           <Section
             icon={FileCode}
             title="Выполнение"
+            area="execution"
             right={
               <span className="font-mono font-bold tabular-nums">
                 {state.line + 1}
@@ -101,70 +159,6 @@ export function ProgramSide({
               <ProdStat icon={History} label="Прошлый" value={formatTime(state.lastCycle)} />
               <ProdStat icon={Package} label="Деталей" value={String(state.partCount)} />
             </dl>
-          </Section>
-
-          <ActiveCodes state={state} />
-
-          <Section icon={Wrench} title="Инструмент программы">
-            <ul className="flex flex-col gap-0.5">
-              {toolList.slice(0, 3).map((n) => {
-                const tool = state.tools.find((x) => x.number === n)
-                const inSpindle = n === state.tool
-                return (
-                  <li
-                    key={n}
-                    className={cn('flex items-center gap-2 rounded-sm px-1 py-0.5', inSpindle && 'bg-accent')}
-                  >
-                    <span
-                      className={cn(
-                        'flex h-6 w-9 shrink-0 items-center justify-center rounded-sm font-mono text-xs font-bold',
-                        inSpindle ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
-                      )}
-                    >
-                      T{String(n).padStart(2, '0')}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-xs font-semibold">
-                      {tool?.name ?? 'Не найден в таблице'}
-                      {inSpindle && <span className="sr-only"> (в шпинделе)</span>}
-                    </span>
-                    <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground" title="Наработка">
-                      {formatTime(state.toolTime[n] ?? 0)}
-                    </span>
-                    {tool && (
-                      <span
-                        className={cn(
-                          'font-mono text-xs font-bold tabular-nums',
-                          tool.life < 10 ? 'text-destructive' : 'text-muted-foreground',
-                        )}
-                        title="Остаточный ресурс"
-                      >
-                        {tool.life}%
-                      </span>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
-          </Section>
-
-          <Section icon={Fan} title="Нагрузка">
-            <LoadRow value={load} />
-          </Section>
-
-          <Section icon={SlidersHorizontal} title="Корректоры">
-            <OverrideRow
-              label="S%"
-              value={state.spindleOverride}
-              max={paramValue(state.params, MAX_SPINDLE_PARAM)}
-              keys={['[', ']']}
-            />
-            <OverrideRow
-              label="F%"
-              value={state.feedOverride}
-              max={paramValue(state.params, MAX_FEED_PARAM)}
-              keys={['−', '=']}
-            />
-            <RapidRow value={state.rapidOverride} />
           </Section>
         </div>
       </Panel>

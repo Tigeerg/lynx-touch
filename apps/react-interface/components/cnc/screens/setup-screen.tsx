@@ -1,41 +1,18 @@
-import { Fan, Move, Radio, SlidersHorizontal, Wrench } from 'lucide-react'
+import { Move, Radio, SlidersHorizontal } from 'lucide-react'
 import { toWork, type Action } from '@/lib/cnc/machine'
 import { PROBE_STEP_MEASURE, PROBE_TOOL } from '@/lib/cnc/probe'
 import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
-import { isCutting, spindleLoad } from '@/lib/cnc/spindle'
-import { AXES, type Axis, type MachineState } from '@/lib/cnc/types'
+import { AXES, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { MdiInput } from '../mdi-input'
 import { ActiveCodes } from '../program-side'
-import { formatCoord, formatTime, Lamp, Panel } from '../primitives'
-import { LoadRow, OperatorPad, OverrideRow, RapidRow, Section } from '../side-status'
+import { formatCoord, Lamp, Panel } from '../primitives'
+import { OperatorPad, OverrideRow, RapidRow, Section, ToolSection, WIDE_SECTIONS } from '../side-status'
 
 // The SETUP workplace: on the left the large work and machine coordinates, the MDI line and
-// the probe indication; on the right the tool, the load, the active codes, the overrides. The
-// toolpath graphics are hidden here: setup goes by the numbers.
-
-function AxisLoad({ axis, value }: { axis: Axis; value: number }) {
-  const tone = value > 80 ? 'bg-destructive' : value > 60 ? 'bg-warning' : 'bg-primary'
-  return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="w-4 font-mono font-bold text-muted-foreground">{axis}</span>
-      <div
-        role="meter"
-        aria-label={`Нагрузка оси ${axis}`}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.min(100, value)}
-        className="relative h-2.5 flex-1 overflow-hidden rounded-sm border bg-muted"
-      >
-        <div
-          className={cn('h-full transition-[width] duration-300', tone)}
-          style={{ width: `${Math.min(100, value)}%` }}
-        />
-      </div>
-      <span className="w-9 text-right font-mono text-xs font-bold tabular-nums">{value}%</span>
-    </div>
-  )
-}
+// the probe indication; on the right the tool, the active codes, the overrides. The toolpath
+// graphics are hidden here: setup goes by the numbers. The load is not shown in setup: the
+// operator reads it in AUTO while cutting, not while preparing.
 
 function Indicator({ label, on }: { label: string; on: boolean }) {
   return (
@@ -120,53 +97,22 @@ export function SetupSide({
   state,
   dispatch,
   showPad = true,
+  wide = false,
 }: {
   state: MachineState
   dispatch: (a: Action) => void
   showPad?: boolean
+  wide?: boolean
 }) {
-  const tool = state.tools.find((x) => x.number === state.tool)
-  const cutting = isCutting(state)
-  const load = spindleLoad(state)
-  const axisLoad = (ax: Axis): number => {
-    if (!cutting || !state.motion) return 0
-    const d = Math.abs(state.motion.target[ax] - state.machine[ax])
-    return d > 0.0005 ? Math.min(100, Math.round(20 + (d / 5) * 60)) : 4
-  }
-
   return (
     <aside className="flex min-h-0 flex-col gap-2" aria-label="Наладка: состояние">
       <Panel title="Наладка" className="min-h-0 flex-1">
-        <div className="flex h-full flex-col overflow-y-auto">
-          <Section
-            icon={Wrench}
-            title="Инструмент"
-            right={<span className="font-mono font-bold">T{String(state.tool).padStart(2, '0')}</span>}
-          >
-            <div className="flex items-center gap-2.5 pb-0.5">
-              <span className="flex h-7 w-10 shrink-0 items-center justify-center rounded-sm bg-primary font-mono text-sm font-bold text-primary-foreground">
-                T{String(state.tool).padStart(2, '0')}
-              </span>
-              <div className="min-w-0 leading-tight">
-                <p className="truncate text-sm font-semibold">{tool?.name ?? 'Не найден в таблице'}</p>
-                <p className="truncate font-mono text-xs text-muted-foreground">
-                  D{tool?.diameter} · L {tool?.length.toFixed(3)} · ресурс {tool?.life}% · наработка{' '}
-                  {formatTime(state.toolTime[state.tool] ?? 0)}
-                </p>
-              </div>
-            </div>
-          </Section>
+        <div className={wide ? WIDE_SECTIONS : 'flex h-full flex-col overflow-y-auto'}>
+          <ToolSection state={state} className={wide ? 'border-r' : undefined} />
 
-          <Section icon={Fan} title="Нагрузка">
-            <LoadRow value={load} />
-            {AXES.map((ax) => (
-              <AxisLoad key={ax} axis={ax} value={axisLoad(ax)} />
-            ))}
-          </Section>
+          <ActiveCodes state={state} area="codes" className={wide ? 'border-r' : undefined} />
 
-          <ActiveCodes state={state} />
-
-          <Section icon={SlidersHorizontal} title="Корректоры">
+          <Section icon={SlidersHorizontal} title="Корректоры" area="correctors">
             <OverrideRow
               label="S%"
               value={state.spindleOverride}

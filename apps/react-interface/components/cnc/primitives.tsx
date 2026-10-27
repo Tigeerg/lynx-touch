@@ -1,5 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { toWork } from '@/lib/cnc/machine'
+import { AXES, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 
 export function Keycap({ children, className }: { children: ReactNode; className?: string }) {
@@ -81,6 +83,62 @@ export function OverrideBar({ value, max, mark = 100 }: { value: number; max: nu
 export function formatCoord(v: number, digits = 3) {
   const rounded = Math.abs(v) < 0.5 * 10 ** -digits ? 0 : v
   return `${rounded < 0 ? '−' : '+'}${Math.abs(rounded).toFixed(digits)}`
+}
+
+// The position strip: the work position in the active work offset, readable at rest and on every
+// screen that shows it (AUTO and PROGON). One markup for both places, so the offset code and the
+// unit never drift apart. `large` is the AUTO reading: the coordinates are the primary number
+// there, the rest of the panel is secondary.
+export function PositionStrip({
+  state,
+  compact = false,
+  large = false,
+  className,
+}: {
+  state: MachineState
+  compact?: boolean
+  large?: boolean
+  className?: string
+}) {
+  const work = toWork(state)
+  const offsetCode = state.offsets[state.activeOffset].code
+  return (
+    <div
+      role="group"
+      aria-label={`Рабочие координаты в ${offsetCode}, мм`}
+      className={cn('flex min-w-0 items-center', large ? 'gap-3' : 'items-baseline gap-2', className)}
+    >
+      <span className={cn('shrink-0 font-mono font-bold tabular-nums text-foreground', large ? 'text-sm' : 'text-xs')}>
+        {offsetCode}
+      </span>
+      <span
+        className={cn(
+          'shrink-0 font-semibold uppercase tracking-wider text-muted-foreground',
+          large ? 'text-[11px]' : 'text-[10px]',
+        )}
+      >
+        Рабочие · мм
+      </span>
+      <div className={cn('ml-auto flex min-w-0 items-baseline', large ? 'gap-4' : 'gap-2.5')}>
+        {AXES.map((ax) => (
+          <span key={ax} className="flex items-baseline gap-1">
+            <span className="font-mono text-[10px] font-bold uppercase text-muted-foreground">{ax}</span>
+            <span
+              className={cn(
+                'font-mono font-bold tabular-nums',
+                large ? 'text-2xl leading-none' : compact ? 'text-sm' : 'text-base',
+              )}
+            >
+              {formatCoord(work[ax])}
+            </span>
+            {ax === 'A' && (
+              <span className={cn('font-sans text-muted-foreground', large ? 'text-xs' : 'text-[10px]')}>°</span>
+            )}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export function formatTime(ms: number) {

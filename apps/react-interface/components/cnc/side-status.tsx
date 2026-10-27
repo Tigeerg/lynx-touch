@@ -16,11 +16,12 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { MAX_RPM, RAPID_STEPS } from '@/lib/cnc/data'
+import { MAX_RPM, RAPID_STEPS, SCREEN_LABEL } from '@/lib/cnc/data'
+import { programTools } from '@/lib/cnc/gcode'
 import { motionSpeed, programLines, type Action } from '@/lib/cnc/machine'
 import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
 import { spindleLoad, spindleRpm } from '@/lib/cnc/spindle'
-import { JOG_FEEDS, MPG_STEPS, mpgMultiplier, type MachineState } from '@/lib/cnc/types'
+import { JOG_FEEDS, MPG_STEPS, mpgMultiplier, type Axis, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { formatTime, Keycap, Lamp, OverrideBar, Panel } from './primitives'
 
@@ -41,14 +42,24 @@ export function Section({
   title,
   right,
   children,
+  area,
+  className,
 }: {
   icon: LucideIcon
   title: string
   right?: ReactNode
   children: ReactNode
+  /** Named zone in the fixed side grid (WIDE_SECTIONS): tool, load, codes, correctors, execution. */
+  area?: string
+  className?: string
 }) {
   return (
-    <section className="flex flex-col gap-0.5 border-b px-2.5 py-0.5 last:border-b-0">
+    <section
+      style={area ? { gridArea: area } : undefined}
+      // The blocks keep their content height (`shrink-0`): a short column scrolls instead of
+      // crushing the last block, so the operator never reads half a number.
+      className={cn('flex shrink-0 flex-col gap-0.5 border-b px-2.5 last:border-b-0', className)}
+    >
       <header className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         <Icon className="size-3.5" aria-hidden="true" />
         <h3>{title}</h3>
@@ -60,6 +71,78 @@ export function Section({
       </header>
       {children}
     </section>
+  )
+}
+
+// The one "Tool" block of the side column, the same in AUTO and SETUP: the header names the tool
+// in the spindle, the body lists the tools the program itself calls (up to three). The current
+// tool is highlighted and carries its geometry (D, L) on a second line; a program without tool
+// changes still shows the tool in the spindle, so the block is never empty.
+export function ToolSection({
+  state,
+  area = 'tool',
+  className,
+}: {
+  state: MachineState
+  /** Named zone in the fixed side grid (WIDE_SECTIONS): "tool". */
+  area?: string
+  className?: string
+}) {
+  const tools = programTools(programLines(state))
+  const list = (tools.length > 0 ? tools : [state.tool]).slice(0, 3)
+
+  return (
+    <Section
+      icon={Wrench}
+      title={SCREEN_LABEL.tool}
+      area={area}
+      className={className}
+      right={<span className="font-mono font-bold">T{String(state.tool).padStart(2, '0')}</span>}
+    >
+      <ul className="flex flex-col gap-0.5">
+        {list.map((n) => {
+          const tool = state.tools.find((x) => x.number === n)
+          const current = n === state.tool
+          return (
+            <li key={n} className={cn('flex flex-col gap-0.5 rounded-sm px-1 py-0.5', current && 'bg-accent')}>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={cn(
+                    'flex h-5 w-8 shrink-0 items-center justify-center rounded-sm font-mono text-[10px] font-bold',
+                    current ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
+                  )}
+                >
+                  T{String(n).padStart(2, '0')}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">
+                  {tool?.name ?? 'Не найден в таблице'}
+                  {current && <span className="sr-only"> (в шпинделе)</span>}
+                </span>
+                <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground" title="Наработка">
+                  {formatTime(state.toolTime[n] ?? 0)}
+                </span>
+                {tool && (
+                  <span
+                    className={cn(
+                      'shrink-0 font-mono text-[10px] font-bold tabular-nums',
+                      tool.life < 10 ? 'text-destructive' : 'text-muted-foreground',
+                    )}
+                    title="Остаточный ресурс"
+                  >
+                    {tool.life}%
+                  </span>
+                )}
+              </div>
+              {current && (
+                <p className="pl-[2.4rem] font-mono text-[10px] tabular-nums text-muted-foreground">
+                  D{tool?.diameter ?? '—'} · L {tool ? tool.length.toFixed(3) : '—'}
+                </p>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </Section>
   )
 }
 
@@ -130,6 +213,31 @@ export function LoadRow({ value }: { value: number }) {
   )
 }
 
+// The load of one axis: the same bar in SETUP and AUTO, so the two sides read alike. The number
+// comes from the library model (axisLoad), not from a local formula.
+export function AxisLoad({ axis, value }: { axis: Axis; value: number }) {
+  const tone = value > 80 ? 'bg-destructive' : value > 60 ? 'bg-warning' : 'bg-primary'
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="w-4 font-mono font-bold text-muted-foreground">{axis}</span>
+      <div
+        role="meter"
+        aria-label={`Нагрузка оси ${axis}`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.min(100, value)}
+        className="relative h-2.5 flex-1 overflow-hidden rounded-sm border bg-muted"
+      >
+        <div
+          className={cn('h-full transition-[width] duration-300', tone)}
+          style={{ width: `${Math.min(100, value)}%` }}
+        />
+      </div>
+      <span className="w-9 text-right font-mono text-xs font-bold tabular-nums">{value}%</span>
+    </div>
+  )
+}
+
 export function RapidRow({ value }: { value: number }) {
   return (
     <div className="flex items-center gap-2 text-xs">
@@ -153,7 +261,14 @@ export function RapidRow({ value }: { value: number }) {
   )
 }
 
+// Fixed side grid for AUTO and SETUP: the block keeps its column whatever the set, and a missing
+// block leaves its zone empty instead of shifting the others. The execution strip spans the
+// bottom only in AUTO (its area is declared there, so the spare row stays empty in SETUP).
 export const WIDE_SECTIONS =
+  "grid h-full grid-cols-2 grid-rows-[auto_auto_auto] content-start overflow-y-auto [grid-template-areas:'tool_load'_'codes_correctors'_'execution_execution'] [&>section]:py-1.5"
+
+// The status column still flows in reading order: it has no fixed zones.
+export const SIDE_FLOW =
   'grid h-full grid-cols-2 content-start overflow-y-auto [&>section:nth-child(odd)]:border-r [&>section]:py-1.5'
 
 export function SideStatus({
@@ -177,7 +292,7 @@ export function SideStatus({
   return (
     <aside className="flex min-h-0 flex-col gap-2" aria-label="Состояние станка">
       <Panel title="Режимы" className="min-h-0 flex-1">
-        <div className={wide ? WIDE_SECTIONS : 'flex h-full flex-col overflow-y-auto'}>
+        <div className={wide ? SIDE_FLOW : 'flex h-full flex-col overflow-y-auto'}>
           <Section
             icon={FileCode}
             title="Кадр"

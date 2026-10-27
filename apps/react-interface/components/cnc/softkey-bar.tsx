@@ -65,7 +65,7 @@ export function SoftkeyBar({ keys, onPress }: { keys: (Softkey | null)[]; onPres
             )}
           >
             {k.active && <span className="absolute inset-x-0 top-0 h-0.5 bg-success" aria-hidden="true" />}
-            <div className="flex items-center justify-between">
+            <div className="flex shrink-0 items-center gap-1">
               <Keycap className="h-5 min-w-5 px-1 text-[10px]">{label}</Keycap>
               {k.disabled ? (
                 <Lock className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -76,7 +76,9 @@ export function SoftkeyBar({ keys, onPress }: { keys: (Softkey | null)[]; onPres
                 />
               )}
             </div>
-            <span className="line-clamp-2 min-w-0 break-words text-xs font-semibold leading-tight">{k.label}</span>
+            <span className="line-clamp-2 min-w-0 flex-1 break-words text-left text-xs font-semibold leading-tight">
+              {k.label}
+            </span>
           </button>
         )
       })}

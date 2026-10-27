@@ -15,7 +15,7 @@ import { abortProbe, probeTick } from './probe-exec'
 import { idleSim, tickSim } from './prog'
 import { evaluateLadder, sameLadderMem, sameLadderSignals } from './ladder-scan'
 import { tickToolMeasure } from './tool-measure'
-import type { Result } from './subsystem'
+import type { Dispatch, Result } from './subsystem'
 import { AXES, MDI_HISTORY_SIZE, type Axes, type MachineState } from './types'
 
 /** The dwell after a block with motion: how long the axes rest before the next block. */
@@ -150,7 +150,7 @@ const CYCLE_TYPES = new Set<string>(['TICK', 'CYCLE_START', 'FEED_HOLD', 'RESET'
 
 export const isCycleAction = (a: { type: string }): a is CycleAction => CYCLE_TYPES.has(a.type)
 
-export function cycleReducer(s: MachineState, a: CycleAction): Result {
+export function cycleReducer(s: MachineState, a: CycleAction, dispatch: Dispatch): Result {
   switch (a.type) {
     case 'TICK': {
       let n = s
@@ -208,6 +208,18 @@ export function cycleReducer(s: MachineState, a: CycleAction): Result {
         }
       }
       if (s.editMode) return { s, msg: 'Выйдите из режима редактирования', level: 'warn' }
+      // The PROGON chooses what ПУСК runs (F4): the axis-free simulation or the dry run. The
+      // branch is before the AUTO one, because the workplace keeps the AUTO mode.
+      if (s.workplace === 'TEST') {
+        if (s.test.runMode === 'dry') {
+          const start = s.nextLine >= programLines(s).length ? 0 : s.nextLine
+          return { s: executeLine({ ...s, sim: idleSim(), run: 'RUN', dryRun: true }, start) }
+        }
+        // The SIM branch owns the guards (an empty program) and the message words; the PROGON
+        // adds only one thing: no dry run is left on while the axes stand still.
+        const next = dispatch(s, { type: 'SIM', on: true })
+        return { s: next.sim.active ? { ...next, dryRun: false } : next }
+      }
       if (s.mode === 'AUTO') {
         const start = s.nextLine >= programLines(s).length ? 0 : s.nextLine
         return { s: executeLine({ ...s, sim: idleSim(), run: 'RUN' }, start) }
@@ -229,6 +241,8 @@ export function cycleReducer(s: MachineState, a: CycleAction): Result {
     }
 
     case 'FEED_HOLD':
+      // The PROGON simulation has no feed of its own: СТОП stops it, so the key is not dead.
+      if (s.sim.active) return { s: { ...s, sim: idleSim() }, msg: 'Симуляция остановлена', level: 'warn' }
       return s.run === 'RUN'
         ? { s: { ...s, run: 'HOLD' }, msg: 'Стоп подачи. ПУСК — продолжить', level: 'warn' }
         : { s }

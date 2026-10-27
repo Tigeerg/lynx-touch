@@ -4,7 +4,7 @@
 // growing it (the tools/check.ps1 mark).
 import { clampIndex } from './clamp'
 import { notify } from './messages'
-import { THEME_OPTIONS, THEME_PARAM, TOOLPATH_PARAM, UI_MODE_PARAM } from './service-data'
+import { paramValue, THEME_OPTIONS, THEME_PARAM, TOOLPATH_PARAM, UI_MODE_PARAM } from './service-data'
 import { markSaved } from './service-edit'
 import type { MachineAction } from './subsystem'
 import type { MachineState } from './types'
@@ -12,8 +12,8 @@ import type { MachineState } from './types'
 export function machineReducer(s: MachineState, a: MachineAction): MachineState {
   switch (a.type) {
     case 'THEME_TOGGLE': {
-      // A missing key (an older state) takes the first theme, not NaN.
-      const next = ((s.params[THEME_PARAM] ?? 0) + 1) % THEME_OPTIONS.length
+      // A missing key (an older state) steps from the catalogue default, not from the first theme or NaN.
+      const next = (paramValue(s.params, THEME_PARAM) + 1) % THEME_OPTIONS.length
       return markSaved({ ...s, params: { ...s.params, [THEME_PARAM]: next } }, THEME_PARAM, next)
     }
     case 'UI_MODE_SET':

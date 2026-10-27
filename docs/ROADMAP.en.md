@@ -228,6 +228,7 @@ numbers and threads.
 ### M5. Quick programming in the control — L
 
 **After alpha.** Simple operations: pocket, face, end; drilling and chamfer by agreement.
+The detailed plan, input forms and estimate — [`PLAN-QUICKPROG.en.md`](PLAN-QUICKPROG.en.md).
 
 * parameter form and preview on stock;
 * program generator, collision and stock-bound checks;

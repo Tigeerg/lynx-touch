@@ -55,12 +55,13 @@ export function SoftkeyBar({ keys, onPress }: { keys: (Softkey | null)[]; onPres
             key={label}
             type="button"
             tabIndex={-1}
-            disabled={k.disabled}
+            aria-disabled={k.disabled}
             title={k.disabled ? (k.reason ?? 'Сейчас недоступно') : undefined}
             aria-pressed={k.active ?? undefined}
             onClick={() => onPress(k)}
             className={cn(
-              'relative flex h-11 items-center gap-1.5 overflow-hidden rounded-md border bg-card px-1.5 text-left transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-card',
+              'relative flex h-11 items-center gap-1.5 overflow-hidden rounded-md border bg-card px-1.5 text-left transition-colors hover:bg-accent',
+              k.disabled && 'cursor-not-allowed opacity-40 hover:bg-card',
               k.active && 'border-primary bg-accent',
             )}
           >

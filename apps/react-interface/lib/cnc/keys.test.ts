@@ -3,41 +3,12 @@
 // emergency stop must stay reachable from Shift+Esc. The layout itself is checked once without
 // the help, so moving it out of the hook did not change the usual map.
 import { describe, expect, it } from 'vitest'
-import { keyToAction } from './keys'
+import { HELP_BLOCKED, keyToAction, routeKey, type KeyLike } from './keys'
 import { initialState } from './machine'
+import { getSoftkeys } from './softkeys'
 import type { MachineState } from './types'
 
-const key = (code: string, shiftKey = false): KeyboardEvent => ({ code, shiftKey }) as KeyboardEvent
-
-// Everything the overlay used to pass through: cycle keys, functions, tabs, arrows, axes,
-// workplace and the overrides. F1..F8 and Enter never reach keyToAction while the help is open
-// in the hook either; here the key map itself must not hand them out.
-const HELP_BLOCKED = [
-  'Enter',
-  'NumpadEnter',
-  'Space',
-  'F1',
-  'F4',
-  'F8',
-  'Digit1',
-  'Digit5',
-  'ArrowLeft',
-  'ArrowRight',
-  'ArrowUp',
-  'ArrowDown',
-  'PageUp',
-  'KeyM',
-  'KeyX',
-  'KeyY',
-  'KeyZ',
-  'KeyA',
-  'Minus',
-  'Equal',
-  'BracketLeft',
-  'BracketRight',
-  'Digit9',
-  'Digit0',
-]
+const key = (code: string, shiftKey = false): KeyLike => ({ code, shiftKey })
 
 describe('справка: модальное окно не пропускает клавиши', () => {
   const help: MachineState = { ...initialState, help: true }
@@ -68,5 +39,42 @@ describe('раскладка без справки', () => {
     expect(keyToAction(initialState, key('KeyH'))).toEqual({ type: 'HELP' })
     expect(keyToAction(initialState, key('KeyM'))).toEqual({ type: 'SET_WORKPLACE', workplace: 'TEST' })
     expect(keyToAction(initialState, key('Digit2'))).toEqual({ type: 'SET_SCREEN', screen: 'offset' })
+  })
+})
+
+describe('routeKey: early branches the old hook swallowed', () => {
+  it('Shift+Esc and Pause stop the machine even while typing', () => {
+    expect(routeKey(initialState, key('Escape', true), true)).toMatchObject({
+      action: { type: 'ESTOP' },
+      prevent: true,
+    })
+    expect(routeKey(initialState, key('Pause'), true)).toMatchObject({ action: { type: 'ESTOP' }, prevent: true })
+  })
+
+  it('an ordinary key in a field does not reach the machine', () => {
+    expect(routeKey(initialState, key('Enter'), true)).toBeNull()
+    expect(routeKey(initialState, key('KeyH'), true)).toBeNull()
+  })
+
+  it('an F key under help is swallowed and does nothing', () => {
+    const help = { ...initialState, help: true }
+    expect(routeKey(help, key('F4'))).toEqual({ action: null, prevent: true })
+  })
+
+  it('a disabled softkey returns its reason instead of silence', () => {
+    const stopped = { ...initialState, run: 'RUN' as const }
+    const index = getSoftkeys(stopped).findIndex((k) => k?.disabled)
+    expect(index).toBeGreaterThanOrEqual(0)
+    const route = routeKey(stopped, key(`F${index + 1}`))
+    expect(route?.prevent).toBe(true)
+    expect(route?.action).toBeNull()
+    expect(route?.hint).toBeTruthy()
+  })
+
+  it('V cycles the view only on the work screens', () => {
+    expect(routeKey(initialState, key('KeyV'))).toEqual({
+      action: { type: 'PATH_VIEW_CYCLE' },
+      prevent: true,
+    })
   })
 })

@@ -1,16 +1,61 @@
 // The console keyboard map: a keydown becomes an action or nothing. It lives in lib so the
 // layout is checked without a browser (keys.test.ts) and the hook only owns the modal/focus
 // routing around it.
+import { getSoftkeys } from './softkeys'
 import type { Action } from './subsystem'
 import { TABS, WORKPLACES, screenOfTab, type Axis, type MachineState } from './types'
 
+// Structural key data: lib/cnc has no DOM and stays testable without a browser.
+export type KeyLike = {
+  code: string
+  shiftKey: boolean
+  ctrlKey?: boolean
+  metaKey?: boolean
+  altKey?: boolean
+}
+
+export type KeyRoute = { action: Action | null; hint?: string; prevent: boolean }
+
 const AXIS_KEYS: Record<string, Axis> = { KeyX: 'X', KeyY: 'Y', KeyZ: 'Z', KeyA: 'A' }
 
-// Help is modal: only H and Esc close it, everything else is swallowed. F1..F8 never reach
-// this map; the hook swallows them separately, so the two layers agree on the modal window.
-const closesHelp = (e: KeyboardEvent) => e.code === 'KeyH' || e.code === 'Escape'
+// Help is modal: only H and Esc close it; F1..F8 are swallowed so the browser does not act,
+// and every other key returns no action while the overlay is open.
+export const HELP_BLOCKED = [
+  'Enter',
+  'NumpadEnter',
+  'Space',
+  'F1',
+  'F4',
+  'F8',
+  'Digit1',
+  'Digit5',
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowUp',
+  'ArrowDown',
+  'PageUp',
+  'PageDown',
+  'KeyM',
+  'KeyO',
+  'KeyE',
+  'KeyP',
+  'KeyX',
+  'KeyY',
+  'KeyZ',
+  'KeyA',
+  'Insert',
+  'Delete',
+  'Minus',
+  'Equal',
+  'BracketLeft',
+  'BracketRight',
+  'Digit9',
+  'Digit0',
+] as const
 
-export function keyToAction(state: MachineState, e: KeyboardEvent): Action | null {
+const closesHelp = (e: KeyLike) => e.code === 'KeyH' || e.code === 'Escape'
+
+export function keyToAction(state: MachineState, e: KeyLike): Action | null {
   // Help is modal: H and Esc close it, every other key gives no action. Without this guard the
   // overlay passed Enter, Space, the tabs, the axes and the overrides through to the machine.
   if (state.help) {
@@ -141,4 +186,42 @@ export function keyToAction(state: MachineState, e: KeyboardEvent): Action | nul
     default:
       return null
   }
+}
+
+/**
+ * One routing point for the console: emergency stop, modal help, F1..F8, text fields and the
+ * ordinary key map. The hook only supplies DOM facts (typing) and dispatches the result.
+ */
+export function routeKey(state: MachineState, e: KeyLike, typing = false): KeyRoute | null {
+  if (e.ctrlKey || e.metaKey || e.altKey) return null
+
+  // The emergency stop is reachable from anywhere, including a focused field or the ladder form.
+  if ((e.code === 'Escape' && e.shiftKey) || e.code === 'Pause') {
+    return { action: { type: 'ESTOP' }, prevent: true }
+  }
+
+  if (state.help) {
+    if (closesHelp(e)) return { action: { type: 'HELP', open: false }, prevent: true }
+    return { action: null, prevent: /^F[1-8]$/.test(e.code) }
+  }
+
+  const fn = /^F([1-8])$/.exec(e.code)
+  if (fn) {
+    const key = getSoftkeys(state)[Number(fn[1]) - 1]
+    if (!key) return { action: null, prevent: true }
+    if (key.disabled) {
+      return { action: null, hint: key.reason ?? 'Клавиша недоступна', prevent: true }
+    }
+    return { action: key.action, prevent: true }
+  }
+
+  // A field or the ladder form owns the keyboard; only the emergency stop above gets through.
+  if (typing || state.editor || state.ladder.form) return null
+
+  if (e.code === 'KeyV' && !state.fileDialog && (state.screen === 'pos' || state.screen === 'prog')) {
+    return { action: { type: 'PATH_VIEW_CYCLE' }, prevent: true }
+  }
+
+  const action = keyToAction(state, e)
+  return action ? { action, prevent: true } : null
 }

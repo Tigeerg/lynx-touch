@@ -72,15 +72,11 @@ export interface SimState {
 // start. A named union, not a flag: a third mode must be added here, not guessed at call sites.
 export type TestRunMode = 'sim' | 'dry'
 
-// Workpiece PROGON (test) state: showing the graphics and the code curtain, the NC bounding
-// box, the view angle, and the run mode the ПУСК uses.
+// Workpiece PROGON (test) state: the NC bounding box, the view angle, and the run mode the
+// ПУСК uses.
 export interface TestState {
-  /** The G-code curtain is hidden (F8 "Hide code"). */
-  curtain: boolean
   /** The NC bounding box is shown (F5). */
   bbox: boolean
-  /** The graphics are cleared: the toolpath is not drawn (F6). */
-  hidePath: boolean
   /** Work: what to show on the screen (F8 "View"). */
   autoView: AutoView
   view: PathView
@@ -88,9 +84,9 @@ export interface TestState {
   runMode: TestRunMode
 }
 
-// Auto view modes, cycled by F8: toolpath, gcode, both.
-export type AutoView = 'trajectory' | 'gcode' | 'both'
-export const AUTO_VIEWS: AutoView[] = ['trajectory', 'gcode', 'both']
+// Auto view modes, cycled by F8: toolpath, gcode, both, and the code over the toolpath.
+export type AutoView = 'trajectory' | 'gcode' | 'both' | 'overlay'
+export const AUTO_VIEWS: AutoView[] = ['trajectory', 'gcode', 'both', 'overlay']
 
 // Tool-length measurement (the tool setter): a modal run with animated phases.
 export interface ToolMeasureState {

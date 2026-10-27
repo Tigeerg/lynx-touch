@@ -1,15 +1,15 @@
-// PROGON workplace check: switching the curtain, the bounding box, graphics clearing and the
-// view angle, the run mode F4 cycles (the simulation or the dry run), what ПУСК starts in each
-// mode, and the F1-F8 set. The tests hold the state and the message words.
+// PROGON workplace check: the bounding box, the view angle, the run mode F4 cycles (the
+// simulation or the dry run), what ПУСК starts in each mode, and the F1-F8 set. The tests hold
+// the state and the message words.
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer, type Action } from './machine'
 import { getSoftkeys } from './softkeys'
-import type { MachineState } from './types'
+import { AUTO_VIEWS, type MachineState } from './types'
 
 const run = (state: MachineState, ...actions: Action[]) => actions.reduce(reducer, state)
 const test = (...actions: Action[]) => run(initialState, { type: 'SET_WORKPLACE', workplace: 'TEST' }, ...actions)
 
-describe('прогон: шторка, габариты, очистка графики, вид', () => {
+describe('прогон: габариты и вид', () => {
   it('ПРОГОН включает АВТО и холостой ход', () => {
     const s = test()
 
@@ -18,25 +18,11 @@ describe('прогон: шторка, габариты, очистка граф�
     expect(s.dryRun).toBe(true)
   })
 
-  it('шторка кода скрывается и возвращается', () => {
-    const hidden = test({ type: 'TEST_CURTAIN' })
-
-    expect(hidden.test.curtain).toBe(true)
-    expect(test({ type: 'TEST_CURTAIN' }, { type: 'TEST_CURTAIN' }).test.curtain).toBe(false)
-  })
-
   it('габариты УП переключаются с сообщением', () => {
     const on = test({ type: 'TEST_BBOX' })
 
     expect(on.test.bbox).toBe(true)
     expect(on.message?.text).toBe('Габариты УП: экстремумы X/Y/Z на экране')
-  })
-
-  it('очистка графики переключается с сообщением', () => {
-    const cleared = test({ type: 'TEST_CLEAR_PATH' })
-
-    expect(cleared.test.hidePath).toBe(true)
-    expect(cleared.message?.text).toBe('Графика очищена — F6 вернёт отрисовку')
   })
 
   it('вид идёт по кругу ISO, XY, XZ', () => {
@@ -58,7 +44,7 @@ describe('прогон: шторка, габариты, очистка граф�
       'Покадр.',
       'M01',
       'Габариты УП',
-      'Вид: совместно',
+      'Отображение: траектория',
     ])
     expect(keys.map((k) => k?.action?.type)).toEqual([
       'FILE_DIALOG',
@@ -142,24 +128,28 @@ describe('прогон: шторка, габариты, очистка граф�
     expect(s.message?.text).toBe('Симуляция остановлена')
   })
 
-  it('F8 проходит виды прогона по кругу trajectory, gcode, both', () => {
-    const a = test()
-    const b = run(a, { type: 'AUTO_VIEW_CYCLE' })
-    const c = run(b, { type: 'AUTO_VIEW_CYCLE' })
-    const d = run(c, { type: 'AUTO_VIEW_CYCLE' })
+  it('F8 проходит виды прогона по кругу trajectory, gcode, both, overlay', () => {
+    // The cycle must match AUTO_VIEWS step for step: the number of steps and the labels drift
+    // apart exactly when one of the two lists is edited alone (the panel would show a view that
+    // F8 never selects).
+    const seen = [test()]
+    for (let i = 1; i < AUTO_VIEWS.length; i += 1) seen.push(run(seen[i - 1], { type: 'AUTO_VIEW_CYCLE' }))
+    const back = run(seen[seen.length - 1], { type: 'AUTO_VIEW_CYCLE' })
 
-    expect([a.test.autoView, b.test.autoView, c.test.autoView, d.test.autoView]).toEqual([
-      'both',
-      'trajectory',
-      'gcode',
-      'both',
+    expect(seen.map((s) => s.test.autoView)).toEqual(['trajectory', 'gcode', 'both', 'overlay'])
+    expect(back.test.autoView).toBe('trajectory')
+    expect(seen.map((s) => getSoftkeys(s)[7]?.label)).toEqual([
+      'Отображение: траектория',
+      'Отображение: gcode',
+      'Отображение: совместно',
+      'Отображение: УП поверх',
     ])
-    expect([a, b, c, d].map((s) => getSoftkeys(s)[7]?.label)).toEqual([
-      'Вид: совместно',
-      'Вид: траектория',
-      'Вид: gcode',
-      'Вид: совместно',
+    expect(seen.slice(1).map((s) => s.message?.text)).toEqual([
+      'Отображение: gcode',
+      'Отображение: совместно',
+      'Отображение: УП поверх',
     ])
-    expect(getSoftkeys(b)[7]?.action).toEqual({ type: 'AUTO_VIEW_CYCLE' })
+    expect(back.message?.text).toBe('Отображение: траектория')
+    expect(getSoftkeys(seen[1])[7]?.action).toEqual({ type: 'AUTO_VIEW_CYCLE' })
   })
 })

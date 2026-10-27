@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { SCREEN_SIZE_PARAM, TOOLPATH_PARAM, paramValue } from '@/lib/cnc/service-data'
+import { softkeyAction } from '@/lib/cnc/softkeys'
 import { FhdStage } from './fhd-stage'
 import { useCncMachine } from './use-cnc-machine'
 
@@ -119,7 +120,7 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
       </div>
 
       <MessageBar message={state.message} />
-      <SoftkeyBar keys={softkeys} onPress={(k) => !k.disabled && dispatch(k.action)} />
+      <SoftkeyBar keys={softkeys} onPress={(k) => dispatch(softkeyAction(k))} />
 
       {state.fileDialog && <FileDialog state={state} dispatch={dispatch} />}
       {state.toolDialog && <ToolCallDialog state={state} dispatch={dispatch} />}
@@ -154,7 +155,7 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
         <div className="flex shrink-0 gap-3">
           <div className="flex shrink-0 flex-col gap-3" style={{ width: DISPLAY_W }}>
             {display}
-            <HardwareSoftkeys keys={softkeys} onPress={(k) => !k.disabled && dispatch(k.action)} />
+            <HardwareSoftkeys keys={softkeys} onPress={(k) => dispatch(softkeyAction(k))} />
           </div>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
             <HardwareKeyboard state={state} dispatch={dispatch} />

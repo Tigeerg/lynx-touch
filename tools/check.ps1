@@ -108,13 +108,25 @@ foreach ($rel in $marks.Keys) {
 }
 
 # 5. Tool checks - if the tool is real, not a stub.
+$pnpmExe = $null
+$pnpmPrefix = @()
+$pnpmCmd = Get-Command pnpm.cmd -ErrorAction SilentlyContinue
+if ($pnpmCmd) {
+  $pnpmExe = $pnpmCmd.Source
+} else {
+  $corepackCmd = Get-Command corepack.cmd -ErrorAction SilentlyContinue
+  if ($corepackCmd) {
+    $pnpmExe = $corepackCmd.Source
+    $pnpmPrefix = @('pnpm')
+  }
+}
 $pnpmReal = $false
-if (Get-Command pnpm -ErrorAction SilentlyContinue) {
-  if ((Get-ToolVersion 'pnpm' @('-v')) -match '^\d+\.') { $pnpmReal = $true }
+if ($pnpmExe) {
+  if ((Get-ToolVersion $pnpmExe ($pnpmPrefix + @('-v'))) -match '^\d+\.') { $pnpmReal = $true }
 }
 if ($pnpmReal) {
   foreach ($script in 'typecheck', 'test', 'format:check') {
-    Run-Tool "pnpm run $script" { pnpm -C 'apps/react-interface' run $script }
+    Run-Tool "pnpm run $script" { & $pnpmExe @pnpmPrefix -C 'apps/react-interface' run $script }
   }
 } else {
   Skipped 'pnpm: typecheck, test, format:check'
@@ -180,7 +192,7 @@ if ($cppReady) {
 #    point adds the plugin directory and the OCCT DLLs itself. Without the exe or Qt the step is
 #    skipped.
 $viewerExe = 'build/viewer/gcodeviewer.exe'
-if ((Test-Path -LiteralPath $viewerExe) -and (Test-Path -LiteralPath (Join-Path $qtDir 'bin'))) {
+if ($cppReady -and (Test-Path -LiteralPath $viewerExe) -and (Test-Path -LiteralPath (Join-Path $qtDir 'bin'))) {
   Run-Tool 'gcodeviewer.exe offscreen' {
     $env:QT_QPA_PLATFORM = 'offscreen'
     $env:PATH = (Join-Path $qtDir 'bin') + ';' + $env:PATH
@@ -199,7 +211,7 @@ if ((Test-Path -LiteralPath $viewerExe) -and (Test-Path -LiteralPath (Join-Path 
 #    defect is caught here: before the fix not a single letter works in the Russian layout. The
 #    platform is offscreen, no live session is needed. Without the probe or Qt the step is skipped.
 $keyProbeExe = 'build/viewer/keyprobe.exe'
-if ((Test-Path -LiteralPath $keyProbeExe) -and (Test-Path -LiteralPath (Join-Path $qtDir 'bin'))) {
+if ($cppReady -and (Test-Path -LiteralPath $keyProbeExe) -and (Test-Path -LiteralPath (Join-Path $qtDir 'bin'))) {
   Run-Tool 'keyprobe.exe (раскладки ru и en)' {
     $env:QT_QPA_PLATFORM = 'offscreen'
     $env:PATH = (Join-Path $qtDir 'bin') + ';' + $env:PATH

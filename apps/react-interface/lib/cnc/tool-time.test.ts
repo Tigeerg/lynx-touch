@@ -7,10 +7,17 @@ import type { MachineState } from './types'
 const run = (state: MachineState, ...actions: Action[]) => actions.reduce(reducer, state)
 
 describe('наработка инструмента', () => {
-  it('растёт, пока шпиндель вращается в цикле', () => {
-    const s = run({ ...initialState, run: 'RUN', spindleOn: true }, { type: 'TICK', dt: 5000 })
+  it('растёт только на рабочем ходе, а не на холостом', () => {
+    const cutting = {
+      ...initialState,
+      run: 'RUN' as const,
+      spindleOn: true,
+      motion: { target: initialState.machine, rapid: false, feed: 300 },
+    }
+    const rapid = { ...cutting, motion: { ...cutting.motion, rapid: true } }
 
-    expect(s.toolTime[1]).toBe(5000)
+    expect(run(cutting, { type: 'TICK', dt: 5000 }).toolTime[1]).toBe(5000)
+    expect(run(rapid, { type: 'TICK', dt: 5000 }).toolTime[1] ?? 0).toBe(0)
   })
 
   it('не растёт при остановленном шпинделе', () => {

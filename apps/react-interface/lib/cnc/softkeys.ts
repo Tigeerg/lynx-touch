@@ -115,6 +115,10 @@ const slots = (keys: (Softkey | null)[]): (Softkey | null)[] =>
     k && k.disabled && !k.reason ? { ...k, reason: FALLBACK_REASON } : k,
   )
 
+/** What a press does: a disabled key explains itself instead of staying silent. */
+export const softkeyAction = (k: Softkey): Action =>
+  k.disabled ? { type: 'HINT', text: k.reason ?? FALLBACK_REASON } : k.action
+
 export function getSoftkeys(s: MachineState): (Softkey | null)[] {
   const busy = s.run === 'RUN' || s.run === 'HOLD'
 
@@ -202,7 +206,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
 
   // The PROGON workplace: checking the NC program without a real cut. F4 chooses what ПУСК
   // starts (the simulation or the dry run), F5/F6 are the block modes, F7 the NC bounding box
-  // and F8 the AUTO view cycle (same words as AUTO, so there is one "Вид" and no duplicate key).
+  // and F8 the AUTO view cycle (same words as AUTO, so there is one "Отображение" and no duplicate key).
   // The start itself is the console's ПУСК, not a softkey: one way to start a run on the panel.
   if (s.workplace === 'TEST' && !s.editMode) {
     keys = [
@@ -222,7 +226,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       { label: 'M01', icon: CirclePause, action: { type: 'TOGGLE', key: 'optStop' }, active: s.optStop },
       { label: 'Габариты УП', icon: Ruler, action: { type: 'TEST_BBOX' }, active: s.test.bbox },
       {
-        label: `Вид: ${AUTO_VIEW_LABEL[s.test.autoView]}`,
+        label: `Отображение: ${AUTO_VIEW_LABEL[s.test.autoView]}`,
         icon: Eye,
         action: { type: 'AUTO_VIEW_CYCLE' },
       },
@@ -237,12 +241,24 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       { label: 'Каталог УП', icon: FolderOpen, action: { type: 'FILE_DIALOG', open: true }, disabled: busy },
       { label: 'Старт с кадра', icon: ArrowRightToLine, action: { type: 'PROG_TO_CURSOR' }, disabled: busy },
       { label: SOFTKEY_LABEL.TOOL_LIFE, icon: Wrench, action: { type: 'TOOL_LIFE' } },
-      null,
+      {
+        label: 'Резерв',
+        icon: CircleHelp,
+        action: { type: 'HINT', text: 'Свободный слот под макрос' },
+        disabled: true,
+        reason: 'Свободный слот под макрос',
+      },
       { label: SOFTKEY_LABEL.PART_COUNTER_RESET, icon: Package, action: { type: 'PART_COUNTER_RESET' } },
       { label: 'Проверка слома', icon: ScanSearch, action: { type: 'BROKEN_TOOL_CHECK' } },
-      null,
       {
-        label: `Вид: ${AUTO_VIEW_LABEL[AUTO_VIEWS[(AUTO_VIEWS.indexOf(s.test.autoView) + 1) % AUTO_VIEWS.length]]}`,
+        label: 'Резерв',
+        icon: CircleHelp,
+        action: { type: 'HINT', text: 'Свободный слот под макрос' },
+        disabled: true,
+        reason: 'Свободный слот под макрос',
+      },
+      {
+        label: `Отображение: ${AUTO_VIEW_LABEL[AUTO_VIEWS[(AUTO_VIEWS.indexOf(s.test.autoView) + 1) % AUTO_VIEWS.length]]}`,
         icon: Eye,
         action: { type: 'AUTO_VIEW_CYCLE' },
       },
@@ -328,7 +344,7 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
         { label: 'В начало УП', icon: SkipBack, action: { type: 'PROG_REWIND' }, disabled: busy },
         { label: 'Старт с кадра', icon: ArrowRightToLine, action: { type: 'PROG_TO_CURSOR' }, disabled: busy },
         {
-          label: s.params[TOOLPATH_PARAM] === 1 ? 'Вид: текст' : 'Вид: графика',
+          label: s.params[TOOLPATH_PARAM] === 1 ? 'Экран: текст' : 'Экран: графика',
           icon: Eye,
           action: { type: 'TOOLPATH_TOGGLE' },
           active: s.params[TOOLPATH_PARAM] === 1,

@@ -2,6 +2,7 @@
 // (search/replace, renumbering). Extracted from the machine after the pattern of ladder.ts:
 // machine.ts composes the subsystems instead of absorbing them - the reducer size is held by
 // the tools/check.ps1 mark. A result is { s, msg, level }; machine.ts shows the message.
+import { clampIndex } from './clamp'
 import { programLines, setLines } from './files'
 import { isBusy } from './guards'
 import { pushAlarm } from './messages'
@@ -65,9 +66,10 @@ export function progReducer(s: MachineState, a: ProgAction): Result {
       if (on && isBusy(s)) return { s, msg: 'Остановите программу перед симуляцией', level: 'warn' }
       if (on && (s.run === 'ESTOP' || s.run === 'ALARM')) return { s, msg: 'Сначала сбросьте аварию', level: 'warn' }
       if (on && programLines(s).length < 2) return { s, msg: 'В программе нет кадров для прогона', level: 'warn' }
+      const start = clampIndex(s.cursor.prog, 0, programLines(s).length)
       return {
-        s: { ...s, sim: on ? { active: true, line: s.cursor.prog, timer: 0 } : idleSim() },
-        msg: on ? `Симуляция: прогон без движения осей, кадр ${s.cursor.prog + 1} — старт` : 'Симуляция остановлена',
+        s: { ...s, sim: on ? { active: true, line: start, timer: 0 } : idleSim() },
+        msg: on ? `Симуляция: прогон без движения осей, кадр ${start + 1} — старт` : 'Симуляция остановлена',
       }
     }
 

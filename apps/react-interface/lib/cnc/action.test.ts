@@ -28,16 +28,13 @@ const source = (name: string) => readFileSync(new URL(`./${name}.ts`, import.met
 
 /** The literals of the action union: every `type: '...'` inside `export type XAction = ...`. */
 const unionTypes = (src: string) => {
-  const lines = src.replace(/\r/g, '').split('\n')
-  const start = lines.findIndex((line) => /export type \w+Action =/.test(line))
+  const text = src.replace(/\r/g, '')
+  const start = text.search(/export type \w+Action =/)
   expect(start, 'объединение действий не найдено').toBeGreaterThanOrEqual(0)
 
-  const body: string[] = []
-  for (let i = start; i < lines.length; i++) {
-    if (i > start && !lines[i].startsWith('  |')) break
-    body.push(lines[i])
-  }
-  return [...body.join('\n').matchAll(/type:\s*'([A-Z_0-9]+)'/g)].map((m) => m[1] as string).sort()
+  const end = text.indexOf('\n\n', start)
+  const body = text.slice(start, end === -1 ? text.length : end)
+  return [...body.matchAll(/type:\s*'([A-Z_0-9]+)'/g)].map((m) => m[1] as string).sort()
 }
 
 /** What the predicate claims: the set it lists, or the prefix it tests. */
@@ -86,5 +83,19 @@ describe('реестр действий: объединение подсисте
     const claimed = SUBSYSTEMS.flatMap((name) => claimedOf(name))
 
     expect(MACHINE_TYPES.filter((type) => claimed.includes(type))).toEqual([])
+  })
+})
+
+describe('machine dispatcher', () => {
+  it('names every subsystem predicate that the registry declares', () => {
+    const machine = source('machine')
+    for (const name of SUBSYSTEMS) {
+      const predicate = `is${name
+        .split('-')
+        .map((part) => part[0].toUpperCase() + part.slice(1))
+        .join('')}Action`
+      expect(machine, name).toContain(predicate)
+    }
+    expect(machine).toContain('isToolMeasureAction')
   })
 })

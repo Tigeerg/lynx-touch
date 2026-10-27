@@ -1,3 +1,8 @@
+import { MS_PER_MINUTE } from './data'
+
+const FALLBACK_FEED_MM_MIN = 1000
+const FALLBACK_RAPID_MM_MIN = 15000
+
 export type Point3 = { X: number; Y: number; Z: number }
 export type Segment = { from: Point3; to: Point3; rapid: boolean; line: number }
 export type PathView = 'XY' | 'XZ' | 'ISO'
@@ -44,6 +49,18 @@ export function remainingLength(lines: string[], fromLine: number): number {
   return buildToolpath(lines)
     .filter((s) => s.line >= fromLine)
     .reduce((sum, s) => sum + Math.hypot(s.to.X - s.from.X, s.to.Y - s.from.Y, s.to.Z - s.from.Z), 0)
+}
+
+/** Time left, ms: cutting and rapid moves at their own rates. */
+export function remainingTimeMs(lines: string[], fromLine: number, feedMmMin: number, rapidMmMin: number): number {
+  const feed = feedMmMin > 0 ? feedMmMin : FALLBACK_FEED_MM_MIN
+  const rapid = rapidMmMin > 0 ? rapidMmMin : FALLBACK_RAPID_MM_MIN
+  return buildToolpath(lines)
+    .filter((s) => s.line >= fromLine)
+    .reduce((sum, s) => {
+      const mm = Math.hypot(s.to.X - s.from.X, s.to.Y - s.from.Y, s.to.Z - s.from.Z)
+      return sum + (mm / (s.rapid ? rapid : feed)) * MS_PER_MINUTE
+    }, 0)
 }
 
 export function simPose(segments: Segment[], simLine: number): Waypoint {

@@ -1,7 +1,10 @@
 import { CircleHelp } from 'lucide-react'
+import { TAB_LABEL, TABS } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { Overlay } from './overlay'
 import { Keycap } from './primitives'
+
+const TAB_NAMES = TABS.map((tab) => TAB_LABEL[tab]).join(', ')
 
 const GROUPS: { title: string; items: [string[], string][] }[] = [
   {
@@ -17,7 +20,7 @@ const GROUPS: { title: string; items: [string[], string][] }[] = [
     title: 'Режимы и экраны',
     items: [
       [['M'], 'Следующий режим (Shift+M — предыдущий)'],
-      [['1', '…', '5'], 'Вкладки: Работа, Смещения, Инструмент, Сообщения, Сервис'],
+      [['1', '…', '5'], `Вкладки: ${TAB_NAMES}`],
       [['V'], 'Вид траектории: ISO / XY / XZ'],
       [['P'], 'Показать / скрыть траекторию'],
       [['F1', '…', 'F8'], 'Функциональные клавиши текущего экрана'],

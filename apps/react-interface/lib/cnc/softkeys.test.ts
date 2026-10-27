@@ -5,7 +5,7 @@
 // getSoftkeys, so a new overlong word fails here instead of being broken on the panel.
 import { describe, expect, it } from 'vitest'
 import { initialState } from './machine'
-import { getSoftkeys, SOFTKEY_LABEL_MAX } from './softkeys'
+import { getSoftkeys, softkeyAction, SOFTKEY_LABEL_MAX } from './softkeys'
 import type { MachineState } from './types'
 
 const ladder = initialState.ladder
@@ -90,5 +90,18 @@ describe('софт-кеи: подпись влезает в слот', () => {
     }
 
     expect(() => getSoftkeys(s)).not.toThrow()
+  })
+})
+
+describe('softkey press', () => {
+  it('a disabled key returns HINT with its reason', () => {
+    const key = {
+      label: 'Тест',
+      icon: getSoftkeys(initialState)[0]!.icon,
+      action: { type: 'HINT', text: 'x' } as const,
+      disabled: true,
+      reason: 'Занято',
+    }
+    expect(softkeyAction(key)).toEqual({ type: 'HINT', text: 'Занято' })
   })
 })

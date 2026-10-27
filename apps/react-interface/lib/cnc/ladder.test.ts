@@ -107,3 +107,17 @@ describe('ladder editor: an empty ladder', () => {
     expect(s.message?.text).toBeTruthy()
   })
 })
+
+describe('ladder editor: compare against timer or counter', () => {
+  it('refuses a timer the scheme does not define', () => {
+    const s = commitCompare('T7 > 1')
+    expect(s.ladder.form).not.toBeNull()
+    expect(s.message?.text).toContain('T7')
+  })
+
+  it('refuses a counter the scheme does not define', () => {
+    const s = commitCompare('C3 <> 0')
+    expect(s.ladder.form).not.toBeNull()
+    expect(s.message?.text).toContain('C3')
+  })
+})

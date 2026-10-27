@@ -33,7 +33,8 @@
 * `lib/cnc/` — **чистая логика станка, без JSX, React и DOM**: `machine.ts` (редьюсер, сводит подсистемы
   через реестр), `subsystem.ts` (листовой слой действий: `Action`, `Result`, `Dispatch`, запись реестра)
   и подсистемы рядом (`ladder.ts` — образец, `ladder-scan.ts` — скан ПЛК, `nav.ts`, `cycle.ts`,
-  `control.ts`, `service.ts`), `types.ts`, `coords.ts`, `keys.ts` (раскладка пульта: `keyToAction`),
+  `control.ts`, `service.ts`), `types.ts`, `coords.ts`, `clamp.ts` (зажим индексов списков), `keys.ts`
+  (раскладка пульта: `keyToAction` и `routeKey`),
   `gcode.ts` (разбор кадра, модальные коды, инструменты программы), `spindle.ts` (обороты, резание,
   нагрузка), `calc.ts` (расчёт режимов), `guards.ts` (проверки входа), `data.ts` и
   `softkeys.ts` (тексты и иконки), `service-data.ts` (API каталога: типы `ParamDef` и разделы),

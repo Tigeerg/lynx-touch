@@ -3,8 +3,8 @@
 import { FileCode, Move, Route } from 'lucide-react'
 import { useMemo } from 'react'
 import { currentFile, distanceToGo, programLines, type Action } from '@/lib/cnc/machine'
-import { MS_PER_MINUTE, SCREEN_LABEL } from '@/lib/cnc/data'
-import { remainingLength, type PathView } from '@/lib/cnc/toolpath'
+import { AUTO_VIEW_TITLE, RAPID_RATE, SCREEN_LABEL } from '@/lib/cnc/data'
+import { remainingLength, remainingTimeMs, type PathView } from '@/lib/cnc/toolpath'
 import type { MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { formatDuration, Lamp, Panel, PositionStrip } from '../primitives'
@@ -14,10 +14,9 @@ import { ProgramList } from './program-screen'
 
 // The AUTO workplace: the work position first and large, the distance to the frame and the
 // remaining program below it in a quiet line; under that a single common "Toolpath" header and
-// the viewer. The "View" key (F8) switches the view: the code and the trajectory side by side on
-// the 1024 panel (the code lies over the viewer as a transparent window on the left half), and
-// one above the other on the portrait touch panel, where two columns would leave each of them too
-// narrow to read.
+// the viewer. The "View" key (F8) switches four views: the trajectory alone, the code alone,
+// both side by side (stacked on the portrait touch panel, where two columns would leave each of
+// them too narrow to read), and the code in a translucent window over the trajectory.
 
 export function AutoScreen({
   state,
@@ -35,10 +34,17 @@ export function AutoScreen({
     [state.files, state.activeFile, state.line],
   )
   const file = currentFile(state)
-  const restMs = (rest / (state.programFeed || 1000)) * MS_PER_MINUTE
+  const restMs = remainingTimeMs(
+    programLines(state),
+    state.line,
+    state.programFeed || 1000,
+    (RAPID_RATE * state.rapidOverride) / 100,
+  )
   const touch = useUiMode()?.mode === 'touch'
-  const gcode = state.test.autoView === 'gcode'
-  const stacked = touch && state.test.autoView === 'both'
+  const view = state.test.autoView
+  const gcode = view === 'gcode'
+  const split = view === 'both'
+  const overlay = view === 'overlay'
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-[var(--panel-gap)]">
@@ -74,7 +80,7 @@ export function AutoScreen({
       </Panel>
 
       <Panel
-        title={`${gcode ? 'Программа' : stacked ? 'Программа и траектория' : 'Траектория'} · ${file.name}`}
+        title={`${AUTO_VIEW_TITLE[view]} · ${file.name}`}
         icon={gcode ? FileCode : Route}
         className="min-h-0 flex-1"
         right={
@@ -90,30 +96,40 @@ export function AutoScreen({
                 <Lamp on={state.dryRun} tone="warning" /> Холост.
               </span>
             </span>
-            <span className="font-mono text-[11px] font-semibold text-muted-foreground">
-              ≈ {formatDuration(restMs)}
-            </span>
-            {state.test.autoView !== 'gcode' && <ViewBadges view={pathView} />}
+            {!gcode && <ViewBadges view={pathView} />}
           </div>
         }
       >
         {gcode ? (
           <ProgramList bare state={state} dispatch={dispatch} className="h-full" />
-        ) : stacked ? (
-          <div className="grid h-full min-h-0 grid-rows-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-1">
-            {/* The code keeps ~10 readable rows: the row floor is set in fr units of the panel
-                height, and the trajectory takes the larger share below it. */}
-            <ProgramList bare state={state} dispatch={dispatch} className="min-h-0 border-b" />
-            <div className="relative min-h-0">
-              <ToolpathView bare state={state} view={pathView} className="h-full" />
+        ) : split ? (
+          touch ? (
+            <div className="grid h-full min-h-0 grid-rows-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-1">
+              {/* The code keeps ~10 readable rows: the row floor is set in fr units of the panel
+                  height, and the trajectory takes the larger share below it. */}
+              <ProgramList bare state={state} dispatch={dispatch} className="min-h-0 border-b" />
+              <div className="relative min-h-0">
+                <ToolpathView bare state={state} view={pathView} className="h-full" />
+              </div>
             </div>
-          </div>
+          ) : (
+            /* The 1024 panel splits the block into two columns: the code on the left keeps a
+               readable row width, the trajectory takes the larger share on the right. */
+            <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] gap-1">
+              <ProgramList bare state={state} dispatch={dispatch} className="min-h-0 border-r" />
+              <div className="relative min-h-0">
+                <ToolpathView bare state={state} view={pathView} className="h-full" />
+              </div>
+            </div>
+          )
         ) : (
           <div className="relative h-full">
             <ToolpathView bare state={state} view={pathView} className="h-full" />
 
-            {state.test.autoView === 'both' && (
-              <div className="absolute inset-y-0 left-0 z-10 w-1/2 min-w-[320px] border-r border-border">
+            {/* The overlay view: the same code list as a translucent window on the left half,
+                the trajectory visible behind and around it. */}
+            {overlay && (
+              <div className="absolute inset-y-0 left-0 z-10 w-1/2 min-w-[320px] border-r border-border bg-card/90 backdrop-blur-[2px]">
                 <ProgramList bare state={state} dispatch={dispatch} className="h-full" />
               </div>
             )}

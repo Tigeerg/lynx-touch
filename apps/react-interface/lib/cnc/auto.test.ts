@@ -20,17 +20,17 @@ describe('единая вкладка «Работа»', () => {
 })
 
 describe('авто: F1-F8 и действия', () => {
-  it('в АВТО на экране работы — боевой набор, резерв F7 пуст', () => {
+  it('в АВТО на экране работы — боевой набор, резерв объясняет себя', () => {
     const types = getSoftkeys(initialState).map((k) => k?.action?.type)
 
     expect(types).toEqual([
       'FILE_DIALOG',
       'PROG_TO_CURSOR',
       'TOOL_LIFE',
-      undefined,
+      'HINT',
       'PART_COUNTER_RESET',
       'BROKEN_TOOL_CHECK',
-      undefined,
+      'HINT',
       'AUTO_VIEW_CYCLE',
     ])
   })
@@ -44,13 +44,24 @@ describe('авто: F1-F8 и действия', () => {
     expect(test.screen).toBe('offset')
   })
 
-  it('вид в АВТО идёт по кругу: траектория, gcode, совместно', () => {
+  it('вид в АВТО идёт по кругу: траектория, gcode, совместно, УП поверх', () => {
     const a = reducer(initialState, { type: 'AUTO_VIEW_CYCLE' })
     const b = reducer(a, { type: 'AUTO_VIEW_CYCLE' })
     const c = reducer(b, { type: 'AUTO_VIEW_CYCLE' })
+    const d = reducer(c, { type: 'AUTO_VIEW_CYCLE' })
 
-    expect([a.test.autoView, b.test.autoView, c.test.autoView]).toEqual(['trajectory', 'gcode', 'both'])
-    expect(a.message?.text).toBe('Вид: траектория')
+    expect([a.test.autoView, b.test.autoView, c.test.autoView, d.test.autoView]).toEqual([
+      'gcode',
+      'both',
+      'overlay',
+      'trajectory',
+    ])
+    expect([a, b, c, d].map((s) => s.message?.text)).toEqual([
+      'Отображение: gcode',
+      'Отображение: совместно',
+      'Отображение: УП поверх',
+      'Отображение: траектория',
+    ])
   })
 
   it('счётчики деталей обнуляются в останове', () => {

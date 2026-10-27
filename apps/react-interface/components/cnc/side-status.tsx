@@ -191,7 +191,7 @@ export function LoadRow({ value }: { value: number }) {
       <span className="w-6 font-semibold text-muted-foreground">Нгр</span>
       <div
         role="meter"
-        aria-label="Нагрузка на шпиндель"
+        aria-label="Нагрузка на шпиндель (имитация)"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.min(100, value)}
@@ -276,11 +276,13 @@ export function SideStatus({
   dispatch,
   showPad = true,
   wide = false,
+  className,
 }: {
   state: MachineState
   dispatch: (a: Action) => void
   showPad?: boolean
   wide?: boolean
+  className?: string
 }) {
   const rpm = spindleRpm(state)
   const load = spindleLoad(state)
@@ -290,7 +292,7 @@ export function SideStatus({
   const progress = Math.round((state.line / Math.max(1, program.length - 1)) * 100)
 
   return (
-    <aside className="flex min-h-0 flex-col gap-2" aria-label="Состояние станка">
+    <aside className={cn('flex min-h-0 flex-col gap-2', className)} aria-label="Состояние станка">
       <Panel title="Режимы" className="min-h-0 flex-1">
         <div className={wide ? SIDE_FLOW : 'flex h-full flex-col overflow-y-auto'}>
           <Section

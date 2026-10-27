@@ -71,3 +71,19 @@ describe('program start', () => {
     expect(at.nextLine).toBe(0)
   })
 })
+
+describe('cursor writes', () => {
+  it('PROG_TO_CURSOR writes the clamped index back to the state', () => {
+    const s = { ...initialState, screen: 'prog' as const, cursor: { ...initialState.cursor, prog: 9999 } }
+    const at = reducer(s, { type: 'PROG_TO_CURSOR' })
+
+    expect(at.cursor.prog).toBe(programLines(s).length - 1)
+  })
+
+  it('SIM starts inside the program even from a stale cursor', () => {
+    const s = { ...initialState, screen: 'prog' as const, cursor: { ...initialState.cursor, prog: 9999 } }
+    const sim = reducer(s, { type: 'SIM' })
+
+    expect(sim.sim.line).toBe(programLines(s).length - 1)
+  })
+})

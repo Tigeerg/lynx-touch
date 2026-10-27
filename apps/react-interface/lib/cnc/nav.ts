@@ -153,6 +153,7 @@ export function navReducer(s: MachineState, a: NavAction, dispatch: Dispatch): R
           ...base,
           line: idx,
           nextLine: idx,
+          cursor: { ...s.cursor, prog: idx },
           dwell: 0,
           motion: null,
           homing: false,

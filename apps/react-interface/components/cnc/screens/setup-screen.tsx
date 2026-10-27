@@ -98,14 +98,16 @@ export function SetupSide({
   dispatch,
   showPad = true,
   wide = false,
+  className,
 }: {
   state: MachineState
   dispatch: (a: Action) => void
   showPad?: boolean
   wide?: boolean
+  className?: string
 }) {
   return (
-    <aside className="flex min-h-0 flex-col gap-2" aria-label="Наладка: состояние">
+    <aside className={cn('flex min-h-0 flex-col gap-2', className)} aria-label="Наладка: состояние">
       <Panel title="Наладка" className="min-h-0 flex-1">
         <div className={wide ? WIDE_SECTIONS : 'flex h-full flex-col overflow-y-auto'}>
           <ToolSection state={state} className={wide ? 'border-r' : undefined} />

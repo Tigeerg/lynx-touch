@@ -1,5 +1,5 @@
-// Workpiece PROGON (test) subsystem: showing the graphics and the code curtain, the NC
-// bounding box, the toolpath view angle, and the run mode the ПУСК starts (F4). Extracted from
+// Workpiece PROGON (test) subsystem: the NC bounding box, the toolpath view angle, and the run
+// mode the ПУСК starts (F4). Extracted from
 // machine.ts after the pattern of prog.ts and mpg.ts: the reducer composes the subsystems, and
 // the size of the machine is held by the tools/check.ps1 mark.
 import { AUTO_VIEW_LABEL } from './data'
@@ -14,53 +14,30 @@ export const TEST_RUN_MODE_LABEL: Record<TestRunMode, string> = { sim: 'Симу
 const TEST_RUN_MODES: readonly TestRunMode[] = ['sim', 'dry']
 
 export const initialTest: TestState = {
-  curtain: false,
   bbox: false,
-  hidePath: false,
-  autoView: 'both',
+  autoView: 'trajectory',
   view: 'ISO',
   runMode: 'dry',
 }
 
 export type TestAction =
-  | { type: 'TEST_CURTAIN' }
-  | { type: 'TEST_BBOX' }
-  | { type: 'TEST_CLEAR_PATH' }
-  | { type: 'AUTO_VIEW_CYCLE' }
-  | { type: 'PATH_VIEW_CYCLE' }
-  | { type: 'TEST_RUN_MODE' }
+  { type: 'TEST_BBOX' } | { type: 'AUTO_VIEW_CYCLE' } | { type: 'PATH_VIEW_CYCLE' } | { type: 'TEST_RUN_MODE' }
 
-const TEST_TYPES = new Set<string>([
-  'TEST_CURTAIN',
-  'TEST_BBOX',
-  'TEST_CLEAR_PATH',
-  'AUTO_VIEW_CYCLE',
-  'PATH_VIEW_CYCLE',
-  'TEST_RUN_MODE',
-])
+const TEST_TYPES = new Set<string>(['TEST_BBOX', 'AUTO_VIEW_CYCLE', 'PATH_VIEW_CYCLE', 'TEST_RUN_MODE'])
 
 export const isTestAction = (a: { type: string }): a is TestAction => TEST_TYPES.has(a.type)
 
 export function testReducer(s: MachineState, a: TestAction): Result {
   switch (a.type) {
-    case 'TEST_CURTAIN':
-      return { s: { ...s, test: { ...s.test, curtain: !s.test.curtain } } }
-
     case 'TEST_BBOX':
       return {
         s: { ...s, test: { ...s.test, bbox: !s.test.bbox } },
         msg: s.test.bbox ? 'Габариты УП скрыты' : 'Габариты УП: экстремумы X/Y/Z на экране',
       }
 
-    case 'TEST_CLEAR_PATH':
-      return {
-        s: { ...s, test: { ...s.test, hidePath: !s.test.hidePath } },
-        msg: s.test.hidePath ? 'Графика возвращена' : 'Графика очищена — F6 вернёт отрисовку',
-      }
-
     case 'AUTO_VIEW_CYCLE': {
       const autoView = AUTO_VIEWS[(AUTO_VIEWS.indexOf(s.test.autoView) + 1) % AUTO_VIEWS.length]
-      return { s: { ...s, test: { ...s.test, autoView } }, msg: `Вид: ${AUTO_VIEW_LABEL[autoView]}` }
+      return { s: { ...s, test: { ...s.test, autoView } }, msg: `Отображение: ${AUTO_VIEW_LABEL[autoView]}` }
     }
 
     case 'PATH_VIEW_CYCLE': {

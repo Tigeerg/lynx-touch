@@ -1,5 +1,6 @@
 // The HAL pin reference the monitor screen shows: the board and machine pins, with the joint
-// feedback, following-error and homed lines expanded from AXES. Data only.
+// feedback, following-error and homed lines expanded from AXES, plus the derived values that
+// read the panel state (halValues).
 import { motionSpeed, toWork } from './coords'
 import { AXES, type MachineState } from './types'
 

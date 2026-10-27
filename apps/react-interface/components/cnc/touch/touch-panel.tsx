@@ -1,13 +1,14 @@
 'use client'
 
 import { TOOLPATH_PARAM } from '@/lib/cnc/service-data'
+import { softkeyAction } from '@/lib/cnc/softkeys'
 import { FhdStage } from '../fhd-stage'
 import { FileDialog } from '../file-dialog'
 import { CalcOverlay } from '../calc-overlay'
 import { ToolMeasureDialog } from '../tool-measure-dialog'
 import { ToolCallDialog } from '../tool-call-dialog'
 import { HelpOverlay } from '../help-overlay'
-import { ProgramSide } from '../program-side'
+import { ExecutionPanel, ProgramSide } from '../program-side'
 import { SetupScreen, SetupSide } from '../screens/setup-screen'
 import { ProgramScreen } from '../screens/program-screen'
 import { TestScreen } from '../screens/test-screen'
@@ -77,18 +78,44 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
             {state.screen === 'service' && <ServiceScreen state={state} dispatch={dispatch} />}
           </main>
           {showStatus && (
-            <div className="flex shrink-0 flex-col">
+            /* The lower zone is a fixed grid: the display must not jump between НАЛАДКА and
+               АВТО. The first row is the "Execution" block (129 logical px = 161 device, its
+               measured height); in НАЛАДКА the same row is an empty spacer, so the side panel
+               starts at the same y as "Machining" in АВТО. 420 logical = 525 device. */
+            <div className="grid h-[420px] min-h-0 shrink-0 grid-rows-[129px_minmax(0,1fr)] gap-1.5 overflow-hidden">
               {state.screen === 'prog' ? (
-                <ProgramSide state={state} dispatch={dispatch} showPad={false} wide />
+                state.workplace === 'RUN' ? (
+                  <>
+                    {/* In AUTO the run progress sits between the program and the machining
+                        column: the operator reads it without looking inside "Machining". */}
+                    <ExecutionPanel state={state} className="h-full min-h-0" />
+                    <ProgramSide
+                      state={state}
+                      dispatch={dispatch}
+                      showPad={false}
+                      wide
+                      showExecution={false}
+                      className="h-full"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <div aria-hidden="true" />
+                    <ProgramSide state={state} dispatch={dispatch} showPad={false} wide className="h-full" />
+                  </>
+                )
               ) : state.workplace === 'SETUP' ? (
-                <SetupSide state={state} dispatch={dispatch} showPad={false} wide />
+                <>
+                  <div aria-hidden="true" />
+                  <SetupSide state={state} dispatch={dispatch} showPad={false} wide className="h-full" />
+                </>
               ) : (
-                <SideStatus state={state} dispatch={dispatch} showPad={false} wide />
+                <SideStatus state={state} dispatch={dispatch} showPad={false} wide className="row-span-2 h-full" />
               )}
             </div>
           )}
           <MessageBar message={state.message} />
-          <SoftkeyBar keys={softkeys} onPress={(k) => !k.disabled && dispatch(k.action)} />
+          <SoftkeyBar keys={softkeys} onPress={(k) => dispatch(softkeyAction(k))} />
         </div>
 
         <TouchDeck state={state} dispatch={dispatch} />

@@ -17,7 +17,7 @@ export function HardwareSoftkeys({ keys, onPress }: { keys: (Softkey | null)[]; 
           title={k ? k.label : `F${i + 1} — не назначена`}
           lit={k?.active ?? false}
           tone="success"
-          disabled={!k || k.disabled}
+          disabled={!k}
           onClick={() => k && onPress(k)}
           className="font-mono"
         />

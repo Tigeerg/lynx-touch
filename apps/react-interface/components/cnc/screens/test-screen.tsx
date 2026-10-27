@@ -64,9 +64,11 @@ export function TestScreen({
   pathView: PathView
 }) {
   const touch = useUiMode()?.mode === 'touch'
-  const both = state.test.autoView === 'both'
-  const showCode = both || state.test.autoView === 'gcode'
-  const showViewer = both || state.test.autoView === 'trajectory'
+  const view = state.test.autoView
+  const both = view === 'both'
+  const overlay = view === 'overlay'
+  const showCode = both || view === 'gcode'
+  const showViewer = view !== 'gcode'
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-1.5">
@@ -81,7 +83,8 @@ export function TestScreen({
       {/* Both on the portrait touch panel: the code above, the trajectory below, each at full
           width. The code row keeps a floor of ten block rows (a touch row is 44 px plus the panel
           header), so reading the program does not shrink to a keyhole; the rest goes to the
-          graphics. The 1024 panel keeps its two columns. */}
+          graphics. The 1024 panel keeps its two columns. The overlay view puts the same list as a
+          translucent window over the graphics. */}
       <div
         className={cn(
           'grid min-h-0 flex-1 gap-1.5',
@@ -98,6 +101,11 @@ export function TestScreen({
           <div className="relative min-h-0">
             <ToolpathView state={state} view={pathView} className="h-full" />
             {state.test.bbox && <BBoxOverlay state={state} />}
+            {overlay && (
+              <div className="absolute inset-y-0 left-0 z-10 w-1/2 min-w-[18rem] border-r border-border bg-card/90 backdrop-blur-[2px]">
+                <ProgramList bare state={state} dispatch={dispatch} className="h-full" />
+              </div>
+            )}
           </div>
         )}
       </div>

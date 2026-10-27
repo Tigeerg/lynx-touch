@@ -23,6 +23,10 @@ const g = (n: number) => `G${String(n).padStart(2, '0')}`
 const WORK_MOTION = new Set(['G01', 'G02', 'G03'])
 const WORK_OFFSET = /^G5[4-9]$/
 
+// The one name of the execution block: the side column and the separate touch AUTO panel show
+// the same words (CLAUDE.md, section 5: a word needed in two places has one source).
+const EXECUTION_TITLE = 'Выполнение'
+
 // Calm tones from the theme tokens: amber is attention, muted green is "safe working", neutral
 // stays for plane/units/corrections. M-codes are a running state rather than a deviation, so they
 // keep the neutral tone even when the spindle or coolant is on.
@@ -86,29 +90,87 @@ export function ActiveCodes({
   )
 }
 
+// The counter in the block header: the block in execution and the length of the program.
+function ExecutionCount({ state }: { state: MachineState }) {
+  return (
+    <span className="font-mono font-bold tabular-nums">
+      {state.line + 1}
+      <span className="text-muted-foreground">/{programLines(state).length}</span>
+    </span>
+  )
+}
+
+// The body of the "Execution" block: the run progress, the block after the current one and the
+// cycle counters. Shared by the "Machining" column and the separate panel of the touch AUTO
+// screen; both read the same numbers and words.
+export function ExecutionBody({ state }: { state: MachineState }) {
+  const lines = programLines(state)
+  const progress = Math.round((state.line / Math.max(1, lines.length - 1)) * 100)
+  const nextLine = lines[state.nextLine]
+
+  return (
+    <>
+      <div className="flex items-center gap-2 text-xs">
+        <div className="h-2 flex-1 overflow-hidden rounded-sm border bg-muted">
+          <div className="h-full bg-primary transition-[width]" style={{ width: `${progress}%` }} />
+        </div>
+        <span className="w-10 text-right font-mono text-xs font-bold tabular-nums">{progress}%</span>
+      </div>
+      <p className="flex min-w-0 items-baseline gap-1.5 text-xs">
+        <span className="shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Далее</span>
+        <span className="truncate font-mono font-bold">{nextLine ?? 'конец программы'}</span>
+      </p>
+      <dl className="grid grid-cols-3 gap-1 border-t pt-0.5">
+        <ProdStat icon={Timer} label="Цикл" value={formatTime(state.cycleTime)} />
+        <ProdStat icon={History} label="Прошлый" value={formatTime(state.lastCycle)} />
+        <ProdStat icon={Package} label="Деталей" value={String(state.partCount)} />
+      </dl>
+    </>
+  )
+}
+
+// The same block as a panel of its own: the touch AUTO screen moves it out of "Machining" so the
+// run progress sits between the program and the machining column instead of inside it.
+export function ExecutionPanel({ state, className }: { state: MachineState; className?: string }) {
+  return (
+    <Panel
+      title={EXECUTION_TITLE}
+      icon={FileCode}
+      className={cn('shrink-0', className)}
+      right={<ExecutionCount state={state} />}
+    >
+      <div className="flex flex-col gap-0.5 px-2.5 py-1.5">
+        <ExecutionBody state={state} />
+      </div>
+    </Panel>
+  )
+}
+
 export function ProgramSide({
   state,
   dispatch,
   showPad = true,
   wide = false,
+  showExecution = true,
+  className,
 }: {
   state: MachineState
   dispatch: (a: Action) => void
   showPad?: boolean
   wide?: boolean
+  /** The execution block lives inside "Machining"; the touch AUTO screen shows it separately. */
+  showExecution?: boolean
+  className?: string
 }) {
-  const lines = programLines(state)
-  const progress = Math.round((state.line / Math.max(1, lines.length - 1)) * 100)
-  const nextLine = lines[state.nextLine]
   const load = spindleLoad(state)
 
   return (
-    <aside className="flex min-h-0 flex-col gap-2" aria-label="Обработка программы">
+    <aside className={cn('flex min-h-0 flex-col gap-2', className)} aria-label="Обработка программы">
       <Panel title="Обработка" className="min-h-0 flex-1">
         <div className={wide ? WIDE_SECTIONS : 'flex h-full flex-col overflow-y-auto'}>
           <ToolSection state={state} className={wide ? 'border-r' : undefined} />
 
-          <Section icon={Fan} title="Нагрузка" area="load">
+          <Section icon={Fan} title="Нагрузка (имитация)" area="load">
             <LoadRow value={load} />
             {AXES.map((ax) => (
               <AxisLoad key={ax} axis={ax} value={axisLoad(state, ax)} />
@@ -133,33 +195,11 @@ export function ProgramSide({
             <RapidRow value={state.rapidOverride} />
           </Section>
 
-          <Section
-            icon={FileCode}
-            title="Выполнение"
-            area="execution"
-            right={
-              <span className="font-mono font-bold tabular-nums">
-                {state.line + 1}
-                <span className="text-muted-foreground">/{lines.length}</span>
-              </span>
-            }
-          >
-            <div className="flex items-center gap-2 text-xs">
-              <div className="h-2 flex-1 overflow-hidden rounded-sm border bg-muted">
-                <div className="h-full bg-primary transition-[width]" style={{ width: `${progress}%` }} />
-              </div>
-              <span className="w-10 text-right font-mono text-xs font-bold tabular-nums">{progress}%</span>
-            </div>
-            <p className="flex min-w-0 items-baseline gap-1.5 text-xs">
-              <span className="shrink-0 font-semibold uppercase tracking-wider text-muted-foreground">Далее</span>
-              <span className="truncate font-mono font-bold">{nextLine ?? 'конец программы'}</span>
-            </p>
-            <dl className="grid grid-cols-3 gap-1 border-t pt-0.5">
-              <ProdStat icon={Timer} label="Цикл" value={formatTime(state.cycleTime)} />
-              <ProdStat icon={History} label="Прошлый" value={formatTime(state.lastCycle)} />
-              <ProdStat icon={Package} label="Деталей" value={String(state.partCount)} />
-            </dl>
-          </Section>
+          {showExecution && (
+            <Section icon={FileCode} title={EXECUTION_TITLE} area="execution" right={<ExecutionCount state={state} />}>
+              <ExecutionBody state={state} />
+            </Section>
+          )}
         </div>
       </Panel>
 

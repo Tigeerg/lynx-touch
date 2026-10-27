@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useEffectEvent, useReducer, useState } from 'react'
-import { keyToAction } from '@/lib/cnc/keys'
+import { routeKey } from '@/lib/cnc/keys'
 import { initialState, reducer, type Action } from '@/lib/cnc/machine'
 import { paramValue, THEME_PARAM } from '@/lib/cnc/service-data'
 import { getSoftkeys } from '@/lib/cnc/softkeys'
@@ -15,7 +15,6 @@ export function useCncMachine() {
   const [state, dispatch] = useReducer((s: MachineState, a: Action) => reducer(s, stampAction(a)), initialState)
   const [focused, setFocused] = useState(true)
   const softkeys = getSoftkeys(state)
-  const cycleView = () => dispatch({ type: 'PATH_VIEW_CYCLE' })
 
   useEffect(() => {
     const id = window.setInterval(() => dispatch({ type: 'TICK', dt: TICK_MS }), TICK_MS)
@@ -23,46 +22,15 @@ export function useCncMachine() {
   }, [])
 
   const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
-    if (e.ctrlKey || e.metaKey || e.altKey) return
-    // The emergency stop is reachable from anywhere: before this branch the editor, the ladder
-    // form and a focused input swallowed Shift+Esc, so the operator could not stop the machine
-    // while typing.
-    if (e.code === 'Escape' && e.shiftKey) {
-      e.preventDefault()
-      dispatch({ type: 'ESTOP' })
+    const typing = e.target instanceof HTMLElement && !!e.target.closest('input, textarea')
+    const route = routeKey(state, e, typing)
+    if (!route) return
+    if (route.prevent) e.preventDefault()
+    if (route.hint) {
+      dispatch({ type: 'HINT', text: route.hint })
       return
     }
-    // Help is modal: H and Esc close it, F1..F8 only keep the browser from acting, and every
-    // other key is swallowed. Otherwise Enter, Space, the tabs, the axes and the overrides
-    // reached the machine under the overlay.
-    if (state.help) {
-      if (e.code === 'KeyH' || e.code === 'Escape') {
-        e.preventDefault()
-        dispatch({ type: 'HELP', open: false })
-        return
-      }
-      if (/^F[1-8]$/.test(e.code)) e.preventDefault()
-      return
-    }
-    const fn = /^F([1-8])$/.exec(e.code)
-    if (fn) {
-      e.preventDefault()
-      const key = softkeys[Number(fn[1]) - 1]
-      if (key && !key.disabled) dispatch(key.action)
-      else if (key?.disabled) dispatch({ type: 'HINT', text: key.reason ?? 'Сейчас недоступно' })
-      return
-    }
-    if (state.editor) return
-    if (state.ladder.form || (e.target instanceof HTMLElement && e.target.closest('input, textarea'))) return
-    if (e.code === 'KeyV' && !state.fileDialog && (state.screen === 'pos' || state.screen === 'prog')) {
-      e.preventDefault()
-      cycleView()
-      return
-    }
-    const action = keyToAction(state, e)
-    if (!action) return
-    e.preventDefault()
-    dispatch(action)
+    if (route.action) dispatch(route.action)
   })
 
   useEffect(() => {
@@ -90,5 +58,5 @@ export function useCncMachine() {
     root.classList.toggle('theme-minimal-dark', theme === 1)
   }, [theme])
 
-  return { state, dispatch, softkeys, focused, pathView: state.test.view, cycleView }
+  return { state, dispatch, softkeys, focused, pathView: state.test.view }
 }

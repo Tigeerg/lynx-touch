@@ -160,6 +160,16 @@ export const AUTO_VIEW_LABEL: Record<AutoView, string> = {
   trajectory: 'траектория',
   gcode: 'gcode',
   both: 'совместно',
+  overlay: 'УП поверх',
+}
+
+// The header of the AUTO and PROGON viewer panel, per view: the softkey names the switch
+// (AUTO_VIEW_LABEL), the header names what is on screen (the viewer, the code, or both).
+export const AUTO_VIEW_TITLE: Record<AutoView, string> = {
+  trajectory: 'Траектория',
+  gcode: 'Программа',
+  both: 'Программа и траектория',
+  overlay: 'УП поверх траектории',
 }
 
 export const RUN_LABEL: Record<RunState, string> = {

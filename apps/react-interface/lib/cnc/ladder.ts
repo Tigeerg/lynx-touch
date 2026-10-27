@@ -483,7 +483,10 @@ export function ladderReducer(s: MachineState, a: LadderAction): Result {
         if (onCoil) return { s, msg: 'Блок сравнения нельзя поставить в катушку', level: 'error' }
         // An address the scheme does not define reads as zero in the scan, and the operator then
         // sees a comparison that is quietly false: refuse it here, where it can be explained.
-        const unknown = [cmp.a, cmp.b].find((x) => SIGNAL_RE.test(x) && !knownSignals(rungs).has(x))
+        const known = knownSignals(rungs)
+        const unknown = [cmp.a, cmp.b].find(
+          (x) => (SIGNAL_RE.test(x) || isTimerAddr(x) || isCounterAddr(x)) && !known.has(x),
+        )
         if (unknown) {
           return { s, msg: `Сигнал ${unknown} в схеме не задан — сравнение читалось бы нулём`, level: 'error' }
         }

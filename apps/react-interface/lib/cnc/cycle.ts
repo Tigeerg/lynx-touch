@@ -14,6 +14,7 @@ import { PROBE_STEP_MEASURE, PROBE_TOOL } from './probe'
 import { abortProbe, probeTick } from './probe-exec'
 import { idleSim, tickSim } from './prog'
 import { evaluateLadder, sameLadderMem, sameLadderSignals } from './ladder-scan'
+import { isCutting } from './spindle'
 import { tickToolMeasure } from './tool-measure'
 import type { Dispatch, Result } from './subsystem'
 import { AXES, MDI_HISTORY_SIZE, type Axes, type MachineState } from './types'
@@ -26,8 +27,18 @@ const TOOL_CHANGE_DWELL_MS = 1800
 export function executeLine(state: MachineState, index: number): MachineState {
   const lines = programLines(state)
   // A negative index is a caller defect (a stale cursor): lines[-1] is undefined, and parseWords
-  // threw on it, taking the whole panel down. End the program instead of crashing.
-  if (index < 0 || index >= lines.length) return { ...state, programEnd: true }
+  // threw on it, taking the whole panel down. Stop in ALARM instead of pretending M30 ran.
+  if (index < 0) {
+    const stopped = pushAlarm(
+      { ...state, run: 'ALARM', programEnd: false, motion: null, dwell: 0 },
+      9001,
+      'error',
+      'Внутренняя ошибка: курсор программы ушёл в отрицательный индекс',
+      undefined,
+    )
+    return notify(stopped, 'Останов: сбой курсора программы', 'error')
+  }
+  if (index >= lines.length) return { ...state, programEnd: true }
   if (state.blockSkip && lines[index].trimStart().startsWith('/')) {
     return { ...state, line: index, nextLine: index + 1, dwell: 0 }
   }
@@ -173,7 +184,8 @@ export function cycleReducer(s: MachineState, a: CycleAction, dispatch: Dispatch
         return { s: r.msg ? notify(r.s, r.msg) : r.s }
       }
       if (n.mode === 'AUTO') n = { ...n, cycleTime: n.cycleTime + a.dt }
-      if (n.spindleOn) n = { ...n, toolTime: { ...n.toolTime, [n.tool]: (n.toolTime[n.tool] ?? 0) + a.dt } }
+      if (n.spindleOn && isCutting(n))
+        n = { ...n, toolTime: { ...n.toolTime, [n.tool]: (n.toolTime[n.tool] ?? 0) + a.dt } }
       if (n.dwell > 0) return { s: { ...n, dwell: Math.max(0, n.dwell - a.dt) } }
       if (n.motion) return { s: stepMotion(n, a.dt) }
       return { s: completeBlock(n) }

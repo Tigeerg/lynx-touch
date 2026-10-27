@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer } from './machine'
 import { THEME_OPTIONS, THEME_PARAM } from './service-data'
+import { THEME_CLASSES, themeClasses } from './theme'
 
 const withTheme = (theme: number) => ({ ...initialState, params: { ...initialState.params, [THEME_PARAM]: theme } })
 const toggled = (theme: number) => reducer(withTheme(theme), { type: 'THEME_TOGGLE' }).params[THEME_PARAM]
@@ -26,5 +27,25 @@ describe('темы оформления', () => {
     const s = reducer({ ...initialState, params: {} }, { type: 'THEME_TOGGLE' })
 
     expect(s.params[THEME_PARAM]).toBe(THEME_OPTIONS.indexOf('Светлая') + 1)
+  })
+})
+
+describe('классы темы до первого кадра', () => {
+  it('каждая тема даёт свои классы, светлая — пустой набор', () => {
+    expect(THEME_CLASSES).toHaveLength(THEME_OPTIONS.length)
+    expect(themeClasses(0)).toEqual(['theme-minimal'])
+    expect(themeClasses(1)).toEqual(['dark', 'theme-minimal', 'theme-minimal-dark'])
+    expect(themeClasses(2)).toEqual([])
+    expect(themeClasses(3)).toEqual(['dark'])
+    expect(themeClasses(4)).toEqual(['dark', 'theme-graphite'])
+    expect(themeClasses(5)).toEqual(['theme-mint'])
+  })
+})
+
+describe('загрузка сохранённой темы', () => {
+  it('THEME_SET принимает только номер из каталога, иначе оставляет прежнюю', () => {
+    expect(reducer(withTheme(2), { type: 'THEME_SET', value: 5 }).params[THEME_PARAM]).toBe(5)
+    expect(reducer(withTheme(2), { type: 'THEME_SET', value: -1 }).params[THEME_PARAM]).toBe(2)
+    expect(reducer(withTheme(2), { type: 'THEME_SET', value: 99 }).params[THEME_PARAM]).toBe(2)
   })
 })

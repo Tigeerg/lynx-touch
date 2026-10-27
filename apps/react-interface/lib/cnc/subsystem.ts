@@ -26,6 +26,7 @@ export type MachineAction =
   | { type: 'ALARM_CLEAR_ALL' }
   | { type: 'HELP'; open?: boolean }
   | { type: 'THEME_TOGGLE' }
+  | { type: 'THEME_SET'; value: number }
   | { type: 'UI_MODE_SET'; value: 0 | 1 }
   | { type: 'TOOLPATH_TOGGLE' }
   | { type: 'CALC'; open?: boolean }
@@ -51,6 +52,7 @@ const MACHINE_TYPES = new Set<string>([
   'ALARM_CLEAR_ALL',
   'HELP',
   'THEME_TOGGLE',
+  'THEME_SET',
   'UI_MODE_SET',
   'TOOLPATH_TOGGLE',
   'CALC',

@@ -478,7 +478,7 @@ function AxisSelector({ state }: { state: MachineState }) {
   )
 }
 
-const th = 'px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground'
+const HEADER_CELL = 'px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground'
 
 function ParamTable({ state, defs }: { state: MachineState; defs: readonly ParamDef[] }) {
   const cursor = state.cursor.service
@@ -494,10 +494,10 @@ function ParamTable({ state, defs }: { state: MachineState; defs: readonly Param
       <table className="w-full table-fixed border-collapse">
         <thead className="sticky top-0 z-10">
           <tr className="border-b bg-card">
-            <th className={cn(th, 'w-[31%]')}>Параметр</th>
-            <th className={cn(th, 'w-[24%]')}>Ключ INI</th>
-            <th className={cn(th, 'w-[25%] text-center')}>Значение</th>
-            <th className={cn(th, 'w-[20%] text-right')}>По умолч.</th>
+            <th className={cn(HEADER_CELL, 'w-[31%]')}>Параметр</th>
+            <th className={cn(HEADER_CELL, 'w-[24%]')}>Ключ INI</th>
+            <th className={cn(HEADER_CELL, 'w-[25%] text-center')}>Значение</th>
+            <th className={cn(HEADER_CELL, 'w-[20%] text-right')}>По умолч.</th>
           </tr>
         </thead>
         <tbody>
@@ -637,10 +637,10 @@ function HalMonitor({ state }: { state: MachineState }) {
       <table className="w-full border-collapse">
         <thead className="sticky top-0 z-10">
           <tr className="border-b bg-card">
-            <th className={th}>Пин HAL</th>
-            <th className={cn(th, 'w-20')}>Тип</th>
-            <th className={cn(th, 'w-20')}>Напр.</th>
-            <th className={cn(th, 'w-32 text-right')}>Значение</th>
+            <th className={HEADER_CELL}>Пин HAL</th>
+            <th className={cn(HEADER_CELL, 'w-20')}>Тип</th>
+            <th className={cn(HEADER_CELL, 'w-20')}>Напр.</th>
+            <th className={cn(HEADER_CELL, 'w-32 text-right')}>Значение</th>
           </tr>
         </thead>
         {HAL_GROUPS.map((group) => (

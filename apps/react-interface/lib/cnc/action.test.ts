@@ -22,7 +22,16 @@ const SUBSYSTEMS = [
 ] as const
 
 /** The branches the machine handles itself, by type. */
-const MACHINE_TYPES = ['THEME_TOGGLE', 'UI_MODE_SET', 'TOOLPATH_TOGGLE', 'CALC', 'ALARM_ACK', 'ALARM_CLEAR_ALL', 'HELP']
+const MACHINE_TYPES = [
+  'THEME_TOGGLE',
+  'THEME_SET',
+  'UI_MODE_SET',
+  'TOOLPATH_TOGGLE',
+  'CALC',
+  'ALARM_ACK',
+  'ALARM_CLEAR_ALL',
+  'HELP',
+]
 
 const source = (name: string) => readFileSync(new URL(`./${name}.ts`, import.meta.url), 'utf8')
 

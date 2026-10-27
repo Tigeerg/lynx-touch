@@ -1,7 +1,12 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
+import { THEME_CLASSES, THEME_STORAGE_KEY } from '@/lib/cnc/theme'
 import './globals.css'
+
+// The saved theme must be on the html element before the first paint. The live effect alone
+// paints the default light palette for one frame after a reload.
+const themeBoot = `(()=>{try{const t=Number(localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)})??2);const c=${JSON.stringify(THEME_CLASSES)}[t]||[];for(const name of c)document.documentElement.classList.add(name)}catch{}})()`
 
 const inter = Inter({ subsets: ['latin', 'cyrillic'], variable: '--font-inter' })
 const jetbrains = JetBrains_Mono({ subsets: ['latin', 'cyrillic'], variable: '--font-jetbrains' })
@@ -31,7 +36,10 @@ export default function RootLayout({
   // palette. A hard-coded theme-minimal painted the panel as "Минимал · светлая" until the
   // theme effect ran, which was a flash of the wrong theme on the first frame.
   return (
-    <html lang="ru" className={`${inter.variable} ${jetbrains.variable} bg-background`}>
+    <html lang="ru" className={`${inter.variable} ${jetbrains.variable} bg-background`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
+      </head>
       <body className="antialiased">
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}

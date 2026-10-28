@@ -3,6 +3,7 @@
 import { Move } from 'lucide-react'
 import { useMemo } from 'react'
 import { SOFT_LIMITS } from '@/lib/cnc/data'
+import { extent } from '@/lib/cnc/extent'
 import { programLines, type Action } from '@/lib/cnc/machine'
 import { buildToolpath, type PathView } from '@/lib/cnc/toolpath'
 import type { MachineState } from '@/lib/cnc/types'
@@ -24,8 +25,9 @@ function BBoxOverlay({ state }: { state: MachineState }) {
 
   const ext = BBOX_AXES.map((ax) => {
     const values = segments.flatMap((s) => [s.from[ax], s.to[ax]])
-    const min = Math.min(...values) + off[ax]
-    const max = Math.max(...values) + off[ax]
+    const bounds = extent(values)
+    const min = bounds.min + off[ax]
+    const max = bounds.max + off[ax]
     const [lo, hi] = SOFT_LIMITS[ax]
     return { ax, min, max, out: min < lo || max > hi }
   })

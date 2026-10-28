@@ -17,6 +17,8 @@ export type EditorAction =
   | { type: 'FILE_DIALOG'; open?: boolean }
   | { type: 'FILE_CURSOR'; delta: number }
   | { type: 'FILE_OPEN' }
+  // A file that lives outside the bundle (see ProgramFile.source) arrives after the fetch.
+  | { type: 'FILE_LOADED'; index: number; lines: string[] }
   | { type: 'EDIT_MODE'; on?: boolean }
   | { type: 'EDIT_BEGIN' }
   | { type: 'EDIT_INSERT'; at?: number }
@@ -29,6 +31,7 @@ const EDITOR_TYPES = new Set<string>([
   'FILE_DIALOG',
   'FILE_CURSOR',
   'FILE_OPEN',
+  'FILE_LOADED',
   'EDIT_MODE',
   'EDIT_BEGIN',
   'EDIT_INSERT',
@@ -69,6 +72,28 @@ export function editorReducer(s: MachineState, a: EditorAction): Result {
           cursor: { ...s.cursor, prog: 0 },
         },
         msg: `Открыт файл ${f.name} — ${f.title}`,
+      }
+    }
+
+    case 'FILE_LOADED': {
+      const file = s.files[a.index]
+      if (!file) return { s, msg: 'Файл программы не найден', level: 'warn' }
+      return {
+        s: {
+          ...s,
+          files: s.files.map((f, i) => (i === a.index ? { ...f, lines: a.lines } : f)),
+          activeFile: a.index,
+          fileDialog: false,
+          screen: 'prog',
+          editMode: false,
+          editor: null,
+          line: 0,
+          nextLine: 0,
+          cycleTime: 0,
+          sim: idleSim(),
+          cursor: { ...s.cursor, prog: 0 },
+        },
+        msg: `Загружен файл ${file.name} — ${a.lines.length} кадров`,
       }
     }
 

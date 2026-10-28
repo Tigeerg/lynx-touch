@@ -34,6 +34,35 @@ describe('экран «Программа»: файл и правка кадро
     expect(r.s.editor).toBeNull()
   })
 
+  it('загруженный извне файл открывается и показывает свои кадры', () => {
+    const lazy: MachineState = {
+      ...initialState,
+      files: [
+        ...initialState.files,
+        { name: 'TEST_MODEL', title: 'ТЕСТОВАЯ МОДЕЛЬ', lines: [], modified: '', source: '/programs/Test_model.ngc' },
+      ],
+      fileCursor: initialState.files.length,
+    }
+    const r = editorReducer(lazy, {
+      type: 'FILE_LOADED',
+      index: initialState.files.length,
+      lines: ['%', 'N10 G90 G94', 'N20 G00 X0 Y0'],
+    })
+
+    expect(r.s.activeFile).toBe(initialState.files.length)
+    expect(r.s.fileDialog).toBe(false)
+    expect(r.s.screen).toBe('prog')
+    expect(currentFile(r.s).lines).toHaveLength(3)
+    expect(currentFile(r.s).source).toBe('/programs/Test_model.ngc')
+  })
+
+  it('загрузка чужого номера файла не роняет состояние', () => {
+    const r = editorReducer(initialState, { type: 'FILE_LOADED', index: 99, lines: ['N10'] })
+
+    expect(r.s.activeFile).toBe(initialState.activeFile)
+    expect(r.msg).toContain('не найден')
+  })
+
   it('правка включается только в останове', () => {
     const busy = editorReducer({ ...initialState, run: 'RUN' }, { type: 'EDIT_MODE', on: true })
     expect(busy.s.editMode).toBe(false)

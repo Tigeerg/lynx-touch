@@ -1,9 +1,12 @@
 {
   "name": "react-interface",
-  "version": "0.20.3",
+  "version": "0.21.0",
   "private": true,
   "packageManager": "pnpm@12.3.4",
   "scripts": {
+    "programs": "node scripts/copy-programs.mjs",
+    "predev": "node scripts/copy-programs.mjs",
+    "prebuild": "node scripts/copy-programs.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

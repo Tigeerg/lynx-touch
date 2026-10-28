@@ -14,3 +14,5 @@ __v0_jsx-dev-runtime.ts
 node_modules
 .next/
 .DS_Store
+# Copied from data/cad-testdata by scripts/copy-programs.mjs (do not commit a 2.9 MB duplicate)
+/public/programs/*.ngc

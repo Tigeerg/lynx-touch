@@ -6,6 +6,7 @@ import { currentFile, distanceToGo, programLines, toWork, type Action } from '@/
 import { RAPID_RATE } from '@/lib/cnc/data'
 import { AXES, type Axis, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
+import { programWindow } from '@/lib/cnc/program-window'
 import { buildToolpath, remainingTimeMs, simPose, type PathView } from '@/lib/cnc/toolpath'
 import { formatDro, formatDuration, Lamp, Panel } from '../primitives'
 import { ToolpathView } from '../toolpath-view'
@@ -287,6 +288,9 @@ export function ProgramList({
   const running = !sim && (state.run === 'RUN' || state.run === 'HOLD')
   const follow = sim ? state.sim.line : running ? state.line : state.cursor.prog
   const file = currentFile(state)
+  // A real program can hold tens of thousands of blocks: only the window around the followed block
+  // is drawn, otherwise the panel freezes on thousands of DOM rows.
+  const { start, end } = programWindow(follow, file.lines.length)
   const restMs = remainingTimeMs(
     file.lines,
     sim ? state.sim.line : state.line,
@@ -359,7 +363,8 @@ export function ProgramList({
         className="h-full min-w-0 flex-1 overflow-hidden py-0.5 font-mono text-sm"
         aria-label="Кадры программы"
       >
-        {file.lines.map((line, i) => {
+        {file.lines.slice(start, end).map((line, k) => {
+          const i = start + k
           const current = !state.editMode && (sim ? i === state.sim.line : i === state.line)
           const cursor = i === state.cursor.prog
           const editing = state.editor?.line === i

@@ -169,6 +169,11 @@ export interface ProgramFile {
   title: string
   lines: string[]
   modified: string
+  /**
+   * Address of an NC file that is not in the bundle (a real program can be megabytes). The file is
+   * fetched the first time the operator opens it; `lines` stays empty until then.
+   */
+  source?: string
 }
 
 export interface LineEditor {

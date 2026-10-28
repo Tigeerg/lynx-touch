@@ -2,7 +2,6 @@
 
 import { Route } from 'lucide-react'
 import { useMemo } from 'react'
-import { extent } from '@/lib/cnc/extent'
 import { programLines, toWork } from '@/lib/cnc/machine'
 import { buildToolpath, PATH_VIEWS, project, simPose, type PathView } from '@/lib/cnc/toolpath'
 import type { MachineState } from '@/lib/cnc/types'
@@ -63,12 +62,12 @@ export function ToolpathView({
   const geometry = useMemo(() => {
     const pts = segments.flatMap((s) => [project(s.from, view), project(s.to, view)])
     if (pts.length === 0) return null
-    const xs = extent(pts.map((p) => p[0]))
-    const ys = extent(pts.map((p) => p[1]))
-    const minX = xs.min
-    const minY = ys.min
-    const w = Math.max(1, xs.max - minX)
-    const h = Math.max(1, ys.max - minY)
+    const xs = pts.map((p) => p[0])
+    const ys = pts.map((p) => p[1])
+    const minX = Math.min(...xs)
+    const minY = Math.min(...ys)
+    const w = Math.max(1, Math.max(...xs) - minX)
+    const h = Math.max(1, Math.max(...ys) - minY)
     const pad = Math.max(w, h) * 0.08
     return { minX: minX - pad, minY: minY - pad, w: w + pad * 2, h: h + pad * 2, unit: Math.max(w, h) / 100 }
   }, [segments, view])

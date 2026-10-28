@@ -79,30 +79,5 @@ export function useCncMachine() {
     }
   }, [theme, themeReady])
 
-  // A program that lives outside the bundle (a real CAM file, megabytes of blocks) is fetched the
-  // first time the operator opens it. The reducer stays pure: it only receives the finished lines.
-  const activeName = state.files[state.activeFile]?.name
-  const activeSource = state.files[state.activeFile]?.source
-  const activeLines = state.files[state.activeFile]?.lines.length ?? 0
-  useEffect(() => {
-    if (!activeSource || activeLines > 0) return
-    const index = state.activeFile
-    let cancelled = false
-    fetch(activeSource)
-      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
-      .then((text) => {
-        if (cancelled) return
-        const lines = text.split(/\r?\n/)
-        if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
-        dispatch({ type: 'FILE_LOADED', index, lines })
-      })
-      .catch(() => {
-        if (!cancelled) dispatch({ type: 'HINT', text: `Не удалось загрузить ${activeName}` })
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [activeSource, activeLines, activeName, state.activeFile])
-
   return { state, dispatch, softkeys, focused, pathView: state.test.view }
 }

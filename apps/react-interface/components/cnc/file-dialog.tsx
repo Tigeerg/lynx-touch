@@ -64,12 +64,7 @@ export function FileDialog({ state, dispatch }: { state: MachineState; dispatch:
                     </span>
                   )}
                 </span>
-                <span
-                  className="text-right font-mono tabular-nums"
-                  title={f.source && f.lines.length === 0 ? 'Загрузится при открытии' : undefined}
-                >
-                  {f.source && f.lines.length === 0 ? '—' : f.lines.length}
-                </span>
+                <span className="text-right font-mono tabular-nums">{f.lines.length}</span>
                 <span className={cn('text-right font-mono text-sm tabular-nums', !selected && 'text-muted-foreground')}>
                   {f.modified}
                 </span>

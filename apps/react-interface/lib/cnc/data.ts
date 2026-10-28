@@ -114,15 +114,6 @@ export const PROGRAM_FILES: ProgramFile[] = [
       'N90 M30',
     ],
   },
-  // The real CAM program from `data/cad-testdata/Test_model.ngc` (110 586 blocks, 2.9 MB): too big
-  // for the bundle, so it is fetched the first time the operator opens it.
-  {
-    name: 'TEST_MODEL',
-    title: 'ТЕСТОВАЯ МОДЕЛЬ (PLOT CNC EMC)',
-    modified: '28.10.2026 12:00',
-    lines: [],
-    source: '/programs/Test_model.ngc',
-  },
 ]
 
 export const INITIAL_OFFSETS: WorkOffset[] = [

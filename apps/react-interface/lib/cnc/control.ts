@@ -20,6 +20,8 @@ export type ControlToggleKey =
   | 'machineLock'
   | 'coolant'
   | 'mist'
+  | 'airBlast'
+  | 'wash'
   | 'workLight'
   | 'chipConveyor'
   | 'jogRapid'

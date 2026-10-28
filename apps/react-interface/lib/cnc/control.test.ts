@@ -58,6 +58,16 @@ describe('ручное управление: перемещение, тумбл�
     ).toBe(50)
   })
 
+  it('обдув и промывка включаются и выключаются', () => {
+    const on = run(initialState, { type: 'TOGGLE', key: 'airBlast' }, { type: 'TOGGLE', key: 'wash' })
+    expect(on.airBlast).toBe(true)
+    expect(on.wash).toBe(true)
+
+    const off = run(on, { type: 'TOGGLE', key: 'airBlast' }, { type: 'TOGGLE', key: 'wash' })
+    expect(off.airBlast).toBe(false)
+    expect(off.wash).toBe(false)
+  })
+
   it('холостой ход переключается только в останове', () => {
     const blocked = controlReducer({ ...initialState, dryRun: false, run: 'RUN' }, { type: 'TOGGLE', key: 'dryRun' })
     expect(blocked.s.dryRun).toBe(false)

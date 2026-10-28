@@ -183,7 +183,9 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
       {
         label: SOFTKEY_LABEL.TOOL_PROBE,
         icon: Ruler,
-        action: { type: 'TOOL_PROBE' },
+        // Opens the measuring window with the schematics; the run itself is started inside it
+        // (`TOOL_MEASURE_START`), so F1 no longer writes a length behind the operator's back.
+        action: { type: 'TOOL_MEASURE' },
         disabled: busy || s.spindleOn || s.tool === PROBE_TOOL,
       },
       {

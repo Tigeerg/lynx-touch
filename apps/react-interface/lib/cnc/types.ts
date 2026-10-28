@@ -284,6 +284,10 @@ export interface MachineState {
   aBrake: boolean
   coolant: boolean
   mist: boolean
+  /** Air blast: blows chips away without coolant. */
+  airBlast: boolean
+  /** Wash: coolant flushing the table and the chip trough. */
+  wash: boolean
   lube: number
   workLight: boolean
   chipConveyor: boolean

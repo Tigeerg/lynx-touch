@@ -22,6 +22,8 @@ import {
   RotateCw,
   Shovel,
   Square,
+  Waves,
+  Wind,
   Zap,
   type LucideIcon,
 } from 'lucide-react'
@@ -304,6 +306,8 @@ function FunctionsPanel({ state, dispatch }: { state: MachineState; dispatch: (a
     { label: 'Туман', icon: CloudFog, active: state.mist, action: { type: 'TOGGLE', key: 'mist' } },
     { label: 'Свет', icon: Lightbulb, active: state.workLight, action: { type: 'TOGGLE', key: 'workLight' } },
     { label: 'Стружка', icon: Shovel, active: state.chipConveyor, action: { type: 'TOGGLE', key: 'chipConveyor' } },
+    { label: 'Обдув', icon: Wind, active: state.airBlast, action: { type: 'TOGGLE', key: 'airBlast' } },
+    { label: 'Промывка', icon: Waves, active: state.wash, action: { type: 'TOGGLE', key: 'wash' } },
     {
       label: 'Смазка',
       title: 'Смазка направляющих',

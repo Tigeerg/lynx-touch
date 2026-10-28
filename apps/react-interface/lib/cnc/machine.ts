@@ -62,6 +62,8 @@ export const initialState: MachineState = {
   aBrake: true,
   coolant: false,
   mist: false,
+  airBlast: false,
+  wash: false,
   lube: 0,
   workLight: false,
   chipConveyor: false,

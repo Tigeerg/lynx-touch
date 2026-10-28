@@ -40,6 +40,14 @@ describe('рабочее место', () => {
     expect(s.message?.text).toBe('Смена режима во время выполнения запрещена')
   })
 
+  it('F1 в НАЛАДКЕ открывает окно обмера инструмента', () => {
+    const s = from({ type: 'SET_WORKPLACE', workplace: 'SETUP' })
+    const first = getSoftkeys(s)[0]
+
+    expect(first?.label).toBe('Обмер инструмента')
+    expect(first?.action).toEqual({ type: 'TOOL_MEASURE' })
+  })
+
   it('в НАЛАДКЕ на экране позиции F1-F8 — набор подготовки', () => {
     const s = from({ type: 'SET_WORKPLACE', workplace: 'SETUP' })
     const labels = getSoftkeys(s).map((k) => k?.label)

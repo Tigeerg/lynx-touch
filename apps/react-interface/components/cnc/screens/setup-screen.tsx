@@ -13,8 +13,8 @@ import {
   RapidRow,
   Section,
   SETUP_SECTIONS,
-  SETUP_SECTIONS_DECK,
   ToolSection,
+  TOUCH_SECTIONS_NO_EXEC,
 } from '../side-status'
 
 // The SETUP workplace: on the left the large work and machine coordinates, the MDI line and
@@ -129,24 +129,22 @@ export function SetupSide({
   dispatch,
   showPad = true,
   wide = false,
-  showCorrectors = true,
+  touch = false,
   className,
 }: {
   state: MachineState
   dispatch: (a: Action) => void
   showPad?: boolean
   wide?: boolean
-  /** The touch deck carries S %/F %/G0 itself, so the column drops the block there. */
-  showCorrectors?: boolean
+  /** Touch panel: the correctors get finger-sized buttons instead of the physical-key caps. */
+  touch?: boolean
   className?: string
 }) {
   return (
     <aside className={cn('flex min-h-0 flex-col gap-2', className)} aria-label="Наладка: состояние">
       <section className="cnc-box flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-card">
         <div
-          className={
-            wide ? (showCorrectors ? SETUP_SECTIONS : SETUP_SECTIONS_DECK) : 'flex h-full flex-col overflow-y-auto'
-          }
+          className={wide ? (touch ? TOUCH_SECTIONS_NO_EXEC : SETUP_SECTIONS) : 'flex h-full flex-col overflow-y-auto'}
         >
           <ToolSection state={state} />
 
@@ -154,23 +152,29 @@ export function SetupSide({
 
           <ActiveCodes state={state} area="codes" />
 
-          {showCorrectors && (
-            <Section icon={SlidersHorizontal} title="Корректоры" area="correctors">
-              <OverrideRow
-                label="S%"
-                value={state.spindleOverride}
-                max={paramValue(state.params, MAX_SPINDLE_PARAM)}
-                keys={['[', ']']}
-              />
-              <OverrideRow
-                label="F%"
-                value={state.feedOverride}
-                max={paramValue(state.params, MAX_FEED_PARAM)}
-                keys={['−', '=']}
-              />
-              <RapidRow value={state.rapidOverride} />
-            </Section>
-          )}
+          <Section icon={SlidersHorizontal} title="Корректоры" area="correctors">
+            <OverrideRow
+              label="S%"
+              value={state.spindleOverride}
+              max={paramValue(state.params, MAX_SPINDLE_PARAM)}
+              keys={['[', ']']}
+              touch={touch}
+              onStep={touch ? (dir) => dispatch({ type: 'OVERRIDE', kind: 'spindle', dir }) : undefined}
+            />
+            <OverrideRow
+              label="F%"
+              value={state.feedOverride}
+              max={paramValue(state.params, MAX_FEED_PARAM)}
+              keys={['−', '=']}
+              touch={touch}
+              onStep={touch ? (dir) => dispatch({ type: 'OVERRIDE', kind: 'feed', dir }) : undefined}
+            />
+            <RapidRow
+              value={state.rapidOverride}
+              touch={touch}
+              onStep={touch ? (dir) => dispatch({ type: 'OVERRIDE', kind: 'rapid', dir }) : undefined}
+            />
+          </Section>
         </div>
       </section>
 

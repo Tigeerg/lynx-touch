@@ -163,7 +163,7 @@ function Reading({ value, unit, set, setLabel }: { value: number; unit: string; 
 // The step key of the touch deck: the panel variant shows the physical `[`/`]` caps, the touch one
 // has no keys to name, so it draws a finger-sized button in the same place.
 const STEP_KEY =
-  'flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-md border border-b-[3px] bg-card text-muted-foreground active:translate-y-px active:border-b'
+  'flex h-8 w-9 shrink-0 select-none items-center justify-center rounded-md border border-b-[3px] bg-card text-base text-muted-foreground active:translate-y-px active:border-b'
 
 export function OverrideRow({
   label,
@@ -351,13 +351,17 @@ export const WIDE_SECTIONS =
 export const SETUP_SECTIONS =
   "grid h-full grid-cols-2 grid-rows-[auto_minmax(0,1fr)] gap-px bg-border overflow-y-auto [grid-template-areas:'tool_load'_'codes_correctors'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1.5"
 
-// Touch deck: the S %/F %/G0 block lives on the deck itself, so the machining column leaves the
-// zone out and the active codes take the full width. Two grids, as above, for the two row sets.
-export const WIDE_SECTIONS_DECK =
-  "grid h-full grid-cols-2 grid-rows-[auto_auto_minmax(0,1fr)] gap-px bg-border content-start overflow-y-auto [grid-template-areas:'tool_load'_'codes_codes'_'execution_execution'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1.5"
+// Touch columns: the correctors row takes its own height and the upper row takes the rest, so the
+// same "Корректоры" block sits in the same place in AUTO and SETUP. The column never scrolls: the
+// operator must see all three overrides at once, without hunting for a scrollbar.
+// The upper row is pinned to the height of the tallest block ("Нагрузка"), so "Датчики щупа" in
+// SETUP takes the same box and the column does not jump when the workplace changes. The lower row
+// takes the rest, so "Активные коды" and "Корректоры" sit on the panel frame with no empty strip.
+export const TOUCH_SECTIONS =
+  "grid min-h-0 flex-1 grid-cols-2 grid-rows-[9rem_minmax(0,1fr)_auto] gap-px overflow-hidden bg-border [grid-template-areas:'tool_load'_'codes_correctors'_'execution_execution'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1"
 
-export const SETUP_SECTIONS_DECK =
-  "grid h-full grid-cols-2 grid-rows-[auto_minmax(0,1fr)] gap-px bg-border overflow-y-auto [grid-template-areas:'tool_load'_'codes_codes'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1.5"
+export const TOUCH_SECTIONS_NO_EXEC =
+  "grid min-h-0 flex-1 grid-cols-2 grid-rows-[9rem_minmax(0,1fr)] gap-px overflow-hidden bg-border [grid-template-areas:'tool_load'_'codes_correctors'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1"
 
 // The status column still flows in reading order: it has no fixed zones.
 export const SIDE_FLOW =

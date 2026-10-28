@@ -762,9 +762,9 @@
      the list: the letters keep their light tones over a darker ground. */
   background: linear-gradient(
     to right,
-    rgba(8, 12, 18, 0.72) 0%,
-    rgba(8, 12, 18, 0.5) 55%,
-    rgba(8, 12, 18, 0.2) 84%,
+    rgba(8, 12, 18, 0.46) 0%,
+    rgba(8, 12, 18, 0.28) 55%,
+    rgba(8, 12, 18, 0.1) 84%,
     rgba(8, 12, 18, 0) 100%
   );
   color: #f8fafc;

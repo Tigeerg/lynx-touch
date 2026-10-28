@@ -19,6 +19,7 @@ import {
 import type { ReactNode } from 'react'
 import { MAX_RPM, RAPID_STEPS, SCREEN_LABEL } from '@/lib/cnc/data'
 import { programTools } from '@/lib/cnc/gcode'
+import { toolPreview } from '@/lib/cnc/tool-preview'
 import { motionSpeed, programLines, type Action } from '@/lib/cnc/machine'
 import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
 import { spindleLoad, spindleRpm } from '@/lib/cnc/spindle'
@@ -89,8 +90,9 @@ export function ToolSection({
   area?: string
   className?: string
 }) {
-  const tools = programTools(programLines(state))
-  const list = (tools.length > 0 ? tools : [state.tool]).slice(0, 3)
+  // The block follows the spindle: the current tool and the next one the program calls, so the
+  // operator can prepare it in advance. A program with several tools no longer shows only the first.
+  const list = toolPreview(programTools(programLines(state)), state.tool)
 
   return (
     <Section

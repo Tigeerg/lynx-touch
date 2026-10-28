@@ -74,14 +74,14 @@ export function HardwareKeyboard({
     timer.current = window.setTimeout(() => setHint(null), HINT_MS)
   }
 
-  const mdi = state.mode === 'MDI'
+  // SETUP forces the JOG machine mode, so `mode === 'MDI'` never holds: the MDI line belongs to the
+  // SETUP workplace on the "Работа" screen, the same rule `routeKey` uses for the real keyboard.
+  const mdi = state.workplace === 'SETUP' && state.screen === 'pos'
   const mdiBlocked = !mdi
     ? null
     : state.run === 'RUN' || state.run === 'HOLD'
       ? 'Станок занят: ввод MDI недоступен'
-      : state.screen !== 'pos'
-        ? 'Откройте вкладку «Позиция» для ввода MDI'
-        : null
+      : null
 
   const mdiEdit = (next: (buffer: string) => string) => {
     if (mdiBlocked) return flash(mdiBlocked)

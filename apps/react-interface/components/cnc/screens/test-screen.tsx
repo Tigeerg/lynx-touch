@@ -78,8 +78,8 @@ export function TestScreen({
           F4-F8 (mode, block modes, NC bounding box, view), not on a second copy of the strip.
           The large face keeps the coordinate block tall enough to read from a step back, in
           simulation as well as in a dry run. */}
-      <div className="flex shrink-0 items-center rounded-md border bg-card px-3 py-2">
-        <PositionStrip state={state} large className="min-w-0" />
+      <div className="flex min-h-[4.5rem] shrink-0 items-center rounded-md border bg-card px-3 py-2">
+        <PositionStrip state={state} large className="w-full min-w-0" />
       </div>
 
       {/* Both on the portrait touch panel: the code above, the trajectory below, each at full

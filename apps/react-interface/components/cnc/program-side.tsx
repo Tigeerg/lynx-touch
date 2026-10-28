@@ -1,24 +1,21 @@
-import { Braces, Fan, FileCode, History, Package, SlidersHorizontal, Timer } from 'lucide-react'
+import { Braces, Fan, FileCode, History, Package, Timer } from 'lucide-react'
 import { modalCodes } from '@/lib/cnc/gcode'
 import { programLines, type Action } from '@/lib/cnc/machine'
-import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
 import { axisLoad, spindleLoad } from '@/lib/cnc/spindle'
 import { AXES, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { formatTime, Panel } from './primitives'
 import {
   AxisLoad,
+  CorrectorsSection,
   LoadRow,
   OperatorPad,
-  OverrideRow,
   ProdStat,
-  RapidRow,
+  PANEL_SECTIONS,
   Section,
-  SETUP_SECTIONS,
   ToolSection,
   TOUCH_SECTIONS,
   TOUCH_SECTIONS_NO_EXEC,
-  WIDE_SECTIONS,
 } from './side-status'
 
 const g = (n: number) => `G${String(n).padStart(2, '0')}`
@@ -172,53 +169,25 @@ export function ProgramSide({
 
   return (
     <aside className={cn('flex min-h-0 flex-col gap-2', className)} aria-label="Обработка программы">
-      <section className="cnc-box flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-card">
-        <div
-          className={
-            wide
-              ? touch
-                ? showExecution
-                  ? TOUCH_SECTIONS
-                  : TOUCH_SECTIONS_NO_EXEC
-                : showExecution
-                  ? WIDE_SECTIONS
-                  : SETUP_SECTIONS
-              : 'flex h-full flex-col overflow-y-auto'
-          }
-        >
+      <section
+        className={cn('cnc-box flex min-h-0 flex-1 flex-col overflow-hidden', !wide && 'rounded-md border bg-card')}
+      >
+        <div className={wide ? (showExecution ? TOUCH_SECTIONS : TOUCH_SECTIONS_NO_EXEC) : PANEL_SECTIONS}>
           <ToolSection state={state} />
 
-          <Section icon={Fan} title="Нагрузка (имитация)" area="load">
-            <LoadRow value={load} />
-            {AXES.map((ax) => (
-              <AxisLoad key={ax} axis={ax} value={axisLoad(state, ax)} />
-            ))}
-          </Section>
+          <CorrectorsSection state={state} dispatch={dispatch} touch={touch} />
 
           <ActiveCodes state={state} area="codes" />
 
-          <Section icon={SlidersHorizontal} title="Корректоры" area="correctors">
-            <OverrideRow
-              label="S%"
-              value={state.spindleOverride}
-              max={paramValue(state.params, MAX_SPINDLE_PARAM)}
-              keys={['[', ']']}
-              touch={touch}
-              onStep={touch ? (dir) => dispatch({ type: 'OVERRIDE', kind: 'spindle', dir }) : undefined}
-            />
-            <OverrideRow
-              label="F%"
-              value={state.feedOverride}
-              max={paramValue(state.params, MAX_FEED_PARAM)}
-              keys={['−', '=']}
-              touch={touch}
-              onStep={touch ? (dir) => dispatch({ type: 'OVERRIDE', kind: 'feed', dir }) : undefined}
-            />
-            <RapidRow
-              value={state.rapidOverride}
-              touch={touch}
-              onStep={touch ? (dir) => dispatch({ type: 'OVERRIDE', kind: 'rapid', dir }) : undefined}
-            />
+          {/* The panel column has five blocks in one column, so the four axes sit in two columns:
+              the same readings, half the height, and nothing needs a scrollbar. */}
+          <Section icon={Fan} title="Нагрузка (имитация)" area="load">
+            <LoadRow value={load} />
+            <div className={wide ? 'flex flex-col gap-0.5' : 'grid grid-cols-2 gap-x-2 gap-y-0.5'}>
+              {AXES.map((ax) => (
+                <AxisLoad key={ax} axis={ax} value={axisLoad(state, ax)} />
+              ))}
+            </div>
           </Section>
 
           {showExecution && (

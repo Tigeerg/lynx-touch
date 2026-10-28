@@ -20,7 +20,6 @@ import {
   X,
   Ruler,
   SkipBack,
-  Table,
   Trash2,
   Wrench,
   Lock,
@@ -194,7 +193,15 @@ export function getSoftkeys(s: MachineState): (Softkey | null)[] {
         disabled: busy,
       },
       { label: 'Запись базы', icon: Save, action: { type: 'OFFSET_TEACH', axis: s.jogAxis }, disabled: busy },
-      { label: 'Таблица баз', icon: Table, action: { type: 'SET_SCREEN', screen: 'offset' } },
+      // The base table lives on the "Смещения" tab; the slot stays as a reserve so F1-F8 keep
+      // their positions until the operator picks what goes here.
+      {
+        label: 'Резерв',
+        icon: CircleHelp,
+        action: { type: 'HINT', text: 'Свободный слот: «Смещения» есть на вкладке' },
+        disabled: true,
+        reason: 'Свободный слот: «Смещения» есть на вкладке',
+      },
       {
         label: SOFTKEY_LABEL.GO_SAFE,
         icon: House,

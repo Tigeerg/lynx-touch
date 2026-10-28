@@ -1,24 +1,22 @@
-import { Move, Radio, SlidersHorizontal } from 'lucide-react'
+import { Move, Radio } from 'lucide-react'
 import { toWork, type Action } from '@/lib/cnc/machine'
 import { PROBE_STEP_MEASURE, PROBE_TOOL } from '@/lib/cnc/probe'
-import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
 import { AXES, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { MdiInput } from '../mdi-input'
 import { ActiveCodes } from '../program-side'
 import { formatDro, Lamp, Panel } from '../primitives'
 import {
+  CorrectorsSection,
   OperatorPad,
-  OverrideRow,
-  RapidRow,
+  PANEL_SECTIONS,
   Section,
-  SETUP_SECTIONS,
   ToolSection,
   TOUCH_SECTIONS_NO_EXEC,
 } from '../side-status'
 
-// The SETUP workplace: on the left the large work and machine coordinates, the MDI line and
-// the probe indication; on the right the tool, the active codes, the overrides. The toolpath
+// The SETUP workplace: on the left the large work and machine coordinates and the MDI line;
+// on the right the tool, the overrides, the active codes and the probe sensors. The toolpath
 // graphics are hidden here: setup goes by the numbers. The load is not shown in setup: the
 // operator reads it in AUTO while cutting, not while preparing.
 
@@ -115,9 +113,8 @@ export function SetupScreen({
       </Panel>
 
       {showMdi && (
-        <div className="flex shrink-0 gap-1.5">
+        <div className="flex shrink-0">
           <MdiInput state={state} dispatch={dispatch} className="min-w-0 flex-1" />
-          <ProbeSensors state={state} className="w-[248px] shrink-0" />
         </div>
       )}
     </div>
@@ -142,39 +139,17 @@ export function SetupSide({
 }) {
   return (
     <aside className={cn('flex min-h-0 flex-col gap-2', className)} aria-label="Наладка: состояние">
-      <section className="cnc-box flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-card">
-        <div
-          className={wide ? (touch ? TOUCH_SECTIONS_NO_EXEC : SETUP_SECTIONS) : 'flex h-full flex-col overflow-y-auto'}
-        >
+      <section
+        className={cn('cnc-box flex min-h-0 flex-1 flex-col overflow-hidden', !wide && 'rounded-md border bg-card')}
+      >
+        <div className={wide ? TOUCH_SECTIONS_NO_EXEC : PANEL_SECTIONS}>
           <ToolSection state={state} />
 
-          {wide && <ProbeSensors state={state} />}
+          <CorrectorsSection state={state} dispatch={dispatch} touch={touch} />
 
           <ActiveCodes state={state} area="codes" />
 
-          <Section icon={SlidersHorizontal} title="Корректоры" area="correctors">
-            <OverrideRow
-              label="S%"
-              value={state.spindleOverride}
-              max={paramValue(state.params, MAX_SPINDLE_PARAM)}
-              keys={['[', ']']}
-              touch={touch}
-              onStep={touch ? (dir) => dispatch({ type: 'OVERRIDE', kind: 'spindle', dir }) : undefined}
-            />
-            <OverrideRow
-              label="F%"
-              value={state.feedOverride}
-              max={paramValue(state.params, MAX_FEED_PARAM)}
-              keys={['−', '=']}
-              touch={touch}
-              onStep={touch ? (dir) => dispatch({ type: 'OVERRIDE', kind: 'feed', dir }) : undefined}
-            />
-            <RapidRow
-              value={state.rapidOverride}
-              touch={touch}
-              onStep={touch ? (dir) => dispatch({ type: 'OVERRIDE', kind: 'rapid', dir }) : undefined}
-            />
-          </Section>
+          <ProbeSensors state={state} />
         </div>
       </section>
 

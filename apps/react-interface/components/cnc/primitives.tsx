@@ -107,9 +107,9 @@ export function formatDro(v: number, digits = 3) {
 }
 
 // The position strip: the work position in the active work offset, readable at rest and on every
-// screen that shows it (AUTO and PROGON). One markup for both places, so the offset code and the
-// unit never drift apart. `large` is the AUTO reading: the coordinates are the primary number
-// there, the rest of the panel is secondary.
+// screen that shows it. AUTO and PROGON share the same `large` row (type size, height and
+// padding), because the operator reads the position the same way in both. One markup for both
+// places, so the offset code and the unit never drift apart.
 export function PositionStrip({
   state,
   compact = false,
@@ -140,14 +140,14 @@ export function PositionStrip({
       >
         Рабочие · мм
       </span>
-      <div className={cn('ml-auto flex min-w-0 items-baseline', large ? 'gap-4' : 'gap-2.5')}>
+      <div className={cn('ml-auto flex min-w-0 items-baseline', large ? 'gap-3' : 'gap-2.5')}>
         {AXES.map((ax) => (
           <span key={ax} className="flex items-baseline gap-1">
             <span className="font-mono text-[10px] font-bold uppercase text-muted-foreground">{ax}</span>
             <span
               className={cn(
                 'font-mono font-bold tabular-nums',
-                large ? 'text-3xl leading-none' : compact ? 'text-sm' : 'text-base',
+                large ? 'text-2xl leading-none' : compact ? 'text-sm' : 'text-base',
               )}
             >
               {formatDro(work[ax])}

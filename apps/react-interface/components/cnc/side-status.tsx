@@ -11,6 +11,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  SlidersHorizontal,
   Timer,
   Wrench,
   type LucideIcon,
@@ -227,6 +228,49 @@ export function OverrideRow({
   )
 }
 
+// The one "Correctors" block of the side column, shared by AUTO and SETUP: spindle, feed and rapid
+// overrides in the same order. The touch variant swaps the key caps for finger-sized buttons.
+export function CorrectorsSection({
+  state,
+  dispatch,
+  touch = false,
+  area = 'correctors',
+  className,
+}: {
+  state: MachineState
+  dispatch: (a: Action) => void
+  touch?: boolean
+  /** Named zone in the side grid; both screens use "correctors". */
+  area?: string
+  className?: string
+}) {
+  return (
+    <Section icon={SlidersHorizontal} title="Корректоры" area={area} className={className}>
+      <OverrideRow
+        label="S%"
+        value={state.spindleOverride}
+        max={paramValue(state.params, MAX_SPINDLE_PARAM)}
+        keys={['[', ']']}
+        touch={touch}
+        onStep={touch ? (dir) => dispatch({ type: 'OVERRIDE', kind: 'spindle', dir }) : undefined}
+      />
+      <OverrideRow
+        label="F%"
+        value={state.feedOverride}
+        max={paramValue(state.params, MAX_FEED_PARAM)}
+        keys={['−', '=']}
+        touch={touch}
+        onStep={touch ? (dir) => dispatch({ type: 'OVERRIDE', kind: 'feed', dir }) : undefined}
+      />
+      <RapidRow
+        value={state.rapidOverride}
+        touch={touch}
+        onStep={touch ? (dir) => dispatch({ type: 'OVERRIDE', kind: 'rapid', dir }) : undefined}
+      />
+    </Section>
+  )
+}
+
 export function LoadRow({ value }: { value: number }) {
   const tone = value > 80 ? 'bg-destructive' : value > 60 ? 'bg-warning' : 'bg-primary'
   return (
@@ -338,30 +382,23 @@ export function RapidRow({
   )
 }
 
-// Fixed side grid for AUTO and SETUP: the block keeps its column whatever the set, and a missing
-// block leaves its zone empty instead of shifting the others. The 1 px gap shows the container
-// border colour, so neighbouring blocks share one line instead of drawing a double frame. The
-// execution strip spans the bottom only in AUTO and takes the spare height, so nothing hangs
-// above the panel frame.
-export const WIDE_SECTIONS =
-  "grid h-full grid-cols-2 grid-rows-[auto_auto_minmax(0,1fr)] gap-px bg-border content-start overflow-y-auto [grid-template-areas:'tool_load'_'codes_correctors'_'execution_execution'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1.5"
+// The classic 1024 panel: one column in the operator's reading order (tool, correctors, active codes,
+// load, execution). The blocks are separated by the same 1 px line as before, so the five of them fit
+// inside the frame without a scrollbar; the room the operator asked for goes into each block's own
+// inner padding, not into a gap between the frames.
+// The column itself is painted like a card, so the spare height below the last block reads as part
+// of it instead of a grey strip; blocks are divided by a hairline, not by a background gap.
+const PANEL_SECTION = '[&>section]:bg-card [&>section]:px-2 [&>section]:py-0.5 [&>section:not(:last-child)]:border-b'
 
-// SETUP and the touch AUTO column have no execution row: the second row stretches to the bottom,
-// so the correctors box reaches the panel frame instead of hanging above it.
-export const SETUP_SECTIONS =
-  "grid h-full grid-cols-2 grid-rows-[auto_minmax(0,1fr)] gap-px bg-border overflow-y-auto [grid-template-areas:'tool_load'_'codes_correctors'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1.5"
+export const PANEL_SECTIONS = `flex h-full min-h-0 flex-col overflow-hidden bg-card ${PANEL_SECTION}`
 
-// Touch columns: the correctors row takes its own height and the upper row takes the rest, so the
-// same "Корректоры" block sits in the same place in AUTO and SETUP. The column never scrolls: the
-// operator must see all three overrides at once, without hunting for a scrollbar.
-// The upper row is pinned to the height of the tallest block ("Нагрузка"), so "Датчики щупа" in
-// SETUP takes the same box and the column does not jump when the workplace changes. The lower row
-// takes the rest, so "Активные коды" and "Корректоры" sit on the panel frame with no empty strip.
+// The touch column keeps the two-column grid it had: the deck below carries the correctors buttons,
+// and the blocks must not reflow into a scrolling column on the 1080x1920 panel.
 export const TOUCH_SECTIONS =
-  "grid min-h-0 flex-1 grid-cols-2 grid-rows-[9rem_minmax(0,1fr)_auto] gap-px overflow-hidden bg-border [grid-template-areas:'tool_load'_'codes_correctors'_'execution_execution'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1"
+  "grid h-full grid-cols-2 grid-rows-[9rem_minmax(0,1fr)_auto] gap-px overflow-hidden bg-border [grid-template-areas:'tool_load'_'codes_correctors'_'execution_execution'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1"
 
 export const TOUCH_SECTIONS_NO_EXEC =
-  "grid min-h-0 flex-1 grid-cols-2 grid-rows-[9rem_minmax(0,1fr)] gap-px overflow-hidden bg-border [grid-template-areas:'tool_load'_'codes_correctors'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1"
+  "grid h-full grid-cols-2 grid-rows-[9rem_minmax(0,1fr)] gap-px overflow-hidden bg-border [grid-template-areas:'tool_load'_'codes_correctors'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1"
 
 // The status column still flows in reading order: it has no fixed zones.
 export const SIDE_FLOW =

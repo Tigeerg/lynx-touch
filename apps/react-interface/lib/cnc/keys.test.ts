@@ -4,7 +4,7 @@
 // the help, so moving it out of the hook did not change the usual map.
 import { describe, expect, it } from 'vitest'
 import { HELP_BLOCKED, keyToAction, routeKey, type KeyLike } from './keys'
-import { initialState } from './machine'
+import { initialState, reducer } from './machine'
 import { getSoftkeys } from './softkeys'
 import type { MachineState } from './types'
 
@@ -76,5 +76,79 @@ describe('routeKey: early branches the old hook swallowed', () => {
       action: { type: 'PATH_VIEW_CYCLE' },
       prevent: true,
     })
+  })
+})
+
+// The MDI line lives on the SETUP work screen. While it is open the physical keyboard types the
+// block there instead of pressing the panel keys, and a running PROGON simulation must not take
+// the keys away: the simulation keeps `run` at IDLE, so it is not a busy machine.
+describe('MDI с физической клавиатуры', () => {
+  const setup: MachineState = {
+    ...initialState,
+    workplace: 'SETUP',
+    mode: 'JOG',
+    screen: 'pos',
+  }
+  const sim: MachineState = { ...setup, sim: { active: true, line: 3, timer: 0 } }
+  const withBuffer = (s: MachineState, buffer: string): MachineState => ({ ...s, mdi: { ...s.mdi, buffer } })
+
+  it('letters and digits go to the MDI buffer, not to the panel keys', () => {
+    expect(routeKey(withBuffer(sim, 'G0 '), key('KeyX'))).toEqual({
+      action: { type: 'MDI_BUFFER', value: 'G0 X' },
+      prevent: true,
+    })
+    expect(routeKey(withBuffer(sim, 'G0 X'), key('Digit0'))).toEqual({
+      action: { type: 'MDI_BUFFER', value: 'G0 X0' },
+      prevent: true,
+    })
+  })
+
+  it('arrows do not move the block cursor while MDI is open', () => {
+    expect(routeKey(sim, key('ArrowUp'))).toEqual({ action: null, prevent: true })
+    expect(routeKey(sim, key('PageDown'))).toEqual({ action: null, prevent: true })
+  })
+
+  it('Backspace erases the last character', () => {
+    expect(routeKey(withBuffer(sim, 'G0 X0'), key('Backspace'))).toEqual({
+      action: { type: 'MDI_BUFFER', value: 'G0 X' },
+      prevent: true,
+    })
+  })
+
+  it('Escape clears the MDI line instead of resetting the machine', () => {
+    expect(routeKey(withBuffer(sim, 'G0 X0'), key('Escape'))).toEqual({
+      action: { type: 'MDI_BUFFER', value: '' },
+      prevent: true,
+    })
+  })
+
+  it('Enter still runs the MDI block', () => {
+    expect(routeKey(withBuffer(sim, 'G0 X0'), key('Enter'))).toEqual({
+      action: { type: 'CYCLE_START' },
+      prevent: true,
+    })
+  })
+
+  it('the started block cancels the PROGON simulation instead of running twice', () => {
+    const typed = withBuffer(sim, 'G0 X0')
+    const route = routeKey(typed, key('Enter'))
+    if (!route?.action) throw new Error('Enter must route the MDI block to the machine')
+    const next = reducer(typed, route.action)
+
+    expect(next.sim.active).toBe(false)
+    expect(next.mdi.running).toBe(true)
+    expect(next.run).toBe('RUN')
+  })
+
+  it('outside SETUP the letter keys keep their panel meaning', () => {
+    expect(routeKey(initialState, key('KeyX'))).toEqual({
+      action: { type: 'SELECT_AXIS', axis: 'X' },
+      prevent: true,
+    })
+  })
+
+  it('a busy machine does not take the MDI keys', () => {
+    expect(routeKey({ ...setup, run: 'RUN' }, key('KeyG'))).toBeNull()
+    expect(routeKey({ ...setup, run: 'RUN' }, key('Backspace'))).toBeNull()
   })
 })

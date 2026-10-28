@@ -48,13 +48,13 @@ export function AutoScreen({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-[var(--panel-gap)]">
-      <section className="cnc-box flex min-h-[5.25rem] shrink-0 flex-col justify-center rounded-md border bg-card px-3 py-2">
+      <section className="cnc-box flex min-h-[4.5rem] shrink-0 flex-col justify-center rounded-md border bg-card px-3 py-2">
         <div className="flex flex-col gap-1">
           {/* The work DRO is the primary reading in AUTO: the operator looks at the position more
               often than at the estimate, so it takes the first line in a large face. The block
               has no header of its own: the padding and the minimum height keep the same strip
               height the header used to give. */}
-          <PositionStrip state={state} large />
+          <PositionStrip state={state} large className="min-w-0" />
 
           {/* The quiet line: the common distance to the frame (no per-axis split) and the
               remaining program, both secondary to the position above. */}

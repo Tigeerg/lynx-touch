@@ -37,7 +37,6 @@ export function HeaderBar({
 }) {
   const activeAlarms = state.alarms.filter((a) => a.active)
   const hasError = activeAlarms.some((a) => a.level === 'error')
-  const WorkplaceIcon = WORKPLACE_ICON[state.workplace]
 
   return (
     <header className="flex h-11 shrink-0 items-stretch gap-[var(--panel-gap)] whitespace-nowrap">
@@ -48,30 +47,27 @@ export function HeaderBar({
         <p className="text-sm font-bold">{MACHINE_NAME}</p>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5 rounded-md border bg-card px-1.5">
-        <WorkplaceIcon className="size-5 shrink-0 text-primary" aria-hidden="true" />
+      <div className="flex shrink-0 items-center rounded-md border bg-card px-1.5">
         <ol className="flex items-center gap-0.5" aria-label="Режим">
           {WORKPLACES.map((w) => {
-            const Icon = WORKPLACE_ICON[w]
             const active = w === state.workplace
             return (
               <li key={w} title={WORKPLACE_LABEL[w]} aria-current={active ? 'true' : undefined}>
                 <button
                   type="button"
                   tabIndex={-1}
+                  aria-label={WORKPLACE_LABEL[w]}
                   aria-pressed={active}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => onWorkplace(w)}
                   className={cn(
-                    'wp-btn flex size-7 items-center justify-center rounded-sm border transition-colors',
+                    'wp-btn flex h-7 items-center justify-center rounded-sm border px-2 transition-colors',
                     active
                       ? 'border-primary bg-primary text-primary-foreground'
                       : 'bg-muted text-muted-foreground hover:bg-accent',
                   )}
                 >
-                  <Icon className="size-3.5" aria-hidden="true" />
-                  <span className="wp-word hidden truncate text-[10px] font-semibold">{WORKPLACE_LABEL[w]}</span>
-                  <span className="sr-only">{WORKPLACE_LABEL[w]}</span>
+                  <span className="wp-word whitespace-nowrap text-[10px] font-semibold">{WORKPLACE_LABEL[w]}</span>
                 </button>
               </li>
             )

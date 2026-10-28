@@ -35,7 +35,10 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
   const showPath = state.params[TOOLPATH_PARAM] === 1 || state.sim.active
   const activeAlarms = state.alarms.filter((a) => a.active).length
   const testMode = state.workplace === 'TEST'
-  const showStatus = (state.screen === 'pos' || state.screen === 'prog') && !state.sim.active && !testMode
+  // The status zone carries the MDI line in SETUP, so it stays on screen even while the PROGON
+  // simulation runs: otherwise the operator cannot type an MDI command during a simulation.
+  const setupMdi = state.workplace === 'SETUP' && state.screen === 'pos'
+  const showStatus = setupMdi || ((state.screen === 'pos' || state.screen === 'prog') && !state.sim.active && !testMode)
 
   return (
     <FhdStage width={SCREEN_W} height={SCREEN_H}>

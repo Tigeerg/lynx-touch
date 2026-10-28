@@ -71,6 +71,15 @@ describe('софт-кеи: подпись влезает в слот', () => {
     expect(SOFTKEY_LABEL_MAX).toBe(14)
   })
 
+  it('в НАЛАДКЕ нет клавиши «Таблица баз»: она дублирует вкладку «Смещения»', () => {
+    const setup = getSoftkeys({ ...initialState, workplace: 'SETUP', screen: 'pos', mode: 'JOG' })
+
+    expect(setup.some((k) => k?.label === 'Таблица баз')).toBe(false)
+    // The slot stays in the set as a reserve, so F1-F8 keep their positions.
+    expect(setup.filter(Boolean)).toHaveLength(8)
+    expect(setup.filter((k) => k?.label === 'Резерв').length).toBeGreaterThan(0)
+  })
+
   it('подпись смещения переживает пустой список', () => {
     const s: MachineState = { ...initialState, screen: 'offset', offsets: [] }
 

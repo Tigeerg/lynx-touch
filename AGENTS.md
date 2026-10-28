@@ -19,7 +19,8 @@
   `verifier` (Тестировщик + Ревьюер). Субагентов вызывает только `lead`; `default_agent` — `lead`.
 * [VERSIONING.md](VERSIONING.md) — порядок внесения изменения и ведения версий.
 * [ARCHITECTURE.md](ARCHITECTURE.md) — карта модулей и слоёв продукта.
-* [TODO.md](TODO.md) — технический долг.
+* [TODO.md](TODO.md) — технический долг; выполненные пункты после приёмки волны — в
+  [docs/TODO-archive.md](docs/TODO-archive.md).
 
 Правила действуют для каждого агента, как бы он ни назывался.
 

@@ -95,19 +95,34 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
                       showPad={false}
                       wide
                       showExecution={false}
+                      showCorrectors={false}
                       className="h-full"
                     />
                   </>
                 ) : (
                   <>
                     <div aria-hidden="true" />
-                    <ProgramSide state={state} dispatch={dispatch} showPad={false} wide className="h-full" />
+                    <ProgramSide
+                      state={state}
+                      dispatch={dispatch}
+                      showPad={false}
+                      wide
+                      showCorrectors={false}
+                      className="h-full"
+                    />
                   </>
                 )
               ) : state.workplace === 'SETUP' ? (
                 <>
                   <SetupMdi state={state} dispatch={dispatch} className="h-full min-h-0" />
-                  <SetupSide state={state} dispatch={dispatch} showPad={false} wide className="h-full" />
+                  <SetupSide
+                    state={state}
+                    dispatch={dispatch}
+                    showPad={false}
+                    wide
+                    showCorrectors={false}
+                    className="h-full"
+                  />
                 </>
               ) : (
                 <SideStatus state={state} dispatch={dispatch} showPad={false} wide className="row-span-2 h-full" />

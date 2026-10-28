@@ -5,6 +5,9 @@ design and may lag behind. Change this file together with behavior. The map of t
 [ARCHITECTURE.md](ARCHITECTURE.md); this file is the viewer deep dive. Russian version — [DESIGN.md](DESIGN.md);
 edit both languages in the same pass.
 
+Terms: the dictionary for the human reader is [ROLES.md](ROLES.md), section 9; a term is decoded there or here
+at first use (`AI_WORKFLOW.md`, section 0.2). NC program — the file with G-code for the machine.
+
 ## 1. Purpose and place in the product
 
 `gcode-viewer` is the third of the product's four projects (manifest — [projects.json](projects.json)):

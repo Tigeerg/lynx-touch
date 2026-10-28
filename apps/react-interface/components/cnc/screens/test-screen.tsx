@@ -75,9 +75,11 @@ export function TestScreen({
       {state.search.open && <SearchBar state={state} dispatch={dispatch} />}
 
       {/* Only the work coordinates stay above the program: the run switches of PROGON live on
-          F4-F8 (mode, block modes, NC bounding box, view), not on a second copy of the strip. */}
-      <div className="flex shrink-0 items-center rounded-md border bg-card px-2 py-1">
-        <PositionStrip state={state} compact className="min-w-0" />
+          F4-F8 (mode, block modes, NC bounding box, view), not on a second copy of the strip.
+          The large face keeps the coordinate block tall enough to read from a step back, in
+          simulation as well as in a dry run. */}
+      <div className="flex shrink-0 items-center rounded-md border bg-card px-3 py-2">
+        <PositionStrip state={state} large className="min-w-0" />
       </div>
 
       {/* Both on the portrait touch panel: the code above, the trajectory below, each at full
@@ -102,7 +104,7 @@ export function TestScreen({
             <ToolpathView state={state} view={pathView} className="h-full" />
             {state.test.bbox && <BBoxOverlay state={state} />}
             {overlay && (
-              <div className="up-overlay absolute inset-y-0 left-0 z-10 w-1/2 min-w-[18rem]">
+              <div className="up-overlay absolute bottom-0 left-0 top-8 z-10 w-1/2 min-w-[18rem]">
                 <ProgramList bare state={state} dispatch={dispatch} className="h-full" />
               </div>
             )}

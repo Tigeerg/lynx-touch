@@ -4,8 +4,12 @@ A map for the agent: where the layers live, who talks to whom, and where new cod
 is the code and its behavior (`CLAUDE.md`); the map may lag behind — edit it together with behavior. Russian
 version — [ARCHITECTURE.md](ARCHITECTURE.md); both are one source, edit them in the same pass.
 
-A deep dive into the viewer (layers, threads, QML contract) is in [DESIGN.md](DESIGN.md). This file is the map
-of the whole product; a new directory, layer, or component is justified here.
+A deep dive into the viewer (layers, threads, QML contract — the agreement on types, signals and tags) is in
+[DESIGN.md](DESIGN.md). This file is the map of the whole product; a new directory, layer, or component is
+justified here.
+
+Terms: the dictionary for the human reader is [ROLES.md](ROLES.md), section 9; a term is decoded there or here
+at first use (`AI_WORKFLOW.md`, section 0.2).
 
 ## 1. Product
 

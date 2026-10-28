@@ -160,26 +160,69 @@ function Reading({ value, unit, set, setLabel }: { value: number; unit: string; 
   )
 }
 
+// The step key of the touch deck: the panel variant shows the physical `[`/`]` caps, the touch one
+// has no keys to name, so it draws a finger-sized button in the same place.
+const STEP_KEY =
+  'flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-md border border-b-[3px] bg-card text-muted-foreground active:translate-y-px active:border-b'
+
 export function OverrideRow({
   label,
   value,
   max,
   keys,
+  onStep,
+  touch = false,
 }: {
   label: string
   value: number
   max: number
+  /** Physical keys that drive the value; on the touch deck they are replaced by the buttons. */
   keys: [string, string]
+  /** Present on the touch deck: the row steps by 10 % on a tap, like the keys do. */
+  onStep?: (dir: 1 | -1) => void
+  /** Touch sizes only: a bigger label and a taller bar. */
+  touch?: boolean
 }) {
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="w-6 font-semibold text-muted-foreground">{label}</span>
-      <Keycap className="h-5 min-w-5 px-1 text-[10px]">{keys[0]}</Keycap>
+    <div className={cn('flex items-center gap-2', touch ? 'text-sm' : 'text-xs')}>
+      <span className={cn('shrink-0 font-semibold text-muted-foreground', touch ? 'w-8' : 'w-6')}>{label}</span>
+      {onStep ? (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={`${label} меньше`}
+          onClick={() => onStep(-1)}
+          className={STEP_KEY}
+        >
+          −
+        </button>
+      ) : (
+        <Keycap className="h-5 min-w-5 px-1 text-[10px]">{keys[0]}</Keycap>
+      )}
       <div className="flex-1">
-        <OverrideBar value={value} max={max} />
+        <OverrideBar value={value} max={max} className={touch ? 'h-3.5' : undefined} />
       </div>
-      <Keycap className="h-5 min-w-5 px-1 text-[10px]">{keys[1]}</Keycap>
-      <span className="w-10 text-right font-mono text-sm font-bold tabular-nums">{value}%</span>
+      {onStep ? (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={`${label} больше`}
+          onClick={() => onStep(1)}
+          className={STEP_KEY}
+        >
+          +
+        </button>
+      ) : (
+        <Keycap className="h-5 min-w-5 px-1 text-[10px]">{keys[1]}</Keycap>
+      )}
+      <span
+        className={cn(
+          'shrink-0 text-right font-mono font-bold tabular-nums',
+          touch ? 'w-14 text-base' : 'w-10 text-sm',
+        )}
+      >
+        {value}%
+      </span>
     </div>
   )
 }
@@ -238,17 +281,39 @@ export function AxisLoad({ axis, value }: { axis: Axis; value: number }) {
   )
 }
 
-export function RapidRow({ value }: { value: number }) {
+export function RapidRow({
+  value,
+  onStep,
+  touch = false,
+}: {
+  value: number
+  /** Present on the touch deck: the arrows step through 5/25/50/100 in the same order as the keys. */
+  onStep?: (dir: 1 | -1) => void
+  touch?: boolean
+}) {
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="w-6 font-semibold text-muted-foreground">G0</span>
-      <Keycap className="h-5 min-w-5 px-1 text-[10px]">9</Keycap>
+    <div className={cn('flex items-center gap-2', touch ? 'text-sm' : 'text-xs')}>
+      <span className={cn('shrink-0 font-semibold text-muted-foreground', touch ? 'w-8' : 'w-6')}>G0</span>
+      {onStep ? (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="Ускорение G0 меньше"
+          onClick={() => onStep(-1)}
+          className={STEP_KEY}
+        >
+          &lt;
+        </button>
+      ) : (
+        <Keycap className="h-5 min-w-5 px-1 text-[10px]">9</Keycap>
+      )}
       <div className="flex flex-1 overflow-hidden rounded-sm border">
         {RAPID_STEPS.map((r) => (
           <span
             key={r}
             className={cn(
-              'flex-1 py-0.5 text-center font-mono text-xs font-bold',
+              'flex flex-1 items-center justify-center text-center font-mono font-bold',
+              touch ? 'py-1.5 text-sm' : 'py-0.5 text-xs',
               r === value ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground',
             )}
           >
@@ -256,21 +321,43 @@ export function RapidRow({ value }: { value: number }) {
           </span>
         ))}
       </div>
-      <Keycap className="h-5 min-w-5 px-1 text-[10px]">0</Keycap>
+      {onStep ? (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="Ускорение G0 больше"
+          onClick={() => onStep(1)}
+          className={STEP_KEY}
+        >
+          &gt;
+        </button>
+      ) : (
+        <Keycap className="h-5 min-w-5 px-1 text-[10px]">0</Keycap>
+      )}
     </div>
   )
 }
 
 // Fixed side grid for AUTO and SETUP: the block keeps its column whatever the set, and a missing
-// block leaves its zone empty instead of shifting the others. The execution strip spans the
-// bottom only in AUTO (its area is declared there, so the spare row stays empty in SETUP).
+// block leaves its zone empty instead of shifting the others. The 1 px gap shows the container
+// border colour, so neighbouring blocks share one line instead of drawing a double frame. The
+// execution strip spans the bottom only in AUTO and takes the spare height, so nothing hangs
+// above the panel frame.
 export const WIDE_SECTIONS =
-  "grid h-full grid-cols-2 grid-rows-[auto_auto_auto] content-start overflow-y-auto [grid-template-areas:'tool_load'_'codes_correctors'_'execution_execution'] [&>section]:border-r [&>section]:border-b [&>section]:py-1.5"
+  "grid h-full grid-cols-2 grid-rows-[auto_auto_minmax(0,1fr)] gap-px bg-border content-start overflow-y-auto [grid-template-areas:'tool_load'_'codes_correctors'_'execution_execution'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1.5"
 
-// SETUP has no execution row: the second row stretches to the bottom, so the correctors box
-// reaches the panel frame instead of hanging above it.
+// SETUP and the touch AUTO column have no execution row: the second row stretches to the bottom,
+// so the correctors box reaches the panel frame instead of hanging above it.
 export const SETUP_SECTIONS =
-  "grid h-full grid-cols-2 grid-rows-[auto_minmax(0,1fr)] content-start overflow-y-auto [grid-template-areas:'tool_load'_'codes_correctors'] [&>section]:border-r [&>section]:border-b [&>section]:py-1.5"
+  "grid h-full grid-cols-2 grid-rows-[auto_minmax(0,1fr)] gap-px bg-border overflow-y-auto [grid-template-areas:'tool_load'_'codes_correctors'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1.5"
+
+// Touch deck: the S %/F %/G0 block lives on the deck itself, so the machining column leaves the
+// zone out and the active codes take the full width. Two grids, as above, for the two row sets.
+export const WIDE_SECTIONS_DECK =
+  "grid h-full grid-cols-2 grid-rows-[auto_auto_minmax(0,1fr)] gap-px bg-border content-start overflow-y-auto [grid-template-areas:'tool_load'_'codes_codes'_'execution_execution'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1.5"
+
+export const SETUP_SECTIONS_DECK =
+  "grid h-full grid-cols-2 grid-rows-[auto_minmax(0,1fr)] gap-px bg-border overflow-y-auto [grid-template-areas:'tool_load'_'codes_codes'] [&>section]:border-0 [&>section]:bg-card [&>section]:py-1.5"
 
 // The status column still flows in reading order: it has no fixed zones.
 export const SIDE_FLOW =

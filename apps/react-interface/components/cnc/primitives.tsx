@@ -69,11 +69,25 @@ export function Lamp({
   )
 }
 
-export function OverrideBar({ value, max, mark = 100 }: { value: number; max: number; mark?: number }) {
+export function OverrideBar({
+  value,
+  max,
+  mark = 100,
+  className,
+}: {
+  value: number
+  max: number
+  mark?: number
+  /** Touch deck draws the same bar a little taller; the panel keeps the stock height. */
+  className?: string
+}) {
   const pct = Math.min(100, (value / max) * 100)
   const tone = value > mark ? 'bg-warning' : value < mark ? 'bg-primary/60' : 'bg-primary'
   return (
-    <div className="relative h-3 w-full overflow-hidden rounded-sm border bg-muted" role="presentation">
+    <div
+      className={cn('relative h-3 w-full overflow-hidden rounded-sm border bg-muted', className)}
+      role="presentation"
+    >
       <div className={cn('h-full transition-[width] duration-150', tone)} style={{ width: `${pct}%` }} />
       <div className="absolute inset-y-0 w-px bg-foreground/50" style={{ left: `${(mark / max) * 100}%` }} />
     </div>
@@ -83,6 +97,13 @@ export function OverrideBar({ value, max, mark = 100 }: { value: number; max: nu
 export function formatCoord(v: number, digits = 3) {
   const rounded = Math.abs(v) < 0.5 * 10 ** -digits ? 0 : v
   return `${rounded < 0 ? '−' : '+'}${Math.abs(rounded).toFixed(digits)}`
+}
+
+// DRO reading: the sign is shown only when the number is negative (`−120.500`), a positive
+// position needs no `+` in front of it. Rounding matches formatCoord.
+export function formatDro(v: number, digits = 3) {
+  const rounded = Math.abs(v) < 0.5 * 10 ** -digits ? 0 : v
+  return `${rounded < 0 ? '−' : ''}${Math.abs(rounded).toFixed(digits)}`
 }
 
 // The position strip: the work position in the active work offset, readable at rest and on every
@@ -114,7 +135,7 @@ export function PositionStrip({
       <span
         className={cn(
           'shrink-0 font-semibold uppercase tracking-wider text-muted-foreground',
-          large ? 'text-[11px]' : 'text-[10px]',
+          large ? 'text-xs' : 'text-[10px]',
         )}
       >
         Рабочие · мм
@@ -126,10 +147,10 @@ export function PositionStrip({
             <span
               className={cn(
                 'font-mono font-bold tabular-nums',
-                large ? 'text-2xl leading-none' : compact ? 'text-sm' : 'text-base',
+                large ? 'text-3xl leading-none' : compact ? 'text-sm' : 'text-base',
               )}
             >
-              {formatCoord(work[ax])}
+              {formatDro(work[ax])}
             </span>
             {ax === 'A' && (
               <span className={cn('font-sans text-muted-foreground', large ? 'text-xs' : 'text-[10px]')}>°</span>

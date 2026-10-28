@@ -14,11 +14,11 @@ again**, so a drift must fail a test instead of surfacing on the operator's scre
 workplaces (SETUP/TEST/RUN), the merge of Position and Program into a single Work tab, per-workplace
 F1-F8 sets, the AUTO screen with Distance-to-Go and a transparent code window, the animated tool
 measure, the Minimal theme, the removal of tab locking. The Qt port stayed at roughly React
-`0.12.0`-`0.14.x`. Current numbers: React `0.20.0`, Qt `0.5.8`.
+`0.12.0`-`0.14.x`. Current numbers: React `0.20.2`, Qt `0.5.8`.
 
 ## 1. Inventory: what Qt has and what it lacks
 
-| Panel node | React `0.20.0` | Qt `0.5.8` (`main.qml`) | Gap |
+| Panel node | React `0.20.2` | Qt `0.5.8` (`main.qml`) | Gap |
 |---|---|---|---|
 | Top level | Workplaces `SETUP`/`TEST`/`RUN`, buttons ordered AUTO, TEST, SETUP; a workplace sets the machine mode and dry run | only `machineMode` (AUTO/MDI/JOG/MPG) with a mode switch | no workplaces |
 | Tabs | 5: Work, Offsets, Tool, Messages, Service; Work covers Position and Program | 6: Position, Program, Offsets, Tool, Messages, Service | +1 tab |

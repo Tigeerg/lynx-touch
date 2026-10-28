@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { initialState, reducer } from './machine'
 import { THEME_OPTIONS, THEME_PARAM } from './service-data'
-import { THEME_CLASSES, themeClasses } from './theme'
+import { savedTheme, THEME_CLASSES, THEME_DEFAULT, themeBootScript, themeClasses } from './theme'
 
 const withTheme = (theme: number) => ({ ...initialState, params: { ...initialState.params, [THEME_PARAM]: theme } })
 const toggled = (theme: number) => reducer(withTheme(theme), { type: 'THEME_TOGGLE' }).params[THEME_PARAM]
@@ -47,5 +47,46 @@ describe('загрузка сохранённой темы', () => {
     expect(reducer(withTheme(2), { type: 'THEME_SET', value: 5 }).params[THEME_PARAM]).toBe(5)
     expect(reducer(withTheme(2), { type: 'THEME_SET', value: -1 }).params[THEME_PARAM]).toBe(2)
     expect(reducer(withTheme(2), { type: 'THEME_SET', value: 99 }).params[THEME_PARAM]).toBe(2)
+  })
+
+  it('пустое хранилище не превращается в «Минимал · светлая»', () => {
+    // Number(null) === 0, so a missing key used to be read as theme 0 and the panel opened the
+    // first option instead of the default "Светлая".
+    expect(THEME_DEFAULT).toBe(THEME_OPTIONS.indexOf('Светлая'))
+    expect(savedTheme(null)).toBeNull()
+    expect(savedTheme('')).toBeNull()
+    expect(savedTheme('   ')).toBeNull()
+  })
+
+  it('из хранилища берётся только номер из каталога', () => {
+    expect(savedTheme('0')).toBe(0)
+    expect(savedTheme('2')).toBe(2)
+    expect(savedTheme('5')).toBe(5)
+    expect(savedTheme('6')).toBeNull()
+    expect(savedTheme('-1')).toBeNull()
+    expect(savedTheme('1.5')).toBeNull()
+    expect(savedTheme('тёмная')).toBeNull()
+  })
+})
+
+describe('скрипт темы до первого кадра', () => {
+  // The boot script runs before React, so it is checked as a string against the same class table.
+  const runBoot = (raw: string | null) => {
+    const added: string[] = []
+    const document = { documentElement: { classList: { add: (name: string) => added.push(name) } } }
+    const localStorage = { getItem: () => raw }
+    new Function('localStorage', 'document', themeBootScript())(localStorage, document)
+    return added
+  }
+
+  it('без сохранённой темы ставит палитру по умолчанию, а не «Минимал»', () => {
+    expect(runBoot(null)).toEqual(themeClasses(THEME_DEFAULT))
+    expect(runBoot('')).toEqual(themeClasses(THEME_DEFAULT))
+    expect(runBoot('7')).toEqual(themeClasses(THEME_DEFAULT))
+  })
+
+  it('сохранённую тему ставит до первого кадра', () => {
+    expect(runBoot('1')).toEqual(['dark', 'theme-minimal', 'theme-minimal-dark'])
+    expect(runBoot('3')).toEqual(['dark'])
   })
 })

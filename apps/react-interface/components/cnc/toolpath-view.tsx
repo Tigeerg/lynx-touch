@@ -48,10 +48,16 @@ export function ToolpathView({
   const lines = programLines(state)
   const segments = useMemo(() => buildToolpath(lines), [lines])
   const sim = state.sim.active
-  const pose = useMemo(() => (sim ? simPose(segments, state.sim.line) : null), [sim, segments, state.sim.line])
-  const toolPt = sim ? pose!.pos : toWork(state)
-  const cursorLine = sim ? state.sim.line : state.line
-  const idle = !sim && state.run === 'IDLE' && state.line === 0
+  // A stopped machine has no moving tool to follow: the marker and the highlighted block follow
+  // the operator's line selection (state.cursor.prog) along the same geometry as the simulation,
+  // while the machine itself does not move. RUN/HOLD and the simulation keep their own line.
+  const select = !sim && state.run === 'IDLE'
+  const pose = useMemo(
+    () => (sim ? simPose(segments, state.sim.line) : select ? simPose(segments, state.cursor.prog) : null),
+    [sim, select, segments, state.sim.line, state.cursor.prog],
+  )
+  const toolPt = pose ? pose.pos : toWork(state)
+  const cursorLine = sim ? state.sim.line : select ? state.cursor.prog : state.line
 
   const geometry = useMemo(() => {
     const pts = segments.flatMap((s) => [project(s.from, view), project(s.to, view)])
@@ -110,8 +116,8 @@ export function ToolpathView({
           {segments.map((s, i) => {
             const [x1, y1] = project(s.from, view)
             const [x2, y2] = project(s.to, view)
-            const done = !idle && s.line < cursorLine
-            const current = !idle && s.line === cursorLine
+            const done = s.line < cursorLine
+            const current = s.line === cursorLine
             return (
               <line
                 key={i}

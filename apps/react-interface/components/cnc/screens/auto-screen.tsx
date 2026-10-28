@@ -1,9 +1,9 @@
 'use client'
 
-import { FileCode, Move, Route } from 'lucide-react'
+import { FileCode, Route } from 'lucide-react'
 import { useMemo } from 'react'
 import { currentFile, distanceToGo, programLines, type Action } from '@/lib/cnc/machine'
-import { AUTO_VIEW_TITLE, RAPID_RATE, SCREEN_LABEL } from '@/lib/cnc/data'
+import { AUTO_VIEW_TITLE, RAPID_RATE } from '@/lib/cnc/data'
 import { remainingLength, remainingTimeMs, type PathView } from '@/lib/cnc/toolpath'
 import type { MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
@@ -48,10 +48,12 @@ export function AutoScreen({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-[var(--panel-gap)]">
-      <Panel title={SCREEN_LABEL.pos} icon={Move} className="shrink-0">
-        <div className="flex flex-col gap-1 px-2 py-1">
+      <section className="cnc-box flex min-h-[5.25rem] shrink-0 flex-col justify-center rounded-md border bg-card px-3 py-2">
+        <div className="flex flex-col gap-1">
           {/* The work DRO is the primary reading in AUTO: the operator looks at the position more
-              often than at the estimate, so it takes the first line in a large face. */}
+              often than at the estimate, so it takes the first line in a large face. The block
+              has no header of its own: the padding and the minimum height keep the same strip
+              height the header used to give. */}
           <PositionStrip state={state} large />
 
           {/* The quiet line: the common distance to the frame (no per-axis split) and the
@@ -77,7 +79,7 @@ export function AutoScreen({
             </p>
           </div>
         </div>
-      </Panel>
+      </section>
 
       <Panel
         title={`${AUTO_VIEW_TITLE[view]} · ${file.name}`}

@@ -12,27 +12,27 @@ import {
   Lightbulb,
   Lock,
   LockOpen,
-  Minus,
   Move3d,
   OctagonX,
   Pause,
   Play,
-  Plus,
   RotateCcw,
   RotateCw,
   Shovel,
+  SlidersHorizontal,
   Square,
   Zap,
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useRef, type ReactNode } from 'react'
-import { JOG_STEPS, RAPID_STEPS, WORKPLACE_LABEL } from '@/lib/cnc/data'
+import { JOG_STEPS, WORKPLACE_LABEL } from '@/lib/cnc/data'
 import type { Action } from '@/lib/cnc/machine'
 import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
 import { MPG_STEPS, WORKPLACES, type Axis, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { WORKPLACE_ICON } from '../header-bar'
-import { OverrideBar, Panel } from '../primitives'
+import { Panel } from '../primitives'
+import { OverrideRow, RapidRow } from '../side-status'
 
 const HOLD_DELAY_MS = 400
 const HOLD_REPEAT_MS = 90
@@ -272,73 +272,16 @@ function JogPanel({ state, dispatch }: { state: MachineState; dispatch: (a: Acti
           </div>
         </div>
 
-        <div className="grid shrink-0 grid-cols-3 gap-1.5">
-          <CompactOverride
-            label="Подача"
-            value={state.feedOverride}
-            max={paramValue(state.params, MAX_FEED_PARAM)}
-            onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'feed', dir })}
-          />
-          <CompactOverride
-            label="Шпин."
-            value={state.spindleOverride}
-            max={paramValue(state.params, MAX_SPINDLE_PARAM)}
-            onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'spindle', dir })}
-          />
-          <CompactOverride
-            label="Ускор. G0"
-            value={state.rapidOverride}
-            max={RAPID_STEPS[RAPID_STEPS.length - 1]}
-            onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'rapid', dir })}
-          />
-        </div>
+        <FunctionKeys state={state} dispatch={dispatch} />
       </div>
     </Panel>
   )
 }
 
-function CompactOverride({
-  label,
-  value,
-  max,
-  onStep,
-}: {
-  label: string
-  value: number
-  max: number
-  onStep: (dir: 1 | -1) => void
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1 rounded-md border bg-card p-1">
-      <div className="flex items-baseline justify-between gap-1">
-        <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          {label}
-        </span>
-        <span className="shrink-0 font-mono text-sm font-bold tabular-nums">{value}%</span>
-      </div>
-      <div className="flex items-center gap-1">
-        <HoldButton label={`${label} меньше`} onFire={() => onStep(-1)} className="h-8 w-8 shrink-0 bg-card">
-          <Minus className="size-4" aria-hidden="true" />
-        </HoldButton>
-        <div className="min-w-0 flex-1">
-          <OverrideBar value={value} max={max} />
-        </div>
-        <HoldButton label={`${label} больше`} onFire={() => onStep(1)} className="h-8 w-8 shrink-0 bg-card">
-          <Plus className="size-4" aria-hidden="true" />
-        </HoldButton>
-      </div>
-    </div>
-  )
-}
-
-function FunctionsPanel({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
-  const keys: {
-    label: string
-    icon: LucideIcon
-    active: boolean
-    action: Action
-    disabled?: boolean
-  }[] = [
+// The spindle, coolant and accessory keys have no hardware equivalent in the touch variant, so they
+// sit under the jog keys: four columns, two rows, every key carrying its own state.
+function FunctionKeys({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
+  const keys: { label: string; icon: LucideIcon; active: boolean; action: Action }[] = [
     {
       label: 'M3',
       icon: RotateCw,
@@ -356,7 +299,6 @@ function FunctionsPanel({ state, dispatch }: { state: MachineState; dispatch: (a
     { label: 'Туман', icon: CloudFog, active: state.mist, action: { type: 'TOGGLE', key: 'mist' } },
     { label: 'Свет', icon: Lightbulb, active: state.workLight, action: { type: 'TOGGLE', key: 'workLight' } },
     { label: 'Стружка', icon: Shovel, active: state.chipConveyor, action: { type: 'TOGGLE', key: 'chipConveyor' } },
-    { label: 'Смазка', icon: Droplets, active: state.lube > 0, action: { type: 'LUBE' } },
     {
       label: state.toolClamped ? 'Разжим' : 'Зажим',
       icon: state.toolClamped ? LockOpen : Lock,
@@ -366,26 +308,56 @@ function FunctionsPanel({ state, dispatch }: { state: MachineState; dispatch: (a
   ]
 
   return (
-    <Panel title="Функции" className="w-[300px] shrink-0">
-      <div className="grid h-full grid-cols-3 grid-rows-3 gap-1.5 p-1.5">
-        {keys.map(({ label, icon: Icon, active, action, disabled }) => (
-          <button
-            key={label}
-            type="button"
-            tabIndex={-1}
-            disabled={disabled}
-            aria-pressed={active}
-            onClick={() => dispatch(action)}
-            className={cn(
-              KEY_BASE,
-              'flex-col gap-0.5 px-1 text-[11px]',
-              active ? 'border-primary bg-primary text-primary-foreground' : 'bg-card active:bg-accent',
-            )}
-          >
-            <Icon className="size-5" aria-hidden="true" />
-            {label}
-          </button>
-        ))}
+    <div className="grid h-[86px] shrink-0 grid-cols-4 grid-rows-2 gap-1.5" role="group" aria-label="Функции станка">
+      {keys.map(({ label, icon: Icon, active, action }) => (
+        <button
+          key={label}
+          type="button"
+          tabIndex={-1}
+          aria-pressed={active}
+          onClick={() => dispatch(action)}
+          className={cn(
+            KEY_BASE,
+            'flex-col gap-0.5 px-1 text-[11px]',
+            active ? 'border-primary bg-primary text-primary-foreground' : 'bg-card active:bg-accent',
+          )}
+        >
+          <Icon className="size-4" aria-hidden="true" />
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// The same "Корректоры" block the side column shows: S %, F % and G0 in one list, with the bar in
+// the middle and the value on the right. The touch deck has no physical keys to name, so the
+// `[`/`]` caps become finger-sized buttons and a tap on a G0 step picks that step at once.
+function CorrectorsPanel({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
+  return (
+    <Panel title="Корректоры" icon={SlidersHorizontal} className="w-[286px] shrink-0">
+      <div className="flex h-full flex-col justify-center gap-1.5 px-2 py-1.5">
+        <OverrideRow
+          label="S%"
+          value={state.spindleOverride}
+          max={paramValue(state.params, MAX_SPINDLE_PARAM)}
+          keys={['[', ']']}
+          touch
+          onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'spindle', dir })}
+        />
+        <OverrideRow
+          label="F%"
+          value={state.feedOverride}
+          max={paramValue(state.params, MAX_FEED_PARAM)}
+          keys={['−', '=']}
+          touch
+          onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'feed', dir })}
+        />
+        <RapidRow
+          value={state.rapidOverride}
+          touch
+          onStep={(dir) => dispatch({ type: 'OVERRIDE', kind: 'rapid', dir })}
+        />
       </div>
     </Panel>
   )
@@ -394,10 +366,10 @@ function FunctionsPanel({ state, dispatch }: { state: MachineState; dispatch: (a
 export function TouchDeck({ state, dispatch }: { state: MachineState; dispatch: (a: Action) => void }) {
   return (
     <section aria-label="Сенсорный пульт" className="flex shrink-0 flex-col gap-1.5">
-      <div className="flex h-[260px] gap-1.5">
+      <div className="flex h-[280px] gap-1.5">
         <WorkplaceColumn state={state} dispatch={dispatch} />
         <JogPanel state={state} dispatch={dispatch} />
-        <FunctionsPanel state={state} dispatch={dispatch} />
+        <CorrectorsPanel state={state} dispatch={dispatch} />
       </div>
       <CycleRow state={state} dispatch={dispatch} />
     </section>

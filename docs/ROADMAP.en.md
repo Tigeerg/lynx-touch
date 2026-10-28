@@ -11,7 +11,7 @@ Russian original — [ROADMAP.md](ROADMAP.md); both are one source and are edite
 | Question | Decision |
 |---|---|
 | Qt port in alpha | No. Alpha is the React panel and the viewer. Qt comes after alpha as a separate stage |
-| Viewer in alpha | Toolpath, stock, stock removal and a **simple** collision check. No new mathematical methods and no CSG |
+| Viewer in alpha | Toolpath, stock, stock removal and a **simple** collision check. No new mathematical methods and no CSG (building a volume from simple solids) |
 | Alpha acceptance | Desk with a real program from `cad-testdata`; a real machine is not required |
 | Video audience | Operator and technologist. We show a working scenario, not a set of screens |
 | Three panel configurations | Required in the audit and the demo: physical keys, hybrid, touch-only |

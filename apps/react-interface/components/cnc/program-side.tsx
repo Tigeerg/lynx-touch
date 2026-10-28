@@ -15,8 +15,10 @@ import {
   RapidRow,
   Section,
   SETUP_SECTIONS,
+  SETUP_SECTIONS_DECK,
   ToolSection,
   WIDE_SECTIONS,
+  WIDE_SECTIONS_DECK,
 } from './side-status'
 
 const g = (n: number) => `G${String(n).padStart(2, '0')}`
@@ -153,6 +155,7 @@ export function ProgramSide({
   showPad = true,
   wide = false,
   showExecution = true,
+  showCorrectors = true,
   className,
 }: {
   state: MachineState
@@ -161,17 +164,24 @@ export function ProgramSide({
   wide?: boolean
   /** The execution block lives inside "Machining"; the touch AUTO screen shows it separately. */
   showExecution?: boolean
+  /** The touch deck carries S %/F %/G0 itself, so the column drops the block there. */
+  showCorrectors?: boolean
   className?: string
 }) {
   const load = spindleLoad(state)
+  const grid = showCorrectors
+    ? showExecution
+      ? WIDE_SECTIONS
+      : SETUP_SECTIONS
+    : showExecution
+      ? WIDE_SECTIONS_DECK
+      : SETUP_SECTIONS_DECK
 
   return (
     <aside className={cn('flex min-h-0 flex-col gap-2', className)} aria-label="Обработка программы">
       <section className="cnc-box flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-card">
-        <div
-          className={wide ? (showExecution ? WIDE_SECTIONS : SETUP_SECTIONS) : 'flex h-full flex-col overflow-y-auto'}
-        >
-          <ToolSection state={state} className={wide ? 'border-r' : undefined} />
+        <div className={wide ? grid : 'flex h-full flex-col overflow-y-auto'}>
+          <ToolSection state={state} />
 
           <Section icon={Fan} title="Нагрузка (имитация)" area="load">
             <LoadRow value={load} />
@@ -180,23 +190,25 @@ export function ProgramSide({
             ))}
           </Section>
 
-          <ActiveCodes state={state} area="codes" className={wide ? 'border-r' : undefined} />
+          <ActiveCodes state={state} area="codes" />
 
-          <Section icon={SlidersHorizontal} title="Корректоры" area="correctors" className="border">
-            <OverrideRow
-              label="S%"
-              value={state.spindleOverride}
-              max={paramValue(state.params, MAX_SPINDLE_PARAM)}
-              keys={['[', ']']}
-            />
-            <OverrideRow
-              label="F%"
-              value={state.feedOverride}
-              max={paramValue(state.params, MAX_FEED_PARAM)}
-              keys={['−', '=']}
-            />
-            <RapidRow value={state.rapidOverride} />
-          </Section>
+          {showCorrectors && (
+            <Section icon={SlidersHorizontal} title="Корректоры" area="correctors">
+              <OverrideRow
+                label="S%"
+                value={state.spindleOverride}
+                max={paramValue(state.params, MAX_SPINDLE_PARAM)}
+                keys={['[', ']']}
+              />
+              <OverrideRow
+                label="F%"
+                value={state.feedOverride}
+                max={paramValue(state.params, MAX_FEED_PARAM)}
+                keys={['−', '=']}
+              />
+              <RapidRow value={state.rapidOverride} />
+            </Section>
+          )}
 
           {showExecution && (
             <Section icon={FileCode} title={EXECUTION_TITLE} area="execution" right={<ExecutionCount state={state} />}>

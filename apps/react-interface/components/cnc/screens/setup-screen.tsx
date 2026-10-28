@@ -6,8 +6,16 @@ import { AXES, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { MdiInput } from '../mdi-input'
 import { ActiveCodes } from '../program-side'
-import { formatCoord, Lamp, Panel } from '../primitives'
-import { OperatorPad, OverrideRow, RapidRow, Section, SETUP_SECTIONS, ToolSection } from '../side-status'
+import { formatDro, Lamp, Panel } from '../primitives'
+import {
+  OperatorPad,
+  OverrideRow,
+  RapidRow,
+  Section,
+  SETUP_SECTIONS,
+  SETUP_SECTIONS_DECK,
+  ToolSection,
+} from '../side-status'
 
 // The SETUP workplace: on the left the large work and machine coordinates, the MDI line and
 // the probe indication; on the right the tool, the active codes, the overrides. The toolpath
@@ -91,13 +99,13 @@ export function SetupScreen({
                   {ax}
                 </span>
                 <span className="font-mono text-5xl font-bold tabular-nums leading-none tracking-tight">
-                  {formatCoord(work[ax])}
+                  {formatDro(work[ax])}
                   {ax === 'A' && <span className="ml-1 font-sans text-xl text-muted-foreground">°</span>}
                 </span>
                 <div className="ml-auto text-right leading-tight">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Машинные</p>
                   <p className="font-mono text-2xl font-bold tabular-nums text-muted-foreground">
-                    {formatCoord(state.machine[ax])}
+                    {formatDro(state.machine[ax])}
                   </p>
                 </div>
               </div>
@@ -121,39 +129,48 @@ export function SetupSide({
   dispatch,
   showPad = true,
   wide = false,
+  showCorrectors = true,
   className,
 }: {
   state: MachineState
   dispatch: (a: Action) => void
   showPad?: boolean
   wide?: boolean
+  /** The touch deck carries S %/F %/G0 itself, so the column drops the block there. */
+  showCorrectors?: boolean
   className?: string
 }) {
   return (
     <aside className={cn('flex min-h-0 flex-col gap-2', className)} aria-label="Наладка: состояние">
       <section className="cnc-box flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-card">
-        <div className={wide ? SETUP_SECTIONS : 'flex h-full flex-col overflow-y-auto'}>
-          <ToolSection state={state} className={wide ? 'border-r' : undefined} />
+        <div
+          className={
+            wide ? (showCorrectors ? SETUP_SECTIONS : SETUP_SECTIONS_DECK) : 'flex h-full flex-col overflow-y-auto'
+          }
+        >
+          <ToolSection state={state} />
 
-          {wide && <ProbeSensors state={state} className="border-r" />}
+          {wide && <ProbeSensors state={state} />}
 
-          <ActiveCodes state={state} area="codes" className={wide ? 'border-r' : undefined} />
+          <ActiveCodes state={state} area="codes" />
 
-          <Section icon={SlidersHorizontal} title="Корректоры" area="correctors" className="border">
-            <OverrideRow
-              label="S%"
-              value={state.spindleOverride}
-              max={paramValue(state.params, MAX_SPINDLE_PARAM)}
-              keys={['[', ']']}
-            />
-            <OverrideRow
-              label="F%"
-              value={state.feedOverride}
-              max={paramValue(state.params, MAX_FEED_PARAM)}
-              keys={['−', '=']}
-            />
-            <RapidRow value={state.rapidOverride} />
-          </Section>
+          {showCorrectors && (
+            <Section icon={SlidersHorizontal} title="Корректоры" area="correctors">
+              <OverrideRow
+                label="S%"
+                value={state.spindleOverride}
+                max={paramValue(state.params, MAX_SPINDLE_PARAM)}
+                keys={['[', ']']}
+              />
+              <OverrideRow
+                label="F%"
+                value={state.feedOverride}
+                max={paramValue(state.params, MAX_FEED_PARAM)}
+                keys={['−', '=']}
+              />
+              <RapidRow value={state.rapidOverride} />
+            </Section>
+          )}
         </div>
       </section>
 

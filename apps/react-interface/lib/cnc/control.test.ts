@@ -49,6 +49,15 @@ describe('ручное управление: перемещение, тумбл�
     expect(s.feedOverride).toBe(110)
   })
 
+  it('корректор G0 берётся шагом по списку 5/25/50/100', () => {
+    expect(
+      run({ ...initialState, rapidOverride: 100 }, { type: 'OVERRIDE', kind: 'rapid', dir: 1 }).rapidOverride,
+    ).toBe(100)
+    expect(
+      run({ ...initialState, rapidOverride: 100 }, { type: 'OVERRIDE', kind: 'rapid', dir: -1 }).rapidOverride,
+    ).toBe(50)
+  })
+
   it('холостой ход переключается только в останове', () => {
     const blocked = controlReducer({ ...initialState, dryRun: false, run: 'RUN' }, { type: 'TOGGLE', key: 'dryRun' })
     expect(blocked.s.dryRun).toBe(false)

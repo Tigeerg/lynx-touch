@@ -4,7 +4,7 @@ import { useEffect, useEffectEvent, useReducer, useState } from 'react'
 import { routeKey } from '@/lib/cnc/keys'
 import { initialState, reducer, type Action } from '@/lib/cnc/machine'
 import { paramValue, THEME_PARAM } from '@/lib/cnc/service-data'
-import { THEME_CLASSES, THEME_STORAGE_KEY, themeClasses } from '@/lib/cnc/theme'
+import { savedTheme, THEME_CLASSES, THEME_STORAGE_KEY, themeClasses } from '@/lib/cnc/theme'
 import { getSoftkeys } from '@/lib/cnc/softkeys'
 import { stampAction } from '@/lib/cnc/time'
 import type { MachineState } from '@/lib/cnc/types'
@@ -54,8 +54,10 @@ export function useCncMachine() {
   // live effect touches the html classes, so the first frame is not reset to Light.
   useEffect(() => {
     try {
-      const saved = Number(window.localStorage.getItem(THEME_STORAGE_KEY))
-      if (Number.isInteger(saved) && saved >= 0 && saved < THEME_CLASSES.length) {
+      // A missing key stays null: `Number(null)` is 0 and would quietly open "Минимал · светлая"
+      // instead of the default "Светлая".
+      const saved = savedTheme(window.localStorage.getItem(THEME_STORAGE_KEY))
+      if (saved !== null) {
         dispatch({ type: 'THEME_SET', value: saved })
       }
     } catch {

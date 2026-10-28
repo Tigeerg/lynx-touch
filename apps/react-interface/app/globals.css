@@ -758,14 +758,34 @@
 
 /* UP over the toolpath: dark at the left edge, fully transparent towards the screen centre. */
 .up-overlay {
-  background: linear-gradient(to right, rgba(8, 12, 18, 0.64) 0%, rgba(8, 12, 18, 0.32) 46%, rgba(8, 12, 18, 0) 100%);
+  /* Dark under the code, fading only at the right edge so the trajectory stays visible around
+     the list: the letters keep their light tones over a darker ground. */
+  background: linear-gradient(
+    to right,
+    rgba(8, 12, 18, 0.72) 0%,
+    rgba(8, 12, 18, 0.5) 55%,
+    rgba(8, 12, 18, 0.2) 84%,
+    rgba(8, 12, 18, 0) 100%
+  );
   color: #f8fafc;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  /* A thin dark edge around light letters: the code stays readable where the gradient fades
+     over a bright trajectory. G/M/S/T/F keep their light tones. */
+  -webkit-text-stroke: 0.4px rgba(0, 0, 0, 0.75);
+  paint-order: stroke fill;
+  text-shadow:
+    0 0 2px rgba(0, 0, 0, 0.85),
+    0 1px 3px rgba(0, 0, 0, 0.8);
 }
 .up-overlay ol {
   font-size: 15px;
   font-weight: 500;
-  line-height: 1.4;
+  line-height: 1.2;
+}
+/* Denser rows in the overlay only: the full-screen list keeps its 44 px touch row, while the
+   overlay trades a little target height for more visible blocks. */
+.up-overlay li {
+  min-height: 32px;
+  line-height: 1.2;
 }
 .up-overlay .text-muted-foreground {
   color: rgba(255, 255, 255, 0.72);

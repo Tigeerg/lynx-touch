@@ -1,12 +1,13 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
-import { THEME_CLASSES, THEME_STORAGE_KEY } from '@/lib/cnc/theme'
+import { themeBootScript } from '@/lib/cnc/theme'
 import './globals.css'
 
 // The saved theme must be on the html element before the first paint. The live effect alone
-// paints the default light palette for one frame after a reload.
-const themeBoot = `(()=>{try{const t=Number(localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)})??2);const c=${JSON.stringify(THEME_CLASSES)}[t]||[];for(const name of c)document.documentElement.classList.add(name)}catch{}})()`
+// paints the default light palette for one frame after a reload. The script itself lives in
+// lib/cnc/theme.ts next to the class table, so an empty storage cannot open another theme.
+const themeBoot = themeBootScript()
 
 const inter = Inter({ subsets: ['latin', 'cyrillic'], variable: '--font-inter' })
 const jetbrains = JetBrains_Mono({ subsets: ['latin', 'cyrillic'], variable: '--font-jetbrains' })

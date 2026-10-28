@@ -7,7 +7,7 @@ import { RAPID_RATE } from '@/lib/cnc/data'
 import { AXES, type Axis, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { buildToolpath, remainingTimeMs, simPose, type PathView } from '@/lib/cnc/toolpath'
-import { formatCoord, formatDuration, Lamp, Panel } from '../primitives'
+import { formatDro, formatDuration, Lamp, Panel } from '../primitives'
 import { ToolpathView } from '../toolpath-view'
 import { useUiMode } from '../ui-mode-context'
 
@@ -116,7 +116,7 @@ function DroRow({ label, values }: { label: string; values: (number | null)[] })
       </span>
       {values.map((v, i) => (
         <span key={i} className="text-right font-mono text-sm font-bold leading-tight tabular-nums">
-          {v === null ? <span className="font-normal text-muted-foreground">—</span> : formatCoord(v)}
+          {v === null ? <span className="font-normal text-muted-foreground">—</span> : formatDro(v)}
         </span>
       ))}
     </>

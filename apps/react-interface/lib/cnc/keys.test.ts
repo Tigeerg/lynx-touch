@@ -152,3 +152,48 @@ describe('MDI с физической клавиатуры', () => {
     expect(routeKey({ ...setup, run: 'RUN' }, key('Backspace'))).toBeNull()
   })
 })
+
+// The digit strip on the panel sends the same characters as the physical keys. Digits, minus and
+// the decimal point must reach MDI without Shift; the G-code block symbols stay on Shift.
+describe('MDI: цифры и знаки без Shift', () => {
+  const setup: MachineState = { ...initialState, workplace: 'SETUP', mode: 'JOG', screen: 'pos' }
+  const at = (buffer: string): MachineState => ({ ...setup, mdi: { ...setup.mdi, buffer } })
+
+  it('цифры, минус и точка вводятся без Shift', () => {
+    const plain: [string, string][] = [
+      ['Digit1', '1'],
+      ['Digit2', '2'],
+      ['Digit3', '3'],
+      ['Digit4', '4'],
+      ['Digit5', '5'],
+      ['Digit6', '6'],
+      ['Digit7', '7'],
+      ['Digit8', '8'],
+      ['Digit9', '9'],
+      ['Digit0', '0'],
+      ['Minus', '-'],
+      ['Period', '.'],
+    ]
+    for (const [code, char] of plain) {
+      expect(routeKey(at('G0 X'), key(code)), code).toEqual({
+        action: { type: 'MDI_BUFFER', value: `G0 X${char}` },
+        prevent: true,
+      })
+    }
+  })
+
+  it('#, % и ( требуют Shift', () => {
+    expect(routeKey(at(''), key('Digit3', true))).toEqual({
+      action: { type: 'MDI_BUFFER', value: '#' },
+      prevent: true,
+    })
+    expect(routeKey(at(''), key('Digit5', true))).toEqual({
+      action: { type: 'MDI_BUFFER', value: '%' },
+      prevent: true,
+    })
+    expect(routeKey(at(''), key('Digit9', true))).toEqual({
+      action: { type: 'MDI_BUFFER', value: '(' },
+      prevent: true,
+    })
+  })
+})

@@ -9,24 +9,25 @@ import { HwKey } from './hw-parts'
 
 type Shift = 'off' | 'once' | 'lock'
 
-type KeyDef = { letter: string; alt: string; block: 'address' | 'numeric' }
+type KeyDef = { letter: string; alt?: string; block: 'address' | 'numeric' }
 
 /** How long a key hint stays on the panel after a press. */
 const HINT_MS = 2500
 
 const address = (pairs: string): KeyDef[] =>
   pairs.split(' ').map(([letter, alt]) => ({ letter, alt, block: 'address' }))
-const numeric = (pairs: string): KeyDef[] =>
-  pairs.split(' ').map(([letter, alt]) => ({ letter, alt, block: 'numeric' }))
+const digits = (chars: string): KeyDef[] => chars.split(' ').map((letter) => ({ letter, block: 'numeric' }))
 
-// The left block: G-code addresses and signs. The right block: letters with digits in the numeric-keypad layout.
+// Every key is the same 72x72 cap: the digits and the two signs a G-code block needs most often sit
+// in the main grid, where they are typed without Shift. They take the place of the rare letters;
+// the letters a block really uses (G M X Y Z S F T N O) stay, and the symbols keep their Shift layer.
 const ROWS: KeyDef[][] = [
-  [...address('O# N% G('), ...numeric('A7 B8 C9')],
-  [...address('X) Y[ Z]'), ...numeric('D4 H5 L6')],
-  [...address('M= S* T+'), ...numeric('P1 Q2 R3')],
-  [...address('F/ I, J;'), ...numeric('U- V0 W.')],
+  digits('1 2 3 4 5 6'),
+  digits('7 8 9 0 - .'),
+  address('G# M% X( Y) Z[ S]'),
+  address('F= T* N+ O/ A, B;'),
 ]
-const LAST_ADDRESS_ROW = address('K: E_')
+const LAST_ADDRESS_ROW = address('C: D_')
 
 function noFieldHint(state: MachineState): string {
   if (state.mode === 'AUTO' && state.screen === 'prog') return 'Нет поля ввода: включите правку и выберите кадр'
@@ -103,7 +104,7 @@ export function HardwareKeyboard({
   }
 
   const press = (key: KeyDef) => {
-    type(shift === 'off' ? key.letter : key.alt)
+    type(shift === 'off' || !key.alt ? key.letter : key.alt)
     if (shift === 'once') setShift('off')
   }
 
@@ -183,23 +184,25 @@ export function HardwareKeyboard({
 }
 
 function Legend({ def, shifted, onPress }: { def: KeyDef; shifted: boolean; onPress: () => void }) {
-  const main = shifted ? def.alt : def.letter
-  const small = shifted ? def.letter : def.alt
+  const main = shifted && def.alt ? def.alt : def.letter
+  const small = def.alt ? (shifted ? def.letter : def.alt) : null
   return (
     <HwKey
-      title={`${def.letter} / ${def.alt}`}
+      title={small ? `${def.letter} / ${def.alt}` : def.letter}
       onClick={onPress}
       cap={def.block === 'address' ? 'bg-hw-cap-alt text-hw-ink' : undefined}
       className="font-mono"
       label={
         <>
           <span className="sr-only">{main}</span>
-          <span
-            aria-hidden="true"
-            className="absolute right-1 top-0.5 text-[13px] font-semibold leading-none opacity-75"
-          >
-            {small}
-          </span>
+          {small && (
+            <span
+              aria-hidden="true"
+              className="absolute right-1 top-0.5 text-[13px] font-semibold leading-none opacity-75"
+            >
+              {small}
+            </span>
+          )}
           <span aria-hidden="true" className="text-[30px] font-bold leading-none">
             {main}
           </span>

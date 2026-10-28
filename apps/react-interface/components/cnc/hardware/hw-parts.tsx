@@ -95,9 +95,7 @@ export function HwKey({
       onClick={onClick}
       className={cn(
         'relative flex flex-col items-center justify-center gap-1 rounded-lg border-[4px] border-b-[6px] border-hw-base px-1 text-[13px] font-bold leading-none shadow-[0_1px_2px_oklch(0_0_0/0.55),inset_0_0_0_1px_oklch(1_0_0/0.5),inset_0_2px_3px_oklch(1_0_0/0.9),inset_0_-3px_4px_oklch(0.3_0.02_255/0.2)] transition-[transform,filter] hover:brightness-105 active:translate-y-px active:border-b-[4px] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100',
-        !large && 'text-[12px]',
-        !large && 'h-[72px]',
-        !large && (stretch ? 'w-full' : 'w-[72px] shrink-0'),
+        cn(!large && 'text-[12px]', !large && 'h-[72px]', !large && (stretch ? 'w-full' : 'w-[72px] shrink-0')),
         cap ?? 'bg-hw-cap text-hw-ink',
         className,
       )}

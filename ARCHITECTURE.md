@@ -31,7 +31,10 @@
 * `app/` — маршруты и точка входа: `page.tsx` (панель), `classic/` (маршрут `/classic` — тот же редьюсер,
   всегда панельный вариант), `layout.tsx`, `globals.css`.
 * `components/cnc/` — слой представления: экраны (`screens/`), физический пульт (`hardware/`), диалоги,
-  оверлеи, `primitives.tsx`. Сенсорный вариант — `components/cnc/touch/`; переключатель — `ui-mode.tsx`,
+  оверлеи, `primitives.tsx`. Боковая колонка состояния — `side-status.tsx` — фасад над каталогом
+  `side-status/` (`sections.tsx` — секции и раскладка, `tool.tsx` — инструмент и корректоры, `load.tsx` —
+  нагрузка, `jog.tsx` — ручные режимы, `operator-pad.tsx` — пульт, `status-column.tsx` — сборка колонки).
+  Сенсорный вариант — `components/cnc/touch/`; переключатель — `ui-mode.tsx`,
   контекст — `ui-mode-context.ts`.
 * `lib/cnc/` — **чистая логика станка, без JSX, React и DOM**: `machine.ts` (редьюсер, сводит подсистемы
   через реестр), `subsystem.ts` (листовой слой действий: `Action`, `Result`, `Dispatch`, запись реестра)

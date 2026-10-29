@@ -33,7 +33,10 @@ Layers, top to bottom:
 * `app/` — routes and entry point: `page.tsx` (panel), `classic/` (the `/classic` route — same reducer, always
   the panel variant), `layout.tsx`, `globals.css`.
 * `components/cnc/` — the view layer: screens (`screens/`), the physical console (`hardware/`), dialogs,
-  overlays, `primitives.tsx`. Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
+  overlays, `primitives.tsx`. The status column — `side-status.tsx` — is a facade over the `side-status/`
+  directory (`sections.tsx` — sections and layout, `tool.tsx` — tool and correctors, `load.tsx` — load,
+  `jog.tsx` — manual modes, `operator-pad.tsx` — the pad, `status-column.tsx` — the column assembly).
+  Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
   `ui-mode-context.ts`.
 * `lib/cnc/` — **pure machine logic, no JSX, React, or DOM**: `machine.ts` (reducer that composes the
   subsystems through a registry), `subsystem.ts` (the action layer's leaf: `Action`, `Result`, `Dispatch`,

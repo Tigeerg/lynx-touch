@@ -274,6 +274,53 @@ use `G2/G3` with `I/J`; a full circle is two half-arcs or `I/J` without an end p
 * Preview is recalculated after a 150-200 ms debounce. If generation takes longer than ~100 ms, the planner
   moves to a worker thread; the number is measured, not guessed.
 
+## 7.2 The C++ demo application (Q0, first pass)
+
+The customer wants quick programming exercised on its own, in C++, before it lands in the panel. A separate
+application is the only way to do that: the main pipeline is React/TypeScript, the Qt port lags
+(`docs/PORT-QML.md`), and C++ is already the project's second native language (the viewer core). The demo
+repeats §7 in C++ and is checked from the console, without Qt, so it runs on any machine with a compiler.
+
+**Decision.** A new project `quickprog` — `apps/quickprog` (C++17, standard library only):
+
+* `core/geom.h` — points, rectangle, circle, polyline, rounded rectangle;
+* `core/ops.h` — `Program`, `Operation` (the shared fields of §6: tool, feeds, `topZ`, `depth`, `stepDown`,
+  allowance) with `Face`, `RectPocket`, `CirclePocket`, `Drill`, `DrillGrid`, `DrillCircle`;
+* `core/validate` — the rules of §8 as `Check { field, reason }`: the tool fits the pocket, the depth is not
+  below the bottom, the step down is positive, feed and rpm stay inside the machine limits, the safe `Z` is
+  above the stock, the operation is not entirely outside the stock;
+* `core/feeds` — feeds from diameter, material and tool type on the same numbers as `calc.ts` (one table,
+  not a second formula);
+* `core/path` — the planner `Operation -> Path` (rapid/cut moves with a feed, no NC lines): facing stripes
+  with an overlap, a rectangular pocket as a zigzag with a wall cleanup, a circular pocket as a spiral from
+  the centre, hole grids and circles, one drilling cycle per point;
+* `core/emit` — `Path -> .ngc`: the header `G21 G90 G94 G17 G40 G49 G80`, `G54`, the safe `Z`, `T`/`M6`,
+  `S`/`M3`, `M8`, the `UI_STOCK`/`UI_OP`/`UI_TOOL`/`UI_ORIGIN` tags in comments (the viewer contract,
+  `core/ui_tags`), `G81`/`G83` drilling, the tail `M9 M5 G0 Z<safe> M30`;
+* `main.cpp` — the console scenario: stock and tool from arguments or `--demo`, operations from a
+  `<name>.qprog` file (a flat text format, schema 1), output `<name>.ngc`, a printed summary (moves,
+  length, time estimate, warnings) and `--json` for machine comparison;
+* `tests/` — the project's own check without an external framework: a table of cases, every operation gives
+  the expected numbers (pass count, cut area against the square, no cut into the wall for a pocket; 20-30 %
+  overlap and retract at the edges for facing; grid and circle coordinates, the `R` plane and the depth, `Q`
+  for `G83`); plus a round-trip: the generated NC program is parsed by `gv::parseGcode` from the viewer core,
+  the modal codes and the segment count are not zero. Exit code: 0 — everything matched, 1 — a mismatch.
+
+The build skeleton is a `CMakeLists.txt` (the generating part needs neither Qt nor OCCT; `gvcore` is needed
+only by the round-trip check, a separate target `quickprog_check`). Linux build —
+`scripts/build-quickprog.sh`; Windows — `scripts/build-quickprog.ps1`. Binaries — `build/quickprog/`.
+`tools/checks.txt` gets a `quickprog (demo)` line, but only when the build is really available; otherwise it
+prints `skip`, as the probes already do.
+
+**What the demo does NOT do:** no screen and no gestures (that is P1 and the panel), no `.qprog` in the React
+format, no run on the machine, no collisions through the viewer. The demo proves the pipeline
+`operations -> Path -> .ngc` and hands numbers to the technologist.
+
+**Acceptance of Q0:** a file made for every MVP operation loads in the viewer (`gcodeviewer --smoke` and
+offscreen: `loaded OK`, the `UI_*` tags in place); every operation has a case in `tests/` with the pass count
+and bounds; the `.ngc` reads by eye and is explained by the technologist; the cutting modes come from the
+table and are printed with their source.
+
 ## 9. Stages and estimate
 
 Estimates for one strong developer without waiting for a machine; a guide, not a promise.

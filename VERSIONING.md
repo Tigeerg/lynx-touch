@@ -1,14 +1,14 @@
 # Руководство по версионированию и внесению изменений
 
 Этот документ — «гид»: как вносить изменения и вести версии в проекте
-**CNC Панель оператора**. Текущая версия — **0.28.10**.
+**CNC Панель оператора**. Текущая версия — **0.29.0**.
 
 Термины: словарь для человека — [`ROLES.md`](ROLES.md), раздел 9; в тексте термин расшифрован при первом
 употреблении (`AI_WORKFLOW.md`, раздел 0.2).
 
 ## 1. Проекты
 
-Продукт состоит из четырёх независимо версионируемых проектов (манифест —
+Продукт состоит из пяти независимо версионируемых проектов (манифест —
 [`projects.json`](projects.json)):
 
 | id | Проект | Путь | Тип |
@@ -17,6 +17,7 @@
 | `qt-interface` | Qt-порт интерфейса | `apps/qt-interface` (`main.qml`, `preview.qml`, …) | QML |
 | `gcode-viewer` | 3D-вьювер УП | `modules/gcode-viewer` (`GcodeViewer3D.qml`, `cpp/`, `toolpath.*`, …) | QML + C++ |
 | `cad-testdata` | Тестовые УП/модели и постпроцессор | `data/cad-testdata` (`Test_model.ngc`, `Test_model.STL`, `linuxcnc_ui.cps`) | данные |
+| `quickprog` | Демо быстрого программирования | `apps/quickprog` (`main.cpp`, `core/`, `tests/`) | C++ (консоль) |
 
 `qt-interface` и `gcode-viewer` — разные проекты с независимыми версиями; лежат они
 в разных папках: `apps/qt-interface` и `modules/gcode-viewer`.
@@ -33,8 +34,8 @@
 Версия каждого проекта — в `projects.json` (`projects[].version`) и, где есть,
 в манифесте проекта (`package.json`, `modules/gcode-viewer/VERSION`).
 
-Текущее состояние: **продукт 0.28.10**; `react-interface` — **0.20.9**,
-`gcode-viewer` — **0.58.6**, `qt-interface` — **0.5.8**, `cad-testdata` — **0.5.1**.
+Текущее состояние: **продукт 0.29.0**; `react-interface` — **0.20.9**,
+`gcode-viewer` — **0.58.6**, `qt-interface` — **0.5.8**, `cad-testdata` — **0.5.1**, `quickprog` — **0.1.0**.
 
 ### Опытные ветки и документация планов
 

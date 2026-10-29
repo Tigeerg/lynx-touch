@@ -13,7 +13,7 @@ at first use (`AI_WORKFLOW.md`, section 0.2).
 
 ## 1. Product
 
-The product is four independently versioned projects (manifest — [projects.json](projects.json)):
+The product is five independently versioned projects (manifest — [projects.json](projects.json)):
 
 | id | Path | Kind | Entry point |
 |---|---|---|---|
@@ -21,6 +21,7 @@ The product is four independently versioned projects (manifest — [projects.jso
 | `qt-interface` | `apps/qt-interface` | QML | `main.qml` |
 | `gcode-viewer` | `modules/gcode-viewer` | QML + C++ | `GcodeViewer3D.qml` |
 | `cad-testdata` | `data/cad-testdata` | data | `Test_model.ngc` |
+| `quickprog` | `apps/quickprog` | C++ (console) | `main.cpp` |
 
 How the projects connect: `cad-testdata` provides the NC program and postprocessor, `gcode-viewer` reads them
 through the `UI_*` tag contract; `qt-interface` mirrors the `react-interface` UI word for word. `version_probe`
@@ -133,11 +134,31 @@ the parser in the same pass (`VERSIONING.md`, section 7).
 * `data/cad-testdata/Test_model.ngc` — test NC program; `Test_model.STL` — part model.
 * `data/cad-testdata/linuxcnc_ui.cps` — postprocessor with `UI_*` tags; `linuxcnc.cps` — base one.
 
-## 6. Where new code goes
+## 6. `quickprog` (the quick programming demo, C++)
+
+An experimental project: a separate console application to exercise the quick programming pipeline before the
+panel (`docs/PLAN-QUICKPROG.md`, section 7.2).
+
+* `apps/quickprog/main.cpp` — the console: `--demo`, `--version`, `--help`; operations from `.qprog`, the
+  `.ngc` output.
+* `apps/quickprog/core/` — pure logic without Qt, OCCT or screen I/O: the model (`ops.h`), geometry
+  (`geom.h`), the planner (`path`), feeds (`feeds`), checks (`validate`), the NC output (`emit`), `.qprog`
+  serialisation (`serialize`).
+* `apps/quickprog/tests/` — the project's own table of cases without an external framework; the separate
+  target `quickprog_check` adds the check against the viewer core (`gv::parseGcode`), so only that target
+  pulls `modules/gcode-viewer`.
+* Build — `scripts/build-quickprog.sh` (Linux) and `.ps1` (Windows), the result goes to `build/quickprog/`.
+* The viewer contract is the `UI_STOCK`/`UI_OP`/`UI_TOOL`/`UI_ORIGIN` tags, the same as the `cad-testdata`
+  postprocessor.
+
+## 7. Where new code goes
 
 * A new panel subsystem — its own module in `lib/cnc/` next to the others (`ladder.ts` is the sample), wired
   into `machine.ts` through it; `machine.ts` composes, it does not absorb.
 * A new viewer layer — into the matching `cpp/` directory (`core` — pure, `occt` — STEP, `qt`/`qmlbackend` —
   bridge, `viewer` — entry point); its check is a probe next to it.
+* A new quick programming operation is its own variant in `Operation` (`apps/quickprog/core/ops.h`), a planner
+  in `core/path*` and a check rule in `core/validate`: `std::variant` does not let an operation be silently
+  skipped, and the viewer must get the same tags as from the postprocessor.
 * A new directory is justified in this file; file size stays around the 250-line guideline (`CLAUDE.md`,
   section 2), and exceeding it is recorded in [TODO.md](TODO.md).

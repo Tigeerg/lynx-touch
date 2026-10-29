@@ -12,7 +12,7 @@
 
 ## 1. Продукт
 
-Продукт — четыре независимо версионируемых проекта (манифест — [projects.json](projects.json)):
+Продукт — пять независимо версионируемых проектов (манифест — [projects.json](projects.json)):
 
 | id | Путь | Тип | Точка входа |
 |---|---|---|---|
@@ -20,6 +20,7 @@
 | `qt-interface` | `apps/qt-interface` | QML | `main.qml` |
 | `gcode-viewer` | `modules/gcode-viewer` | QML + C++ | `GcodeViewer3D.qml` |
 | `cad-testdata` | `data/cad-testdata` | данные | `Test_model.ngc` |
+| `quickprog` | `apps/quickprog` | C++ (консоль) | `main.cpp` |
 
 Связь проектов: `cad-testdata` отдаёт УП и постпроцессор, `gcode-viewer` их читает по контракту тегов
 `UI_*`; `qt-interface` повторяет интерфейс `react-interface` дословно. Версии сверяет `version_probe`.
@@ -128,11 +129,28 @@
 * `data/cad-testdata/Test_model.ngc` — тестовая УП; `Test_model.STL` — модель детали.
 * `data/cad-testdata/linuxcnc_ui.cps` — постпроцессор с тегами `UI_*`; `linuxcnc.cps` — базовый.
 
-## 6. Куда кладут новое
+## 6. `quickprog` (демо быстрого программирования, C++)
+
+Опытный проект: отдельное консольное приложение, чтобы обкатать конвейер быстрого программирования до
+панели (`docs/PLAN-QUICKPROG.md`, раздел 7.2).
+
+* `apps/quickprog/main.cpp` — консоль: `--demo`, `--version`, `--help`; операции из `.qprog`, вывод `.ngc`.
+* `apps/quickprog/core/` — чистая логика без Qt, OCCT и ввода-вывода экрана: модель (`ops.h`), геометрия
+  (`geom.h`), планировщик (`path`), режимы (`feeds`), проверки (`validate`), вывод УП (`emit`), сериализация
+  `.qprog` (`serialize`).
+* `apps/quickprog/tests/` — своя таблица случаев без внешнего фреймворка; отдельная цель `quickprog_check`
+  добавляет сверку с ядром вьювера (`gv::parseGcode`), поэтому только эта цель тянет `modules/gcode-viewer`.
+* Сборка — `scripts/build-quickprog.sh` (Linux) и `.ps1` (Windows), результат в `build/quickprog/`.
+* Контракт с вьювером — теги `UI_STOCK`/`UI_OP`/`UI_TOOL`/`UI_ORIGIN`, как у постпроцессора `cad-testdata`.
+
+## 7. Куда кладут новое
 
 * Новая подсистема панели — свой модуль в `lib/cnc/` рядом (`ladder.ts` — образец), подключённый к
   `machine.ts` через него; `machine.ts` сводит, а не впитывает.
 * Новый слой вьювера — в соответствующий каталог `cpp/` (`core` — чистое, `occt` — STEP, `qt`/`qmlbackend` —
   мост, `viewer` — точка входа); проверку — пробником рядом.
+* Новая операция быстрого программирования — свой вариант в `Operation` (`apps/quickprog/core/ops.h`),
+  планировщик в `core/path*`, правило проверки в `core/validate`: `std::variant` не даёт молча пропустить
+  операцию, а вьюверу она обязана отдать те же теги, что и постпроцессор.
 * Новый каталог обосновывают в этом файле; размер файла держат в ориентире 250 строк (`CLAUDE.md`, раздел 2),
   превышение — с записью в [TODO.md](TODO.md).

@@ -1,6 +1,6 @@
 {
   "product": "CNC Панель оператора",
-  "version": "0.28.10",
+  "version": "0.29.0",
   "versioning": "semver",
   "description": "Панель оператора ЧПУ: React-интерфейс, Qt-порт, 3D-вьювер УП и тестовые данные/постпроцессор.",
   "projects": [
@@ -38,6 +38,24 @@
         "toolpath.frag",
         "preview_3d.qml",
         "oracle_manifest.json"
+      ]
+    },
+    {
+      "id": "quickprog",
+      "name": "Демо быстрого программирования (C++)",
+      "version": "0.1.0",
+      "path": "apps/quickprog",
+      "kind": "cpp",
+      "entry": "main.cpp",
+      "run": "build/quickprog/quickprog --demo demo.ngc",
+      "description": "Отдельное консольное приложение на C++: операции (торцевание, карманы, сверление) -> ходы -> плоская УП с тегами UI_* для вьювера. Демонстрация конвейера быстрого программирования без панели (PLAN-QUICKPROG, раздел 7.2).",
+      "files": [
+        "main.cpp",
+        "core/ops.h",
+        "core/path.cpp",
+        "core/emit.cpp",
+        "tests/quickprog_check.cpp",
+        "CMakeLists.txt"
       ]
     },
     {

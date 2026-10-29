@@ -10,7 +10,9 @@
 // it, plans it, emits it and writes two files - the editable `.qprog` and the
 // ready `.ngc`. Nothing here decides about a toolpath. The shell is split by
 // meaning into cli/ (the help text, the dispatcher, the documents and the
-// shared tail), so this file only collects the arguments and hands them over.
+// shared tail), so this file only collects the arguments, hands them over with
+// the console streams and flushes them before the exit code is returned.
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -18,5 +20,8 @@
 
 int main(int argc, char** argv) {
     const std::vector<std::string> args(argv + 1, argv + argc);
-    return qpcli::run(args);
+    const int code = qpcli::run(args, std::cout, std::cerr);
+    std::cout.flush();
+    std::cerr.flush();
+    return code;
 }

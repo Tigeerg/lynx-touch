@@ -2,11 +2,13 @@
 //
 // The console prints what the planner computed and writes the files; the checks
 // and the summary text live in the core (core/validate.cpp, core/summary.cpp),
-// so this file only orders the calls and phrases the two console failures.
+// so this file only orders the calls and phrases the two console failures. The
+// streams are the caller's, so the check reads the same lines the operator does.
 #include "cli/run.h"
 
 #include <cstddef>
 #include <cstdio>
+#include <ostream>
 #include <string>
 #include <variant>
 #include <vector>
@@ -24,10 +26,10 @@
 namespace qpcli {
 namespace {
 
-void printProblems(const std::vector<qp::Check>& problems) {
-    std::printf("Проверки не прошли, программа не планируется:\n");
+void printProblems(const std::vector<qp::Check>& problems, std::ostream& out) {
+    out << "Проверки не прошли, программа не планируется:\n";
     for (const qp::Check& check : problems) {
-        std::printf("  %s: %s\n", check.field.c_str(), check.reason.c_str());
+        out << "  " << check.field << ": " << check.reason << "\n";
     }
 }
 
@@ -35,7 +37,7 @@ void printProblems(const std::vector<qp::Check>& problems) {
 // console. A warning that repeats a blocking check is dropped: the check is
 // already on the screen with its field.
 void printWarnings(const qp::Program& program, const qp::Operation& op,
-                   const std::vector<qp::Check>& problems) {
+                   const std::vector<qp::Check>& problems, std::ostream& out) {
     std::vector<std::string> warnings;
     if (std::holds_alternative<qp::FaceOp>(op.geometry)) {
         warnings = qp::faceWarnings(program, op);
@@ -49,61 +51,83 @@ void printWarnings(const qp::Program& program, const qp::Operation& op,
         for (const qp::Check& check : problems) {
             if (warning.find(check.field) != std::string::npos) { blocked = true; }
         }
-        if (!blocked) { std::printf("Внимание: %s\n", warning.c_str()); }
+        if (!blocked) { out << "Внимание: " << warning << "\n"; }
     }
-}
-
-// Saves the document next to the .ngc when the operator asked for it: one call
-// writes the editable model, the .ngc is written by the caller.
-int saveProgram(const qp::Program& program, const std::string& path) {
-    if (path.empty()) { return qp::kExitOk; }
-    if (!qp::writeFile(path, qp::serialize(program))) {
-        std::fprintf(stderr, "Не удалось записать файл: %s\n", path.c_str());
-        return qp::kExitFailed;
-    }
-    std::printf("Документ записан: %s\n", path.c_str());
-    return qp::kExitOk;
 }
 
 } // namespace
 
-int finish(const qp::Program& program, const std::string& output, const std::string& savePath) {
+std::string documentText(const qp::Program& program) {
+    // The document leaves in the schema of the file format, not in whatever the
+    // builder put in the field: a saved file has to be readable by `--qprog`
+    // right away, whichever path built it.
+    qp::Program document = program;
+    document.schema = qp::kQprogSchema;
+    return qp::serialize(document);
+}
+
+namespace {
+
+// Saves the document next to the .ngc when the operator asked for it: one call
+// writes the editable model, the .ngc is written by the caller.
+int saveProgram(const qp::Program& program, const std::string& path, std::ostream& out,
+                std::ostream& err) {
+    if (path.empty()) { return qp::kExitOk; }
+    if (!qp::writeFile(path, documentText(program))) {
+        err << "Не удалось записать файл: " << path << "\n";
+        return qp::kExitFailed;
+    }
+    out << "Документ записан: " << path << "\n";
+    return qp::kExitOk;
+}
+
+// A line of the summary that carries one or two numbers: the bytes of the
+// summary are the contract of the previous slices, so the console keeps the
+// `printf` spelling of the values instead of the default stream spelling.
+std::string format2(const char* pattern, double a, double b) {
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), pattern, a, b);
+    return std::string(buf);
+}
+
+} // namespace
+
+int finish(const qp::Program& program, const std::string& output, const std::string& savePath,
+           std::ostream& out, std::ostream& err) {
     const std::vector<qp::Check> problems = qp::validate(program);
     if (!problems.empty()) {
-        printProblems(problems);
+        printProblems(problems, out);
         for (std::size_t i = 0; i < program.operations.size(); ++i) {
-            printWarnings(program, program.operations[i], problems);
+            printWarnings(program, program.operations[i], problems, out);
         }
         return qp::kExitFailed;
     }
     const qp::Path planned = qp::planPath(program);
     const double seconds = qp::estimateSeconds(planned);
-    std::printf("Программа: %s\n", program.name.c_str());
-    std::printf("Заготовка: X %.1f..%.1f, Y %.1f..%.1f, Z %.1f..%.1f мм\n",
-                program.stock.min.x, program.stock.max.x, program.stock.min.y, program.stock.max.y,
-                program.stock.min.z, program.stock.max.z);
+    const qp::StockBox& stock = program.stock;
+    out << "Программа: " << program.name << "\n";
+    out << format2("Заготовка: X %.1f..%.1f,", stock.min.x, stock.max.x)
+        << format2(" Y %.1f..%.1f,", stock.min.y, stock.max.y)
+        << format2(" Z %.1f..%.1f мм\n", stock.min.z, stock.max.z);
     for (std::size_t i = 0; i < planned.operations.size(); ++i) {
         const std::size_t first = planned.operations[i].first;
         const std::size_t last =
             i + 1 < planned.operations.size() ? planned.operations[i + 1].first : planned.moves.size();
         const std::size_t opIndex = static_cast<std::size_t>(planned.operations[i].opIndex);
-        std::fputs(qp::operationSummary(program, planned, opIndex, first, last).c_str(), stdout);
-        printWarnings(program, program.operations[opIndex], problems);
+        out << qp::operationSummary(program, planned, opIndex, first, last);
+        printWarnings(program, program.operations[opIndex], problems, out);
     }
-    std::printf("%s\n",
-                qp::totalSummary(planned.operations.size(), planned.moves.size(), planned.lengthMm,
-                                 seconds)
-                    .c_str());
-    std::printf("Оценка времени: %.0f с (%.1f мин), без учёта разгона, реальное время немного "
-                "больше\n",
-                seconds, seconds / 60.0);
+    out << qp::totalSummary(planned.operations.size(), planned.moves.size(), planned.lengthMm,
+                            seconds)
+        << "\n";
+    out << format2("Оценка времени: %.0f с (%.1f мин)", seconds, seconds / 60.0)
+        << ", без учёта разгона, реальное время немного больше\n";
     if (!qp::writeFile(output, qp::emitProgram(program, planned))) {
-        std::fprintf(stderr, "Не удалось записать файл: %s\n", output.c_str());
+        err << "Не удалось записать файл: " << output << "\n";
         return qp::kExitFailed;
     }
-    std::printf("Записано: %s\n", output.c_str());
-    const int saved = saveProgram(program, savePath);
-    return saved;
+    out << "Записано: " << output << "\n";
+    return saveProgram(program, savePath, out, err);
 }
 
 } // namespace qpcli

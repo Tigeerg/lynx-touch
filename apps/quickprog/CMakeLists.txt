@@ -148,10 +148,12 @@ add_executable(quickprog_check
     tests/checks_summary.cpp
     tests/checks_summary_rules.cpp
     tests/checks_qprog.cpp
+    tests/checks_help.cpp
+    tests/checks_op_roundtrip.cpp
     tests/checks_roundtrip.cpp
     tests/roundtrip_fixtures.h
 )
-target_link_libraries(quickprog_check PRIVATE quickprog_core gvcore_quickprog)
+target_link_libraries(quickprog_check PRIVATE quickprog_core quickprog_cli gvcore_quickprog)
 set_target_properties(quickprog_check PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${QP_OUTPUT_DIR}")
 
 enable_testing()

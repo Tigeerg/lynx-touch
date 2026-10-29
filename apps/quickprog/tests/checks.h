@@ -31,6 +31,8 @@ void runSummaryRulesChecks();
 // ---- the .qprog round-trip and the console -------------------------------
 
 void runQprogChecks();
+void runHelpChecks();
+void runOpRoundTripChecks();
 
 // The viewer core round-trip (PLAN-QUICKPROG, section 10): the generated file
 // through gv::parseGcode and gv::parseUi*.

@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -147,5 +148,14 @@ inline int count(const std::string& text, const std::string& needle) {
     }
     return found;
 }
+
+// The bytes the console printed: the dispatcher writes to the streams a caller
+// hands it, and the check reads the text instead of the binary. The capture is
+// an ostringstream, so the check does not touch stdout and cannot hide a case
+// from the report.
+struct ConsoleCapture {
+    std::ostringstream out;
+    std::ostringstream err;
+};
 
 } // namespace qpcheck

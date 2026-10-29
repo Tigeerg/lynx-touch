@@ -134,11 +134,17 @@ struct Operation {
     OperationGeometry geometry;
 };
 
+// The schema of the .qprog file this build writes and reads. One constant, not
+// a literal in the writer and a literal in the reader: the saved document
+// carries it and the reader names it, so a new schema is one edit and cannot
+// leave the writer and the reader disagreeing.
+constexpr int kQprogSchema = 1;
+
 // The saved document: schema 1 of the .qprog file. It is not machine state
 // (PLAN-QUICKPROG, 6): it is loaded into the machine only by an explicit
 // command.
 struct Program {
-    int schema = 1;
+    int schema = kQprogSchema;
     std::string name;
     std::string units = "mm";
     // One of G54..G59 as written in the file, without trailing spaces.

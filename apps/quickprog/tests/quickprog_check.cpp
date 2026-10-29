@@ -24,6 +24,7 @@ int main() {
     runEmitFaceChecks();
     runEmitToolsChecks();
     runQprogChecks();
+    runHelpChecks();
     runPocketLayoutChecks();
     runPocketRasterChecks();
     runPocketRulesChecks();
@@ -39,6 +40,7 @@ int main() {
     roundtrip_checks::runRoundtripChecks();
     roundtrip_checks::runMixedChecks();
     roundtrip_checks::runTagChecks();
+    runOpRoundTripChecks();
     if (qpcheck::failures() != 0) {
         std::printf("%d case(s) failed\n", qpcheck::failures());
         return 1;

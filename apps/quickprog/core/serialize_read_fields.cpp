@@ -24,9 +24,9 @@ bool readHeaderKey(Program& program, HeaderSeen& seen, const std::string& key,
         if (words.size() != 2 || !parseQprogInt(words[1], program.schema)) {
             return fail(where + "schema ждёт целое число.");
         }
-        if (program.schema != 1) {
+        if (program.schema != kQprogSchema) {
             return fail(where + "схема " + std::to_string(program.schema) + " не поддерживается: " +
-                        "эта версия читает схему 1.");
+                        "эта версия читает схему " + std::to_string(kQprogSchema) + ".");
         }
         seen.schema = true;
     } else if (key == "name") {

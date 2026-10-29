@@ -6,10 +6,14 @@
 // is cli/run.cpp, and the words of each operation are parsed by
 // core/*_options.cpp. The `--save-qprog` word is split out first, because both
 // `--demo` and `--op ...` accept it and the operation parsers must not see it.
+//
+// `--help` and `--version` are recognised in any place of the line, before the
+// mode words are read: `quickprog --help --demo x.ngc` prints the help, it is
+// not a usage error. `--help` wins over `--version`.
 #include "cli/app.h"
 
 #include <cstddef>
-#include <cstdio>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -42,99 +46,118 @@ bool takeSaveKey(std::vector<std::string>& args, std::string& savePath) {
     return true;
 }
 
-int runFace(std::vector<std::string> args, const std::string& savePath) {
+int runFace(std::vector<std::string> args, const std::string& savePath, std::ostream& out,
+            std::ostream& err) {
     qp::FaceArgs options;
     if (!qp::parseFaceArgs(args, 2, options)) {
-        std::fprintf(stderr, "Аргументы --op face не разобраны: см. quickprog --help\n");
+        err << "Аргументы --op face не разобраны: см. quickprog --help\n";
         return qp::kExitBadArgs;
     }
-    return finish(faceProgram(options), options.output, savePath);
+    return finish(faceProgram(options), options.output, savePath, out, err);
 }
 
-int runPocket(std::vector<std::string> args, const std::string& savePath) {
+int runPocket(std::vector<std::string> args, const std::string& savePath, std::ostream& out,
+              std::ostream& err) {
     qp::PocketArgs options;
     if (!qp::parsePocketArgs(args, 2, options)) {
-        std::fprintf(stderr, "Аргументы --op pocket не разобраны: см. quickprog --help\n");
+        err << "Аргументы --op pocket не разобраны: см. quickprog --help\n";
         return qp::kExitBadArgs;
     }
-    return finish(pocketProgram(options), options.output, savePath);
+    return finish(pocketProgram(options), options.output, savePath, out, err);
 }
 
-int runCirclePocket(std::vector<std::string> args, const std::string& savePath) {
+int runCirclePocket(std::vector<std::string> args, const std::string& savePath, std::ostream& out,
+                    std::ostream& err) {
     qp::CirclePocketArgs options;
     if (!qp::parseCirclePocketArgs(args, 2, options)) {
-        std::fprintf(stderr, "Аргументы --op circle-pocket не разобраны: см. quickprog --help\n");
+        err << "Аргументы --op circle-pocket не разобраны: см. quickprog --help\n";
         return qp::kExitBadArgs;
     }
-    return finish(circlePocketProgram(options), options.output, savePath);
+    return finish(circlePocketProgram(options), options.output, savePath, out, err);
 }
 
-int runDrill(std::vector<std::string> args, const std::string& savePath) {
+int runDrill(std::vector<std::string> args, const std::string& savePath, std::ostream& out,
+             std::ostream& err) {
     qp::DrillArgs options;
     if (!qp::parseDrillArgs(args, 2, options)) {
-        std::fprintf(stderr, "Аргументы --op drill не разобраны: см. quickprog --help\n");
+        err << "Аргументы --op drill не разобраны: см. quickprog --help\n";
         return qp::kExitBadArgs;
     }
-    return finish(drillProgram(options), options.output, savePath);
+    return finish(drillProgram(options), options.output, savePath, out, err);
 }
 
-int runDemo(const std::string& output, const std::string& savePath) {
-    return finish(demoProgram(), output, savePath);
+int runDemo(const std::string& output, const std::string& savePath, std::ostream& out,
+            std::ostream& err) {
+    return finish(demoProgram(), output, savePath, out, err);
 }
 
-int runQprog(const std::string& input, const std::string& output, const std::string& savePath) {
+int runQprog(const std::string& input, const std::string& output, const std::string& savePath,
+             std::ostream& out, std::ostream& err) {
     std::string text;
     if (!qp::readFile(input, text)) {
-        std::fprintf(stderr, "Не удалось прочитать файл: %s\n", input.c_str());
+        err << "Не удалось прочитать файл: " << input << "\n";
         return qp::kExitFailed;
     }
     const qp::ParseOutcome parsed = qp::parseProgram(text);
     if (!parsed.ok) {
-        std::fprintf(stderr, "Документ %s не разобран: %s\n", input.c_str(), parsed.error.c_str());
+        err << "Документ " << input << " не разобран: " << parsed.error << "\n";
         return qp::kExitFailed;
     }
-    return finish(parsed.program, output, savePath);
+    return finish(parsed.program, output, savePath, out, err);
 }
 
 } // namespace
 
-int run(const std::vector<std::string>& argvArgs) {
-    std::vector<std::string> args = argvArgs;
-    if (args.empty()) {
-        std::fputs(kHelp, stderr);
+Mode decideMode(const std::vector<std::string>& args) {
+    bool version = false;
+    for (const std::string& word : args) {
+        if (word == "--help" || word == "-h") { return Mode::Help; }
+        if (word == "--version") { version = true; }
+    }
+    if (version) { return Mode::Version; }
+    return args.empty() ? Mode::BadArgs : Mode::Run;
+}
+
+int run(const std::vector<std::string>& argvArgs, std::ostream& out, std::ostream& err) {
+    switch (decideMode(argvArgs)) {
+    case Mode::Help:
+        out << kHelp;
+        return qp::kExitOk;
+    case Mode::Version:
+        out << qp::kGeneratorName << " " << qp::kGeneratorVersion << "\n";
+        return qp::kExitOk;
+    case Mode::BadArgs:
+        err << kHelp;
         return qp::kExitBadArgs;
+    case Mode::Run: break;
     }
-    if (args.size() == 1 && (args[0] == "--help" || args[0] == "-h")) {
-        std::fputs(kHelp, stdout);
-        return qp::kExitOk;
-    }
-    if (args.size() == 1 && args[0] == "--version") {
-        std::printf("%s %s\n", qp::kGeneratorName, qp::kGeneratorVersion);
-        return qp::kExitOk;
-    }
+
+    std::vector<std::string> args = argvArgs;
     std::string savePath;
     if (!takeSaveKey(args, savePath)) {
-        std::fprintf(stderr, "--save-qprog: не указан путь: см. quickprog --help\n");
+        err << "--save-qprog: не указан путь: см. quickprog --help\n";
         return qp::kExitBadArgs;
     }
     if (args.size() == 2 && args[0] == "--demo" && !args[1].empty()) {
-        return runDemo(args[1], savePath);
+        return runDemo(args[1], savePath, out, err);
     }
     if (args.size() == 3 && args[0] == "--qprog" && !args[1].empty() && !args[2].empty()) {
-        return runQprog(args[1], args[2], savePath);
+        return runQprog(args[1], args[2], savePath, out, err);
     }
-    if (args.size() >= 2 && args[0] == "--op" && args[1] == "face") { return runFace(args, savePath); }
+    if (args.size() >= 2 && args[0] == "--op" && args[1] == "face") {
+        return runFace(args, savePath, out, err);
+    }
     if (args.size() >= 2 && args[0] == "--op" && args[1] == "pocket") {
-        return runPocket(args, savePath);
+        return runPocket(args, savePath, out, err);
     }
     if (args.size() >= 2 && args[0] == "--op" && args[1] == "circle-pocket") {
-        return runCirclePocket(args, savePath);
+        return runCirclePocket(args, savePath, out, err);
     }
     if (args.size() >= 2 && args[0] == "--op" && args[1] == "drill") {
-        return runDrill(args, savePath);
+        return runDrill(args, savePath, out, err);
     }
 
-    std::fprintf(stderr, "Аргументы не разобраны: см. quickprog --help\n");
+    err << "Аргументы не разобраны: см. quickprog --help\n";
     return qp::kExitBadArgs;
 }
 

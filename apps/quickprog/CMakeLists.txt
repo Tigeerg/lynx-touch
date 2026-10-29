@@ -96,8 +96,23 @@ else()
     target_compile_options(gvcore_quickprog PRIVATE -ffp-contract=off -fno-fast-math -Wno-error)
 endif()
 
+# The console shell of the application: the help text, the dispatcher, the
+# documents of `--demo` and `--op ...`, and the shared tail of every run. It is
+# a library, not a part of main.cpp, so a file stays in the 250-line guide and
+# the console keeps one entry point. It is not a public header set: nothing
+# outside this directory includes cli/.
+add_library(quickprog_cli STATIC
+    cli/app.cpp
+    cli/demo_program.cpp
+    cli/help.cpp
+    cli/operation_program.cpp
+    cli/run.cpp
+)
+target_include_directories(quickprog_cli PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(quickprog_cli PUBLIC quickprog_core)
+
 add_executable(quickprog main.cpp)
-target_link_libraries(quickprog PRIVATE quickprog_core)
+target_link_libraries(quickprog PRIVATE quickprog_cli)
 set_target_properties(quickprog PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${QP_OUTPUT_DIR}")
 
 # The cases are split by meaning; every file opens its own anonymous

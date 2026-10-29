@@ -4,7 +4,7 @@
 // itself"). The union is a type, not a value, so the check reads the sources: the declared
 // literals against the claimed ones, both ways round. Two predicate forms exist - a set of types
 // and a name prefix.
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const SUBSYSTEMS = [
@@ -33,7 +33,24 @@ const MACHINE_TYPES = [
   'HELP',
 ]
 
-const source = (name: string) => readFileSync(new URL(`./${name}.ts`, import.meta.url), 'utf8')
+const readSource = (path: string | URL) => {
+  const url = new URL(path, import.meta.url)
+  return existsSync(url) ? readFileSync(url, 'utf8') : ''
+}
+
+/**
+ * The source of a subsystem plus what it re-exports. A module that became a facade (ladder.ts:
+ * `export * from './ladder/...'`) keeps its union and predicate in the submodules, so the union and
+ * the predicate are read where they actually live; a plain module reads its own file.
+ */
+const source = (name: string) => {
+  const own = readSource(`./${name}.ts`)
+  const reexported = [...own.matchAll(/export \* from '([^']+)'/g)].map((m) =>
+    // The re-export is relative to the module it sits in, not to this test file.
+    readSource(new URL(`${m[1]}.ts`, new URL(`./${name}.ts`, import.meta.url)).pathname),
+  )
+  return reexported.length ? [own, ...reexported].join('\n') : own
+}
 
 /** The literals of the action union: every `type: '...'` inside `export type XAction = ...`. */
 const unionTypes = (src: string) => {

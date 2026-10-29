@@ -37,8 +37,11 @@ Layers, top to bottom:
   `ui-mode-context.ts`.
 * `lib/cnc/` — **pure machine logic, no JSX, React, or DOM**: `machine.ts` (reducer that composes the
   subsystems through a registry), `subsystem.ts` (the action layer's leaf: `Action`, `Result`, `Dispatch`,
-  the registry entry), and the subsystems next to it (`ladder.ts` is the sample, `ladder-scan.ts` is the
-  PLC scan,
+  the registry entry), and the subsystems next to it (`ladder.ts` is the sample: a facade over the `ladder/`
+  directory — `ladder-data.ts` (data and predicates), `ladder-parse.ts` (comparison parse), `ladder-reducer.ts`
+  (editor reducer), `ladder-forms.ts` (element form), `ladder-schemes.ts` (scheme manager), `ladder/types.ts`
+  (PLC types); `types.ts` keeps `MachineState` and re-exports the PLC types as the former entry point),
+  `ladder-scan.ts` is the PLC scan,
   `nav.ts`, `cycle.ts`, `control.ts`, `service.ts`), `types.ts`, `coords.ts`, `clamp.ts` (list index
   clamping), `keys.ts` (the console key map: `keyToAction` and `routeKey`), `gcode.ts` (block parsing, modal
   codes, program tools), `spindle.ts` (rpm, cutting,

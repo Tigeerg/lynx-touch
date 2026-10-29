@@ -14,6 +14,22 @@ const source = (name: string) => {
   return existsSync(url) ? readFileSync(url, 'utf8') : ''
 }
 
+/**
+ * A subsystem plus what it re-exports: a facade (ladder.ts: `export * from './ladder/...'`) keeps
+ * its predicate in a submodule. The path check in `subsystemPredicates` still reads the file itself,
+ * so a submodule that pulls machine.ts is caught all the same.
+ */
+const sourceWithReexports = (name: string) => {
+  const own = source(name)
+  const ownUrl = new URL(`./${name}.ts`, import.meta.url)
+  const reexported = [...own.matchAll(/export \* from '([^']+)'/g)].map((m) => {
+    // The re-export is relative to the module it sits in, not to this test file.
+    const url = new URL(`${m[1]}.ts`, ownUrl)
+    return existsSync(url) ? readFileSync(url, 'utf8') : ''
+  })
+  return reexported.length ? [own, ...reexported].join('\n') : own
+}
+
 const machine = source('machine')
 const leaf = source('subsystem')
 
@@ -26,7 +42,7 @@ const subsystemPredicates = () => {
     .filter((name) => !skip.has(name))
   const found: string[] = []
   for (const name of names) {
-    const m = /export const (is[A-Za-z]+Action)/.exec(source(name))
+    const m = /export const (is[A-Za-z]+Action)/.exec(sourceWithReexports(name))
     if (m) found.push(m[1])
   }
   return found.sort()

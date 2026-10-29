@@ -1,0 +1,305 @@
+// The ladder editor reducer: the action union it claims, the navigation helpers over the scheme,
+// and the rules for editing rungs and elements. The data it works with lives in ladder-data.ts;
+// the element form (open, edit, commit) is in ladder-forms.ts and the scheme manager (load, save,
+// new, copy, rename, remove) in ladder-schemes.ts, which the default branch hands the action to.
+import { clampIndex } from '../clamp'
+import type { Result } from '../subsystem'
+import {
+  COIL_KIND_LABEL,
+  COIL_KINDS,
+  LADDER_MAX_BRANCHES,
+  LADDER_MAX_CONTACTS,
+  LADDER_MAX_RUNGS,
+  coilKind,
+  isCounterAddr,
+  isCounterKind,
+  isTimerAddr,
+  isTimerKind,
+  rungBranches,
+  sig,
+} from './ladder-data'
+import { elementForm, ladderFormReducer } from './ladder-forms'
+import { uniqueName } from './ladder-schemes'
+import type { LadderCoil, LadderContact, LadderRung, LadderScheme, LadderState, MachineState } from '../types'
+
+/** The active scheme; a stale index falls back to the first one rather than reading undefined. */
+export const activeScheme = (s: MachineState) => s.ladder.schemes[s.ladder.active] ?? s.ladder.schemes[0]
+export const savedRungs = (s: MachineState) => activeScheme(s)?.rungs ?? []
+export const ladderRungs = (s: MachineState) => s.ladder.draft ?? savedRungs(s)
+
+/** What the editor and the views read when a scheme has no rungs at all (invalid state). */
+const EMPTY_RUNG: LadderRung = { title: '', contacts: [], coil: { addr: 'M1.0', label: '' } }
+
+export function ladderCursor(s: MachineState) {
+  const rungs = ladderRungs(s)
+  const row = clampIndex(s.cursor.service, 0, rungs.length)
+  const rung = rungs[row] ?? EMPTY_RUNG
+  const branches = rungBranches(rung)
+  const path = clampIndex(s.ladder.path, 0, branches.length)
+  const contacts = branches[path] ?? []
+  const maxCol = path === 0 ? contacts.length : Math.max(0, contacts.length - 1)
+  const col = clampIndex(s.ladder.col, 0, maxCol + 1)
+  return { rungs, row, rung, branches, path, contacts, col, onCoil: path === 0 && col === contacts.length }
+}
+
+export const pathContacts = (rung: LadderRung, path: number) => rungBranches(rung)[path] ?? rung.contacts
+
+export const withPathContacts = (rung: LadderRung, path: number, contacts: LadderContact[]): LadderRung =>
+  path === 0 ? { ...rung, contacts } : { ...rung, or: (rung.or ?? []).map((b, i) => (i === path - 1 ? contacts : b)) }
+
+export type LadderAction =
+  | { type: 'LADDER_EDIT'; on: boolean }
+  | { type: 'LADDER_SAVE'; at?: number }
+  | { type: 'LADDER_COL'; dir: 1 | -1 }
+  | { type: 'LADDER_ADD_CONTACT' }
+  | { type: 'LADDER_ADD_COMPARE' }
+  | { type: 'LADDER_ADD_BRANCH' }
+  | { type: 'LADDER_CYCLE_PATH'; dir: 1 | -1 }
+  | { type: 'LADDER_TOGGLE_NC' }
+  | { type: 'LADDER_ADD_RUNG' }
+  | { type: 'LADDER_DELETE' }
+  | { type: 'LADDER_FORM_OPEN' }
+  | { type: 'LADDER_FORM_SET'; index: number; value: string }
+  | { type: 'LADDER_FORM_COMMIT' }
+  | { type: 'LADDER_FORM_CANCEL' }
+  | { type: 'LADDER_PICK'; addr: string; label: string }
+  | { type: 'LADDER_MANAGER'; open: boolean }
+  | { type: 'LADDER_PICK_MOVE'; delta: number }
+  | { type: 'LADDER_LOAD' }
+  | { type: 'LADDER_NEW'; at?: number }
+  | { type: 'LADDER_COPY'; at?: number }
+  | { type: 'LADDER_RENAME' }
+  | { type: 'LADDER_REMOVE' }
+
+export const isLadderAction = (a: { type: string }): a is LadderAction => a.type.startsWith('LADDER_')
+
+const cloneContact = (c: LadderContact): LadderContact => ({ ...c, ...(c.cmp ? { cmp: { ...c.cmp } } : {}) })
+export const cloneRungs = (rungs: LadderRung[]): LadderRung[] =>
+  rungs.map((r) => ({
+    ...r,
+    contacts: r.contacts.map(cloneContact),
+    coil: { ...r.coil },
+    ...(r.or ? { or: r.or.map((b) => b.map(cloneContact)) } : {}),
+  }))
+
+const patch = (s: MachineState, p: Partial<LadderState>): MachineState => ({ ...s, ladder: { ...s.ladder, ...p } })
+
+const replaceAt = <T>(list: T[], index: number, item: T) => list.map((x, i) => (i === index ? item : x))
+
+// The scheme name helper lives with the manager (ladder-schemes.ts): the reducer build needs it here.
+export { uniqueName }
+
+type FreeAddrKind = 'flag' | 'timer' | 'counter'
+
+/**
+ * The first free coil address of a kind for a new rung: it must not already be on the scheme (a
+ * duplicate coil is refused on save). One function, not three near-copies.
+ */
+export function freeAddr(rungs: LadderRung[], kind: FreeAddrKind): string {
+  const used = new Set(rungs.map((r) => r.coil.addr))
+  if (kind === 'flag') {
+    for (let byte = 1; byte < 100; byte++) {
+      for (let bit = 0; bit < 8; bit++) {
+        const addr = `M${byte}.${bit}`
+        if (!used.has(addr)) return addr
+      }
+    }
+    return 'M1.0'
+  }
+  const prefix = kind === 'timer' ? 'T' : 'C'
+  for (let n = 0; n < 100; n++) if (!used.has(`${prefix}${n}`)) return `${prefix}${n}`
+  return `${prefix}99`
+}
+
+export const newRung = (rungs: LadderRung[], n: number): LadderRung => ({
+  title: `Ступень ${n}`,
+  contacts: [sig('I0.0')],
+  coil: { addr: freeAddr(rungs, 'flag'), label: 'Новый флаг' },
+})
+
+export function ladderReducer(s: MachineState, a: LadderAction): Result {
+  const L = s.ladder
+
+  switch (a.type) {
+    case 'LADDER_EDIT': {
+      if (a.on) {
+        if (L.draft) return { s }
+        const rungs = savedRungs(s)
+        if (rungs.length === 0) return { s, msg: 'В схеме нет ступеней — правка невозможна', level: 'warn' }
+        return {
+          s: patch(s, { draft: cloneRungs(rungs), dirty: false, col: 0, path: 0, form: null }),
+          msg: 'Правка: ←→ элемент, Shift+↑↓ — ветвь, Enter — свойства, Ins — контакт, Del — удалить',
+        }
+      }
+      if (!L.draft) return { s }
+      return {
+        s: patch(s, { draft: null, dirty: false, form: null, manager: false, col: 0, path: 0 }),
+        msg: L.dirty ? 'Изменения схемы отменены' : 'Выход из правки',
+        level: L.dirty ? 'warn' : 'info',
+      }
+    }
+
+    case 'LADDER_COL': {
+      if (!L.draft || L.manager || L.form) return { s }
+      const { col, contacts, path } = ladderCursor(s)
+      const maxCol = path === 0 ? contacts.length : Math.max(0, contacts.length - 1)
+      return { s: patch(s, { col: clampIndex(col, a.dir, maxCol + 1) }) }
+    }
+
+    case 'LADDER_CYCLE_PATH': {
+      if (!L.draft || L.manager || L.form) return { s }
+      const { path, branches } = ladderCursor(s)
+      const next = (path + a.dir + branches.length) % branches.length
+      return { s: patch(s, { path: next, col: 0 }) }
+    }
+
+    case 'LADDER_ADD_CONTACT': {
+      if (!L.draft) return { s }
+      const { rungs, row, rung, path, contacts, col, onCoil } = ladderCursor(s)
+      if (contacts.length >= LADDER_MAX_CONTACTS) {
+        return { s, msg: `В ветви не больше ${LADDER_MAX_CONTACTS} элементов`, level: 'warn' }
+      }
+      const index = onCoil ? contacts.length : col + 1
+      const list = [...contacts.slice(0, index), sig('I0.0'), ...contacts.slice(index)]
+      const next = withPathContacts(rung, path, list)
+      const draft = replaceAt(rungs, row, next)
+      return {
+        s: patch(s, { draft, dirty: true, col: index, form: elementForm(next, path, index) }),
+        msg: 'Контакт добавлен — задайте адрес',
+      }
+    }
+
+    case 'LADDER_ADD_COMPARE': {
+      if (!L.draft) return { s }
+      const { rungs, row, rung, path, contacts, col, onCoil } = ladderCursor(s)
+      if (contacts.length >= LADDER_MAX_CONTACTS) {
+        return { s, msg: `В ветви не больше ${LADDER_MAX_CONTACTS} элементов`, level: 'warn' }
+      }
+      const index = onCoil ? contacts.length : col + 1
+      const el: LadderContact = { addr: 'CMP', label: 'Сравнение', cmp: { op: '>=', a: 'T0', b: '1' } }
+      const list = [...contacts.slice(0, index), el, ...contacts.slice(index)]
+      const next = withPathContacts(rung, path, list)
+      const draft = replaceAt(rungs, row, next)
+      return {
+        s: patch(s, { draft, dirty: true, col: index, form: elementForm(next, path, index) }),
+        msg: 'Блок сравнения добавлен — задайте условие',
+      }
+    }
+
+    case 'LADDER_ADD_BRANCH': {
+      if (!L.draft) return { s }
+      const { rungs, row, rung, branches } = ladderCursor(s)
+      if (branches.length >= LADDER_MAX_BRANCHES) {
+        return { s, msg: `Не больше ${LADDER_MAX_BRANCHES} ветвей в ступени`, level: 'warn' }
+      }
+      const next: LadderRung = { ...rung, or: [...(rung.or ?? []), [sig('I0.0')]] }
+      const draft = replaceAt(rungs, row, next)
+      const path = branches.length
+      return {
+        s: patch(s, { draft, dirty: true, path, col: 0, form: elementForm(next, path, 0) }),
+        msg: 'Добавлена параллельная ветвь (ИЛИ)',
+      }
+    }
+
+    case 'LADDER_TOGGLE_NC': {
+      if (!L.draft) return { s }
+      const { rungs, row, rung, path, contacts, col, onCoil } = ladderCursor(s)
+      if (onCoil) {
+        const kind = coilKind(rung.coil)
+        const next = COIL_KINDS[(COIL_KINDS.indexOf(kind) + 1) % COIL_KINDS.length]
+        const { kind: _kind, ...base } = rung.coil
+        let coil: LadderCoil
+        if (isTimerKind(next) || isCounterKind(next)) {
+          const counter = isCounterKind(next)
+          const keep = counter ? isCounterAddr(base.addr) : isTimerAddr(base.addr)
+          // The presets ride along, each in its own field: a timer's milliseconds are never read
+          // as a counter's pulses (the scan takes the unit's own default when the field is absent).
+          coil = {
+            ...base,
+            addr: keep ? base.addr : freeAddr(rungs, counter ? 'counter' : 'timer'),
+            label: keep ? base.label : counter ? 'Счётчик' : 'Таймер',
+            kind: next,
+          }
+        } else if (isTimerKind(kind) || isCounterKind(kind)) {
+          coil = { addr: freeAddr(rungs, 'flag'), label: 'Новый флаг', ...(next === 'coil' ? {} : { kind: next }) }
+        } else {
+          coil = { ...base, ...(next === 'coil' ? {} : { kind: next }) }
+        }
+        return {
+          s: patch(s, { draft: replaceAt(rungs, row, { ...rung, coil }), dirty: true, form: null }),
+          msg: `Тип катушки: ${COIL_KIND_LABEL[next]}`,
+        }
+      }
+      const c = contacts[col]
+      if (c.cmp) {
+        const list = replaceAt(contacts, col, sig('I0.0'))
+        return {
+          s: patch(s, { draft: replaceAt(rungs, row, withPathContacts(rung, path, list)), dirty: true }),
+          msg: 'Блок сравнения → контакт',
+        }
+      }
+      const list = replaceAt(contacts, col, { ...c, nc: !c.nc })
+      return {
+        s: patch(s, { draft: replaceAt(rungs, row, withPathContacts(rung, path, list)), dirty: true }),
+        msg: `${c.addr}: ${c.nc ? 'нормально открытый' : 'нормально закрытый'}`,
+      }
+    }
+
+    case 'LADDER_ADD_RUNG': {
+      if (!L.draft) return { s }
+      const { rungs, row } = ladderCursor(s)
+      if (rungs.length >= LADDER_MAX_RUNGS) return { s, msg: `Не больше ${LADDER_MAX_RUNGS} ступеней`, level: 'warn' }
+      const rung = newRung(rungs, rungs.length + 1)
+      const draft = [...rungs.slice(0, row + 1), rung, ...rungs.slice(row + 1)]
+      return {
+        s: {
+          ...patch(s, { draft, dirty: true, path: 0, col: 0, form: elementForm(rung, 0, 0) }),
+          cursor: { ...s.cursor, service: row + 1 },
+        },
+        msg: 'Ступень добавлена — задайте первый контакт',
+      }
+    }
+
+    case 'LADDER_DELETE': {
+      if (!L.draft) return { s }
+      const { rungs, row, rung, path, contacts, col, onCoil } = ladderCursor(s)
+      if (onCoil) {
+        if (rungs.length === 1) return { s, msg: 'В схеме должна остаться хотя бы одна ступень', level: 'warn' }
+        const draft = rungs.filter((_, i) => i !== row)
+        return {
+          s: {
+            ...patch(s, { draft, dirty: true, col: 0, path: 0 }),
+            cursor: { ...s.cursor, service: Math.min(row, draft.length - 1) },
+          },
+          msg: `Ступень «${rung.title}» удалена`,
+          level: 'warn',
+        }
+      }
+      if (path > 0 && contacts.length === 1) {
+        const or = (rung.or ?? []).filter((_, i) => i !== path - 1)
+        const next: LadderRung = { ...rung, or: or.length ? or : undefined }
+        return {
+          s: patch(s, { draft: replaceAt(rungs, row, next), dirty: true, path: Math.max(0, path - 1), col: 0 }),
+          msg: 'Параллельная ветвь удалена',
+          level: 'warn',
+        }
+      }
+      if (path === 0 && contacts.length === 1) {
+        return { s, msg: 'Последний контакт не удаляется. Выберите катушку, чтобы удалить ступень', level: 'warn' }
+      }
+      const removed = contacts[col]
+      const list = contacts.filter((_, i) => i !== col)
+      return {
+        s: patch(s, {
+          draft: replaceAt(rungs, row, withPathContacts(rung, path, list)),
+          dirty: true,
+          col: Math.max(0, col - 1),
+        }),
+        msg: removed.cmp ? 'Блок сравнения удалён' : `Контакт ${removed.addr} удалён`,
+      }
+    }
+
+    default:
+      return ladderFormReducer(s, a)
+  }
+}

@@ -35,7 +35,11 @@
   контекст — `ui-mode-context.ts`.
 * `lib/cnc/` — **чистая логика станка, без JSX, React и DOM**: `machine.ts` (редьюсер, сводит подсистемы
   через реестр), `subsystem.ts` (листовой слой действий: `Action`, `Result`, `Dispatch`, запись реестра)
-  и подсистемы рядом (`ladder.ts` — образец, `ladder-scan.ts` — скан ПЛК, `nav.ts`, `cycle.ts`,
+  и подсистемы рядом (`ladder.ts` — образец: фасад над каталогом `ladder/` — `ladder-data.ts` (данные и
+  предикаты), `ladder-parse.ts` (разбор сравнения), `ladder-reducer.ts` (редьюсер редактора), `ladder-forms.ts`
+  (форма элемента), `ladder-schemes.ts` (менеджер схем), `ladder/types.ts` (типы ПЛК); `types.ts` держит
+  `MachineState` и реэкспортирует типы ПЛК как прежняя точка входа; `ladder-scan.ts` — скан ПЛК, `nav.ts`,
+  `cycle.ts`,
   `control.ts`, `service.ts`), `types.ts`, `coords.ts`, `clamp.ts` (зажим индексов списков), `keys.ts`
   (раскладка пульта: `keyToAction` и `routeKey`),
   `gcode.ts` (разбор кадра, модальные коды, инструменты программы), `spindle.ts` (обороты, резание,

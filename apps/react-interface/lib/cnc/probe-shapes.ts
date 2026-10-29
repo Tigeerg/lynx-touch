@@ -1,10 +1,12 @@
 // The probe cycle table: the wizard view geometry, the approach start points, the touches and the
 // feature formula of every built-in cycle. Pure data, no JSX and no run loop: the run
 // (probe.ts: probeLocalPosition, computeProbeResult) and the wizard read it through probe.ts.
+// Only the types come from probe.ts: a value import back would close the cycle probe -> probe-shapes
+// -> probe, and the ball radius below would read `undefined` on evaluation (the build caught it).
 import type { ProbeCycle, ProbeResultLine, P3 } from './probe'
-import { PROBE_BALL_R } from './probe'
 
-export const R = PROBE_BALL_R
+/** The probe ball radius, the same 1 mm as PROBE_BALL_R in probe.ts (the source stays there). */
+export const R = 1
 export const p = (x: number, y: number, z = 0): P3 => ({ x, y, z })
 export const mm = (v: number) => `${v.toFixed(3)} мм`
 

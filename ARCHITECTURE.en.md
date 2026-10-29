@@ -42,7 +42,9 @@ Layers, top to bottom:
   (editor reducer), `ladder-forms.ts` (element form), `ladder-schemes.ts` (scheme manager), `ladder/types.ts`
   (PLC types); `types.ts` keeps `MachineState` and re-exports the PLC types as the former entry point),
   `ladder-scan.ts` is the PLC scan,
-  `nav.ts`, `cycle.ts`, `control.ts`, `service.ts`), `types.ts`, `coords.ts`, `clamp.ts` (list index
+  `nav.ts`, `cycle.ts` — a facade over the `cycle/` directory (`cycle-exec.ts` is the block execution,
+  `cycle-actions.ts` the action union, `cycle-reducer.ts` the reducer), `control.ts`, `service.ts`), `types.ts`,
+  `coords.ts`, `clamp.ts` (list index
   clamping), `keys.ts` (the console key map: `keyToAction` and `routeKey`), `gcode.ts` (block parsing, modal
   codes, program tools), `spindle.ts` (rpm, cutting,
   load), `calc.ts` (cutting-mode math), `guards.ts` (input checks),

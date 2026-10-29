@@ -39,8 +39,9 @@
   предикаты), `ladder-parse.ts` (разбор сравнения), `ladder-reducer.ts` (редьюсер редактора), `ladder-forms.ts`
   (форма элемента), `ladder-schemes.ts` (менеджер схем), `ladder/types.ts` (типы ПЛК); `types.ts` держит
   `MachineState` и реэкспортирует типы ПЛК как прежняя точка входа; `ladder-scan.ts` — скан ПЛК, `nav.ts`,
-  `cycle.ts`,
-  `control.ts`, `service.ts`), `types.ts`, `coords.ts`, `clamp.ts` (зажим индексов списков), `keys.ts`
+  `cycle.ts` — фасад над каталогом `cycle/` (`cycle-exec.ts` — исполнение кадра, `cycle-actions.ts` —
+  объединение действий, `cycle-reducer.ts` — редьюсер), `control.ts`, `service.ts`), `types.ts`, `coords.ts`,
+  `clamp.ts` (зажим индексов списков), `keys.ts`
   (раскладка пульта: `keyToAction` и `routeKey`),
   `gcode.ts` (разбор кадра, модальные коды, инструменты программы), `spindle.ts` (обороты, резание,
   нагрузка), `calc.ts` (расчёт режимов), `guards.ts` (проверки входа), `data.ts` и

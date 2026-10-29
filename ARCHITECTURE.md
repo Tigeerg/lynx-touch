@@ -46,7 +46,12 @@
   прогона, `search-bar.tsx` — поиск и замена, `dro.tsx` — полоса координат, `line-editor.tsx` — ввод строки,
   `highlight.tsx` — подсветка кадра); мастер обмера щупа — `probe/probe-wizard.tsx` — фасад над
   `probe/probe-wizard/` (`probe-wizard.tsx` — сам мастер, `stepper.tsx` — шаги, `cycle-list.tsx` — выбор
-  цикла и готовность щупа, `readout.tsx` — показания, `step-card.tsx` — карточка шага). Сенсорный вариант — `components/cnc/touch/`; переключатель — `ui-mode.tsx`,
+  цикла и готовность щупа, `readout.tsx` — показания, `step-card.tsx` — карточка шага). Физический пульт —
+  `hardware/hardware-panel.tsx` — фасад над `hardware/hardware-panel/` (`program-mode-block.tsx` — режим
+  программы, `spindle-block.tsx` — шпиндель, `jog-pad.tsx` — маховик осей); сенсорная клавиатура —
+  `touch/touch-deck.tsx` — фасад над `touch/touch-deck/` (`hold-button.tsx` — клавиша с автоповтором,
+  `cycle-row.tsx` — строка цикла, `workplace-column.tsx` — рабочие места, `jog-panel.tsx` — ручной пульт,
+  `functions-panel.tsx` — функции). Сенсорный вариант — `components/cnc/touch/`; переключатель — `ui-mode.tsx`,
   контекст — `ui-mode-context.ts`.
 * `lib/cnc/` — **чистая логика станка, без JSX, React и DOM**: `machine.ts` (редьюсер, сводит подсистемы
   через реестр), `subsystem.ts` (листовой слой действий: `Action`, `Result`, `Dispatch`, запись реестра)

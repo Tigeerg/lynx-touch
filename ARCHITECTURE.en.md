@@ -49,7 +49,12 @@ Layers, top to bottom:
   `line-editor.tsx` — line entry, `highlight.tsx` — block highlighting); the probe wizard —
   `probe/probe-wizard.tsx` — is a facade over `probe/probe-wizard/` (`probe-wizard.tsx` — the wizard,
   `stepper.tsx` — the steps, `cycle-list.tsx` — cycle pick and probe readiness, `readout.tsx` — the readout,
-  `step-card.tsx` — the step card). Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
+  `step-card.tsx` — the step card). The physical console — `hardware/hardware-panel.tsx` — is a facade over
+  `hardware/hardware-panel/` (`program-mode-block.tsx` — the program mode, `spindle-block.tsx` — the spindle,
+  `jog-pad.tsx` — the axis handwheel); the touch key deck — `touch/touch-deck.tsx` — is a facade over
+  `touch/touch-deck/` (`hold-button.tsx` — the auto-repeat key, `cycle-row.tsx` — the cycle row,
+  `workplace-column.tsx` — the workplaces, `jog-panel.tsx` — the manual pad, `functions-panel.tsx` — the
+  functions). Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
   `ui-mode-context.ts`.
 * `lib/cnc/` — **pure machine logic, no JSX, React, or DOM**: `machine.ts` (reducer that composes the
   subsystems through a registry), `subsystem.ts` (the action layer's leaf: `Action`, `Result`, `Dispatch`,

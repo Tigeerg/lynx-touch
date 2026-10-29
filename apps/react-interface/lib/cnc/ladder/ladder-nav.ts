@@ -1,9 +1,9 @@
 // The ladder navigation helpers: the active scheme and its rungs, the cursor over a rung and its
-// parallel branches, the contacts of a path and their write-back, and the deep copy of rungs for
-// the edit draft. Kept out of ladder-reducer.ts so the element cases (ladder-forms.ts) and the
-// scheme manager (ladder-schemes.ts) read them without importing the reducer's action union;
-// ladder-reducer.ts re-exports them, so the public surface (via the './ladder' facade) is the
-// same. The data comes from ladder-data.ts.
+// parallel branches, and the contacts of a path with their write-back. Kept out of ladder-reducer.ts
+// so the element cases (ladder-forms.ts) and the scheme manager (ladder-schemes.ts) read them
+// without importing the reducer's action union; ladder-reducer.ts re-exports them, so the public
+// surface (via the './ladder' facade) is the same. The data comes from ladder-data.ts; the rung
+// copy (the edit draft) lives in the leaf ladder-rung.ts, so this module pulls no schemes or form.
 import { clampIndex } from '../clamp'
 import { rungBranches } from './ladder-data'
 import type { LadderContact, LadderRung, MachineState } from '../types'
@@ -32,13 +32,3 @@ export const pathContacts = (rung: LadderRung, path: number) => rungBranches(run
 
 export const withPathContacts = (rung: LadderRung, path: number, contacts: LadderContact[]): LadderRung =>
   path === 0 ? { ...rung, contacts } : { ...rung, or: (rung.or ?? []).map((b, i) => (i === path - 1 ? contacts : b)) }
-
-const cloneContact = (c: LadderContact): LadderContact => ({ ...c, ...(c.cmp ? { cmp: { ...c.cmp } } : {}) })
-/** A deep copy of the rungs for the edit draft: a draft edit never reaches the saved scheme. */
-export const cloneRungs = (rungs: LadderRung[]): LadderRung[] =>
-  rungs.map((r) => ({
-    ...r,
-    contacts: r.contacts.map(cloneContact),
-    coil: { ...r.coil },
-    ...(r.or ? { or: r.or.map((b) => b.map(cloneContact)) } : {}),
-  }))

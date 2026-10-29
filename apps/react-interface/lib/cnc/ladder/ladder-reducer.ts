@@ -1,8 +1,10 @@
-// The ladder editor reducer: the action union it claims, the rules for editing rungs and elements,
-// the free-address picker and the new rung. The data it works with lives in ladder-data.ts; the
-// navigation helpers (cursor, active scheme, path contacts, rung copy) are in ladder-nav.ts; the
-// element form (open, edit, commit) is in ladder-forms.ts and the scheme manager (load, save, new,
-// copy, rename, remove) in ladder-schemes.ts, which the default branch hands the action to.
+// The ladder editor reducer: the action union it claims and the rules for editing rungs and
+// elements. The data it works with lives in the leaf ladder-data.ts; the rung builders (the free
+// address picker, the new rung, the rung copy) in the leaf ladder-rung.ts; the navigation helpers
+// (cursor, active scheme, path contacts) in ladder-nav.ts; the element form (open, edit, commit) in
+// ladder-forms.ts and the scheme manager (load, save, new, copy, rename, remove) in
+// ladder-schemes.ts, which the default branch hands the action to. Nothing here imports a value
+// back from ladder-forms.ts or ladder-schemes.ts, so the module graph has no cycle.
 import { clampIndex } from '../clamp'
 import type { Result } from '../subsystem'
 import {
@@ -18,23 +20,21 @@ import {
   isTimerKind,
   sig,
 } from './ladder-data'
-import { elementForm, ladderFormReducer } from './ladder-forms'
-import { uniqueName } from './ladder-schemes'
-import type { LadderCoil, LadderContact, LadderRung, LadderScheme, LadderState, MachineState } from '../types'
+import type { LadderCoil, LadderContact, LadderRung, LadderState, MachineState } from '../types'
 
-// The navigation helpers (the active scheme, the cursor, the path contacts, the rung copy) live in
-// ladder-nav.ts. Imported by name for the cases below and re-exported, so the './ladder' facade and
-// the neighbours keep one entry point; ladder-nav.ts does not import this module, no cycle.
-import { cloneRungs, ladderCursor, savedRungs, withPathContacts } from './ladder-nav'
-export {
-  activeScheme,
-  cloneRungs,
-  ladderCursor,
-  ladderRungs,
-  pathContacts,
-  savedRungs,
-  withPathContacts,
-} from './ladder-nav'
+// The navigation helpers (the active scheme, the cursor, the path contacts) live in ladder-nav.ts
+// and the rung builders (the free address, the new rung, the rung copy) in ladder-rung.ts. Imported
+// by name for the cases below and re-exported, so the './ladder' facade and the neighbours keep one
+// entry point. Neither of those leaves imports this module, no cycle.
+import { ladderCursor, savedRungs, withPathContacts } from './ladder-nav'
+import { cloneRungs, freeAddr, newRung } from './ladder-rung'
+export { activeScheme, ladderCursor, ladderRungs, pathContacts, savedRungs, withPathContacts } from './ladder-nav'
+export { cloneRungs, freeAddr, newRung } from './ladder-rung'
+export type { FreeAddrKind } from './ladder-rung'
+// The form hands the actions this module does not handle back (ladder-forms.ts, which goes on to the
+// scheme manager); both read this module for the action type and for nothing else, so the edge is
+// one-way and type-only on their side.
+import { elementForm, ladderFormReducer } from './ladder-forms'
 
 export type LadderAction =
   | { type: 'LADDER_EDIT'; on: boolean }
@@ -65,37 +65,6 @@ export const isLadderAction = (a: { type: string }): a is LadderAction => a.type
 const patch = (s: MachineState, p: Partial<LadderState>): MachineState => ({ ...s, ladder: { ...s.ladder, ...p } })
 
 const replaceAt = <T>(list: T[], index: number, item: T) => list.map((x, i) => (i === index ? item : x))
-
-// The scheme name helper lives with the manager (ladder-schemes.ts): the reducer build needs it here.
-export { uniqueName }
-
-type FreeAddrKind = 'flag' | 'timer' | 'counter'
-
-/**
- * The first free coil address of a kind for a new rung: it must not already be on the scheme (a
- * duplicate coil is refused on save). One function, not three near-copies.
- */
-export function freeAddr(rungs: LadderRung[], kind: FreeAddrKind): string {
-  const used = new Set(rungs.map((r) => r.coil.addr))
-  if (kind === 'flag') {
-    for (let byte = 1; byte < 100; byte++) {
-      for (let bit = 0; bit < 8; bit++) {
-        const addr = `M${byte}.${bit}`
-        if (!used.has(addr)) return addr
-      }
-    }
-    return 'M1.0'
-  }
-  const prefix = kind === 'timer' ? 'T' : 'C'
-  for (let n = 0; n < 100; n++) if (!used.has(`${prefix}${n}`)) return `${prefix}${n}`
-  return `${prefix}99`
-}
-
-export const newRung = (rungs: LadderRung[], n: number): LadderRung => ({
-  title: `Ступень ${n}`,
-  contacts: [sig('I0.0')],
-  coil: { addr: freeAddr(rungs, 'flag'), label: 'Новый флаг' },
-})
 
 export function ladderReducer(s: MachineState, a: LadderAction): Result {
   const L = s.ladder

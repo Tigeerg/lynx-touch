@@ -1,15 +1,16 @@
 // The ladder scheme manager: the pick list, load and save of a scheme into the PLC, and the new,
 // copy, rename and remove commands. The editor's element cases live in ladder-reducer.ts and the
 // form cases in ladder-forms.ts; both hand the actions they do not handle here. The data and the
-// navigation helpers come from ladder-nav.ts, the new rung and the free address from
-// ladder-reducer.ts.
+// scheme name helper come from the leaves ladder-data.ts, the navigation helpers from
+// ladder-nav.ts, and the new rung from ladder-rung.ts; the reducer is read for the action type
+// only, so no value import points back at it.
 import { clampIndex } from '../clamp'
 import { isBusy } from '../guards'
 import { formatStamp } from '../time'
 import type { Result } from '../subsystem'
-import { emptyMem, isLatchKind, coilKind } from './ladder-data'
-import { activeScheme, cloneRungs } from './ladder-nav'
-import { freeAddr, newRung } from './ladder-reducer'
+import { emptyMem, isLatchKind, coilKind, uniqueName } from './ladder-data'
+import { activeScheme } from './ladder-nav'
+import { cloneRungs, newRung } from './ladder-rung'
 import type { LadderAction } from './ladder-reducer'
 import type { CoilKind, LadderContact, LadderRung, LadderScheme, LadderState, MachineState } from '../types'
 
@@ -17,12 +18,6 @@ const patch = (s: MachineState, p: Partial<LadderState>): MachineState => ({
   ...s,
   ladder: { ...s.ladder, ...p },
 })
-
-export function uniqueName(schemes: LadderScheme[], base: string) {
-  const names = new Set(schemes.map((x) => x.name))
-  if (!names.has(base)) return base
-  for (let i = 2; ; i++) if (!names.has(`${base}_${i}`)) return `${base}_${i}`
-}
 
 const replaceAt = <T>(list: T[], index: number, item: T) => list.map((x, i) => (i === index ? item : x))
 

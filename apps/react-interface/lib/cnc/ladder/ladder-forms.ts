@@ -1,7 +1,9 @@
 // The ladder element form: open, edit, pick and commit the properties of a contact or a coil, and
 // the scheme rename form. The element cases live in ladder-reducer.ts, which hands the form actions
 // here, and the ones this module does not handle go on to the scheme manager (ladder-schemes.ts).
-// The data comes from ladder-data.ts, the comparison parse from ladder-parse.ts.
+// The data comes from ladder-data.ts, the comparison parse from ladder-parse.ts, the navigation
+// helpers from ladder-nav.ts. The reducer is read for the action type only, so no value import
+// points back at it.
 import type { Result } from '../subsystem'
 import type { LadderCoil, LadderContact, LadderRung, LadderState, MachineState } from '../types'
 import {

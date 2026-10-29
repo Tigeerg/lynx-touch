@@ -1,8 +1,9 @@
 // The ladder constants and predicates: limits, address and operand patterns, coil kinds and their
-// labels, the reference signal list, the initial schemes, the presets, and the data helpers the
-// scan, the editor and the views share. Everything here is data or a pure predicate; the reducer
-// (ladder-reducer.ts) and the parse (ladder-parse.ts) build on top of it.
-import type { CoilKind, LadderCoil, LadderContact, LadderMem, LadderRung, LadderState } from './types'
+// labels, the reference signal list, the initial schemes, the presets, the scheme name helper, and
+// the data helpers the scan, the editor and the views share. Everything here is data or a pure
+// function over it; the parse (ladder-parse.ts), the rung builders (ladder-rung.ts), the reducer
+// (ladder-reducer.ts) and the scheme manager (ladder-schemes.ts) build on top of it.
+import type { CoilKind, LadderCoil, LadderContact, LadderMem, LadderRung, LadderScheme, LadderState } from './types'
 
 export const LADDER_MAX_CONTACTS = 5
 export const LADDER_MAX_RUNGS = 16
@@ -39,6 +40,13 @@ export const isCounterAddr = (addr: string) => CTR_RE.test(addr)
 export const isOperand = (x: string) => OPERAND_RE.test(x.replace(/\s/g, ''))
 export const DEFAULT_PRESET_MS = 1000
 export const DEFAULT_PRESET_COUNT = 10
+
+/** A scheme name that is not taken yet: the base itself, or `base_2`, `base_3`, … */
+export function uniqueName(schemes: LadderScheme[], base: string) {
+  const names = new Set(schemes.map((x) => x.name))
+  if (!names.has(base)) return base
+  for (let i = 2; ; i++) if (!names.has(`${base}_${i}`)) return `${base}_${i}`
+}
 
 export const emptyMem = (): LadderMem => ({ timers: {}, counters: {}, latched: {} })
 export const rungBranches = (r: LadderRung): LadderContact[][] => [r.contacts, ...(r.or ?? [])]

@@ -34,8 +34,14 @@ endif()
 # The core is a library on its own: the application and the check use the same
 # code, and the core does not know about the console.
 add_library(quickprog_core STATIC
+    core/cli.cpp
     core/emit.cpp
+    core/emit_moves.cpp
+    core/face_options.cpp
+    core/feeds.cpp
     core/path.cpp
+    core/path_face.cpp
+    core/validate.cpp
 )
 target_include_directories(quickprog_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 

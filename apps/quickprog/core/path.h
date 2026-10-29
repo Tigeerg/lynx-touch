@@ -3,6 +3,11 @@
 // The preview and the emitter read the same Path: one geometry, two
 // representations. The planner returns moves in machine coordinates; the
 // emitter turns them into G-code and never recomputes a coordinate.
+//
+// Operations are delimited in the move list instead of being returned in a
+// separate vector: an operation block starts at OperationSpan::first and runs
+// up to the next span, so the emitter walks one list and prints UI_OP at the
+// right place.
 #pragma once
 
 #include <string>
@@ -45,17 +50,87 @@ struct PathBounds {
     double zMax = 0.0;
 };
 
+// Which moves belong to which operation: `first` is the index of the first
+// move of operation `opIndex` (an index into Program::operations).
+struct OperationSpan {
+    int opIndex = 0;
+    std::size_t first = 0;
+};
+
 // Planned trajectory of a program. `uuid` identifies the planning result so a
 // stale preview can be told from the fresh one after a debounce.
 struct Path {
     std::vector<Move> moves;
+    std::vector<OperationSpan> operations;
     PathBounds bbox;
+    // Cutting length, mm: the sum of the `cut` moves only. Rapids are not
+    // cutting and are not counted, so the number is comparable between two
+    // strategies of the same operation.
     double lengthMm = 0.0;
     std::string uuid;
 };
 
-// Operation -> moves. A stub in the first slice: it returns an empty Path, so
-// the pipeline runs end to end without a trajectory (PLAN-QUICKPROG, 7.2).
+// Stable identifier of one operation inside a planning result:
+// "<path uuid>/op<n>", n counted from 1 over the enabled operations. It is
+// unique inside a file and reproducible between runs, so a stale preview and
+// a golden file can name the same block.
+std::string operationUuid(const std::string& programUuid, int opIndex);
+
+// Collector of moves for one planner. Bounds and the cutting length are
+// updated on every append, so a planner cannot forget them; an empty path
+// keeps `bbox.valid` false instead of reporting a fake zero box.
+struct PathBuilder {
+    std::vector<Move>& moves;
+    PathBounds bbox;
+    double lengthMm = 0.0;  // cutting length, mm
+
+    explicit PathBuilder(std::vector<Move>& target) : moves(target) {}
+    // A cut carries its feed; a rapid carries none (Move::hasFeed). Both grow
+    // the bounds.
+    void add(MoveKind kind, const Point3& to, double feedMmMin = 0.0);
+    void grow(const Point3& point);
+};
+
+// Face-specific planner: declared here so `path.cpp` and `path_face.cpp` share
+// one contract and the dispatch stays a visitor over the variant.
+void planFace(const Program& program, const Operation& operation, PathBuilder& out);
+
+// Filled by the face planner for the console summary and the checks: the
+// numbers are the planner's own, not recomputed by the caller.
+struct FaceStats {
+    int strips = 0;                 // strips per pass
+    int passes = 0;                 // passes along Z
+    std::vector<double> stepDepthsMm;  // bottom Z of each pass, top down
+    double toolRadiusMm = 0.0;
+    double stripStepMm = 0.0;       // across step between neighbouring strips, mm
+    double edgeOverrunMm = 0.0;     // along-strip lead beyond the stock, per side, mm
+    double sideOverrunMm = 0.0;     // across the strips beyond the stock, per side (face: 0)
+    // How far below the material top the cutting descends, mm: the descent of
+    // the plunge and the ramp of one strip is a cut, never a rapid.
+    double leadMm = 0.0;
+    int moves = 0;
+    double lengthMm = 0.0;          // cutting length, mm
+};
+
+// Operation -> moves. Disabled operations are skipped; a valid document is
+// assumed (validate first). The face operation is the only planned kind so far;
+// the other kinds plan nothing and say so through an empty span.
 Path planPath(const Program& program);
+
+// Face layout numbers for one operation: strips, passes, step depths. Uses the
+// same arithmetic as the planner, so the console summary and the checks read
+// one source. A program is needed for the stock bounds.
+FaceStats faceStats(const Program& program, const Operation& operation);
+
+// Russian warnings of the face layout that do not block planning, one line
+// each: a thin last pass and a plane above the stock top. Blocking problems
+// stay in `validate`; this list is the "planned, but look" set the console
+// prints after the checks. Empty when there is nothing to say.
+std::vector<std::string> faceWarnings(const Program& program, const Operation& operation);
+
+// Time estimate of the path, seconds: each cut at its programmed feed, each
+// rapid at the machine rapid rate of limits.h. Arc length is the chord here -
+// the demo has no arcs yet.
+double estimateSeconds(const Path& path);
 
 } // namespace qp

@@ -1,14 +1,22 @@
-// core/path.cpp - the planner stub for the first slice.
+// core/path.cpp - the planner entry point and the time estimate.
 //
-// The real planner (face, pockets, drilling) is the next slices of
-// PLAN-QUICKPROG, 7.2. Until then it returns an empty Path, so the whole
-// pipeline operations -> Path -> emit already runs end to end and the console
-// prints "moves: 0" instead of pretending to have a trajectory.
+// Planning is split by operation: `path_face.cpp` owns the face strips, and a
+// new kind gets its own file next to it instead of growing this one. The
+// dispatch here is a visitor over the variant: the compiler refuses to build a
+// visitor that forgets a kind, so a new operation cannot be silently skipped.
+//
+// Path helpers (`PathBuilder`) live here too: they are what every planner
+// appends moves through, so the bounds, the cutting length and the move count
+// are computed in one place and cannot disagree between operations.
 #include "core/path.h"
 
 #include <atomic>
+#include <cmath>
 #include <cstdio>
+#include <string>
+#include <variant>
 
+#include "core/limits.h"
 #include "core/ops.h"
 
 namespace qp {
@@ -16,11 +24,12 @@ namespace {
 
 // Planning results are told apart by content, not by time: a counter keeps the
 // uuid unique within the process and reproducible between runs, so a test can
-// compare it.
-std::atomic<unsigned long long> g_pathSerial{0};
+// compare it. The map from operation index to serial is reset for every
+// program, so two runs of the same document give the same uuids.
+std::atomic<unsigned long long> g_programSerial{0};
 
-std::string nextPathUuid() {
-    const unsigned long long serial = ++g_pathSerial;
+std::string nextProgramUuid() {
+    const unsigned long long serial = ++g_programSerial;
     char buf[32];
     std::snprintf(buf, sizeof(buf), "path-%06llu", serial);
     return std::string(buf);
@@ -28,13 +37,104 @@ std::string nextPathUuid() {
 
 } // namespace
 
-// Empty stub: no operation is planned yet, so the path has no moves and no
-// bounds. `program` is taken by const reference on purpose - the planner must
-// not change the document (CLAUDE.md, section 3).
+std::string operationUuid(const std::string& programUuid, int opIndex) {
+    return programUuid + "/op" + std::to_string(opIndex + 1);
+}
+
+void PathBuilder::add(MoveKind kind, const Point3& to, double feedMmMin) {
+    grow(to);
+    Move move;
+    move.kind = kind;
+    move.to = to;
+    if (kind == MoveKind::Cut) {
+        move.feedMmMin = feedMmMin;
+        move.hasFeed = true;
+        if (!moves.empty()) {
+            const Point3& from = moves.back().to;
+            lengthMm += std::sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y) +
+                                  (to.z - from.z) * (to.z - from.z));
+        }
+    }
+    moves.push_back(move);
+}
+
+void PathBuilder::grow(const Point3& to) {
+    if (!bbox.valid) {
+        bbox.valid = true;
+        bbox.xMin = bbox.xMax = to.x;
+        bbox.yMin = bbox.yMax = to.y;
+        bbox.zMax = to.z;
+        return;
+    }
+    bbox.xMin = std::fmin(bbox.xMin, to.x);
+    bbox.xMax = std::fmax(bbox.xMax, to.x);
+    bbox.yMin = std::fmin(bbox.yMin, to.y);
+    bbox.yMax = std::fmax(bbox.yMax, to.y);
+    bbox.zMax = std::fmax(bbox.zMax, to.z);
+}
+
+double estimateSeconds(const Path& path) {
+    const double rapid = machineLimits().rapidMmMin;
+    double seconds = 0.0;
+    Point3 from;
+    bool haveFrom = false;
+    for (const Move& move : path.moves) {
+        if (haveFrom) {
+            const double dx = move.to.x - from.x;
+            const double dy = move.to.y - from.y;
+            const double dz = move.to.z - from.z;
+            const double distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+            const double rate = move.kind == MoveKind::Cut ? move.feedMmMin : rapid;
+            if (rate > 0.0) { seconds += distance / rate * 60.0; }
+        }
+        from = move.to;
+        haveFrom = true;
+    }
+    return seconds;
+}
+
+namespace {
+
+// The visitor of the dispatch: one overload per geometry kind. The face kind
+// plans; the other kinds close with a span but no moves until their slice.
+struct Planner {
+    const Program& program;
+    Path& path;
+    int opIndex;
+    std::size_t first;
+
+    void begin() { first = path.moves.size(); }
+
+    // Appends the moves of the operation to the path and records its span.
+    // An empty span still marks the operation, so the emitter prints its tag.
+    void operator()(const FaceOp&) {
+        PathBuilder builder(path.moves);
+        // Bounds are per program, not per operation: the builder starts from
+        // the bounds of the moves already planned.
+        builder.bbox = path.bbox;
+        planFace(program, program.operations[static_cast<std::size_t>(opIndex)], builder);
+        path.bbox = builder.bbox;
+        path.lengthMm += builder.lengthMm;
+    }
+    void operator()(const RectPocketOp&) { begin(); }
+    void operator()(const CirclePocketOp&) { begin(); }
+    void operator()(const DrillHoleOp&) { begin(); }
+    void operator()(const DrillGridOp&) { begin(); }
+    void operator()(const DrillCircleOp&) { begin(); }
+};
+
+} // namespace
+
 Path planPath(const Program& program) {
-    (void)program;
     Path path;
-    path.uuid = nextPathUuid();
+    path.uuid = nextProgramUuid();
+    for (std::size_t i = 0; i < program.operations.size(); ++i) {
+        const Operation& operation = program.operations[i];
+        if (!operation.enabled) { continue; }
+        Planner planner{program, path, static_cast<int>(i), path.moves.size()};
+        std::visit(planner, operation.geometry);
+        path.operations.push_back(OperationSpan{static_cast<int>(i), planner.first});
+    }
     return path;
 }
 

@@ -7,8 +7,9 @@
 // The strip grid covers the stock from both edges: the first centre sits half a
 // diameter inside one edge and the last half a diameter inside the opposite
 // one, so the tool body reaches both edges with no uncut rim. The strips sweep
-// `leadMm` (10 % of D, clamped to 1..D/2 mm) past both ends to clear the corner
-// and add no runout across the strips: the face covers exactly the width.
+// `leadMm` (10 % of D, never under 1 mm, even above the tool radius, and never
+// above half of the strip) past both ends to clear the corner and add no runout
+// across the strips: the face covers exactly the width.
 //
 // Every strip is an open slot cut down from the material top, so each strip
 // starts from the material top: the tool rapids over the strip start at safe
@@ -36,6 +37,9 @@ namespace {
 
 constexpr double kOverrunShare = 0.10;  // edge lead, share of D
 constexpr double kMinLeadMm = 1.0;      // the lead is never shorter than this
+// The lead never passes half of the strip length: the cut stays next to the
+// stock, and a very wide tool on a short stock would otherwise lead a whole
+// stock length into the air.
 constexpr double kThinPassShare = 0.10; // a last pass below 10 % of the step
 constexpr double kEps = 1e-6;
 
@@ -54,12 +58,13 @@ struct Layout {
     std::vector<double> passes; // memory Z of each pass, top down
 };
 
-// `share` of the diameter, clamped to [min, D/2]: a fraction below the floor
-// still clears the corner, a share above the radius would hand the centre over
-// the stock edge.
-double clampLead(double diameterMm, double share, double minMm) {
-    const double half = diameterMm / 2.0;
-    return std::fmin(std::fmax(diameterMm * share, std::fmin(minMm, half)), half);
+// The facing lead along the strip: `share` of the diameter, never shorter than
+// `minMm`. It is deliberately not capped at the tool radius: a tool of radius R
+// leaves a half disc at the end of the strip, so a lead "to size" has to reach
+// at least R; a small tool gets the 1 mm minimum instead. The strip is cut
+// inside the stock, so the lead can never exceed half of the stock length.
+double leadMm(double diameterMm, double share, double minMm) {
+    return std::fmax(diameterMm * share, minMm);
 }
 
 Layout makeLayout(const Program& program, const Operation& operation) {
@@ -71,7 +76,8 @@ Layout makeLayout(const Program& program, const Operation& operation) {
 
     Layout out;
     out.stripsAlongX = sizeX >= sizeY;
-    out.edgeOverrunMm = clampLead(d, kOverrunShare, kMinLeadMm);
+    const double alongSize = out.stripsAlongX ? sizeX : sizeY;
+    out.edgeOverrunMm = std::fmin(leadMm(d, kOverrunShare, kMinLeadMm), alongSize / 2.0);
     out.sideOverrunMm = 0.0;
 
     const double across = out.stripsAlongX ? sizeY : sizeX;

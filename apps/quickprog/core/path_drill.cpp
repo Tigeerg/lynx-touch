@@ -84,6 +84,17 @@ std::vector<Point3> ringPoints(const DrillCircleOp& ring, std::vector<std::strin
 
 } // namespace
 
+Feeds drillFeeds(const Operation& operation) {
+    return feedsFor(Material::Aluminium, operation.tool.diameterMm, ToolKind::Drill);
+}
+
+double drillFeed(const Operation& operation) {
+    // A typed feed of the form is the drill feed too: a drill has no separate
+    // plunge, so the one number is both. A zero falls back to the table.
+    return operation.cutting.feedMmMin > 0.0 ? operation.cutting.feedMmMin
+                                             : drillFeeds(operation).feedMmMin;
+}
+
 bool isDrill(const OperationGeometry& geometry) {
     return std::holds_alternative<DrillHoleOp>(geometry) ||
            std::holds_alternative<DrillGridOp>(geometry) ||

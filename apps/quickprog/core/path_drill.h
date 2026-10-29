@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "core/feeds.h"
 #include "core/ops.h"
 #include "core/path.h"
 
@@ -56,5 +57,17 @@ bool isDrill(const OperationGeometry& geometry);
 // is the point the preview draws. An empty list means a shape that cannot be
 // laid out (`DrillStats::errors` says why).
 std::vector<Point3> drillHoles(const Operation& operation);
+
+
+// Cutting data of a drill from the operation: the material of the document is
+// not modelled yet, so the table row "aluminium" is the one the form and the
+// check use (the same default `validate` applies). The source line travels to
+// the console summary, so the operator sees where the numbers came from.
+Feeds drillFeeds(const Operation& operation);
+
+// The cycle feed of a drill. A drill has one feed: the plunge and the working
+// feed are the same number, and the model must not keep two different ones.
+// Called by the console and the .qprog reader.
+double drillFeed(const Operation& operation);
 
 } // namespace qp

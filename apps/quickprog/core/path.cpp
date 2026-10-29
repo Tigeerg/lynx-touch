@@ -24,6 +24,18 @@
 namespace qp {
 namespace {
 
+// A whole number without a trailing ".0" and a fraction with one digit: the
+// summary of the operator reads "860 mm/min", not "860.0".
+std::string summaryNumber(double value) {
+    char buf[32];
+    if (std::fabs(value - std::round(value)) < 1e-6) {
+        std::snprintf(buf, sizeof(buf), "%.0f", value);
+    } else {
+        std::snprintf(buf, sizeof(buf), "%.1f", value);
+    }
+    return std::string(buf);
+}
+
 // Planning results are told apart by content, not by time: a counter keeps the
 // uuid unique within the process and reproducible between runs, so a test can
 // compare it. The map from operation index to serial is reset for every
@@ -84,6 +96,24 @@ void PathBuilder::grow(const Point3& to) {
     bbox.yMin = std::fmin(bbox.yMin, to.y);
     bbox.yMax = std::fmax(bbox.yMax, to.y);
     bbox.zMax = std::fmax(bbox.zMax, to.z);
+}
+
+std::string regimeSummary(const Operation& operation, const std::string& source) {
+    std::string out = "  режимы: " + summaryNumber(operation.cutting.spindleRpm) + " об/мин, подача " +
+                      summaryNumber(operation.cutting.feedMmMin) + " мм/мин, врезание " +
+                      summaryNumber(operation.cutting.plungeFeedMmMin) + " мм/мин";
+    if (!source.empty()) { out += " — " + source; }
+    return out;
+}
+
+std::string totalSummary(std::size_t operations, std::size_t moves, double cuttingMm,
+                         double seconds) {
+    char length[32];
+    std::snprintf(length, sizeof(length), "%.1f", cuttingMm);
+    const long total = std::lround(seconds);
+    return "Итого: операций " + std::to_string(operations) + ", ходов " + std::to_string(moves) +
+           ", длина резания " + length + " мм, оценка " + std::to_string(total / 60) + " мин " +
+           std::to_string(total % 60) + " с";
 }
 
 double estimateSeconds(const Path& path) {

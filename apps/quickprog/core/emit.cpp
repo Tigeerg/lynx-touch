@@ -11,14 +11,14 @@
 //   G0 Z<safe> T.. M6                      change, only when the tool differs
 //   S.. M3 / M8                            spindle and coolant, when they differ
 //   G0 / G1 X.. Y.. Z.. F..                moves of the operation
-//   M9 / M5 / G0 Z<safe>                   end of the operation
+//   M9 / M5 / G0 Z<safe>                   end of the operation (M9 when on)
 //
 // One rule decides the preamble of every operation - the tool change and the
 // spindle - and it lives in `emitOperationStart` alone (PLAN-QUICKPROG, 7.1): a
 // second tool change repeats T/M6, the same tool keeps its T but starts a new
 // spindle speed when it differs. M8 is written only when the coolant was off;
-// M9 always turns it off at the end of an operation, so the coolant is not
-// switched on and off between two operations that both flood.
+// M9 turns it off at the end of an operation that asked for it, so no coolant
+// word is printed for an operation with the coolant switched off.
 //
 // Blocks are numbered N10, N15, N20, ... across the whole file: the step of
 // the reference file, so a block keeps a readable number in the editor.
@@ -164,16 +164,21 @@ void emitOperationStart(std::string& out, const Program& program, const Operatio
 
 // The operation leaves at safe Z already when its planner ends there; a tag
 // without moves leaves the tool wherever the header parked it. The trailer
-// always writes M9/M5 and parks the tool: the next tool change must not find
-// the tool inside the material.
-void emitOperationEnd(std::string& out, const Program& program, int& sequence, const Point3& parked,
-                      EmitState& state) {
-    line(out, numberedBlock(sequence, "M9"));
-    sequence += kSequenceStep;
+// writes M5, writes M9 only for an operation that switched the coolant on, and
+// parks the tool: the next tool change must not find the tool inside the
+// material.
+void emitOperationEnd(std::string& out, const Program& program, const Operation& operation,
+                      int& sequence, const Point3& parked, EmitState& state) {
+    // M9 only turns off a coolant that was on: an operation with the coolant
+    // off has nothing to stop, and the block would read as a coolant command.
+    if (operation.coolant != Coolant::Off) {
+        line(out, numberedBlock(sequence, "M9"));
+        sequence += kSequenceStep;
+    }
     line(out, numberedBlock(sequence, "M5"));
     sequence += kSequenceStep;
-    // M9 and M5 stop both: the next operation has to start its own spindle and
-    // its own coolant.
+    // M5 stops the spindle (and M9, when printed, the coolant): the next
+    // operation has to start its own spindle and its own coolant.
     state.coolantOn = false;
     state.spindleRpm = 0.0;
     if (std::fabs(parked.z - program.safeZ) > kEps) {
@@ -237,7 +242,7 @@ std::string emitProgram(const Program& program, const Path& path) {
             // trailer parks it, so the end of the block is the R plane.
             end.z = drillStats(program, operation).rMm;
         }
-        emitOperationEnd(out, program, sequence, end, state);
+        emitOperationEnd(out, program, operation, sequence, end, state);
     }
     emitFooter(out, sequence);
     return out;

@@ -164,4 +164,13 @@ std::vector<std::string> faceWarnings(const Program& program, const Operation& o
 // length, not its chord: the chord of a half turn understates the time by pi/2.
 double estimateSeconds(const Path& path);
 
+
+// Russian summary lines of the console (PLAN-QUICKPROG, 7.2, Q0). The numbers
+// come from the caller - the modelled operation and its table source - so the
+// summary cannot invent a regime of its own. They live in the core, not in
+// main.cpp, because the wording is part of what the operator and the check read.
+std::string regimeSummary(const Operation& operation, const std::string& source);
+std::string totalSummary(std::size_t operations, std::size_t moves, double cuttingMm,
+                         double seconds);
+
 } // namespace qp

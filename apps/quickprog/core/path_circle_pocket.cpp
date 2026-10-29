@@ -4,7 +4,8 @@
 // allowance`. The turns are spread evenly over its radius, `turns = ceil(radius
 // / nominal)` with the nominal step of the rectangular pocket, so the real
 // radial step never exceeds `D * kPocketStepOverPct / 100` and the outermost
-// turn puts the tool body exactly the allowance away from the wall.
+// turn puts the tool body exactly the allowance away from the wall. The
+// allowance is the wall stock only: the floor is cut to the final depth.
 //
 // The spiral leaves the centre along +X. The first arc climbs from the centre
 // to half the radial step; every next arc carries the radius to the next turn.

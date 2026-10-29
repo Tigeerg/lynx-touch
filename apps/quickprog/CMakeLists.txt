@@ -53,6 +53,7 @@ add_library(quickprog_core STATIC
     core/serialize.cpp
     core/serialize_read.cpp
     core/serialize_shared.cpp
+    core/summary.cpp
     core/validate.cpp
 )
 target_include_directories(quickprog_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -108,6 +109,8 @@ add_executable(quickprog_check
     tests/checks_pocket.cpp
     tests/checks_circle.cpp
     tests/checks_drill.cpp
+    tests/checks_summary.cpp
+    tests/checks_emit_coolant.cpp
     tests/checks_qprog.cpp
     tests/checks_roundtrip.cpp
     tests/roundtrip_fixtures.h

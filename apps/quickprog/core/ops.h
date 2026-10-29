@@ -35,7 +35,8 @@ struct ToolRef {
 
 // Cutting data of one operation. `feedMmMin` is the XY feed, `plungeFeedMmMin`
 // the Z plunge; separate values because plunging at the cutting feed burns
-// small end mills.
+// small end mills. A drill has one feed: both fields are equal there, and the
+// .qprog reader and the console keep them equal (see drillFeed).
 struct Cutting {
     double spindleRpm = 0.0;
     double feedMmMin = 0.0;
@@ -53,14 +54,16 @@ struct FaceOp {
 };
 
 // Rectangular pocket. `cornerRadiusMm` is the radius of the contour corners,
-// `finishAllowanceMm` the stock left on the wall and the floor for a later
-// finishing pass.
+// which the raster does not cut (the corner keeps the tool radius). The
+// `finishAllowanceMm` is the stock left on the walls only: the floor is cut to
+// the final depth in the same pass, no allowance is left on it.
 struct RectPocketOp {
     Rect rect;
     double cornerRadiusMm = 0.0;
     double finishAllowanceMm = 0.0;
 };
 
+// Round pocket; the allowance is the wall stock, as for the rectangle.
 struct CirclePocketOp {
     Circle circle;
     double finishAllowanceMm = 0.0;

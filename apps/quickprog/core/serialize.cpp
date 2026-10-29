@@ -24,6 +24,7 @@
 #include <variant>
 #include <vector>
 
+#include "core/path_drill.h"
 #include "core/serialize_internal.h"
 
 namespace qp {
@@ -47,7 +48,11 @@ std::string serialize(const Program& program) {
                number(op.tool.diameterMm) + "\n";
         out += "op.spindle " + number(op.cutting.spindleRpm) + "\n";
         out += "op.feed " + number(op.cutting.feedMmMin) + "\n";
-        out += "op.plunge " + number(op.cutting.plungeFeedMmMin) + "\n";
+        // A drill has one feed: its plunge line repeats the working feed, so a
+        // hand edit of one number cannot leave a stale second one behind.
+        const double plunge = isDrill(op.geometry) ? op.cutting.feedMmMin
+                                                   : op.cutting.plungeFeedMmMin;
+        out += "op.plunge " + number(plunge) + "\n";
         out += "op.coolant " + std::string(coolantName(op.coolant)) + "\n";
         out += "op.topZ " + number(op.topZ) + "\n";
         out += "op.depth " + number(op.depthMm) + "\n";

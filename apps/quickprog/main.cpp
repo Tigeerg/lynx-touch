@@ -28,6 +28,7 @@
 #include "core/path_pocket.h"
 #include "core/pocket_options.h"
 #include "core/serialize.h"
+#include "core/summary.h"
 #include "core/validate.h"
 #include "core/version.h"
 
@@ -43,6 +44,10 @@ constexpr const char* kHelp =
     "      торцевание плоскости: полосы вдоль длинной стороны заготовки\n"
     "  quickprog --op pocket <ключи> <файл.ngc>\n"
     "      прямоугольный карман растром от стенки к стенке\n"
+    "  quickprog --op circle-pocket <ключи> <файл.ngc>\n"
+    "      круглый карман спиралью от центра\n"
+    "  quickprog --op drill <ключи> <файл.ngc>\n"
+    "      сверление: одно отверстие, сетка или круг\n"
     "  quickprog --qprog <файл.qprog> <файл.ngc>\n"
     "      готовый документ: все включённые операции по порядку в один .ngc\n"
     "  quickprog --version | --help\n"
@@ -52,7 +57,7 @@ constexpr const char* kHelp =
     "  --diameter D      диаметр фрезы, мм (по умолчанию 10)\n"
     "  --stock XxYxZ     габарит заготовки, мм, от нуля вниз по Z (100x80x20)\n"
     "  --top Z           Z верха заготовки, мм (0)\n"
-    "  --plane Z         Z плоскости обработки, мм (вершина минус глубина)\n"
+    "  --plane Z         Z плоскости обработки, мм (верх минус --depth)\n"
     "  --depth D         глубина ниже верха, мм (2)\n"
     "  --step-down S     шаг по Z за проход, мм (2)\n"
     "  --step-over P     шаг полос, % диаметра (70)\n"
@@ -64,35 +69,60 @@ constexpr const char* kHelp =
     "  --name TEXT       имя программы в шапке (FACE)\n"
     "\n"
     "Ключи --op pocket:\n"
+    "  --tool N          номер инструмента в таблице станка (1)\n"
+    "  --diameter D      диаметр фрезы, мм (10)\n"
+    "  --stock XxYxZ     габарит заготовки, мм (100x80x20)\n"
+    "  --top Z           Z верха заготовки, мм (0)\n"
+    "  --depth D         глубина кармана ниже верха, мм (2)\n"
+    "  --step-down S     шаг по Z за проход, мм (2)\n"
     "  --size WxH        размер кармана, мм (60x40); можно --width и --height\n"
     "  --x X --y Y       левый нижний угол кармана в координатах станка (0, 0)\n"
-    "  --corner R        радиус угла, мм (0): пока не обрабатывается\n"
-    "  --allowance A     припуск на стенку и дно, мм (0)\n"
-    "  остальные ключи   как у торцевания: --tool, --diameter, --stock, --top,\n"
-    "                    --depth, --step-down, --feed, --plunge, --rpm,\n"
-    "                    --material, --safe, --name\n"
+    "  --corner R        радиус угла, мм (0); сейчас не вырезается: в углу остаётся\n"
+    "                    радиус фрезы\n"
+    "  --allowance A     припуск на стенку (дно режется начисто), мм (0)\n"
+    "  --feed F          рабочая подача, мм/мин (из таблицы calc.ts)\n"
+    "  --plunge P        подача врезания, мм/мин (четверть рабочей)\n"
+    "  --rpm N           обороты шпинделя, об/мин (из таблицы calc.ts)\n"
+    "  --material M      aluminium | steel (aluminium)\n"
+    "  --safe Z          безопасный Z, мм (верх + 5)\n"
+    "  --name TEXT       имя программы в шапке (POCKET)\n"
     "\n"
-    "  quickprog --op circle-pocket <ключи> <файл.ngc>\n"
-    "      круглый карман спиралью от центра\n"
     "Ключи --op circle-pocket:\n"
+    "  --tool N          номер инструмента в таблице станка (1)\n"
+    "  --diameter D      диаметр фрезы, мм (10)\n"
+    "  --stock XxYxZ     габарит заготовки, мм (100x80x20)\n"
+    "  --top Z           Z верха заготовки, мм (0)\n"
+    "  --depth D         глубина кармана ниже верха, мм (2)\n"
+    "  --step-down S     шаг по Z за проход, мм (2)\n"
     "  --pocket-dia F    диаметр кармана, мм (20)\n"
     "  --x X --y Y       центр кармана в координатах станка (0, 0)\n"
-    "  --allowance A     припуск на стенку и дно, мм (0)\n"
-    "  остальные ключи   как у прямоугольного кармана\n"
+    "  --allowance A     припуск на стенку (дно режется начисто), мм (0)\n"
+    "  --feed F          рабочая подача, мм/мин (из таблицы calc.ts)\n"
+    "  --plunge P        подача врезания, мм/мин (четверть рабочей)\n"
+    "  --rpm N           обороты шпинделя, об/мин (из таблицы calc.ts)\n"
+    "  --material M      aluminium | steel (aluminium)\n"
+    "  --safe Z          безопасный Z, мм (верх + 5)\n"
+    "  --name TEXT       имя программы в шапке (CIRCLE)\n"
     "\n"
-    "  quickprog --op drill <ключи> <файл.ngc>\n"
-    "      сверление: одно отверстие, сетка или круг\n"
     "Ключи --op drill:\n"
+    "  --tool N          номер инструмента в таблице станка (1)\n"
+    "  --diameter D      диаметр сверла, мм (6)\n"
+    "  --stock XxYxZ     габарит заготовки, мм (100x80x20)\n"
+    "  --top Z           Z верха заготовки, мм (0)\n"
+    "  --depth D         глубина отверстия, мм (12)\n"
     "  --pattern P       hole | grid | circle (hole)\n"
     "  --x X --y Y       отверстие: центр; сетка: первый угол; круг: центр (0, 0)\n"
     "  --cols N --rows M --dx D --dy E   сетка: число по X и Y и шаг, мм\n"
     "  --count N --radius R --start A    круг: число отверстий, радиус, угол ноль (0)\n"
     "  --arc A           круг по дуге A градусов вместо полного круга\n"
-    "  --depth D         глубина отверстия, мм (12)\n"
     "  --r Z             плоскость R цикла, мм (верх + 1)\n"
-    "  --peck Q          величина шага G83, мм (глубокое сверло: диаметр)\n"
-    "  остальные ключи   --tool, --diameter, --stock, --top, --feed, --rpm,\n"
-    "                    --material, --safe, --name\n"
+    "  --peck Q          шаг вывода стружки G83, мм (по умолчанию — диаметр,\n"
+    "                    когда глубина больше трёх диаметров)\n"
+    "  --feed F          подача сверления, мм/мин (из таблицы); одна и для врезания\n"
+    "  --rpm N           обороты шпинделя, об/мин (из таблицы)\n"
+    "  --material M      aluminium | steel (aluminium)\n"
+    "  --safe Z          безопасный Z, мм (верх + 5)\n"
+    "  --name TEXT       имя программы в шапке (DRILL)\n"
     "\n"
     "Пример:\n"
     "  quickprog --op face --tool 2 --diameter 10 --stock 100x80x20 --top 0 \\\n"
@@ -251,8 +281,9 @@ qp::Program drillProgram(const qp::DrillArgs& args) {
     const qp::Feeds table = qp::feedsFor(args.material, args.diameter, qp::ToolKind::Drill);
     op.cutting.spindleRpm = args.rpm > 0.0 ? args.rpm : table.rpm;
     op.cutting.feedMmMin = args.feed > 0.0 ? args.feed : table.feedMmMin;
-    op.cutting.plungeFeedMmMin =
-        args.feed > 0.0 ? args.feed / 4.0 : table.plungeFeedMmMin;
+    // A drill has one feed: the plunge is the working feed of the cycle, and
+    // the model keeps the two equal instead of a hidden quarter.
+    op.cutting.plungeFeedMmMin = op.cutting.feedMmMin;
     program.operations.push_back(op);
     return program;
 }
@@ -333,63 +364,6 @@ void printWarnings(const qp::Program& program, const qp::Operation& op,
     }
 }
 
-// The name of an operation for the summary: the id, or the kind when the id is
-// empty (a document written by hand).
-std::string opName(const qp::Operation& op, std::size_t index) {
-    if (!op.id.empty()) { return op.id; }
-    return "операция " + std::to_string(index + 1);
-}
-
-// Per-operation summary of the planned block: what the operator checks before
-// a run. `first`/`last` delimit the moves of the operation in the path.
-void printOperation(const qp::Program& program, const qp::Path& planned, std::size_t index,
-                    std::size_t first, std::size_t last) {
-    const qp::Operation& op = program.operations[index];
-    const std::size_t moves = last - first;
-    double cutLength = 0.0;
-    for (std::size_t i = first; i < last; ++i) {
-        const qp::Move& move = planned.moves[i];
-        if (move.kind != qp::MoveKind::Cut || i == 0) { continue; }
-        const qp::Point3& from = planned.moves[i - 1].to;
-        const double dx = move.to.x - from.x;
-        const double dy = move.to.y - from.y;
-        const double dz = move.to.z - from.z;
-        cutLength += std::sqrt(dx * dx + dy * dy + dz * dz);
-    }
-    std::printf("Операция %zu/%zu: %s, T%d ф%.1f мм\n", index + 1, program.operations.size(),
-                opName(op, index).c_str(), op.tool.number, op.tool.diameterMm);
-    if (std::holds_alternative<qp::FaceOp>(op.geometry)) {
-        const qp::FaceStats stats = qp::faceStats(program, op);
-        std::printf("  полос: %d, проходов по Z: %d, ходов: %zu, длина резания: %.1f мм\n",
-                    stats.strips, stats.passes, moves, cutLength);
-    } else if (std::holds_alternative<qp::RectPocketOp>(op.geometry)) {
-        const qp::PocketStats stats = qp::pocketStats(program, op);
-        std::printf("  карман %.1fx%.1f, отступ %.2f мм: рядов %d, шаг %.3f мм, проходов по Z: %d\n",
-                    std::get<qp::RectPocketOp>(op.geometry).rect.w,
-                    std::get<qp::RectPocketOp>(op.geometry).rect.h, stats.insetMm, stats.rows,
-                    stats.stepMm, stats.passes);
-        std::printf("  ходов: %zu, длина резания: %.1f мм\n", moves, cutLength);
-    } else if (std::holds_alternative<qp::CirclePocketOp>(op.geometry)) {
-        const qp::CircleStats stats = qp::circleStats(program, op);
-        std::printf("  круглый карман ф%.1f, отступ %.2f мм: витков %d, шаг %.3f мм, "
-                    "виток до R%.3f, проходов по Z: %d\n",
-                    2.0 * std::get<qp::CirclePocketOp>(op.geometry).circle.r, stats.insetMm,
-                    stats.turns, stats.stepMm, stats.outerRadiusMm, stats.passes);
-        for (const double z : stats.stepDepthsMm) { std::printf("    проход Z %.2f\n", z); }
-        std::printf("  ходов: %zu, длина резания %.1f мм\n", moves, stats.lengthMm);
-    } else if (qp::isDrill(op.geometry)) {
-        const qp::DrillStats stats = qp::drillStats(program, op);
-        std::printf("  отверстий: %zu, %s", stats.points.size(),
-                    stats.cycle == qp::DrillKind::Peck ? "G83" : "G81");
-        if (stats.cycle == qp::DrillKind::Peck) { std::printf(" Q%.2f", stats.peckMm); }
-        std::printf(", R %.2f, дно %.2f\n", stats.rMm, stats.depthMm);
-        // The cutting length of a cycle is not the move list: the drill goes
-        // down the hole and back, once per hole, and that length is not a
-        // `cut` move of the plan (the cycle expands on the control).
-        std::printf("  ходов: %zu (быстрые между отверстиями)\n", moves);
-    }
-}
-
 // Saves the document next to the .ngc when the operator asked for it: one call
 // writes the editable model, the .ngc is written by the caller.
 int saveProgram(const qp::Program& program, const std::string& path) {
@@ -423,14 +397,17 @@ int finish(const qp::Program& program, const std::string& output, const std::str
         const std::size_t first = planned.operations[i].first;
         const std::size_t last =
             i + 1 < planned.operations.size() ? planned.operations[i + 1].first : planned.moves.size();
-        printOperation(program, planned, static_cast<std::size_t>(planned.operations[i].opIndex),
-                       first, last);
-        printWarnings(program, program.operations[static_cast<std::size_t>(planned.operations[i].opIndex)],
-                      problems);
+        const std::size_t opIndex = static_cast<std::size_t>(planned.operations[i].opIndex);
+        std::fputs(qp::operationSummary(program, planned, opIndex, first, last).c_str(), stdout);
+        printWarnings(program, program.operations[opIndex], problems);
     }
-    std::printf("Всего: операций %zu, ходов %zu, длина резания %.1f мм\n",
-                planned.operations.size(), planned.moves.size(), planned.lengthMm);
-    std::printf("Оценка времени: %.0f с (%.1f мин), без ускорений\n", seconds, seconds / 60.0);
+    std::printf("%s\n",
+                qp::totalSummary(planned.operations.size(), planned.moves.size(), planned.lengthMm,
+                                 seconds)
+                    .c_str());
+    std::printf("Оценка времени: %.0f с (%.1f мин), без учёта разгона, реальное время немного "
+                "больше\n",
+                seconds, seconds / 60.0);
     if (!qp::writeFile(output, qp::emitProgram(program, planned))) {
         std::fprintf(stderr, "Не удалось записать файл: %s\n", output.c_str());
         return qp::kExitFailed;

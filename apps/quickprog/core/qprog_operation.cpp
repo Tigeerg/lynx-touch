@@ -6,6 +6,7 @@
 // carries the whole schema: a new key is one branch here and one line in
 // `serialize.cpp`.
 #include "core/serialize_internal.h"
+#include "core/path_drill.h"
 #include "core/qprog_reader.h"
 
 #include <string>
@@ -60,10 +61,14 @@ auto fail = [&error](const std::string& message) {
         if (!parseQprogNumber(words[1], op.cutting.feedMmMin)) {
             return fail(where + "op.feed ждёт число.");
         }
+        // A drill has one feed: the plunge follows the working feed whatever
+        // the file says, so the document never keeps two different numbers.
+        if (isDrill(op.geometry)) { op.cutting.plungeFeedMmMin = op.cutting.feedMmMin; }
     } else if (sub == "plunge") {
         if (!parseQprogNumber(words[1], op.cutting.plungeFeedMmMin)) {
             return fail(where + "op.plunge ждёт число.");
         }
+        if (isDrill(op.geometry)) { op.cutting.plungeFeedMmMin = drillFeed(op); }
     } else if (sub == "topZ") {
         if (!parseQprogNumber(words[1], op.topZ)) { return fail(where + "op.topZ ждёт число."); }
     } else if (sub == "depth") {

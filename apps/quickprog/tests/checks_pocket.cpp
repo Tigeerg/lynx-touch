@@ -288,28 +288,41 @@ void checkPocketTooBigTool() {
           "the planner must not plan a pocket the tool does not fit");
 }
 
-// The rounded corner is not cut in this slice: the planner says so in Russian
-// and still plans the sharp raster.
+// The rounded corner is not cut in this slice: the planner says so in Russian -
+// the tool radius stays in the corner and the asked radius is named - and still
+// plans the sharp raster.
 void checkPocketCornerWarning() {
     qp::Program program = pocketProgram();
     std::get<qp::RectPocketOp>(program.operations.front().geometry).cornerRadiusMm = 5.0;
     const std::vector<std::string> warnings = qp::pocketWarnings(program, program.operations.front());
     bool warned = false;
     for (const std::string& text : warnings) {
-        if (text.find("Радиус угла") != std::string::npos &&
-            text.find("острыми") != std::string::npos) {
+        if (text.find("скругление угла не выполняется") != std::string::npos &&
+            text.find("радиус фрезы 4.0 мм") != std::string::npos &&
+            text.find("задан радиус 5.0 мм") != std::string::npos) {
             warned = true;
         }
     }
     check(warned, "pocket.corner_warning",
-          "a corner radius above zero must warn that the corners stay sharp");
+          "a corner radius above zero must warn with the tool radius and the asked radius");
     const std::vector<qp::Check> problems = qp::validate(program);
     check(problems.empty(), "pocket.corner_not_blocking",
           "a rounded corner must not block planning in this slice");
 
+    // No radius asked for, but the tool is still round: the same rule without
+    // the asked radius.
     qp::Program sharp = pocketProgram();
-    check(qp::pocketWarnings(sharp, sharp.operations.front()).empty(), "pocket.no_corner_warning",
-          "a sharp corner must not warn about the radius");
+    const std::vector<std::string> sharpWarnings =
+        qp::pocketWarnings(sharp, sharp.operations.front());
+    bool toolRadius = false;
+    for (const std::string& text : sharpWarnings) {
+        if (text.find("радиус фрезы 4.0 мм") != std::string::npos &&
+            text.find("задан радиус") == std::string::npos) {
+            toolRadius = true;
+        }
+    }
+    check(toolRadius, "pocket.no_corner_radius_warning",
+          "a sharp corner with a round tool must name the tool radius only");
 }
 
 // The document of three operations: isometric round-trip. The pocket is in the

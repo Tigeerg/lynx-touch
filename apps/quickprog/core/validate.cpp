@@ -91,11 +91,15 @@ void checkCutting(const Operation& op, std::vector<Check>& out) {
                 table.source + ": " + fmt(table.feedMmMin) + "). Проверьте режим.");
     }
     // The plunge feed burns small end mills first: it is never faster than the
-    // cutting feed.
-    if (op.cutting.plungeFeedMmMin <= 0.0) {
-        add(out, "cutting.plungeFeedMmMin", "Подача врезания должна быть больше нуля.");
-    } else if (op.cutting.plungeFeedMmMin > op.cutting.feedMmMin && op.cutting.feedMmMin > 0.0) {
-        add(out, "cutting.plungeFeedMmMin", "Подача врезания не должна быть выше рабочей подачи.");
+    // cutting feed. A drill has one feed by construction (`drillFeed`), so the
+    // rule is not applied to it: a difference there is the model's own
+    // normalisation, not a mistake of the operator.
+    if (!isDrill(op.geometry)) {
+        if (op.cutting.plungeFeedMmMin <= 0.0) {
+            add(out, "cutting.plungeFeedMmMin", "Подача врезания должна быть больше нуля.");
+        } else if (op.cutting.plungeFeedMmMin > op.cutting.feedMmMin && op.cutting.feedMmMin > 0.0) {
+            add(out, "cutting.plungeFeedMmMin", "Подача врезания не должна быть выше рабочей подачи.");
+        }
     }
 }
 
@@ -268,6 +272,32 @@ void checkDrillGeometry(const Program& program, const Operation& op, std::vector
     }
 }
 
+// The peck of a G83 cycle is a step down the hole: it cannot be deeper than
+// the hole and it cannot be a speck. The default (zero) is "the planner
+// decides" and is not checked here.
+void checkPeck(const Operation& op, std::vector<Check>& out) {
+    double peck = 0.0;
+    if (const auto* hole = std::get_if<DrillHoleOp>(&op.geometry)) {
+        peck = hole->params.peckMm;
+    } else if (const auto* grid = std::get_if<DrillGridOp>(&op.geometry)) {
+        peck = grid->params.peckMm;
+    } else if (const auto* ring = std::get_if<DrillCircleOp>(&op.geometry)) {
+        peck = ring->params.peckMm;
+    } else {
+        return;
+    }
+    if (peck <= 0.0) { return; }
+    if (op.depthMm > 0.0 && peck > op.depthMm + 1e-9) {
+        add(out, "peck", "Шаг вывода стружки Q" + fmt(peck) + " мм больше глубины отверстия " +
+                             fmt(op.depthMm) + " мм: такого цикла нет.");
+        return;
+    }
+    if (peck < 0.1 - 1e-9) {
+        add(out, "peck", "Шаг вывода стружки Q" + fmt(peck) +
+                             " мм меньше 0.1 мм: цикл будет только дробить стружку.");
+    }
+}
+
 void checkGeometry(const Program& program, const Operation& op, std::vector<Check>& out) {
     if (std::holds_alternative<FaceOp>(op.geometry)) {
         checkFaceGeometry(program, op, out);
@@ -307,6 +337,7 @@ std::vector<Check> validate(const Program& program) {
         checkDepth(program, op, out);
         checkStep(op, out);
         checkGeometry(program, op, out);
+        checkPeck(op, out);
     }
     checkSafeZ(program, out);
     return out;

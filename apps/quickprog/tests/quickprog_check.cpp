@@ -22,6 +22,8 @@ void runQprogChecks();
 void runPocketChecks();
 void runCircleChecks();
 void runDrillChecks();
+void runSummaryChecks();
+void runCoolantChecks();
 
 // The viewer core round-trip (PLAN-QUICKPROG, section 10): the generated file
 // through gv::parseGcode and gv::parseUi*.
@@ -41,6 +43,8 @@ int main() {
     runPocketChecks();
     runCircleChecks();
     runDrillChecks();
+    runSummaryChecks();
+    runCoolantChecks();
     roundtrip_checks::runRoundtripChecks();
     roundtrip_checks::runMixedChecks();
     roundtrip_checks::runTagChecks();

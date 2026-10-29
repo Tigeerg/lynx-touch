@@ -8,8 +8,9 @@
 // The inner boundary is the pocket rectangle shrunk by `inset = D/2 + finish
 // allowance` on every side. That inset is what keeps the tool body inside the
 // pocket: the centre of the last row is `D/2` from the wall, and the remaining
-// `finishAllowance` is the stock the operator asked to leave. The raster covers
-// the inner rectangle exactly:
+// `finishAllowance` is the stock the operator asked to leave on the wall. The
+// floor carries no allowance: the last Z pass is the final depth. The raster
+// covers the inner rectangle exactly:
 //
 //   rows   = ceil(across / nominal) + 1,  nominal = min(D * stepOverPct / 100, across)
 //   step   = across / (rows - 1)
@@ -39,6 +40,14 @@ constexpr double kEps = 1e-6;
 std::string fmt(double value) {
     char buf[32];
     std::snprintf(buf, sizeof(buf), "%.2f", value);
+    return std::string(buf);
+}
+
+// One digit after the point for the radii of the corner warning: "4.0 мм", the
+// same spelling the technologist used in the report.
+std::string oneDecimal(double value) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%.1f", value);
     return std::string(buf);
 }
 
@@ -141,10 +150,19 @@ std::vector<std::string> pocketWarnings(const Program&, const Operation& operati
     if (!std::holds_alternative<RectPocketOp>(operation.geometry)) { return {}; }
     std::vector<std::string> out;
     const RectPocketOp& pocket = std::get<RectPocketOp>(operation.geometry);
+    // The raster has no corner rounding: the tool centre stops at the inner
+    // rectangle, so every corner keeps the tool radius. The warning names both
+    // numbers - the radius the tool leaves and the radius the operator asked
+    // for - so the operator sees how far the cut is from the drawing.
+    const double toolRadius = operation.tool.diameterMm / 2.0;
     if (pocket.cornerRadiusMm > kEps) {
-        out.push_back("Радиус угла " + fmt(pocket.cornerRadiusMm) +
-                      " мм не обрабатывается: углы кармана останутся острыми, радиус будет снят "
-                      "позже отдельным проходом.");
+        out.push_back("скругление угла не выполняется: в углах останется радиус фрезы " +
+                      oneDecimal(toolRadius) + " мм (задан радиус " +
+                      oneDecimal(pocket.cornerRadiusMm) + " мм).");
+    } else if (operation.tool.diameterMm > kEps) {
+        // No radius asked for, but a round tool still rounds every corner.
+        out.push_back("скругление угла не выполняется: в углах останется радиус фрезы " +
+                      oneDecimal(toolRadius) + " мм.");
     }
     if (pocket.finishAllowanceMm < -kEps) {
         out.push_back("Припуск " + fmt(pocket.finishAllowanceMm) +

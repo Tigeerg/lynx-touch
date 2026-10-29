@@ -3,7 +3,8 @@
 // emergency stop must stay reachable from Shift+Esc. The layout itself is checked once without
 // the help, so moving it out of the hook did not change the usual map.
 import { describe, expect, it } from 'vitest'
-import { HELP_BLOCKED, keyToAction, routeKey, type KeyLike } from './keys'
+import { HELP_BLOCKED, keyToAction, type KeyLike } from './keys'
+import { routeKey } from './keys-route'
 import { initialState, reducer } from './machine'
 import { getSoftkeys } from './softkeys'
 import type { MachineState } from './types'

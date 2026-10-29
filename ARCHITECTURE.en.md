@@ -83,7 +83,7 @@ Layers, top to bottom:
   `motion.ts`, `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`; a directory of its own so the tables stay
   apart from the logic), `hal.ts` (the HAL pin reference), `messages.ts`, `time.ts` (the stamps from the
   action), `toolpath.ts`, `tool-check.ts`, `service-sections.ts` (the Service tab sections), `keys-route.ts`
-  (the key to action route), `probe.ts` (probing; the cycle table and its geometry — `probe-shapes.ts`),
+  (the key to action route; it takes `keyToAction` from `keys.ts`, there is no import back), `probe.ts` (probing; the cycle table and its geometry — `probe-shapes.ts`),
   `mpg.ts`, `test.ts` (PROGON: four run modes — simulation, dry, step, handwheel),
   `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, `tool-measure.ts` (tool measuring
   with the setter), `machine-branches.ts` (the machine's own keys: alarms, help, theme), theme logic.

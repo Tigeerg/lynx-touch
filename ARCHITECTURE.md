@@ -67,8 +67,7 @@
   `MachineState` и реэкспортирует типы ПЛК как прежняя точка входа; `ladder-scan.ts` — скан ПЛК, `nav.ts`,
   `cycle.ts` — фасад над каталогом `cycle/` (`cycle-exec.ts` — исполнение кадра, `cycle-actions.ts` —
   объединение действий, `cycle-reducer.ts` — редьюсер), `control.ts`, `service.ts`), `types.ts`, `coords.ts`,
-  `clamp.ts` (зажим индексов списков), `keys.ts`
-  (раскладка пульта: `keyToAction` и `routeKey`),
+  `clamp.ts` (зажим индексов списков), `keys.ts` (раскладка пульта: `keyToAction`),
   `gcode.ts` (разбор кадра, модальные коды, инструменты программы), `spindle.ts` (обороты, резание,
   нагрузка), `calc.ts` (расчёт режимов), `guards.ts` (проверки входа), `data.ts` и
   `data.ts` (тексты) и `softkeys.ts` — фасад над каталогом `softkeys/`: `softkey-slots.ts` (слоты, потолок
@@ -77,7 +76,8 @@
   (API каталога: типы `ParamDef` и разделы),
   `params/` (таблицы разделов, по файлу на раздел: `def.ts`, `display.ts`, `system.ts`, `motion.ts`,
   `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`; отдельный каталог — чтобы таблицы не смешивались с
-  логикой), `service-sections.ts` (разделы вкладки «Сервис»), `keys-route.ts` (маршрут клавиши к действию),
+  логикой), `service-sections.ts` (разделы вкладки «Сервис»), `keys-route.ts` (маршрут клавиши к действию;
+  берёт `keyToAction` из `keys.ts`, обратного импорта нет),
   `hal.ts` (справочник пинов HAL), `messages.ts`, `time.ts` (отметки времени из экшена), `toolpath.ts`,
   `tool-check.ts`, `probe.ts` (замер щупом; таблица циклов и её геометрия — `probe-shapes.ts`),
   `mpg.ts`, `test.ts` (ПРОГОН: четыре способа прогона — симуляция, холостой, по шагам, по маховику),

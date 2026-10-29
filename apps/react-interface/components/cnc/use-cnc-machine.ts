@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useEffectEvent, useReducer, useState } from 'react'
-import { routeKey } from '@/lib/cnc/keys'
+import { routeKey } from '@/lib/cnc/keys-route'
 import { initialState, reducer, type Action } from '@/lib/cnc/machine'
 import { paramValue, THEME_PARAM } from '@/lib/cnc/service-data'
 import { savedTheme, THEME_CLASSES, THEME_STORAGE_KEY, themeClasses } from '@/lib/cnc/theme'

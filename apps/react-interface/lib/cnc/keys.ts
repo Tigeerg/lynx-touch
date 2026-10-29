@@ -1,6 +1,7 @@
 // The console keyboard map: a keydown becomes an action or nothing. It lives in lib so the
 // layout is checked without a browser (keys.test.ts) and the hook only owns the modal/focus
-// routing around it. The routing itself (modal help, F1..F8, the MDI line) is in keys-route.ts.
+// routing around it. The routing itself (modal help, F1..F8, the MDI line) is in keys-route.ts,
+// which depends on this file; this file never imports it back, so there is no cycle.
 import type { Action } from './subsystem'
 import { TABS, WORKPLACES, screenOfTab, type Axis, type MachineState } from './types'
 
@@ -186,8 +187,3 @@ export function keyToAction(state: MachineState, e: KeyLike): Action | null {
       return null
   }
 }
-
-// The routing above the key map (emergency stop, modal help, F1..F8, text fields, the MDI line)
-// lives in keys-route.ts; re-exported so the hook and the tests keep one entry point. It reaches
-// back into keyToAction by name, a one-way dependency with no cycle.
-export { routeKey } from './keys-route'

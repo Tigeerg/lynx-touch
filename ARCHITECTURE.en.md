@@ -46,7 +46,10 @@ Layers, top to bottom:
   clamping), `keys.ts` (the console key map: `keyToAction` and `routeKey`), `gcode.ts` (block parsing, modal
   codes, program tools), `spindle.ts` (rpm, cutting,
   load), `calc.ts` (cutting-mode math), `guards.ts` (input checks),
-  `data.ts` and `softkeys.ts` (texts and icons), `service-data.ts` (the catalogue API: `ParamDef` types and
+  `data.ts` (texts) and `softkeys.ts` — a facade over the `softkeys/` directory: `softkey-slots.ts` (slots,
+  the label ceiling, `softkeyAction`), `softkey-icons.ts` (icons), `softkey-dialogs.ts` (dialog sets),
+  `softkey-workplaces.ts` (SETUP, PROGON, AUTO), `softkey-screens.ts` (screen sets); `service-data.ts`
+  (the catalogue API: `ParamDef` types and
   the sections), `params/` (the section tables, one file per section: `def.ts`, `display.ts`, `system.ts`,
   `motion.ts`, `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`; a directory of its own so the tables stay
   apart from the logic), `hal.ts` (the HAL pin reference), `messages.ts`, `time.ts` (the stamps from the

@@ -3,12 +3,27 @@
 // are compared here, so one side moving alone fails in the test instead of on the operator's
 // screen. The operation names that were labelled two ways inside softkeys.ts live in data.ts
 // (SOFTKEY_LABEL); this file pins the Qt side to the same strings.
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { SOFTKEY_LABEL } from './data'
 
 const qml = readFileSync(new URL('../../../qt-interface/main.qml', import.meta.url), 'utf8')
-const softkeys = readFileSync(new URL('./softkeys.ts', import.meta.url), 'utf8')
+
+/**
+ * The softkey labels live in a facade plus its modules (softkeys.ts re-exports ./softkeys/*), so
+ * the check reads the whole set of sources, not one file: a label is found wherever it moved.
+ */
+const softkeysSources = (): string[] => {
+  const dir = new URL('./softkeys/', import.meta.url)
+  const own = readFileSync(new URL('./softkeys.ts', import.meta.url), 'utf8')
+  const modules = readdirSync(dir)
+    .filter((file) => file.endsWith('.ts'))
+    .sort()
+    .map((file) => readFileSync(new URL(file, dir), 'utf8'))
+  return [own, ...modules]
+}
+
+const softkeys = softkeysSources().join('\n')
 
 /** The operations both ports name today: the Qt softkey id and the shared label. */
 const SHARED: [string, string][] = [

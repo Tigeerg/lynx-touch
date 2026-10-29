@@ -44,7 +44,10 @@
   (раскладка пульта: `keyToAction` и `routeKey`),
   `gcode.ts` (разбор кадра, модальные коды, инструменты программы), `spindle.ts` (обороты, резание,
   нагрузка), `calc.ts` (расчёт режимов), `guards.ts` (проверки входа), `data.ts` и
-  `softkeys.ts` (тексты и иконки), `service-data.ts` (API каталога: типы `ParamDef` и разделы),
+  `data.ts` (тексты) и `softkeys.ts` — фасад над каталогом `softkeys/`: `softkey-slots.ts` (слоты, потолок
+  подписи, `softkeyAction`), `softkey-icons.ts` (иконки), `softkey-dialogs.ts` (наборы диалогов),
+  `softkey-workplaces.ts` (НАЛАДКА, ПРОГОН, АВТО), `softkey-screens.ts` (наборы экранов); `service-data.ts`
+  (API каталога: типы `ParamDef` и разделы),
   `params/` (таблицы разделов, по файлу на раздел: `def.ts`, `display.ts`, `system.ts`, `motion.ts`,
   `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`; отдельный каталог — чтобы таблицы не смешивались с
   логикой), `hal.ts` (справочник пинов HAL), `messages.ts`, `time.ts` (отметки времени из экшена), `toolpath.ts`, `tool-check.ts`, `probe.ts`,

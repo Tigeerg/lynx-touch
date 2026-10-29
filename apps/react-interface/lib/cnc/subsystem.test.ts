@@ -4,7 +4,7 @@
 // Action that again pulls machine.ts into the module graph - is invisible to a behavioural test,
 // because the reducer still falls through to `default: return s` and the key does nothing, silently
 // (CLAUDE.md, section 6.2). Same reading-the-source approach as action.test.ts.
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { initialState } from './machine'
 import { defineSubsystem, type Dispatch } from './subsystem'
@@ -15,20 +15,50 @@ const source = (name: string) => {
 }
 
 /**
- * A subsystem plus what it re-exports: a facade (ladder.ts: `export * from './ladder/...'`) keeps
- * its predicate in a submodule. The path check in `subsystemPredicates` still reads the file itself,
- * so a submodule that pulls machine.ts is caught all the same.
+ * A re-export target as written in the source: `export * from '<path>'`, `export * as ns from
+ * '<path>'` or `export { … } from '<path>'`. Covers both quote styles and an optional `;`.
  */
-const sourceWithReexports = (name: string) => {
-  const own = source(name)
-  const ownUrl = new URL(`./${name}.ts`, import.meta.url)
-  const reexported = [...own.matchAll(/export \* from '([^']+)'/g)].map((m) => {
-    // The re-export is relative to the module it sits in, not to this test file.
-    const url = new URL(`${m[1]}.ts`, ownUrl)
-    return existsSync(url) ? readFileSync(url, 'utf8') : ''
-  })
-  return reexported.length ? [own, ...reexported].join('\n') : own
+const REEXPORT = /\bexport\s+(?:\*(?:\s+as\s+\w+)?|\{[^}]*\})\s*from\s*['"]([^'"]+)['"]/g
+
+/** Only relative specifiers are sources of this tree; a package re-export is not ours to read. */
+const isRelative = (spec: string) => spec.startsWith('./') || spec.startsWith('../')
+
+/** The file a specifier resolves to: `.ts`/`.tsx` appended, or the directory's `index.ts`. */
+const resolveModule = (spec: string, from: string | URL): URL | null => {
+  const base = new URL(spec, from)
+  const appended = [new URL(`${spec}.ts`, from), new URL(`${spec}.tsx`, from)]
+  const index = new URL(`${base.pathname}/index.ts`, base)
+  return [...appended, index].find((url) => existsSync(url) && statSync(url).isFile()) ?? null
 }
+
+/**
+ * A module plus everything it re-exports, transitively: a facade (ladder.ts: `export * from
+ * './ladder/...'`) may point at a submodule that re-exports again, and the predicate or the union
+ * must be found wherever it settled. A specifier is relative to the module it sits in; a directory
+ * resolves to its `index.ts`. Cycles and repeated reads are cut by the visited set, and the text is
+ * the module first, then its re-exports in declaration order (CLAUDE.md, section 2).
+ */
+const sourcesWithReexports = (name: string) => {
+  const visited = new Set<string>()
+  const texts: string[] = []
+  const walk = (url: URL) => {
+    if (visited.has(url.href)) return
+    visited.add(url.href)
+    const own = existsSync(url) ? readFileSync(url, 'utf8') : ''
+    texts.push(own)
+    for (const [, spec] of own.matchAll(REEXPORT)) {
+      if (!isRelative(spec)) continue
+      const target = resolveModule(spec, url)
+      if (target) walk(target)
+    }
+  }
+  const root = resolveModule(`./${name}`, new URL('.', import.meta.url))
+  if (root) walk(root)
+  return texts
+}
+
+/** The source of a subsystem plus its transitive re-exports: the predicate may live any depth down. */
+const sourceWithReexports = (name: string) => sourcesWithReexports(name).join('\n')
 
 const machine = source('machine')
 const leaf = source('subsystem')
@@ -58,7 +88,8 @@ describe('реестр действий: машина сводит подсис�
   it('листовой модуль и подсистемы не тянут machine.ts: круга в графе нет', () => {
     expect(leaf).not.toMatch(/from '\.\/machine'/)
     for (const name of ['nav', 'service', 'cycle', 'ladder', 'control', 'mpg']) {
-      expect(source(name), name).not.toMatch(/from '\.\/machine'/)
+      // Through the re-exports: a facade that reaches machine.ts only via a submodule is the same circle.
+      expect(sourceWithReexports(name), name).not.toMatch(/from '(?:\.\.?\/)+machine'/)
     }
   })
 

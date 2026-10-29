@@ -43,7 +43,13 @@ Layers, top to bottom:
   (`ladder-view.tsx` — the screen, `rung.tsx` — contact, coil and rung, `form-panel.tsx` — the element form,
   `scheme-manager.tsx` — the scheme manager); the probe schematic — `probe/probe-schematic.tsx` — is a facade
   over `probe/probe-schematic/` (`probe-schematic.tsx` — the assembly, `parts.tsx` — grid, stock and badge,
-  `probe.tsx` — the probe, `gizmo.tsx` — the side pointer). Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
+  `probe.tsx` — the probe, `gizmo.tsx` — the side pointer). The Program screen — `screens/program-screen.tsx` —
+  is a facade over `screens/program-screen/` (`program-screen.tsx` — the screen, `program-list.tsx` — the block
+  list and run progress, `search-bar.tsx` — search and replace, `dro.tsx` — the coordinate strip,
+  `line-editor.tsx` — line entry, `highlight.tsx` — block highlighting); the probe wizard —
+  `probe/probe-wizard.tsx` — is a facade over `probe/probe-wizard/` (`probe-wizard.tsx` — the wizard,
+  `stepper.tsx` — the steps, `cycle-list.tsx` — cycle pick and probe readiness, `readout.tsx` — the readout,
+  `step-card.tsx` — the step card). Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
   `ui-mode-context.ts`.
 * `lib/cnc/` — **pure machine logic, no JSX, React, or DOM**: `machine.ts` (reducer that composes the
   subsystems through a registry), `subsystem.ts` (the action layer's leaf: `Action`, `Result`, `Dispatch`,

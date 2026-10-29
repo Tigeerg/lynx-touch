@@ -54,7 +54,11 @@ Layers, top to bottom:
   `jog-pad.tsx` — the axis handwheel); the touch key deck — `touch/touch-deck.tsx` — is a facade over
   `touch/touch-deck/` (`hold-button.tsx` — the auto-repeat key, `cycle-row.tsx` — the cycle row,
   `workplace-column.tsx` — the workplaces, `jog-panel.tsx` — the manual pad, `functions-panel.tsx` — the
-  functions). Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
+  functions). The tool measure dialog — `tool-measure-dialog.tsx` — is a facade over `tool-measure-dialog/`
+  (`measure-scene.tsx` — the setter visualisation, `scene-defs.tsx` — its gradients and marks,
+  `measure-readout.tsx` — the result, `param-fields.tsx` — the approach parameters, `phase-label.ts` — the
+  stage words). The per-screen softkey sets live in `softkeys/screens/*.ts` under the `softkey-screens.ts`
+  facade. Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
   `ui-mode-context.ts`.
 * `lib/cnc/` — **pure machine logic, no JSX, React, or DOM**: `machine.ts` (reducer that composes the
   subsystems through a registry), `subsystem.ts` (the action layer's leaf: `Action`, `Result`, `Dispatch`,
@@ -81,7 +85,9 @@ Layers, top to bottom:
   `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, `tool-measure.ts` (tool measuring
   with the setter), `machine-branches.ts` (the machine's own keys: alarms, help, theme), theme logic.
 * `public/` — images and static assets of the project.
-* Tests live next to the logic (`lib/cnc/*.test.ts`), in the same layer as the defect.
+* Tests live next to the logic (`lib/cnc/*.test.ts`), in the same layer as the defect. The reducer checks
+  live in `lib/cnc/machine.<subsystem>.test.ts` (shared helpers in `machine.test-helpers.ts`) so the file does
+  not grow with the machine.
 
 Layer rules: a component receives `state + dispatch` and never changes machine state itself; every action is a
 typed `Action`; service values go through `ParamDef`. The panel has no external network API: the state machine

@@ -51,7 +51,11 @@
   программы, `spindle-block.tsx` — шпиндель, `jog-pad.tsx` — маховик осей); сенсорная клавиатура —
   `touch/touch-deck.tsx` — фасад над `touch/touch-deck/` (`hold-button.tsx` — клавиша с автоповтором,
   `cycle-row.tsx` — строка цикла, `workplace-column.tsx` — рабочие места, `jog-panel.tsx` — ручной пульт,
-  `functions-panel.tsx` — функции). Сенсорный вариант — `components/cnc/touch/`; переключатель — `ui-mode.tsx`,
+  `functions-panel.tsx` — функции). Диалог обмера инструмента — `tool-measure-dialog.tsx` — фасад над
+  `tool-measure-dialog/` (`measure-scene.tsx` — визуализация датчика, `scene-defs.tsx` — его градиенты и
+  метки, `measure-readout.tsx` — результат, `param-fields.tsx` — параметры подвода, `phase-label.ts` — слова
+  стадий). Наборы софт-кеев по экранам — `softkeys/screens/*.ts` под фасадом `softkey-screens.ts`. Сенсорный
+  вариант — `components/cnc/touch/`; переключатель — `ui-mode.tsx`,
   контекст — `ui-mode-context.ts`.
 * `lib/cnc/` — **чистая логика станка, без JSX, React и DOM**: `machine.ts` (редьюсер, сводит подсистемы
   через реестр), `subsystem.ts` (листовой слой действий: `Action`, `Result`, `Dispatch`, запись реестра)
@@ -76,7 +80,9 @@
   `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, `tool-measure.ts` (замер инструмента по
   датчику), `machine-branches.ts` (собственные ветки машины: аварии, справка, тема), `theme`-логика.
 * `public/` — картинки и статика проекта.
-* Тесты — рядом с логикой (`lib/cnc/*.test.ts`), слой тот же, что и дефект.
+* Тесты — рядом с логикой (`lib/cnc/*.test.ts`), слой тот же, что и дефект. Свод проверок редьюсера держат
+  `lib/cnc/machine.<подсистема>.test.ts` (общие помощники — `machine.test-helpers.ts`), чтобы файл не рос
+  вместе с машиной.
 
 Правила слоя: компонент получает `state + dispatch` и не меняет состояние машины сам; любое действие —
 типизированный `Action`; сервисные значения — через `ParamDef`. Внешних сетевых API у панели нет: машина

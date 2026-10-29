@@ -16,10 +16,18 @@ const qml = readFileSync(new URL('../../../qt-interface/main.qml', import.meta.u
 const softkeysSources = (): string[] => {
   const dir = new URL('./softkeys/', import.meta.url)
   const own = readFileSync(new URL('./softkeys.ts', import.meta.url), 'utf8')
-  const modules = readdirSync(dir)
-    .filter((file) => file.endsWith('.ts'))
-    .sort()
-    .map((file) => readFileSync(new URL(file, dir), 'utf8'))
+  const modules = readdirSync(dir, { withFileTypes: true })
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .flatMap((entry) =>
+      entry.isDirectory()
+        ? readdirSync(new URL(`${entry.name}/`, dir))
+            .filter((file) => file.endsWith('.ts'))
+            .sort()
+            .map((file) => readFileSync(new URL(`${entry.name}/${file}`, dir), 'utf8'))
+        : entry.name.endsWith('.ts')
+          ? [readFileSync(new URL(entry.name, dir), 'utf8')]
+          : [],
+    )
   return [own, ...modules]
 }
 

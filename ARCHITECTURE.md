@@ -62,7 +62,8 @@
   и подсистемы рядом (`ladder.ts` — образец: фасад над каталогом `ladder/` — `ladder-data.ts` (данные и
   предикаты), `ladder-parse.ts` (разбор сравнения), `ladder-reducer.ts` (редьюсер редактора), `ladder-forms.ts`
   (форма элемента), `ladder-schemes.ts` (менеджер схем), `ladder-nav.ts` (курсор и навигация по цепям),
-  `ladder/types.ts` (типы ПЛК); `types.ts` держит
+  `ladder-rung.ts` (построение цепи: свободный адрес, новая цепь, копия) — листья графа, на них опираются
+  форма, схемы и редьюсер; `ladder/types.ts` (типы ПЛК); `types.ts` держит
   `MachineState` и реэкспортирует типы ПЛК как прежняя точка входа; `ladder-scan.ts` — скан ПЛК, `nav.ts`,
   `cycle.ts` — фасад над каталогом `cycle/` (`cycle-exec.ts` — исполнение кадра, `cycle-actions.ts` —
   объединение действий, `cycle-reducer.ts` — редьюсер), `control.ts`, `service.ts`), `types.ts`, `coords.ts`,

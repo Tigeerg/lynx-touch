@@ -65,7 +65,8 @@ Layers, top to bottom:
   the registry entry), and the subsystems next to it (`ladder.ts` is the sample: a facade over the `ladder/`
   directory — `ladder-data.ts` (data and predicates), `ladder-parse.ts` (comparison parse), `ladder-reducer.ts`
   (editor reducer), `ladder-forms.ts` (element form), `ladder-schemes.ts` (scheme manager),
-  `ladder-nav.ts` (cursor and rung navigation), `ladder/types.ts`
+  `ladder-nav.ts` (cursor and rung navigation), `ladder-rung.ts` (rung building: free address, new rung, a
+  copy) — leaves of the graph that the form, the schemes and the reducer stand on; `ladder/types.ts`
   (PLC types); `types.ts` keeps `MachineState` and re-exports the PLC types as the former entry point),
   `ladder-scan.ts` is the PLC scan,
   `nav.ts`, `cycle.ts` — a facade over the `cycle/` directory (`cycle-exec.ts` is the block execution,

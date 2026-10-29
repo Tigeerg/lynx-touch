@@ -23,15 +23,27 @@ void runPocketChecks();
 void runCircleChecks();
 void runDrillChecks();
 
+// The viewer core round-trip (PLAN-QUICKPROG, section 10): the generated file
+// through gv::parseGcode and gv::parseUi*.
+namespace roundtrip_checks {
+void runRoundtripChecks();
+void runMixedChecks();
+void runTagChecks();
+} // namespace roundtrip_checks
+
 int main() {
     // The earlier slices first: the header, the face, the emit words and the
-    // rules; the pocket block of this slice last.
+    // rules; the pocket block of this slice last. The round-trip last: it reads
+    // the bytes the emitter of every slice produces.
     runFaceChecks();
     runEmitChecks();
     runQprogChecks();
     runPocketChecks();
     runCircleChecks();
     runDrillChecks();
+    roundtrip_checks::runRoundtripChecks();
+    roundtrip_checks::runMixedChecks();
+    roundtrip_checks::runTagChecks();
     if (qpcheck::failures() != 0) {
         std::printf("%d case(s) failed\n", qpcheck::failures());
         return 1;

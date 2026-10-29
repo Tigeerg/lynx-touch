@@ -39,7 +39,11 @@ Layers, top to bottom:
   Service screen — `screens/service-screen.tsx` — is a facade over `screens/service-screen/`
   (`service-screen.tsx` — the screen, `params-table.tsx` — the parameter table, `hal-monitor.tsx` — the HAL
   monitor, `mesa-io.tsx` — Mesa I/O, `system-info.tsx` — the system info, `password-dialog.tsx` — the
-  password dialog). Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
+  password dialog). The PLC monitor — `screens/ladder-view.tsx` — is a facade over `screens/ladder-view/`
+  (`ladder-view.tsx` — the screen, `rung.tsx` — contact, coil and rung, `form-panel.tsx` — the element form,
+  `scheme-manager.tsx` — the scheme manager); the probe schematic — `probe/probe-schematic.tsx` — is a facade
+  over `probe/probe-schematic/` (`probe-schematic.tsx` — the assembly, `parts.tsx` — grid, stock and badge,
+  `probe.tsx` — the probe, `gizmo.tsx` — the side pointer). Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
   `ui-mode-context.ts`.
 * `lib/cnc/` — **pure machine logic, no JSX, React, or DOM**: `machine.ts` (reducer that composes the
   subsystems through a registry), `subsystem.ts` (the action layer's leaf: `Action`, `Result`, `Dispatch`,

@@ -34,7 +34,10 @@
   оверлеи, `primitives.tsx`. Боковая колонка состояния — `side-status.tsx` — фасад над каталогом
   `side-status/` (`sections.tsx` — секции и раскладка, `tool.tsx` — инструмент и корректоры, `load.tsx` —
   нагрузка, `jog.tsx` — ручные режимы, `operator-pad.tsx` — пульт, `status-column.tsx` — сборка колонки).
-  Сенсорный вариант — `components/cnc/touch/`; переключатель — `ui-mode.tsx`,
+  Экран «Сервис» — `screens/service-screen.tsx` — фасад над каталогом `screens/service-screen/`
+  (`service-screen.tsx` — сам экран, `params-table.tsx` — таблица параметров, `hal-monitor.tsx` — монитор
+  HAL, `mesa-io.tsx` — ввод-вывод Mesa, `system-info.tsx` — сведения о системе, `password-dialog.tsx` — ввод
+  пароля). Сенсорный вариант — `components/cnc/touch/`; переключатель — `ui-mode.tsx`,
   контекст — `ui-mode-context.ts`.
 * `lib/cnc/` — **чистая логика станка, без JSX, React и DOM**: `machine.ts` (редьюсер, сводит подсистемы
   через реестр), `subsystem.ts` (листовой слой действий: `Action`, `Result`, `Dispatch`, запись реестра)

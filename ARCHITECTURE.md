@@ -134,12 +134,16 @@
 Опытный проект: отдельное консольное приложение, чтобы обкатать конвейер быстрого программирования до
 панели (`docs/PLAN-QUICKPROG.md`, раздел 7.2).
 
-* `apps/quickprog/main.cpp` — консоль: `--demo`, `--version`, `--help`; операции из `.qprog`, вывод `.ngc`.
+* `apps/quickprog/main.cpp` — тонкий диспетчер (22 строки); консольный сценарий — `cli/` (`help`, `app`,
+  `operation_program`, `demo_program`, `run`): `--demo`, `--op face|pocket|circle-pocket|drill`, `--qprog`,
+  `--save-qprog`, `--version`, `--help`.
 * `apps/quickprog/core/` — чистая логика без Qt, OCCT и ввода-вывода экрана: модель (`ops.h`), геометрия
-  (`geom.h`), планировщик (`path`), режимы (`feeds`), проверки (`validate`), вывод УП (`emit`), сериализация
-  `.qprog` (`serialize`).
-* `apps/quickprog/tests/` — своя таблица случаев без внешнего фреймворка; отдельная цель `quickprog_check`
-  добавляет сверку с ядром вьювера (`gv::parseGcode`), поэтому только эта цель тянет `modules/gcode-viewer`.
+  (`geom.h`), режимы (`feeds`), проверки (`validate*`), планировщик (`path*` по операции), вывод УП
+  (`emit*`), сериализация `.qprog` (`serialize*`), сводка (`summary`). Пределы станка — `limits.h`.
+* `apps/quickprog/tests/` — своя таблица случаев без внешнего фреймворка (`quickprog_check`, общий список в
+  `checks.h`); цель `quickprog_check` дополнительно сверяет УП с ядром вьювера (`gv::parseGcode`,
+  `tests/checks_roundtrip.cpp`), для этого собирает `gvcore_quickprog` — только три файла парсера
+  `modules/gcode-viewer/cpp/core`, без Qt и OCCT.
 * Сборка — `scripts/build-quickprog.sh` (Linux) и `.ps1` (Windows), результат в `build/quickprog/`.
 * Контракт с вьювером — теги `UI_STOCK`/`UI_OP`/`UI_TOOL`/`UI_ORIGIN`, как у постпроцессора `cad-testdata`.
 

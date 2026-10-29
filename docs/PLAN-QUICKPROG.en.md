@@ -297,9 +297,9 @@ repeats §7 in C++ and is checked from the console, without Qt, so it runs on an
 * `core/emit` — `Path -> .ngc`: the header `G21 G90 G94 G17 G40 G49 G80`, `G54`, the safe `Z`, `T`/`M6`,
   `S`/`M3`, `M8`, the `UI_STOCK`/`UI_OP`/`UI_TOOL`/`UI_ORIGIN` tags in comments (the viewer contract,
   `core/ui_tags`), `G81`/`G83` drilling, the tail `M9 M5 G0 Z<safe> M30`;
-* `main.cpp` — the console scenario: stock and tool from arguments or `--demo`, operations from a
-  `<name>.qprog` file (a flat text format, schema 1), output `<name>.ngc`, a printed summary (moves,
-  length, time estimate, warnings) and `--json` for machine comparison;
+* `cli/` — the console scenario (`main.cpp` is a thin dispatcher): stock and tool from arguments or
+  `--demo`, operations from a `<name>.qprog` file (a flat text format, schema 1), output `<name>.ngc`, a
+  printed summary (moves, length, cutting data with its source, time estimate, warnings);
 * `tests/` — the project's own check without an external framework: a table of cases, every operation gives
   the expected numbers (pass count, cut area against the square, no cut into the wall for a pocket; 20-30 %
   overlap and retract at the edges for facing; grid and circle coordinates, the `R` plane and the depth, `Q`
@@ -309,8 +309,10 @@ repeats §7 in C++ and is checked from the console, without Qt, so it runs on an
 The build skeleton is a `CMakeLists.txt` (the generating part needs neither Qt nor OCCT; `gvcore` is needed
 only by the round-trip check, a separate target `quickprog_check`). Linux build —
 `scripts/build-quickprog.sh`; Windows — `scripts/build-quickprog.ps1`. Binaries — `build/quickprog/`.
-`tools/checks.txt` gets a `quickprog (demo)` line, but only when the build is really available; otherwise it
-prints `skip`, as the probes already do.
+`tools/checks.txt` gets a `quickprog (demo)` line, but only when the build is really available:
+`tools/check.sh` knows three requirements (`probe`, `plugin`, `frame`), and a line with another word prints
+red. A fourth requirement `quickprog` (the `build/quickprog/quickprog_check` is there) and a step in
+`tools/check.ps1` are needed; until then the demo is outside the guard — the record is in `TODO.md`.
 
 **What the demo does NOT do:** no screen and no gestures (that is P1 and the panel), no `.qprog` in the React
 format, no run on the machine, no collisions through the viewer. The demo proves the pipeline

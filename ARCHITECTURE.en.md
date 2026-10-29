@@ -139,14 +139,17 @@ the parser in the same pass (`VERSIONING.md`, section 7).
 An experimental project: a separate console application to exercise the quick programming pipeline before the
 panel (`docs/PLAN-QUICKPROG.md`, section 7.2).
 
-* `apps/quickprog/main.cpp` — the console: `--demo`, `--version`, `--help`; operations from `.qprog`, the
-  `.ngc` output.
+* `apps/quickprog/main.cpp` — a thin dispatcher (22 lines); the console scenario is `cli/` (`help`, `app`,
+  `operation_program`, `demo_program`, `run`): `--demo`, `--op face|pocket|circle-pocket|drill`, `--qprog`,
+  `--save-qprog`, `--version`, `--help`.
 * `apps/quickprog/core/` — pure logic without Qt, OCCT or screen I/O: the model (`ops.h`), geometry
-  (`geom.h`), the planner (`path`), feeds (`feeds`), checks (`validate`), the NC output (`emit`), `.qprog`
-  serialisation (`serialize`).
-* `apps/quickprog/tests/` — the project's own table of cases without an external framework; the separate
-  target `quickprog_check` adds the check against the viewer core (`gv::parseGcode`), so only that target
-  pulls `modules/gcode-viewer`.
+  (`geom.h`), feeds (`feeds`), checks (`validate*`), the planner (`path*` per operation), the NC output
+  (`emit*`), `.qprog` serialisation (`serialize*`), the summary (`summary`). The machine limits are in
+  `limits.h`.
+* `apps/quickprog/tests/` — the project's own table of cases without an external framework (`quickprog_check`,
+  the shared list in `checks.h`); `quickprog_check` also checks the NC program against the viewer core
+  (`gv::parseGcode`, `tests/checks_roundtrip.cpp`) and to that end builds `gvcore_quickprog`: three parser
+  files of `modules/gcode-viewer/cpp/core`, without Qt and OCCT.
 * Build — `scripts/build-quickprog.sh` (Linux) and `.ps1` (Windows), the result goes to `build/quickprog/`.
 * The viewer contract is the `UI_STOCK`/`UI_OP`/`UI_TOOL`/`UI_ORIGIN` tags, the same as the `cad-testdata`
   postprocessor.

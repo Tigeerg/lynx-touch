@@ -66,11 +66,24 @@ struct CirclePocketOp {
     double finishAllowanceMm = 0.0;
 };
 
-// A single hole. `peckMm` > 0 selects the pecking cycle G83 with that Q, zero
-// selects the simple G81.
+// Drilling parameters shared by the three kinds. `peckMm` > 0 selects the
+// pecking cycle G83 with that Q, zero leaves the choice to the planner (G83
+// over three diameters, G81 otherwise). `rMm` is the R plane of the cycle, and
+// `hasR` says whether the document set it: a zero is not "R at the top" but
+// "the default", the same way a zero step is not a step. The default is one
+// millimetre above the material top, below safe Z. Both fields are part of the
+// document, so the .qprog file and the console can write them.
+struct DrillParams {
+    double peckMm = 0.0;
+    double rMm = 0.0;
+    bool hasR = false;
+};
+
+// A single hole at the centre of `hole`. The radius of `hole` is the drill
+// radius the form shows next to the tool number.
 struct DrillHoleOp {
     Circle hole;
-    double peckMm = 0.0;
+    DrillParams params;
 };
 
 // Grid of holes: `cols` x `rows` starting at (x0, y0) with the spacing given.
@@ -81,7 +94,7 @@ struct DrillGridOp {
     int rows = 1;
     double dx = 0.0;
     double dy = 0.0;
-    double peckMm = 0.0;
+    DrillParams params;
 };
 
 // Holes on a full circle: the first hole at `startDeg` from the +X axis,
@@ -93,7 +106,7 @@ struct DrillCircleOp {
     double startDeg = 0.0;
     double arcDeg = 360.0;
     bool fullTurn = true;
-    double peckMm = 0.0;
+    DrillParams params;
 };
 
 using OperationGeometry =

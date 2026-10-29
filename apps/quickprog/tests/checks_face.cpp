@@ -42,13 +42,19 @@ void checkFeeds() {
     check(steel.rpm == 2865.0, "feeds.rpm_steel_d10", "Vc 90 on D10 must be 2865 rpm");
     check(steel.feedMmMin == 258.0, "feeds.feed_steel_d10", "fz 0.03 x 3 x 2865 must be 258 mm/min");
 
-    // A drill takes fz 0.03 per flute from the table row, two flutes
-    // (feeds.cpp, 2 flutes): 0.03 * 2 * 4775 = 286.5 -> 287 mm/min. The number
-    // is checked as the product of the table values, not as a claim about a
-    // handbook drill.
+    // A drill is rated per revolution, not per tooth: the `rule of thumb` row
+    // is f = 0.02 * D mm/rev and Vc 25 m/min on an HSS drill (feeds.cpp), so
+    // 0.02 * 10 = 0.2 mm/rev at round(1000 * 25 / (pi * 10)) = 796 rpm gives
+    // 0.2 * 796 = 159.2 -> 159 mm/min. The previous numbers (fz 0.03 on two
+    // flutes, Vc 150) were not a drill rule at all and are replaced here.
     const qp::Feeds drill = qp::feedsFor(qp::Material::Aluminium, 10.0, qp::ToolKind::Drill);
-    check(drill.feedMmMin == 287.0, "feeds.drill_alu_d10",
-          "a drill takes fz 0.03 on two flutes at 4775 rpm, 287 mm/min");
+    check(drill.rpm == 796.0, "feeds.drill_rpm_d10",
+          "Vc 25 on D10 must be 796 rpm, got " + std::to_string(drill.rpm));
+    check(drill.feedMmMin == 159.0, "feeds.drill_alu_d10",
+          "a drill takes f = 0.02 * D = 0.2 mm/rev at 796 rpm, 159 mm/min, got " +
+              std::to_string(drill.feedMmMin));
+    check(drill.source.find("правило большого пальца") != std::string::npos,
+          "feeds.drill_rule_of_thumb", "the drill source must say it is a rule of thumb");
 
     const qp::Feeds none = qp::feedsFor(qp::Material::Aluminium, 0.0, qp::ToolKind::Flat);
     check(none.rpm == 0.0 && none.feedMmMin == 0.0, "feeds.zero_diameter", "a zero diameter gives zeros");

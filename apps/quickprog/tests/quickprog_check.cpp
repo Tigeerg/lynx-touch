@@ -20,6 +20,8 @@ void runFaceChecks();
 void runEmitChecks();
 void runQprogChecks();
 void runPocketChecks();
+void runCircleChecks();
+void runDrillChecks();
 
 int main() {
     // The earlier slices first: the header, the face, the emit words and the
@@ -28,6 +30,8 @@ int main() {
     runEmitChecks();
     runQprogChecks();
     runPocketChecks();
+    runCircleChecks();
+    runDrillChecks();
     if (qpcheck::failures() != 0) {
         std::printf("%d case(s) failed\n", qpcheck::failures());
         return 1;

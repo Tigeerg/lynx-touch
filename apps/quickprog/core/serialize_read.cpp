@@ -14,6 +14,7 @@
 #include <variant>
 #include <vector>
 
+#include "core/path_drill.h"
 #include "core/qprog_reader.h"
 #include "core/serialize_internal.h"
 
@@ -172,6 +173,9 @@ ParseOutcome parseProgram(const std::string& text) {
             for (const std::string& k : keysOf(op.geometry)) {
                 if (k == sub) { known = true; }
             }
+            // The R plane of a drill is optional: a file without it means "the
+            // default R", the same as the document of a form that never set it.
+            if (!known && sub == "r" && isDrill(op.geometry)) { known = true; }
             if (!known) {
                 fail(where + "неизвестное поле '" + key + "' для операции этого вида.");
                 return out;

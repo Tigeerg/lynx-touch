@@ -15,12 +15,16 @@
 #include <variant>
 #include <vector>
 
+#include "core/circle_pocket_options.h"
 #include "core/cli.h"
+#include "core/drill_options.h"
 #include "core/emit.h"
 #include "core/face_options.h"
 #include "core/feeds.h"
 #include "core/ops.h"
 #include "core/path.h"
+#include "core/path_circle_pocket.h"
+#include "core/path_drill.h"
 #include "core/path_pocket.h"
 #include "core/pocket_options.h"
 #include "core/serialize.h"
@@ -68,11 +72,37 @@ constexpr const char* kHelp =
     "                    --depth, --step-down, --feed, --plunge, --rpm,\n"
     "                    --material, --safe, --name\n"
     "\n"
+    "  quickprog --op circle-pocket <ключи> <файл.ngc>\n"
+    "      круглый карман спиралью от центра\n"
+    "Ключи --op circle-pocket:\n"
+    "  --pocket-dia F    диаметр кармана, мм (20)\n"
+    "  --x X --y Y       центр кармана в координатах станка (0, 0)\n"
+    "  --allowance A     припуск на стенку и дно, мм (0)\n"
+    "  остальные ключи   как у прямоугольного кармана\n"
+    "\n"
+    "  quickprog --op drill <ключи> <файл.ngc>\n"
+    "      сверление: одно отверстие, сетка или круг\n"
+    "Ключи --op drill:\n"
+    "  --pattern P       hole | grid | circle (hole)\n"
+    "  --x X --y Y       отверстие: центр; сетка: первый угол; круг: центр (0, 0)\n"
+    "  --cols N --rows M --dx D --dy E   сетка: число по X и Y и шаг, мм\n"
+    "  --count N --radius R --start A    круг: число отверстий, радиус, угол ноль (0)\n"
+    "  --arc A           круг по дуге A градусов вместо полного круга\n"
+    "  --depth D         глубина отверстия, мм (12)\n"
+    "  --r Z             плоскость R цикла, мм (верх + 1)\n"
+    "  --peck Q          величина шага G83, мм (глубокое сверло: диаметр)\n"
+    "  остальные ключи   --tool, --diameter, --stock, --top, --feed, --rpm,\n"
+    "                    --material, --safe, --name\n"
+    "\n"
     "Пример:\n"
     "  quickprog --op face --tool 2 --diameter 10 --stock 100x80x20 --top 0 \\\n"
     "    --depth 5 --step-down 2 --step-over 70 --save-qprog demo.qprog face.ngc\n"
     "  quickprog --op pocket --tool 3 --diameter 8 --size 60x40 --depth 6 \\\n"
     "    --step-down 2.5 --allowance 0.2 pocket.ngc\n"
+    "  quickprog --op circle-pocket --tool 4 --diameter 8 --pocket-dia 20 \\\n"
+    "    --depth 4 --step-down 2 circle.ngc\n"
+    "  quickprog --op drill --tool 5 --diameter 6 --pattern grid --x 10 --y 10 \\\n"
+    "    --cols 3 --rows 4 --dx 15 --dy 15 --depth 12 grid.ngc\n"
     "  quickprog --qprog demo.qprog demo.ngc\n"
     "Код возврата: 0 - успех, 1 - проверки не прошли или файл не записан,\n"
     "2 - аргументы не разобраны.\n";
@@ -145,6 +175,88 @@ qp::Program pocketProgram(const qp::PocketArgs& args) {
     return program;
 }
 
+// The document of `--op circle-pocket`: a spiral from the centre of a round
+// pocket. The centre is taken as typed, in machine coordinates.
+qp::Program circlePocketProgram(const qp::CirclePocketArgs& args) {
+    qp::Program program;
+    program.name = args.name;
+    program.wcs = "G54";
+    setStock(program, args.stockX, args.stockY, args.stockZ, args.topZ);
+    program.safeZ = args.safeGiven ? args.safeZ : args.topZ + 5.0;
+
+    qp::Operation op;
+    op.id = "Круглый карман";
+    op.tool.number = args.tool;
+    op.tool.diameterMm = args.diameter;
+    op.topZ = args.topZ;
+    op.depthMm = args.depth;
+    op.stepDownMm = args.stepDown;
+    qp::CirclePocketOp pocket;
+    pocket.circle = qp::Circle{args.x, args.y, args.diameterPocket / 2.0};
+    pocket.finishAllowanceMm = args.finishAllowance;
+    op.geometry = pocket;
+
+    const qp::Feeds table = qp::feedsFor(args.material, args.diameter, qp::ToolKind::Flat);
+    op.cutting.spindleRpm = args.rpm > 0.0 ? args.rpm : table.rpm;
+    op.cutting.feedMmMin = args.feed > 0.0 ? args.feed : table.feedMmMin;
+    op.cutting.plungeFeedMmMin = args.plunge > 0.0 ? args.plunge : table.plungeFeedMmMin;
+    program.operations.push_back(op);
+    return program;
+}
+
+// The document of `--op drill`: one shape of the three behind the pattern word.
+qp::Program drillProgram(const qp::DrillArgs& args) {
+    qp::Program program;
+    program.name = args.name;
+    program.wcs = "G54";
+    setStock(program, args.stockX, args.stockY, args.stockZ, args.topZ);
+    program.safeZ = args.safeGiven ? args.safeZ : args.topZ + 5.0;
+
+    qp::Operation op;
+    op.id = "Отверстия";
+    op.tool.number = args.tool;
+    op.tool.diameterMm = args.diameter;
+    op.topZ = args.topZ;
+    op.depthMm = args.depth;
+    // A drilling cycle has no axial pass to split: the step stays zero and the
+    // check treats a zero step of a drill as "not used".
+    op.stepDownMm = 0.0;
+    const qp::DrillParams params{args.peck, args.r, args.rGiven};
+    if (args.pattern == qp::DrillPattern::Grid) {
+        qp::DrillGridOp grid;
+        grid.x0 = args.x;
+        grid.y0 = args.y;
+        grid.cols = args.cols;
+        grid.rows = args.rows;
+        grid.dx = args.dx;
+        grid.dy = args.dy;
+        grid.params = params;
+        op.geometry = grid;
+    } else if (args.pattern == qp::DrillPattern::Circle) {
+        qp::DrillCircleOp ring;
+        ring.circle = qp::Circle{args.x, args.y, args.radius};
+        ring.count = args.count;
+        ring.startDeg = args.startDeg;
+        ring.arcDeg = args.arcDeg;
+        ring.fullTurn = args.fullTurn;
+        ring.params = params;
+        op.geometry = ring;
+    } else {
+        qp::DrillHoleOp hole;
+        hole.hole = qp::Circle{args.x, args.y, args.diameter / 2.0};
+        hole.params = params;
+        op.geometry = hole;
+    }
+
+    const qp::Feeds table = qp::feedsFor(args.material, args.diameter, qp::ToolKind::Drill);
+    op.cutting.spindleRpm = args.rpm > 0.0 ? args.rpm : table.rpm;
+    op.cutting.feedMmMin = args.feed > 0.0 ? args.feed : table.feedMmMin;
+    op.cutting.plungeFeedMmMin =
+        args.feed > 0.0 ? args.feed / 4.0 : table.plungeFeedMmMin;
+    program.operations.push_back(op);
+    return program;
+}
+
 // A demo document: two operations, the facing of a 100x80 stock top and a
 // 60x40 pocket with an 8 mm end mill. The tool changes between them, so the
 // example shows the tool-change rule of the emitter.
@@ -209,6 +321,8 @@ void printWarnings(const qp::Program& program, const qp::Operation& op,
         warnings = qp::faceWarnings(program, op);
     } else if (std::holds_alternative<qp::RectPocketOp>(op.geometry)) {
         warnings = qp::pocketWarnings(program, op);
+    } else if (std::holds_alternative<qp::CirclePocketOp>(op.geometry)) {
+        warnings = qp::circleWarnings(program, op);
     }
     for (const std::string& warning : warnings) {
         bool blocked = false;
@@ -255,8 +369,24 @@ void printOperation(const qp::Program& program, const qp::Path& planned, std::si
                     std::get<qp::RectPocketOp>(op.geometry).rect.h, stats.insetMm, stats.rows,
                     stats.stepMm, stats.passes);
         std::printf("  ходов: %zu, длина резания: %.1f мм\n", moves, cutLength);
-    } else {
-        std::printf("  этот вид операции пока не планируется: ходов %zu\n", moves);
+    } else if (std::holds_alternative<qp::CirclePocketOp>(op.geometry)) {
+        const qp::CircleStats stats = qp::circleStats(program, op);
+        std::printf("  круглый карман ф%.1f, отступ %.2f мм: витков %d, шаг %.3f мм, "
+                    "виток до R%.3f, проходов по Z: %d\n",
+                    2.0 * std::get<qp::CirclePocketOp>(op.geometry).circle.r, stats.insetMm,
+                    stats.turns, stats.stepMm, stats.outerRadiusMm, stats.passes);
+        for (const double z : stats.stepDepthsMm) { std::printf("    проход Z %.2f\n", z); }
+        std::printf("  ходов: %zu, длина резания %.1f мм\n", moves, stats.lengthMm);
+    } else if (qp::isDrill(op.geometry)) {
+        const qp::DrillStats stats = qp::drillStats(program, op);
+        std::printf("  отверстий: %zu, %s", stats.points.size(),
+                    stats.cycle == qp::DrillKind::Peck ? "G83" : "G81");
+        if (stats.cycle == qp::DrillKind::Peck) { std::printf(" Q%.2f", stats.peckMm); }
+        std::printf(", R %.2f, дно %.2f\n", stats.rMm, stats.depthMm);
+        // The cutting length of a cycle is not the move list: the drill goes
+        // down the hole and back, once per hole, and that length is not a
+        // `cut` move of the plan (the cycle expands on the control).
+        std::printf("  ходов: %zu (быстрые между отверстиями)\n", moves);
     }
 }
 
@@ -342,6 +472,24 @@ int runPocket(std::vector<std::string> args, const std::string& savePath) {
     return finish(pocketProgram(options), options.output, savePath);
 }
 
+int runCirclePocket(std::vector<std::string> args, const std::string& savePath) {
+    qp::CirclePocketArgs options;
+    if (!qp::parseCirclePocketArgs(args, 2, options)) {
+        std::fprintf(stderr, "Аргументы --op circle-pocket не разобраны: см. quickprog --help\n");
+        return qp::kExitBadArgs;
+    }
+    return finish(circlePocketProgram(options), options.output, savePath);
+}
+
+int runDrill(std::vector<std::string> args, const std::string& savePath) {
+    qp::DrillArgs options;
+    if (!qp::parseDrillArgs(args, 2, options)) {
+        std::fprintf(stderr, "Аргументы --op drill не разобраны: см. quickprog --help\n");
+        return qp::kExitBadArgs;
+    }
+    return finish(drillProgram(options), options.output, savePath);
+}
+
 int runDemo(const std::string& output, const std::string& savePath) {
     return finish(demoProgram(), output, savePath);
 }
@@ -390,6 +538,12 @@ int main(int argc, char** argv) {
     if (args.size() >= 2 && args[0] == "--op" && args[1] == "face") { return runFace(args, savePath); }
     if (args.size() >= 2 && args[0] == "--op" && args[1] == "pocket") {
         return runPocket(args, savePath);
+    }
+    if (args.size() >= 2 && args[0] == "--op" && args[1] == "circle-pocket") {
+        return runCirclePocket(args, savePath);
+    }
+    if (args.size() >= 2 && args[0] == "--op" && args[1] == "drill") {
+        return runDrill(args, savePath);
     }
 
     std::fprintf(stderr, "Аргументы не разобраны: см. quickprog --help\n");

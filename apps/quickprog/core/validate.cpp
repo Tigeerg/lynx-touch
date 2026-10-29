@@ -4,12 +4,11 @@
 // the form runs them after every keystroke, before a path exists. The planner
 // is allowed to assume a valid document; the caller validates first.
 //
-// Coverage of the row "operation is not entirely outside the stock": the
-// strip layout of a face operation covers the stock rectangle by construction,
-// so only the explicit Z placement is checked here. The pocket checks that the
-// tool body with the allowance fits inside its rectangle; the drilling
-// operations of the next slices add their XY containment check; there is no
-// silent pass for them because they are not planned yet either.
+// Coverage of the row "operation is not entirely outside the stock": the strip
+// layout of a face operation covers the stock rectangle by construction, so
+// only the explicit Z placement is checked here. The pockets check that the
+// tool body with the allowance fits inside their contour; the drilling kinds
+// check every hole centre with the tool body against the stock rectangle.
 #include "core/validate.h"
 
 #include <cmath>
@@ -19,6 +18,7 @@
 
 #include "core/feeds.h"
 #include "core/limits.h"
+#include "core/path_drill.h"
 
 namespace qp {
 namespace {
@@ -115,19 +115,15 @@ void checkDepth(const Program& program, const Operation& op, std::vector<Check>&
     }
 }
 
-// A face operation cuts strips of one plane, so `topZ` is the plane itself and
-// the axial depth is what `depthMm` says. All other kinds descend from `topZ`,
-// so there the step is the only limit of one pass.
-bool descendsAxially(const OperationGeometry& geometry) {
-    return !std::holds_alternative<FaceOp>(geometry);
-}
-
 void checkStep(const Operation& op, std::vector<Check>& out) {
-    // A zero step is an unfinished form for every kind; for a face it would
-    // also make the pass layout meaningless, so the rule is unconditional.
+    // The step is a field of every kind (the document has no per-kind subset),
+    // but a drill descends in one cycle and never splits the hole into passes.
+    // A zero step is the normal value of a drill and is not checked there; a
+    // negative step is a mistake of any kind.
+    if (isDrill(op.geometry) && op.stepDownMm >= 0.0) { return; }
     if (!(op.stepDownMm > 0.0)) {
         add(out, "stepDownMm", "Шаг врезания должен быть больше нуля: иначе проходов не будет.");
-    } else if (descendsAxially(op.geometry) && op.stepDownMm > op.depthMm && op.depthMm > 0.0) {
+    } else if (op.stepDownMm > op.depthMm && op.depthMm > 0.0) {
         add(out, "stepDownMm", "Шаг врезания " + fmt(op.stepDownMm) + " мм больше глубины " +
                                    fmt(op.depthMm) + " мм: проход будет один, но проверьте задание.");
     }
@@ -211,6 +207,67 @@ void checkPocketGeometry(const Operation& op, std::vector<Check>& out) {
     }
 }
 
+// Circular pocket: the tool body with the finish allowance has to fit inside
+// the pocket radius. At equal sizes the centre line is a point and nothing is
+// cut, so the rule is strict; the message names the pocket radius and the
+// inset, so the form points at the diameter or the allowance.
+void checkCirclePocketGeometry(const Operation& op, std::vector<Check>& out) {
+    const CirclePocketOp& pocket = std::get<CirclePocketOp>(op.geometry);
+    if (pocket.circle.r <= 0.0) {
+        add(out, "geometry", "Круглый карман вырожден: радиус " + fmt(pocket.circle.r) +
+                                 " мм не больше нуля.");
+        return;
+    }
+    if (pocket.finishAllowanceMm < 0.0) {
+        add(out, "geometry", "Припуск " + fmt(pocket.finishAllowanceMm) +
+                                 " мм отрицательный: траектория выйдет за контур кармана.");
+        return;
+    }
+    const double diam = op.tool.diameterMm;
+    const double inset = diam / 2.0 + pocket.finishAllowanceMm;
+    if (inset + 1e-9 >= pocket.circle.r) {
+        add(out, "geometry", "Фреза ф" + fmt(diam) + " мм и припуск " +
+                                 fmt(pocket.finishAllowanceMm) + " мм не влезают в круглый карман ф" +
+                                 fmt(2.0 * pocket.circle.r) + " мм: от центра до стенки " +
+                                 fmt(pocket.circle.r) + " мм, а фреза с припуском занимает " +
+                                 fmt(inset) + " мм. Возьмите фрезу поменьше.");
+    }
+}
+
+// One hole has to stand inside the stock with its body: the tool does not cut
+// the wall of the part, and a hole partly outside the fixture is a broken
+// drill. The stock triangle is the whole check: a hole inside the XY rectangle
+// with a diameter smaller than the stock wall is safe.
+void checkHoleInside(const Program& program, const Operation& op, const Point3& hole,
+                     std::vector<Check>& out) {
+    const double r = op.tool.diameterMm / 2.0;
+    const StockBox& stock = program.stock;
+    if (hole.x - r < stock.min.x - 1e-9 || hole.x + r > stock.max.x + 1e-9 ||
+        hole.y - r < stock.min.y - 1e-9 || hole.y + r > stock.max.y + 1e-9) {
+        add(out, "geometry", "Отверстие (" + fmt(hole.x) + ", " + fmt(hole.y) +
+                                 ") вне заготовки: с инструментом ф" + fmt(op.tool.diameterMm) +
+                                 " мм оно заходит за края X " + fmt(stock.min.x) + ".." +
+                                 fmt(stock.max.x) + ", Y " + fmt(stock.min.y) + ".." +
+                                 fmt(stock.max.y) + " мм. Сдвиньте отверстие или уменьшите фрезу.");
+        return;
+    }
+}
+
+void checkDrillGeometry(const Program& program, const Operation& op, std::vector<Check>& out) {
+    const DrillStats stats = drillStats(program, op);
+    for (const std::string& error : stats.errors) {
+        add(out, "geometry", error);
+    }
+    if (stats.points.empty()) { return; }
+    for (const Point3& hole : stats.points) {
+        const std::size_t before = out.size();
+        checkHoleInside(program, op, hole, out);
+        // One message is enough: the first hole outside names the point, the
+        // others would repeat the same verdict with a different number.
+        if (out.size() != before) { return; }
+    }
+}
+
 void checkGeometry(const Program& program, const Operation& op, std::vector<Check>& out) {
     if (std::holds_alternative<FaceOp>(op.geometry)) {
         checkFaceGeometry(program, op, out);
@@ -220,7 +277,11 @@ void checkGeometry(const Program& program, const Operation& op, std::vector<Chec
         checkPocketGeometry(op, out);
         return;
     }
-    add(out, "geometry", "Операция этого типа пока не планируется: проверка геометрии появится вместе с ней.");
+    if (std::holds_alternative<CirclePocketOp>(op.geometry)) {
+        checkCirclePocketGeometry(op, out);
+        return;
+    }
+    checkDrillGeometry(program, op, out);
 }
 
 } // namespace

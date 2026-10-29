@@ -39,12 +39,16 @@ add_library(quickprog_core STATIC
     core/emit_moves.cpp
     core/face_options.cpp
     core/option_words.cpp
+    core/circle_pocket_options.cpp
+    core/drill_options.cpp
     core/pocket_options.cpp
     core/qprog_operation.cpp
     core/feeds.cpp
     core/path.cpp
     core/path_face.cpp
     core/path_pocket.cpp
+    core/path_circle_pocket.cpp
+    core/path_drill.cpp
     core/serialize.cpp
     core/serialize_read.cpp
     core/serialize_shared.cpp
@@ -63,6 +67,8 @@ add_executable(quickprog_check
     tests/checks_emit.cpp
     tests/checks_face.cpp
     tests/checks_pocket.cpp
+    tests/checks_circle.cpp
+    tests/checks_drill.cpp
     tests/checks_qprog.cpp
 )
 target_link_libraries(quickprog_check PRIVATE quickprog_core)

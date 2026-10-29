@@ -19,11 +19,17 @@
 namespace qp {
 
 // Arc centre offset from the start point of the arc, mm, in the XY plane, as
-// the I/J words of G2/G3. The end point is Move::to.
+// the I/J words of G2/G3. The end point is Move::to. `lengthMm` is the arc
+// length of the move: the planner knows how far the tool travels along an arc,
+// and recovering it from I/J and the end point needs the sign of a rounded
+// sine near a half turn (the sine of pi is 1e-16, not zero). The planner sets
+// the length on the move it appends, so the report and the time estimate do not
+// re-derive it.
 struct ArcOffset {
     bool cw = false;
     double i = 0.0;
     double j = 0.0;
+    double lengthMm = 0.0;
 };
 
 enum class MoveKind { Rapid, Cut };
@@ -67,8 +73,20 @@ struct Path {
     // cutting and are not counted, so the number is comparable between two
     // strategies of the same operation.
     double lengthMm = 0.0;
+    // Feed time of the drilling cycles of the program, minutes. A cycle is not
+    // a move list: the drill goes down the hole and back, once per hole, and
+    // the plan cannot see that from the moves. The planner of a drilling
+    // operation adds it here, so `estimateSeconds` charges the rapid travel of
+    // the holes and the drilling of the holes separately.
+    double cycleMinutes = 0.0;
     std::string uuid;
 };
+
+// Cutting length of one cut move from `from`: `ArcOffset::lengthMm` when the
+// move carries an arc (the planner measured it), the chord otherwise. Rapids
+// are not cutting and give zero. One formula for the planner, the time estimate
+// and the console summary, so the three numbers agree on the same moves.
+double moveLength(const Move& move, const Point3& from);
 
 // Stable identifier of one operation inside a planning result:
 // "<path uuid>/op<n>", n counted from 1 over the enabled operations. It is
@@ -88,6 +106,11 @@ struct PathBuilder {
     // A cut carries its feed; a rapid carries none (Move::hasFeed). Both grow
     // the bounds.
     void add(MoveKind kind, const Point3& to, double feedMmMin = 0.0);
+    // An arc move: the same bounds and the same move list as `add`, but the
+    // cutting length is the arc (`path::moveLength`), not its chord. The sweep
+    // follows from the I/J of the move and the end point; `add` cannot see it,
+    // so an arc is appended through here and never through `add`.
+    void addArc(const Move& move);
     void grow(const Point3& point);
 };
 
@@ -98,6 +121,9 @@ void planFace(const Program& program, const Operation& operation, PathBuilder& o
 // Rectangular pocket planner (`path_pocket.h` declares it next to its stats
 // and warnings); the same contract as planFace.
 void planRectPocket(const Program& program, const Operation& operation, PathBuilder& out);
+// Drilling planner (`path_drill.h`): one move per hole centre, the cycle is
+// written by the emitter.
+void planDrill(const Program& program, const Operation& operation, PathBuilder& out);
 
 // Filled by the face planner for the console summary and the checks: the
 // numbers are the planner's own, not recomputed by the caller.
@@ -117,8 +143,9 @@ struct FaceStats {
 };
 
 // Operation -> moves. Disabled operations are skipped; a valid document is
-// assumed (validate first). The face and the rectangular pocket are the planned
-// kinds so far; the other kinds plan nothing and say so through an empty span.
+// assumed (validate first). The face, the rectangular and the circular pocket
+// and the three drilling kinds are the planned kinds; every kind of the
+// variant has a planner, so no operation is silently dropped.
 Path planPath(const Program& program);
 
 // Face layout numbers for one operation: strips, passes, step depths. Uses the
@@ -133,8 +160,8 @@ FaceStats faceStats(const Program& program, const Operation& operation);
 std::vector<std::string> faceWarnings(const Program& program, const Operation& operation);
 
 // Time estimate of the path, seconds: each cut at its programmed feed, each
-// rapid at the machine rapid rate of limits.h. Arc length is the chord here -
-// the demo has no arcs yet.
+// rapid at the machine rapid rate of limits.h. An arc is charged by its arc
+// length, not its chord: the chord of a half turn understates the time by pi/2.
 double estimateSeconds(const Path& path);
 
 } // namespace qp

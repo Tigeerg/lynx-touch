@@ -18,6 +18,8 @@
 
 #include "core/limits.h"
 #include "core/ops.h"
+#include "core/path_circle_pocket.h"
+#include "core/path_drill.h"
 
 namespace qp {
 namespace {
@@ -41,6 +43,15 @@ std::string operationUuid(const std::string& programUuid, int opIndex) {
     return programUuid + "/op" + std::to_string(opIndex + 1);
 }
 
+double moveLength(const Move& move, const Point3& from) {
+    if (move.kind != MoveKind::Cut) { return 0.0; }
+    if (move.hasArc && move.arc.lengthMm > 0.0) { return move.arc.lengthMm; }
+    const double dx = move.to.x - from.x;
+    const double dy = move.to.y - from.y;
+    const double dz = move.to.z - from.z;
+    return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
 void PathBuilder::add(MoveKind kind, const Point3& to, double feedMmMin) {
     grow(to);
     Move move;
@@ -49,12 +60,14 @@ void PathBuilder::add(MoveKind kind, const Point3& to, double feedMmMin) {
     if (kind == MoveKind::Cut) {
         move.feedMmMin = feedMmMin;
         move.hasFeed = true;
-        if (!moves.empty()) {
-            const Point3& from = moves.back().to;
-            lengthMm += std::sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y) +
-                                  (to.z - from.z) * (to.z - from.z));
-        }
+        if (!moves.empty()) { lengthMm += moveLength(move, moves.back().to); }
     }
+    moves.push_back(move);
+}
+
+void PathBuilder::addArc(const Move& move) {
+    grow(move.to);
+    if (move.kind == MoveKind::Cut && !moves.empty()) { lengthMm += moveLength(move, moves.back().to); }
     moves.push_back(move);
 }
 
@@ -80,23 +93,22 @@ double estimateSeconds(const Path& path) {
     bool haveFrom = false;
     for (const Move& move : path.moves) {
         if (haveFrom) {
-            const double dx = move.to.x - from.x;
-            const double dy = move.to.y - from.y;
-            const double dz = move.to.z - from.z;
-            const double distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+            const double distance = moveLength(move, from);
             const double rate = move.kind == MoveKind::Cut ? move.feedMmMin : rapid;
             if (rate > 0.0) { seconds += distance / rate * 60.0; }
         }
         from = move.to;
         haveFrom = true;
     }
-    return seconds;
+    // The drilling cycles: the moves of a drill span are only the rapids, the
+    // drilling itself is charged from the cycle time the planner recorded.
+    return seconds + path.cycleMinutes * 60.0;
 }
 
 namespace {
 
-// The visitor of the dispatch: one overload per geometry kind. The face kind
-// plans; the other kinds close with a span but no moves until their slice.
+// The visitor of the dispatch: one overload per geometry kind. Every kind of
+// the variant has a planner, so a new kind cannot be silently skipped.
 struct Planner {
     const Program& program;
     Path& path;
@@ -123,10 +135,38 @@ struct Planner {
         path.bbox = builder.bbox;
         path.lengthMm += builder.lengthMm;
     }
-    void operator()(const CirclePocketOp&) { begin(); }
-    void operator()(const DrillHoleOp&) { begin(); }
-    void operator()(const DrillGridOp&) { begin(); }
-    void operator()(const DrillCircleOp&) { begin(); }
+    void operator()(const CirclePocketOp&) {
+        PathBuilder builder(path.moves);
+        builder.bbox = path.bbox;
+        planCirclePocket(program, program.operations[static_cast<std::size_t>(opIndex)], builder);
+        path.bbox = builder.bbox;
+        path.lengthMm += builder.lengthMm;
+    }
+    void operator()(const DrillHoleOp&) { plan(); }
+    void operator()(const DrillGridOp&) { plan(); }
+    void operator()(const DrillCircleOp&) { plan(); }
+
+    // The three drilling kinds share one planner: the hole list differs, the
+    // cycle does not.
+    void plan() {
+        PathBuilder builder(path.moves);
+        builder.bbox = path.bbox;
+        const Operation& operation = program.operations[static_cast<std::size_t>(opIndex)];
+        planDrill(program, operation, builder);
+        path.bbox = builder.bbox;
+        path.lengthMm += builder.lengthMm;
+        // The cycle time of one hole: the descent and the retraction of the
+        // drill at the working feed. A `peck` cycle goes down the same
+        // distance, the rapid hops between the pecks are not counted: the
+        // estimate is optimistic, as the console already says.
+        const DrillStats drill = drillStats(program, operation);
+        const double feed = operation.cutting.feedMmMin;
+        if (feed > 0.0) {
+            const double perHoleMm = 2.0 * operation.depthMm;
+            path.cycleMinutes +=
+                static_cast<double>(drill.points.size()) * perHoleMm / feed;
+        }
+    }
 };
 
 } // namespace

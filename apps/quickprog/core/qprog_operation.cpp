@@ -142,16 +142,18 @@ auto fail = [&error](const std::string& message) {
             return fail(where + "op.fullTurn ждёт 'on' или 'off'.");
         }
         std::get<DrillCircleOp>(op.geometry).fullTurn = words[1] == "on";
-    } else if (sub == "peck") {
-        double* peck = nullptr;
+    } else if (sub == "peck" || sub == "r") {
+        DrillParams* params = nullptr;
         if (std::holds_alternative<DrillHoleOp>(op.geometry)) {
-            peck = &std::get<DrillHoleOp>(op.geometry).peckMm;
+            params = &std::get<DrillHoleOp>(op.geometry).params;
         } else if (std::holds_alternative<DrillGridOp>(op.geometry)) {
-            peck = &std::get<DrillGridOp>(op.geometry).peckMm;
+            params = &std::get<DrillGridOp>(op.geometry).params;
         } else {
-            peck = &std::get<DrillCircleOp>(op.geometry).peckMm;
+            params = &std::get<DrillCircleOp>(op.geometry).params;
         }
-        if (!parseQprogNumber(words[1], *peck)) { return fail(where + "op.peck ждёт число."); }
+        double* value = sub == "peck" ? &params->peckMm : &params->rMm;
+        if (!parseQprogNumber(words[1], *value)) { return fail(where + key + " ждёт число."); }
+        if (sub == "r") { params->hasR = true; }
     }
     return true;
 }

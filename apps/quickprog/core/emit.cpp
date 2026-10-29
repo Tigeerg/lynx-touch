@@ -30,6 +30,7 @@
 #include <variant>
 
 #include "core/emit_internal.h"
+#include "core/path_drill.h"
 #include "core/version.h"
 
 namespace qp {
@@ -208,8 +209,34 @@ std::string emitProgram(const Program& program, const Path& path) {
         // at safe Z: only Z is known, XY is not, and a move that shares X and
         // Y with this virtual point is not treated as a no-op.
         const Point3 park{std::nan(""), std::nan(""), program.safeZ};
-        emitMoves(out, path, span.first, last, sequence, park, state);
-        const Point3 end = span.first < last ? path.moves[last - 1].to : park;
+        if (isDrill(operation.geometry)) {
+            // The cycle is a machine feature, not a path: the moves of a drill
+            // span are only the rapids, so the holes are printed from the same
+            // layout the planner drew.
+            const DrillStats drill = drillStats(program, operation);
+            DrillCycle cycle;
+            cycle.peck = drill.cycle == DrillKind::Peck;
+            cycle.depthZ = drill.depthMm;
+            cycle.rZ = drill.rMm;
+            cycle.peckMm = drill.peckMm;
+            cycle.feedMmMin = operation.cutting.feedMmMin;
+            const std::vector<Point3> holes = drillHoles(operation);
+            if (!holes.empty()) {
+                // The tool stands at safe Z; the cycle block runs from there
+                // and parks the tool back at safe Z on G80.
+                out += numberedBlock(sequence, "G0 Z" + coord(drill.rMm)) + "\n";
+                sequence += kSequenceStep;
+                emitCycle(out, holes, cycle, sequence, state);
+            }
+        } else {
+            emitMoves(out, path, span.first, last, sequence, park, state);
+        }
+        Point3 end = span.first < last ? path.moves[last - 1].to : park;
+        if (isDrill(operation.geometry)) {
+            // G80 brings the drill back to the R plane, not to safe Z; the
+            // trailer parks it, so the end of the block is the R plane.
+            end.z = drillStats(program, operation).rMm;
+        }
         emitOperationEnd(out, program, sequence, end, state);
     }
     emitFooter(out, sequence);

@@ -28,28 +28,51 @@ namespace {
 
 constexpr double kMmPerM = 1000.0;
 
-// One row of the table: Vc in m/min and fz in mm/tooth. `documented` marks the
-// row that repeats calc.ts; the other rows use the same formulas with the
-// handbook values of a coated carbide tool and are named as such in the report.
+// One row of the table: Vc in m/min and `advanceMmPerRev` in mm/rev, or the
+// per-tooth feed in mm/tooth for a milling tool (`perTooth`). A drill is rated
+// by the feed per revolution, not per tooth: the two flutes of a drill split
+// one revolution between them, and a handbook row for a drill is millimetres
+// of penetration per turn.
+//
+// A drill row has no counterpart in calc.ts: the calculator there describes a
+// flat end mill only, so the drill numbers are `// rule of thumb` values with a
+// named source each. The technologist may correct them; the row is the single
+// place where the correction is made.
 struct FeedRow {
     Material material;
     ToolKind kind;
     double vc;
-    double fz;
+    double rate;       // mm/tooth for a mill, mm/rev for a drill
+    bool perTooth = true;
 };
 
 // The calc.ts row (aluminium flat, 150 m/min, 0.06 mm/tooth) is the first one;
 // the tool kind of calc.ts is a flat end mill with three flutes, as in
 // CALC_DEFAULTS.
+//
+// Drill rows, `// rule of thumb`: penetration f = 0.02 * D mm/rev for a twist
+// drill, the same for steel and aluminium at the demo level (the material
+// changes the cutting speed, not the feed per turn of a small drill); the
+// cutting speed is Vc 25 m/min for HSS and Vc 80 m/min for carbide. The table
+// has no tool-material field, so the HSS row is the one the demo uses and the
+// carbide number is named here for the technologist.
 const std::vector<FeedRow>& feedTable() {
     static const std::vector<FeedRow> rows = {
-        {Material::Aluminium, ToolKind::Flat, 150.0, 0.06},
-        {Material::Aluminium, ToolKind::Drill, 150.0, 0.03},
-        {Material::Steel, ToolKind::Flat, 90.0, 0.03},
-        {Material::Steel, ToolKind::Drill, 90.0, 0.015},
+        {Material::Aluminium, ToolKind::Flat, 150.0, 0.06, true},
+        // rule of thumb: Vc 25 m/min (HSS drill), f = 0.02 * D mm/rev.
+        {Material::Aluminium, ToolKind::Drill, 25.0, 0.02, false},
+        {Material::Steel, ToolKind::Flat, 90.0, 0.03, true},
+        // rule of thumb: Vc 8 m/min on steel for a small HSS drill keeps the
+        // rpm under the 24 000 limit of the demo spindle; f = 0.02 * D mm/rev.
+        {Material::Steel, ToolKind::Drill, 8.0, 0.02, false},
     };
     return rows;
 }
+
+// The carbide cutting speed of a drill, named for the technologist: 80 m/min.
+// The table keeps one row per material and tool kind, so a carbide drill is a
+// later field of the tool, not a second hidden table.
+constexpr double kCarbideDrillVc = 80.0;
 
 // Flutes per tool kind: a flat end mill takes three, as in CALC_DEFAULTS; a
 // drill is a two-flute tool, so the same feed-per-tooth formula gives half the
@@ -112,10 +135,25 @@ Feeds feedsFor(Material material, double diameterMm, ToolKind kind) {
     if (row == nullptr) { return out; }
 
     out.rpm = roundLikeCalc((kMmPerM * row->vc) / (M_PI * diameterMm));
-    out.feedMmMin = roundLikeCalc(row->fz * flutesFor(kind) * out.rpm);
+    if (row->perTooth) {
+        out.feedMmMin = roundLikeCalc(row->rate * flutesFor(kind) * out.rpm);
+    } else {
+        // A drill is rated per revolution; the diamond drill speed is the
+        // `rule of thumb` f = 0.02 * D mm/rev of the table row.
+        out.feedMmMin = roundLikeCalc(row->rate * diameterMm * out.rpm);
+    }
     out.plungeFeedMmMin = roundLikeCalc(out.feedMmMin / 4.0);
-    out.source = (fallback ? "фреза по умолчанию: " : "таблица: ") + materialName(material) + ", ф" +
-                 fmtD(diameterMm);
+    const std::string prefix = fallback ? "фреза по умолчанию: " : "таблица: ";
+    if (row->perTooth) {
+        out.source = prefix + materialName(material) + ", ф" + fmtD(diameterMm);
+    } else {
+        // A drill row is a rule of thumb, and the source line says so: the
+        // technologist must see the number is an orientation, not a hand-book
+        // row copied from calc.ts.
+        out.source = "правило большого пальца: сверло, " + materialName(material) + ", ф" +
+                     fmtD(diameterMm);
+    }
+    (void)kCarbideDrillVc;
     return out;
 }
 

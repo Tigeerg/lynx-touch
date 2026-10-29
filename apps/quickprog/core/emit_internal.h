@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 #include "core/path.h"
 
@@ -22,6 +23,10 @@ std::string coord(double value);
 
 // One numbered block: "N100 G1 X1.000".
 std::string numberedBlock(int sequence, const std::string& words);
+
+// A feed word: an integer when the value is whole ("F860"), else up to three
+// digits. Shared by the moves and the cycles.
+std::string feedWord(double value);
 
 // State of the machine between two operations, needed by the tool-change rule
 // (PLAN-QUICKPROG, 7.1): the modal motion is dropped at the end of an
@@ -37,6 +42,21 @@ struct EmitState {
     double spindleRpm = 0.0;
     bool coolantOn = false;
 };
+
+// Parameters of one canned drilling cycle as the emitter writes it: the first
+// block carries the cycle word, the depth, the R plane and (for G83) Q, the
+// following blocks carry only X/Y, and G80 closes the cycle.
+struct DrillCycle {
+    bool peck = false;      // true: G83, false: G81
+    double depthZ = 0.0;    // Z of the hole bottom, mm
+    double rZ = 0.0;        // R plane, mm
+    double peckMm = 0.0;    // Q of G83, mm
+    double feedMmMin = 0.0;
+};
+
+// Prints the holes as one cycle block set and closes it with G80.
+void emitCycle(std::string& out, const std::vector<Point3>& holes, const DrillCycle& cycle,
+               int& sequence, EmitState& state);
 
 // Prints the moves [first, last) as numbered blocks, then advances `sequence`.
 // `park` is the point the header left the tool at: safe Z, XY unknown. A move

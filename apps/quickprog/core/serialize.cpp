@@ -72,12 +72,14 @@ std::string serialize(const Program& program) {
         } else if (const auto* hole = std::get_if<DrillHoleOp>(&op.geometry)) {
             out += "op.hole " + number(hole->hole.x) + " " + number(hole->hole.y) + " " +
                    number(hole->hole.r) + "\n";
-            out += "op.peck " + number(hole->peckMm) + "\n";
+            out += "op.peck " + number(hole->params.peckMm) + "\n";
+            if (hole->params.hasR) { out += "op.r " + number(hole->params.rMm) + "\n"; }
         } else if (const auto* grid = std::get_if<DrillGridOp>(&op.geometry)) {
             out += "op.grid " + number(grid->x0) + " " + number(grid->y0) + " " +
                    std::to_string(grid->cols) + " " + std::to_string(grid->rows) + " " +
                    number(grid->dx) + " " + number(grid->dy) + "\n";
-            out += "op.peck " + number(grid->peckMm) + "\n";
+            out += "op.peck " + number(grid->params.peckMm) + "\n";
+            if (grid->params.hasR) { out += "op.r " + number(grid->params.rMm) + "\n"; }
         } else {
             const auto& ring = std::get<DrillCircleOp>(op.geometry);
             out += "op.circle " + number(ring.circle.x) + " " + number(ring.circle.y) + " " +
@@ -86,7 +88,8 @@ std::string serialize(const Program& program) {
             out += "op.start " + number(ring.startDeg) + "\n";
             out += "op.arc " + number(ring.arcDeg) + "\n";
             out += "op.fullTurn " + std::string(ring.fullTurn ? "on" : "off") + "\n";
-            out += "op.peck " + number(ring.peckMm) + "\n";
+            out += "op.peck " + number(ring.params.peckMm) + "\n";
+            if (ring.params.hasR) { out += "op.r " + number(ring.params.rMm) + "\n"; }
         }
     }
     return out;

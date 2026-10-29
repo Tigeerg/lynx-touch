@@ -42,14 +42,26 @@
 
 ## 2. Размер файлов (ориентир 250 строк)
 
-* [ ] **Остальные большие файлы панели** (число строк на 21.10.2026): компоненты —
-  `screens/service-screen.tsx` 688, `screens/ladder-view.tsx` 528, `side-status.tsx` 427,
-  `probe/probe-wizard.tsx` 373, `screens/program-screen.tsx` 367, `probe/probe-schematic.tsx` 353,
-  `touch/touch-deck.tsx` 346, `hardware/hardware-panel.tsx` 325; логика — `ladder.ts` 690, `softkeys.ts` 510,
-  `cycle.ts` 298, `types.ts` 296, `probe.ts` 272; таблицы `params/system.ts` 279 и `params/motion.ts` 263 —
-  один раздел каталога в файле, это одна задача. План: у компонентов вынести вложенные части (полосы,
-  ячейки, диалоги) в соседние файлы, у логики отделить данные от редьюсера; `machine.test.ts` 402 —
-  свод редьюсера.
+* [x] **Остальные большие файлы панели.** Закрыто в `0.28.10` (коммиты `ce3a483`...`a107fbe` ветки `wip`):
+  логика разложена на фасад плюс каталог подсистемы — `ladder/` (данные, разбор, редьюсер, форма, схемы,
+  навигация, типы ПЛК), `softkeys/` (слоты, иконки, диалоги, рабочие места, наборы экранов), `cycle/`
+  (исполнение кадра, действия, редьюсер); `types.ts`, `probe.ts`, `keys.ts` освобождены от разделов
+  «Сервиса», таблицы циклов и маршрута клавиши. Компоненты разбиты на фасад плюс каталог: `side-status/`,
+  `screens/service-screen/`, `screens/ladder-view/`, `screens/program-screen/`, `probe/probe-wizard/`,
+  `probe/probe-schematic/`, `touch/touch-deck/`, `hardware/hardware-panel/`, `tool-measure-dialog/`.
+  Свод `machine.test.ts` разложен на `machine.<подсистема>.test.ts`. Поведение не менялось: 317 тестов,
+  `tsc`, `prettier` зелёные. Что осталось выше ориентира и почему — два пункта ниже.
+* [ ] **`lib/cnc/ladder/ladder-reducer.ts` — 285 строк.** После выноса навигации в `ladder-nav.ts` файл
+  держит редьюсер редактора и тип `LadderAction` с `freeAddr`/`newRung`. Дальше — отдельный тип действий и
+  разбор веток правки по `case`; это уже не перенос строк, а разбор редьюсера. Первый шаг: `LadderAction` из
+  `types.ts` ПЛК-каталога.
+* [ ] **`lib/cnc/types.ts` — 268 строк.** Остаётся `MachineState` (79 строк) и таблицы экранов; разделы
+  «Сервиса» уже вынесены в `service-sections.ts`. Дальше — разнести `MachineState` по группам
+  (движение, программа, сервис, обмер) через `interface X extends Y`, чтобы файл читался по частям.
+  Это правка типа, а не перенос; делать вместе с `LadderAction`.
+* [x] **Таблицы `params/system.ts` 269 и `params/motion.ts` 263 — осознанно, не долг.** Один раздел каталога
+  в своём файле: правило `params/` («по файлу на раздел», `ARCHITECTURE.md`) важнее ориентира 250 строк.
+  Решение зафиксировано, чтобы размер этих файлов больше не поднимали как замечание.
 * [ ] **`modules/gcode-viewer/GcodeViewer3D.qml`** — крупный QML-слой (сцена, камера, материалы, панель
   режимов, клавиши). Разбить на компоненты, состояние оставить в C++-контроллере.
 * [ ] **`modules/gcode-viewer/cpp/core/*`** — оценить крупные единицы (`stock_sim`, `gcode_parser`,

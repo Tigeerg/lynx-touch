@@ -23,10 +23,26 @@ std::string coord(double value);
 // One numbered block: "N100 G1 X1.000".
 std::string numberedBlock(int sequence, const std::string& words);
 
+// State of the machine between two operations, needed by the tool-change rule
+// (PLAN-QUICKPROG, 7.1): the modal motion is dropped at the end of an
+// operation (M5 stops the spindle, the next move writes its own G), but the
+// feed, the tool and the coolant are modal words of the file and the next
+// block may legitimately omit them.
+struct EmitState {
+    bool hasFeed = false;
+    double feed = 0.0;
+    // Tool number the machine holds; 0 - none yet (the header changed nothing).
+    int tool = 0;
+    // Spindle speed the machine runs at after the last operation; 0 - stopped.
+    double spindleRpm = 0.0;
+    bool coolantOn = false;
+};
+
 // Prints the moves [first, last) as numbered blocks, then advances `sequence`.
 // `park` is the point the header left the tool at: safe Z, XY unknown. A move
-// to the point the printer already stands at is skipped.
+// to the point the printer already stands at is skipped. `state` carries the
+// modal feed in and out, so a later block knows whether F has to be repeated.
 void emitMoves(std::string& out, const Path& path, std::size_t first, std::size_t last,
-               int& sequence, const Point3& park);
+               int& sequence, const Point3& park, EmitState& state);
 
 } // namespace qp

@@ -38,9 +38,16 @@ add_library(quickprog_core STATIC
     core/emit.cpp
     core/emit_moves.cpp
     core/face_options.cpp
+    core/option_words.cpp
+    core/pocket_options.cpp
+    core/qprog_operation.cpp
     core/feeds.cpp
     core/path.cpp
     core/path_face.cpp
+    core/path_pocket.cpp
+    core/serialize.cpp
+    core/serialize_read.cpp
+    core/serialize_shared.cpp
     core/validate.cpp
 )
 target_include_directories(quickprog_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -49,7 +56,15 @@ add_executable(quickprog main.cpp)
 target_link_libraries(quickprog PRIVATE quickprog_core)
 set_target_properties(quickprog PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${QP_OUTPUT_DIR}")
 
-add_executable(quickprog_check tests/quickprog_check.cpp)
+# The cases are split by meaning; every file opens its own anonymous
+# namespace, and quickprog_check.cpp declares and calls them.
+add_executable(quickprog_check
+    tests/quickprog_check.cpp
+    tests/checks_emit.cpp
+    tests/checks_face.cpp
+    tests/checks_pocket.cpp
+    tests/checks_qprog.cpp
+)
 target_link_libraries(quickprog_check PRIVATE quickprog_core)
 set_target_properties(quickprog_check PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${QP_OUTPUT_DIR}")
 

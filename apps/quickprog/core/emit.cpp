@@ -8,9 +8,17 @@
 //   (UI_OP: <name>)                        operation marker
 //   (UI_STAGE: <path uuid>/op<n>)          stable block identifier
 //   (UI_TOOL: T=.. TYPE=.. D=..)           tool geometry, before the change
-//   T.. M6 / S.. M3 / G0 Z<safe> / M8      change, spindle, park, coolant
+//   G0 Z<safe> T.. M6                      change, only when the tool differs
+//   S.. M3 / M8                            spindle and coolant, when they differ
 //   G0 / G1 X.. Y.. Z.. F..                moves of the operation
 //   M9 / M5 / G0 Z<safe>                   end of the operation
+//
+// One rule decides the preamble of every operation - the tool change and the
+// spindle - and it lives in `emitOperationStart` alone (PLAN-QUICKPROG, 7.1): a
+// second tool change repeats T/M6, the same tool keeps its T but starts a new
+// spindle speed when it differs. M8 is written only when the coolant was off;
+// M9 always turns it off at the end of an operation, so the coolant is not
+// switched on and off between two operations that both flood.
 //
 // Blocks are numbered N10, N15, N20, ... across the whole file: the step of
 // the reference file, so a block keeps a readable number in the editor.
@@ -109,12 +117,19 @@ void emitHeader(std::string& out, const Program& program, int& sequence) {
     sequence += kSequenceStep;
 }
 
-// The tool change repeats for every operation, even when the tool number did
-// not change: the block owns its tool and a program is assembled from
-// independent cards (PLAN-QUICKPROG, 5, item 8). The order is the one of the
-// reference post: UI_TOOL, then M6, then spindle, then coolant.
-void emitOperationStart(std::string& out, const Operation& operation, int& sequence,
-                        const std::string& uuid) {
+// The preamble of one operation, the single place of the tool-change rule:
+//
+//   * the tool differs from the one the machine holds -> park at safe Z, then
+//     T.. M6;
+//   * the tool is the same -> no T/M6 at all: the machine already holds it;
+//   * the spindle was off or its speed differs -> S.. M3;
+//   * the coolant is on and was off -> M8.
+//
+// The order is the one of the reference post: UI_TOOL, park, change, spindle,
+// coolant. The park before the change is mandatory: M6 releases the tool, and
+// a tool inside the material is a crash whatever the machine's own retract does.
+void emitOperationStart(std::string& out, const Program& program, const Operation& operation,
+                        int& sequence, const std::string& uuid, EmitState& state) {
     tag(out, "UI_OP: " + commentSafe(operation.id.empty() ? std::string("Операция") : operation.id));
     // The viewer takes the label after "UI_OP:" and splits stages there; the
     // stable identifier travels in its own tag, so a stale preview can be told
@@ -122,26 +137,44 @@ void emitOperationStart(std::string& out, const Operation& operation, int& seque
     tag(out, "UI_STAGE: " + uuid);
     tag(out, "UI_TOOL: T=" + std::to_string(operation.tool.number) + " TYPE=" +
                  toolType(operation.geometry) + " D=" + num(operation.tool.diameterMm));
-    line(out, numberedBlock(sequence, "T" + std::to_string(operation.tool.number) + " M6"));
-    sequence += kSequenceStep;
-    line(out, numberedBlock(sequence, "S" + num(operation.cutting.spindleRpm) + " M3"));
-    sequence += kSequenceStep;
-    // Coolant before any move; the header already parked the tool at safe Z,
-    // so there is nothing to repeat here (7.1 writes M8 into the header).
-    if (operation.coolant != Coolant::Off) {
+    if (state.tool != operation.tool.number) {
+        line(out, numberedBlock(sequence, "G0 Z" + coord(program.safeZ) + " T" +
+                                               std::to_string(operation.tool.number) + " M6"));
+        sequence += kSequenceStep;
+        state.tool = operation.tool.number;
+    }
+    // M5 of the previous operation stopped the spindle: a speed of zero in the
+    // state means "has to start" even when the number is the same.
+    if (state.spindleRpm <= 0.0 || std::fabs(state.spindleRpm - operation.cutting.spindleRpm) > kEps) {
+        line(out, numberedBlock(sequence, "S" + num(operation.cutting.spindleRpm) + " M3"));
+        sequence += kSequenceStep;
+        state.spindleRpm = operation.cutting.spindleRpm;
+    }
+    // Coolant before any move; the header already parked the tool at safe Z.
+    if (operation.coolant != Coolant::Off && !state.coolantOn) {
         line(out, numberedBlock(sequence, "M8"));
         sequence += kSequenceStep;
     }
+    // M9 at the end of the previous operation switched the coolant off, so the
+    // state of the machine at this block is "off" unless the header turned it
+    // on - it does not.
+    state.coolantOn = operation.coolant != Coolant::Off;
 }
 
-// The operation leaves at safe Z already (the planner ends every block there),
-// so the trailer writes the parking move only when a move took the tool
-// elsewhere: a second "G0 Z5." would be a no-op block.
-void emitOperationEnd(std::string& out, const Program& program, int& sequence, const Point3& parked) {
+// The operation leaves at safe Z already when its planner ends there; a tag
+// without moves leaves the tool wherever the header parked it. The trailer
+// always writes M9/M5 and parks the tool: the next tool change must not find
+// the tool inside the material.
+void emitOperationEnd(std::string& out, const Program& program, int& sequence, const Point3& parked,
+                      EmitState& state) {
     line(out, numberedBlock(sequence, "M9"));
     sequence += kSequenceStep;
     line(out, numberedBlock(sequence, "M5"));
     sequence += kSequenceStep;
+    // M9 and M5 stop both: the next operation has to start its own spindle and
+    // its own coolant.
+    state.coolantOn = false;
+    state.spindleRpm = 0.0;
     if (std::fabs(parked.z - program.safeZ) > kEps) {
         line(out, numberedBlock(sequence, "G0 Z" + coord(program.safeZ)));
         sequence += kSequenceStep;
@@ -161,6 +194,7 @@ std::string emitProgram(const Program& program, const Path& path) {
 
     int sequence = 10;
     emitHeader(out, program, sequence);
+    EmitState state;
     for (std::size_t i = 0; i < path.operations.size(); ++i) {
         const OperationSpan& span = path.operations[i];
         const Operation& operation = program.operations[static_cast<std::size_t>(span.opIndex)];
@@ -168,14 +202,15 @@ std::string emitProgram(const Program& program, const Path& path) {
         // the move ranges stay contiguous and no move is printed twice.
         const std::size_t last =
             i + 1 < path.operations.size() ? path.operations[i + 1].first : path.moves.size();
-        emitOperationStart(out, operation, sequence, operationUuid(path.uuid, static_cast<int>(i)));
+        emitOperationStart(out, program, operation, sequence,
+                           operationUuid(path.uuid, static_cast<int>(i)), state);
         // The header, the tool change and the coolant block all leave the tool
         // at safe Z: only Z is known, XY is not, and a move that shares X and
         // Y with this virtual point is not treated as a no-op.
         const Point3 park{std::nan(""), std::nan(""), program.safeZ};
-        emitMoves(out, path, span.first, last, sequence, park);
+        emitMoves(out, path, span.first, last, sequence, park, state);
         const Point3 end = span.first < last ? path.moves[last - 1].to : park;
-        emitOperationEnd(out, program, sequence, end);
+        emitOperationEnd(out, program, sequence, end, state);
     }
     emitFooter(out, sequence);
     return out;

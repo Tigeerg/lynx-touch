@@ -95,6 +95,10 @@ struct PathBuilder {
 // one contract and the dispatch stays a visitor over the variant.
 void planFace(const Program& program, const Operation& operation, PathBuilder& out);
 
+// Rectangular pocket planner (`path_pocket.h` declares it next to its stats
+// and warnings); the same contract as planFace.
+void planRectPocket(const Program& program, const Operation& operation, PathBuilder& out);
+
 // Filled by the face planner for the console summary and the checks: the
 // numbers are the planner's own, not recomputed by the caller.
 struct FaceStats {
@@ -113,8 +117,8 @@ struct FaceStats {
 };
 
 // Operation -> moves. Disabled operations are skipped; a valid document is
-// assumed (validate first). The face operation is the only planned kind so far;
-// the other kinds plan nothing and say so through an empty span.
+// assumed (validate first). The face and the rectangular pocket are the planned
+// kinds so far; the other kinds plan nothing and say so through an empty span.
 Path planPath(const Program& program);
 
 // Face layout numbers for one operation: strips, passes, step depths. Uses the

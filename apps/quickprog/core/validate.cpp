@@ -6,7 +6,8 @@
 //
 // Coverage of the row "operation is not entirely outside the stock": the
 // strip layout of a face operation covers the stock rectangle by construction,
-// so only the explicit Z placement is checked here. The pocket and drilling
+// so only the explicit Z placement is checked here. The pocket checks that the
+// tool body with the allowance fits inside its rectangle; the drilling
 // operations of the next slices add their XY containment check; there is no
 // silent pass for them because they are not planned yet either.
 #include "core/validate.h"
@@ -170,9 +171,53 @@ void checkFaceGeometry(const Program& program, const Operation& op, std::vector<
     }
 }
 
+// Pocket: the tool body with the finish allowance has to fit the pocket, else
+// the planner has no trajectory to find and the operator would get a path that
+// cuts the wall or nothing at all. The side that fails is named with its
+// numbers, so the form points at the field: the diameter or the allowance.
+void checkPocketGeometry(const Operation& op, std::vector<Check>& out) {
+    const RectPocketOp& pocket = std::get<RectPocketOp>(op.geometry);
+    const Rect& rect = pocket.rect;
+    if (rect.w <= 0.0 || rect.h <= 0.0) {
+        add(out, "geometry", "Карман вырожден: ширина или высота не больше нуля.");
+        return;
+    }
+    if (pocket.finishAllowanceMm < 0.0) {
+        add(out, "geometry", "Припуск " + fmt(pocket.finishAllowanceMm) +
+                                 " мм отрицательный: траектория выйдет за контур кармана.");
+        return;
+    }
+    if (pocket.cornerRadiusMm < 0.0) {
+        add(out, "geometry", "Радиус угла " + fmt(pocket.cornerRadiusMm) +
+                                 " мм не может быть отрицательным.");
+        return;
+    }
+    const double shortSide = std::fmin(rect.w, rect.h);
+    if (pocket.cornerRadiusMm > shortSide / 2.0 + 1e-9) {
+        add(out, "geometry", "Радиус угла " + fmt(pocket.cornerRadiusMm) +
+                                 " мм больше половины короткой стороны: такого кармана нет.");
+        return;
+    }
+    const double diam = op.tool.diameterMm;
+    const double allowance = pocket.finishAllowanceMm;
+    const double inset = diam / 2.0 + allowance;
+    // Strict: at equal sizes the inner rectangle is a line and nothing is cut.
+    if (inset + 1e-9 >= shortSide / 2.0) {
+        add(out, "geometry", "Фреза ф" + fmt(diam) + " мм и припуск " + fmt(allowance) +
+                                 " мм не влезают в карман " + fmt(rect.w) + "x" + fmt(rect.h) +
+                                 " мм: нужно не больше " + fmt(shortSide / 2.0) +
+                                 " мм от стенки, а получается " + fmt(inset) +
+                                 " мм. Возьмите фрезу поменьше.");
+    }
+}
+
 void checkGeometry(const Program& program, const Operation& op, std::vector<Check>& out) {
     if (std::holds_alternative<FaceOp>(op.geometry)) {
         checkFaceGeometry(program, op, out);
+        return;
+    }
+    if (std::holds_alternative<RectPocketOp>(op.geometry)) {
+        checkPocketGeometry(op, out);
         return;
     }
     add(out, "geometry", "Операция этого типа пока не планируется: проверка геометрии появится вместе с ней.");

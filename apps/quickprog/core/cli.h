@@ -17,4 +17,10 @@ constexpr int kExitBadArgs = 2;
 // Writes the whole text to `path`; false on a short write or a close error.
 bool writeFile(const std::string& path, const std::string& text);
 
+// Reads the whole file into `text`; false when it cannot be opened or read.
+// The text is bytes, not decoded UTF-8: the .qprog and .ngc are UTF-8 by
+// construction, and a byte-level copy keeps a broken file broken instead of
+// silently replacing the bad bytes.
+bool readFile(const std::string& path, std::string& text);
+
 } // namespace qp

@@ -116,7 +116,13 @@ struct Planner {
         path.bbox = builder.bbox;
         path.lengthMm += builder.lengthMm;
     }
-    void operator()(const RectPocketOp&) { begin(); }
+    void operator()(const RectPocketOp&) {
+        PathBuilder builder(path.moves);
+        builder.bbox = path.bbox;
+        planRectPocket(program, program.operations[static_cast<std::size_t>(opIndex)], builder);
+        path.bbox = builder.bbox;
+        path.lengthMm += builder.lengthMm;
+    }
     void operator()(const CirclePocketOp&) { begin(); }
     void operator()(const DrillHoleOp&) { begin(); }
     void operator()(const DrillGridOp&) { begin(); }

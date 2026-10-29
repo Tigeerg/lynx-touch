@@ -36,6 +36,8 @@ struct Modal {
     double x = 0.0;
     double y = 0.0;
     double z = 0.0;
+    // The feed is modal across operations too: it comes from EmitState and
+    // goes back there, so the next operation does not repeat an unchanged F.
     bool hasFeed = false;
     double feed = 0.0;
     bool hasMotion = false;
@@ -95,12 +97,16 @@ std::string numberedBlock(int sequence, const std::string& words) {
 }
 
 void emitMoves(std::string& out, const Path& path, std::size_t first, std::size_t last,
-               int& sequence, const Point3& park) {
+               int& sequence, const Point3& park, EmitState& state) {
     // The header parks the tool at safe Z and says nothing about X and Y: only
-    // Z is known to the modal state at the start of a block.
+    // Z is known to the modal state at the start of a block. The motion mode is
+    // not known either: M5 ended the previous operation, so the first move of
+    // this one writes its own G0/G1.
     Modal modal;
     modal.hasZ = true;
     modal.z = park.z;
+    modal.hasFeed = state.hasFeed;
+    modal.feed = state.feed;
     Point3 previous = park;
     for (std::size_t i = first; i < last; ++i) {
         const Move& move = path.moves[i];
@@ -111,6 +117,8 @@ void emitMoves(std::string& out, const Path& path, std::size_t first, std::size_
         sequence += kSequenceStep;
         previous = move.to;
     }
+    state.hasFeed = modal.hasFeed;
+    state.feed = modal.feed;
 }
 
 } // namespace qp

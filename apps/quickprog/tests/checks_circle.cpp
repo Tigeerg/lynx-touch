@@ -23,47 +23,20 @@
 #include <string>
 #include <vector>
 
-#include "core/circle_pocket_options.h"
 #include "core/emit.h"
 #include "core/ops.h"
 #include "core/path.h"
 #include "core/path_circle_pocket.h"
-#include "core/validate.h"
 
+#include "tests/checks.h"
+#include "tests/checks_circle_ops.h"
 #include "tests/harness.h"
 
 namespace circle_checks {
 
 using qpcheck::check;
 using qpcheck::contains;
-using qpcheck::demoProgram;
 using qpcheck::near;
-
-// F20 pocket in the centre of the stock, an 8 mm end mill, no allowance.
-qp::Operation circleOp() {
-    qp::Operation op;
-    op.id = "Круглый карман";
-    op.tool.number = 4;
-    op.tool.diameterMm = 8.0;
-    op.cutting.spindleRpm = 5968.0;
-    op.cutting.feedMmMin = 859.0;
-    op.cutting.plungeFeedMmMin = 215.0;
-    op.topZ = 0.0;
-    op.depthMm = 1.0;
-    op.stepDownMm = 1.0;
-    qp::CirclePocketOp pocket;
-    pocket.circle = qp::Circle{0.0, 0.0, 10.0};
-    pocket.finishAllowanceMm = 0.0;
-    op.geometry = pocket;
-    return op;
-}
-
-qp::Program circleProgram() {
-    qp::Program program = demoProgram();
-    program.name = "CIRCLE DEMO";
-    program.operations.push_back(circleOp());
-    return program;
-}
 
 // The layout numbers: two turns, a step of 3 mm, the outer radius 6 mm.
 void checkCircleLayout() {
@@ -189,69 +162,13 @@ void checkCircleEmit() {
 }
 
 // A mill that does not fit: D/2 + allowance >= pocket radius. The check names
-// the geometry field with both numbers; the planner plans nothing.
-void checkCircleTooBigTool() {
-    qp::Program program = circleProgram();
-    qp::Operation& op = program.operations.front();
-    op.tool.diameterMm = 20.0;
-    std::get<qp::CirclePocketOp>(op.geometry).finishAllowanceMm = 1.0;
-    const std::vector<qp::Check> problems = qp::validate(program);
-    bool named = false;
-    std::string reason;
-    for (const qp::Check& c : problems) {
-        if (c.field == "geometry" && c.reason.find("не влезают") != std::string::npos) {
-            named = true;
-            reason = c.reason;
-        }
-    }
-    check(named, "circle.tool_too_big", "an 11 mm inset in a F20 pocket must be refused");
-    check(reason.find("20") != std::string::npos && reason.find("11") != std::string::npos,
-          "circle.tool_too_big_text",
-          "the reason must name the pocket diameter and the inset, got '" + reason + "'");
-    const qp::CircleStats stats = qp::circleStats(program, program.operations.front());
-    check(!stats.fits && stats.turns == 0, "circle.tool_too_big_no_moves",
-          "the planner must not plan a pocket the tool does not fit");
-}
-
-// `--op circle-pocket`: the defaults of the help text, the shape words and the
-// usage errors.
-void checkCirclePocketArgs() {
-    {
-        qp::CirclePocketArgs args;
-        const std::vector<std::string> words = {"--op", "circle-pocket", "c.ngc"};
-        check(qp::parseCirclePocketArgs(words, 2, args) && args.output == "c.ngc",
-              "circle_args.output", "the bare word must be the output file");
-        check(args.tool == 1 && near(args.diameter, 10.0) && near(args.diameterPocket, 20.0),
-              "circle_args.defaults", "the defaults must be T1, D10, a F20 pocket");
-    }
-    {
-        qp::CirclePocketArgs args;
-        const std::vector<std::string> words = {
-            "--op", "circle-pocket", "--x", "-5", "--y", "7", "--pocket-dia", "32",
-            "--allowance", "0.3", "--depth", "4", "--step-down", "2", "c2.ngc"};
-        const bool ok = qp::parseCirclePocketArgs(words, 2, args);
-        check(ok && near(args.x, -5.0) && near(args.y, 7.0) && near(args.diameterPocket, 32.0) &&
-                  near(args.finishAllowance, 0.3) && near(args.depth, 4.0),
-              "circle_args.shape", "every shape word must land in its field");
-    }
-    {
-        qp::CirclePocketArgs args;
-        const std::vector<std::string> noOut = {"--op", "circle-pocket", "--depth", "2"};
-        check(!qp::parseCirclePocketArgs(noOut, 2, args), "circle_args.no_output",
-              "no output file must fail");
-        const std::vector<std::string> badKey = {"--op", "circle-pocket", "--size", "5", "c.ngc"};
-        check(!qp::parseCirclePocketArgs(badKey, 2, args), "circle_args.unknown_key",
-              "a key of another operation must fail");
-    }
-}
 
 } // namespace circle_checks
 
+// Runs the arc cases of the circular pocket.
 void runCircleChecks() {
     circle_checks::checkCircleLayout();
     circle_checks::checkCircleArcs();
     circle_checks::checkCircleHalfArcs();
     circle_checks::checkCircleEmit();
-    circle_checks::checkCircleTooBigTool();
-    circle_checks::checkCirclePocketArgs();
 }

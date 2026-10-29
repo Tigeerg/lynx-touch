@@ -6,29 +6,26 @@
 // unsupported schema are errors with the line number or the field name; the
 // default of the model is written out by `serialize.cpp`, so the reader never
 // applies a default of its own.
+//
+// This file keeps the line loop and the assembly of the document: the header
+// keys are read by serialize_read_fields.cpp, the kind word and the key table
+// of an operation by serialize_read_op.cpp.
 #include "core/serialize.h"
 
-#include <cstdio>
 #include <string>
-#include <utility>
-#include <variant>
 #include <vector>
 
-#include "core/path_drill.h"
 #include "core/qprog_reader.h"
 #include "core/serialize_internal.h"
+#include "core/serialize_read_fields.h"
+#include "core/serialize_read_op.h"
 
 namespace qp {
 
 ParseOutcome parseProgram(const std::string& text) {
     ParseOutcome out;
     Program program;
-    bool hasSchema = false;
-    bool hasName = false;
-    bool hasUnits = false;
-    bool hasWcs = false;
-    bool hasStock = false;
-    bool hasSafeZ = false;
+    HeaderSeen header;
     std::vector<std::string> seen;
     // The keys of the operation being read, with the `op.` prefix: the writer
     // writes `op.enabled`, the reader checks the same spelling.
@@ -106,7 +103,7 @@ ParseOutcome parseProgram(const std::string& text) {
         }
 
         if ((isOpHead || isOpKey) && !inOp) {
-            if (!hasSchema) {
+            if (!header.schema) {
                 fail(where + "документ начинается не с 'schema 1'.");
                 return out;
             }
@@ -135,21 +132,8 @@ ParseOutcome parseProgram(const std::string& text) {
             }
             op = Operation();
             opSeen.clear();
-            const std::string& kind = words[1];
-            if (kind == "face") {
-                op.geometry = FaceOp();
-            } else if (kind == "pocket") {
-                op.geometry = RectPocketOp();
-            } else if (kind == "circle") {
-                op.geometry = CirclePocketOp();
-            } else if (kind == "drill") {
-                op.geometry = DrillHoleOp();
-            } else if (kind == "drill-grid") {
-                op.geometry = DrillGridOp();
-            } else if (kind == "drill-circle") {
-                op.geometry = DrillCircleOp();
-            } else {
-                fail(where + "неизвестный вид операции '" + kind + "'.");
+            if (!readOpHead(words[1], op.geometry, where, out.error)) {
+                out.ok = false;
                 return out;
             }
             op.id = unquoteText(restAfter(line, 2));
@@ -164,19 +148,7 @@ ParseOutcome parseProgram(const std::string& text) {
             }
             opSeen.push_back(key);
             const std::string sub = key.substr(3);
-            // The set of keys the kind takes: a key of another kind is an
-            // unknown field, not a silently ignored line.
-            bool known = false;
-            for (const std::string& k : commonKeys()) {
-                if (k == sub) { known = true; }
-            }
-            for (const std::string& k : keysOf(op.geometry)) {
-                if (k == sub) { known = true; }
-            }
-            // The R plane of a drill is optional: a file without it means "the
-            // default R", the same as the document of a form that never set it.
-            if (!known && sub == "r" && isDrill(op.geometry)) { known = true; }
-            if (!known) {
+            if (!opKeyKnown(op.geometry, sub)) {
                 fail(where + "неизвестное поле '" + key + "' для операции этого вида.");
                 return out;
             }
@@ -187,75 +159,21 @@ ParseOutcome parseProgram(const std::string& text) {
             continue;
         }
 
-        // Header keys.
+        // Header keys: the arity and the field are known to
+        // serialize_read_fields.cpp, the loop only knows that the key is not
+        // an operation key.
         seen.push_back(key);
-        if (key == "schema") {
-            if (words.size() != 2 || !parseQprogInt(words[1], program.schema)) {
-                fail(where + "schema ждёт целое число.");
-                return out;
-            }
-            if (program.schema != 1) {
-                fail(where + "схема " + std::to_string(program.schema) + " не поддерживается: " +
-                     "эта версия читает схему 1.");
-                return out;
-            }
-            hasSchema = true;
-        } else if (key == "name") {
-            program.name = unquoteText(restAfter(line, 1));
-            hasName = true;
-        } else if (key == "units") {
-            if (words.size() != 2) {
-                fail(where + "units ждёт одно значение.");
-                return out;
-            }
-            program.units = words[1];
-            hasUnits = true;
-        } else if (key == "wcs") {
-            if (words.size() != 2) {
-                fail(where + "wcs ждёт одно значение.");
-                return out;
-            }
-            program.wcs = words[1];
-            hasWcs = true;
-        } else if (key == "stock" && !(words.size() == 2 && qprogNumber(words[1]))) {
-            double v[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-            bool ok = words.size() == 7;
-            for (int i = 0; ok && i < 6; ++i) {
-                ok = parseQprogNumber(words[static_cast<std::size_t>(i + 1)], v[i]);
-            }
-            if (!ok) {
-                fail(where + "stock ждёт шесть чисел: xmin ymin zmin xmax ymax zmax.");
-                return out;
-            }
-            program.stock.min = {v[0], v[1], v[2]};
-            program.stock.max = {v[3], v[4], v[5]};
-            hasStock = true;
-        } else if (key == "safeZ") {
-            if (words.size() != 2 || !parseQprogNumber(words[1], program.safeZ)) {
-                fail(where + "safeZ ждёт число.");
-                return out;
-            }
-            hasSafeZ = true;
-        } else {
-            fail(where + "неизвестное поле '" + key + "'.");
+        if (!readHeaderKey(program, header, key, line, words, where, out.error)) {
+            out.ok = false;
             return out;
         }
         if (end == std::string::npos) { break; }
     }
     if (!closeOp(lineNo)) { return out; }
 
-    // The required header keys are named one by one: the message has to say
-    // which field is missing, not "broken file".
-    const std::vector<std::pair<bool, const char*>> required = {
-        {hasSchema, "schema"}, {hasName, "name"}, {hasUnits, "units"},
-        {hasWcs, "wcs"},       {hasStock, "stock"}, {hasSafeZ, "safeZ"}};
-    for (const auto& entry : required) {
-        const bool present = entry.first;
-        const char* field = entry.second;
-        if (!present) {
-            fail(std::string("нет обязательного поля '") + field + "'.");
-            return out;
-        }
+    if (!headerComplete(header, out.error)) {
+        out.ok = false;
+        return out;
     }
     if (program.operations.empty()) {
         fail("нет ни одной операции: в документе должен быть хотя бы один 'op'.");

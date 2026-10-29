@@ -18,6 +18,11 @@ namespace qp {
 // Step of the block numbers, the one of the reference post file.
 constexpr int kSequenceStep = 5;
 
+// The tag body number: "%g" with a trailing dot ("XMIN=-20.", "D=10."), the
+// spelling of the reference files. The dot is kept so that the byte-for-byte
+// goldens of later slices compare against the reference format.
+std::string num(double value);
+
 // Coordinates of moves: three digits after the decimal point, always.
 std::string coord(double value);
 

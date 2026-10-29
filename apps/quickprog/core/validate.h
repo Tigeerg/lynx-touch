@@ -27,7 +27,8 @@ struct Check {
 // first problem and a test can compare the first field.
 std::vector<Check> validate(const Program& program);
 
-// True when `text` is one of G54..G59.
+// True when `text` is one of G54..G59. Defined once, in core/emit_frame.cpp:
+// the header of the file and the rule group check the same list.
 bool validWcs(const std::string& text);
 
 } // namespace qp

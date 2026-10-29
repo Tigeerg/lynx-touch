@@ -1,8 +1,9 @@
 // core/qprog_reader.h - the value reader of one `op.*` line of a .qprog file.
 //
-// `serialize_read.cpp` owns the order of the keys and the table of the kinds;
-// this function owns the arity of a key and the field it fills. It is internal
-// to the library: the console and the check call `parseProgram`, not this.
+// `serialize_read.cpp` owns the order of the keys and `serialize_read_op.cpp`
+// the table of the kinds; this function owns the arity of a key and the field
+// it fills. It is internal to the library: the console and the check call
+// `parseProgram`, not this.
 #pragma once
 
 #include <string>

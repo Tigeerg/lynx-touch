@@ -29,6 +29,7 @@
 #include <string>
 #include <variant>
 
+#include "core/emit_frame.h"
 #include "core/emit_internal.h"
 #include "core/path_drill.h"
 #include "core/version.h"
@@ -38,43 +39,7 @@ namespace {
 
 constexpr double kEps = 1e-6;
 
-// The viewer's tag body ends at ')' or end of line, and the reference files
-// write numbers with a trailing dot ("XMIN=-20."). The dot is kept so that the
-// byte-for-byte goldens of later slices compare against the reference format.
-std::string num(double value) {
-    char buf[40];
-    std::snprintf(buf, sizeof(buf), "%g", value);
-    std::string out(buf);
-    const bool hasExponent = out.find('e') != std::string::npos;
-    const bool isFinite = out.find("inf") == std::string::npos && out.find("nan") == std::string::npos;
-    if (out.find('.') == std::string::npos && !hasExponent && isFinite) { out += '.'; }
-    return out;
-}
-
-// G-code comments may not carry '(' or ')': an unbalanced bracket ends the
-// comment early and the rest of the line becomes program words.
-std::string commentSafe(const std::string& text) {
-    std::string out;
-    out.reserve(text.size());
-    for (const char c : text) {
-        if (c == '(' || c == ')') {
-            out += ' ';
-        } else if (c != '\n' && c != '\r') {
-            out += c;
-        }
-    }
-    return out;
-}
-
-// The viewer labels the stage by tool family; the demo has milling and drilling
-// operations only, so the family follows from the geometry.
-std::string toolType(const OperationGeometry& geometry) {
-    const bool milling = std::holds_alternative<FaceOp>(geometry) ||
-                         std::holds_alternative<RectPocketOp>(geometry) ||
-                         std::holds_alternative<CirclePocketOp>(geometry);
-    return milling ? "FLAT" : "DRILL";
-}
-
+// One line of the file; the block builders return their text without it.
 void line(std::string& out, const std::string& text) {
     out += text;
     out += '\n';
@@ -83,39 +48,6 @@ void line(std::string& out, const std::string& text) {
 // Comment for the viewer: the same "(TAG: ...)" form as the reference files.
 void tag(std::string& out, const std::string& body) {
     line(out, "(" + body + ")");
-}
-
-bool validWcs(const std::string& wcs) {
-    return wcs == "G54" || wcs == "G55" || wcs == "G56" || wcs == "G57" || wcs == "G58" ||
-           wcs == "G59";
-}
-
-void emitHeader(std::string& out, const Program& program, int& sequence) {
-    const StockBox& stock = program.stock;
-
-    line(out, "%");
-    tag(out, "MACHINE");
-    tag(out, "  MODEL: " + commentSafe(program.name));
-    tag(out, "  GENERATOR: " + std::string(kGeneratorName) + " " + kGeneratorVersion);
-    tag(out, "UI_ORIGIN: X0. Y0. Z0.");
-    tag(out, "UI_STOCK: XMIN=" + num(stock.min.x) + " XMAX=" + num(stock.max.x) +
-                 " YMIN=" + num(stock.min.y) + " YMAX=" + num(stock.max.y) +
-                 " ZMIN=" + num(stock.min.z) + " ZMAX=" + num(stock.max.z));
-
-    line(out, numberedBlock(sequence, "G21 G90 G94 G17 G40 G49 G80"));
-    sequence += kSequenceStep;
-    // A silent fallback to G54 would cut at the wrong offset. The document is
-    // validated before emitting; the comment names the problem in the file
-    // instead of hiding it.
-    if (!validWcs(program.wcs)) {
-        tag(out, "  WCS INVALID: " + commentSafe(program.wcs) + " - G54 USED");
-    }
-    line(out, numberedBlock(sequence, validWcs(program.wcs) ? program.wcs : std::string("G54")));
-    sequence += kSequenceStep;
-    // Park above the stock before the first tool change: the tool stays out of
-    // the material whatever Z the previous program left.
-    line(out, numberedBlock(sequence, "G0 Z" + coord(program.safeZ)));
-    sequence += kSequenceStep;
 }
 
 // The preamble of one operation, the single place of the tool-change rule:
@@ -185,11 +117,6 @@ void emitOperationEnd(std::string& out, const Program& program, const Operation&
         line(out, numberedBlock(sequence, "G0 Z" + coord(program.safeZ)));
         sequence += kSequenceStep;
     }
-}
-
-void emitFooter(std::string& out, int& sequence) {
-    line(out, numberedBlock(sequence, "M30"));
-    line(out, "%");
 }
 
 } // namespace

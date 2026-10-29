@@ -37,6 +37,7 @@ endif()
 add_library(quickprog_core STATIC
     core/cli.cpp
     core/emit.cpp
+    core/emit_frame.cpp
     core/emit_moves.cpp
     core/face_options.cpp
     core/option_words.cpp
@@ -52,9 +53,13 @@ add_library(quickprog_core STATIC
     core/path_drill.cpp
     core/serialize.cpp
     core/serialize_read.cpp
+    core/serialize_read_fields.cpp
+    core/serialize_read_op.cpp
     core/serialize_shared.cpp
     core/summary.cpp
     core/validate.cpp
+    core/validate-common.cpp
+    core/validate-shape.cpp
 )
 target_include_directories(quickprog_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -117,15 +122,31 @@ set_target_properties(quickprog PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${QP_OUTPUT
 
 # The cases are split by meaning; every file opens its own anonymous
 # namespace, and quickprog_check.cpp declares and calls them.
+# The runners are declared in tests/checks.h; a split file keeps a pair of
+# cases of one slice apart (the moves and the tool changes, the layout and the
+# rules of a pocket) and the ids of the cases do not move with it.
 add_executable(quickprog_check
     tests/quickprog_check.cpp
-    tests/checks_emit.cpp
-    tests/checks_face.cpp
-    tests/checks_pocket.cpp
-    tests/checks_circle.cpp
-    tests/checks_drill.cpp
-    tests/checks_summary.cpp
+    tests/checks_emit_header.cpp
+    tests/checks_emit_moves.cpp
+    tests/checks_emit_face.cpp
+    tests/checks_emit_tools.cpp
     tests/checks_emit_coolant.cpp
+    tests/checks_face.cpp
+    tests/checks_pocket_ops.cpp
+    tests/checks_pocket_layout.cpp
+    tests/checks_pocket_raster.cpp
+    tests/checks_pocket_rules.cpp
+    tests/checks_pocket_qprog.cpp
+    tests/checks_circle_ops.cpp
+    tests/checks_circle.cpp
+    tests/checks_circle_rules.cpp
+    tests/checks_drill_ops.cpp
+    tests/checks_drill_layout.cpp
+    tests/checks_drill_cycle.cpp
+    tests/checks_drill_rules.cpp
+    tests/checks_summary.cpp
+    tests/checks_summary_rules.cpp
     tests/checks_qprog.cpp
     tests/checks_roundtrip.cpp
     tests/roundtrip_fixtures.h

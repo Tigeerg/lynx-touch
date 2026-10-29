@@ -94,6 +94,19 @@ bool samePoint(const Point3& a, const Point3& b) {
 
 } // namespace
 
+// The tag body number: "%g" with a trailing dot ("XMIN=-20.", "D=10."), the
+// spelling of the reference files. The dot is kept so that the byte-for-byte
+// goldens of later slices compare against the reference format.
+std::string num(double value) {
+    char buf[40];
+    std::snprintf(buf, sizeof(buf), "%g", value);
+    std::string out(buf);
+    const bool hasExponent = out.find('e') != std::string::npos;
+    const bool isFinite = out.find("inf") == std::string::npos && out.find("nan") == std::string::npos;
+    if (out.find('.') == std::string::npos && !hasExponent && isFinite) { out += '.'; }
+    return out;
+}
+
 std::string coord(double value) {
     char buf[40];
     std::snprintf(buf, sizeof(buf), "%.3f", value);

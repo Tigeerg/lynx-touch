@@ -61,7 +61,8 @@
   через реестр), `subsystem.ts` (листовой слой действий: `Action`, `Result`, `Dispatch`, запись реестра)
   и подсистемы рядом (`ladder.ts` — образец: фасад над каталогом `ladder/` — `ladder-data.ts` (данные и
   предикаты), `ladder-parse.ts` (разбор сравнения), `ladder-reducer.ts` (редьюсер редактора), `ladder-forms.ts`
-  (форма элемента), `ladder-schemes.ts` (менеджер схем), `ladder/types.ts` (типы ПЛК); `types.ts` держит
+  (форма элемента), `ladder-schemes.ts` (менеджер схем), `ladder-nav.ts` (курсор и навигация по цепям),
+  `ladder/types.ts` (типы ПЛК); `types.ts` держит
   `MachineState` и реэкспортирует типы ПЛК как прежняя точка входа; `ladder-scan.ts` — скан ПЛК, `nav.ts`,
   `cycle.ts` — фасад над каталогом `cycle/` (`cycle-exec.ts` — исполнение кадра, `cycle-actions.ts` —
   объединение действий, `cycle-reducer.ts` — редьюсер), `control.ts`, `service.ts`), `types.ts`, `coords.ts`,
@@ -75,7 +76,9 @@
   (API каталога: типы `ParamDef` и разделы),
   `params/` (таблицы разделов, по файлу на раздел: `def.ts`, `display.ts`, `system.ts`, `motion.ts`,
   `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`; отдельный каталог — чтобы таблицы не смешивались с
-  логикой), `hal.ts` (справочник пинов HAL), `messages.ts`, `time.ts` (отметки времени из экшена), `toolpath.ts`, `tool-check.ts`, `probe.ts`,
+  логикой), `service-sections.ts` (разделы вкладки «Сервис»), `keys-route.ts` (маршрут клавиши к действию),
+  `hal.ts` (справочник пинов HAL), `messages.ts`, `time.ts` (отметки времени из экшена), `toolpath.ts`,
+  `tool-check.ts`, `probe.ts` (замер щупом; таблица циклов и её геометрия — `probe-shapes.ts`),
   `mpg.ts`, `test.ts` (ПРОГОН: четыре способа прогона — симуляция, холостой, по шагам, по маховику),
   `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, `tool-measure.ts` (замер инструмента по
   датчику), `machine-branches.ts` (собственные ветки машины: аварии, справка, тема), `theme`-логика.

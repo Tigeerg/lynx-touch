@@ -64,7 +64,8 @@ Layers, top to bottom:
   subsystems through a registry), `subsystem.ts` (the action layer's leaf: `Action`, `Result`, `Dispatch`,
   the registry entry), and the subsystems next to it (`ladder.ts` is the sample: a facade over the `ladder/`
   directory — `ladder-data.ts` (data and predicates), `ladder-parse.ts` (comparison parse), `ladder-reducer.ts`
-  (editor reducer), `ladder-forms.ts` (element form), `ladder-schemes.ts` (scheme manager), `ladder/types.ts`
+  (editor reducer), `ladder-forms.ts` (element form), `ladder-schemes.ts` (scheme manager),
+  `ladder-nav.ts` (cursor and rung navigation), `ladder/types.ts`
   (PLC types); `types.ts` keeps `MachineState` and re-exports the PLC types as the former entry point),
   `ladder-scan.ts` is the PLC scan,
   `nav.ts`, `cycle.ts` — a facade over the `cycle/` directory (`cycle-exec.ts` is the block execution,
@@ -80,8 +81,9 @@ Layers, top to bottom:
   the sections), `params/` (the section tables, one file per section: `def.ts`, `display.ts`, `system.ts`,
   `motion.ts`, `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`; a directory of its own so the tables stay
   apart from the logic), `hal.ts` (the HAL pin reference), `messages.ts`, `time.ts` (the stamps from the
-  action), `toolpath.ts`, `tool-check.ts`,
-  `probe.ts`, `mpg.ts`, `test.ts` (PROGON: four run modes — simulation, dry, step, handwheel),
+  action), `toolpath.ts`, `tool-check.ts`, `service-sections.ts` (the Service tab sections), `keys-route.ts`
+  (the key to action route), `probe.ts` (probing; the cycle table and its geometry — `probe-shapes.ts`),
+  `mpg.ts`, `test.ts` (PROGON: four run modes — simulation, dry, step, handwheel),
   `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, `tool-measure.ts` (tool measuring
   with the setter), `machine-branches.ts` (the machine's own keys: alarms, help, theme), theme logic.
 * `public/` — images and static assets of the project.

@@ -21,7 +21,7 @@ import {
   knownLabel,
 } from './ladder-data'
 import { compareText, parseCompare } from './ladder-parse'
-import { ladderCursor, pathContacts, withPathContacts } from './ladder-reducer'
+import { ladderCursor, pathContacts, withPathContacts } from './ladder-nav'
 import type { LadderAction } from './ladder-reducer'
 import { ladderSchemeReducer } from './ladder-schemes'
 

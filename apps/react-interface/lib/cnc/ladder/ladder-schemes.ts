@@ -1,13 +1,15 @@
 // The ladder scheme manager: the pick list, load and save of a scheme into the PLC, and the new,
 // copy, rename and remove commands. The editor's element cases live in ladder-reducer.ts and the
 // form cases in ladder-forms.ts; both hand the actions they do not handle here. The data and the
-// rung helpers come from ladder-data.ts and ladder-reducer.ts.
+// navigation helpers come from ladder-nav.ts, the new rung and the free address from
+// ladder-reducer.ts.
 import { clampIndex } from '../clamp'
 import { isBusy } from '../guards'
 import { formatStamp } from '../time'
 import type { Result } from '../subsystem'
 import { emptyMem, isLatchKind, coilKind } from './ladder-data'
-import { activeScheme, cloneRungs, freeAddr, newRung } from './ladder-reducer'
+import { activeScheme, cloneRungs } from './ladder-nav'
+import { freeAddr, newRung } from './ladder-reducer'
 import type { LadderAction } from './ladder-reducer'
 import type { CoilKind, LadderContact, LadderRung, LadderScheme, LadderState, MachineState } from '../types'
 

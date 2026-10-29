@@ -54,24 +54,19 @@ export const mpgMultiplier = (step: number) => Math.round(step / 0.001)
 export const JOG_FEEDS: readonly number[] = Object.freeze([100, 500, 1000, 3000])
 export const MDI_HISTORY_SIZE = 10
 
-// The service sections split by what they hold: a catalogue row each (ParamSection), a list
-// without catalogue rows (MonitorSection: the HAL monitor and the ladder scheme), or nothing to
-// list (HelpSection). The type carries the rule, so paramAt('hal', ...) does not compile instead
-// of quietly returning an empty row (CLAUDE.md, section 4).
-export type ParamSection = 'system' | 'linuxcnc' | 'motion' | 'joints' | 'pid' | 'mesa'
-export type MonitorSection = 'hal' | 'ladder'
-export type HelpSection = 'help'
-export type ServiceSection = ParamSection | MonitorSection | HelpSection
-
-const PARAM_SECTIONS = new Set<ServiceSection>(['system', 'linuxcnc', 'motion', 'joints', 'pid', 'mesa'])
-export const isParamSection = (section: ServiceSection): section is ParamSection => PARAM_SECTIONS.has(section)
-
-export const SERVICE_PAGES: ServiceSection[][] = [
-  ['system', 'linuxcnc', 'motion', 'joints', 'pid'],
-  ['mesa', 'hal', 'ladder', 'help'],
-]
-export const SERVICE_PAGE_LABEL = ['ЧПУ LinuxCNC', 'Оборудование']
-export const SERVICE_SECTIONS: ServiceSection[] = SERVICE_PAGES.flat()
+// The service tab data (sections, pages, their labels) lives in service-sections.ts; re-exported
+// here so the importers of './types' keep one entry point.
+export {
+  isParamSection,
+  SERVICE_PAGE_LABEL,
+  SERVICE_PAGES,
+  SERVICE_SECTIONS,
+  type HelpSection,
+  type MonitorSection,
+  type ParamSection,
+  type ServiceSection,
+} from './service-sections'
+import type { ServiceSection } from './service-sections'
 
 export type ServiceFocus = 'nav' | 'list'
 

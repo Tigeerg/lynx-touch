@@ -9,15 +9,15 @@ g64Q 0.01
 stopAfterOp on
 op pocket "Карман"
 op.enabled on
-op.tool 4 10
-op.spindle 4775
-op.feed 860
-op.plunge 215
+op.tool 3 8
+op.spindle 5968
+op.feed 1074
+op.plunge 269
 op.coolant flood
 op.topZ 0
-op.depth 3
-op.stepDown 1.5
-op.rect -25 -15 50 30
+op.depth 6
+op.stepDown 2.5
+op.rect -30 -20 60 40
 op.cornerRadius 0
-op.finishAllowance 0.5
-op.stepOver 65
+op.finishAllowance 0
+op.stepOver 70

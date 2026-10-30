@@ -1,0 +1,41 @@
+// The types of the quick-program overlay, apart from the reducer (PLAN-QUICKPROG, 6 and 7.4).
+//
+// `types.ts` at the root of `lib/cnc` holds `MachineState`, and its `cam` branch needs `CamState`.
+// Importing the reducer there would pull `cam.ts` and through it `files.ts` into the type graph of
+// every module that names the machine; the note in CLAUDE.md, section 2, wants the type layer
+// free of the logic. So the shapes of the overlay live here, with the types of the document and of
+// the form and no import of a value: the reducer imports them as well and re-exports `CamState`,
+// so the modules that say `./cam/cam` keep working.
+import type { OperationKind, QuickProgram } from './ops'
+import type { CamForm } from './form'
+
+/** The overlay state: the document, the form being edited, the last preview and the file written. */
+export interface CamState {
+  program: QuickProgram
+  // The document is built by `newProgram` (`defaults.ts`); naming its public type here is what lets
+  // this module stay a leaf of the type graph and keeps `newProgram` in one place.
+  /** The form of a new or edited operation; null when the operator is looking at the list. */
+  form: CamForm | null
+  /** The index of the operation the form edits; null while the form builds a new one. */
+  editing: number | null
+  /** The last problem of the form, bound to the field the operator sees. */
+  error: { field: string; reason: string } | null
+  /** The lines the preview draws: the emitted file of the current document. */
+  preview: string[] | null
+  /** The name of the file the last `CAM_SAVE` wrote; the next save replaces it. */
+  saved: string | null
+}
+
+/** The `CAM_*` actions of the registry; the reducer switches on them by kind. */
+export type CamAction =
+  | { type: 'CAM_OPEN' }
+  | { type: 'CAM_CLOSE' }
+  | { type: 'CAM_OP'; kind: OperationKind }
+  | { type: 'CAM_PARAM'; field: string; value: string }
+  | { type: 'CAM_CANCEL' }
+  | { type: 'CAM_ACCEPT' }
+  | { type: 'CAM_EDIT'; index: number }
+  | { type: 'CAM_REMOVE'; index: number }
+  | { type: 'CAM_TOGGLE'; index: number }
+  | { type: 'CAM_MOVE'; index: number; up: boolean }
+  | { type: 'CAM_SAVE'; at?: number }

@@ -21,34 +21,9 @@ import type { Result } from '../subsystem'
 import type { MachineState } from '../types'
 import type { CamForm } from './form'
 import { formOperation, formProblems, newForm, valuesOf } from './form'
+import type { CamAction, CamState } from './types'
 
-/** The overlay state: the document, the form being edited, the last preview and the file written. */
-export interface CamState {
-  program: ReturnType<typeof newProgram>
-  /** The form of a new or edited operation; null when the operator is looking at the list. */
-  form: CamForm | null
-  /** The index of the operation the form edits; null while the form builds a new one. */
-  editing: number | null
-  /** The last problem of the form, bound to the field the operator sees. */
-  error: { field: string; reason: string } | null
-  /** The lines the preview draws: the emitted file of the current document. */
-  preview: string[] | null
-  /** The name of the file the last `CAM_SAVE` wrote; the next save replaces it. */
-  saved: string | null
-}
-
-export type CamAction =
-  | { type: 'CAM_OPEN' }
-  | { type: 'CAM_CLOSE' }
-  | { type: 'CAM_OP'; kind: Operation['kind'] }
-  | { type: 'CAM_PARAM'; field: string; value: string }
-  | { type: 'CAM_CANCEL' }
-  | { type: 'CAM_ACCEPT' }
-  | { type: 'CAM_EDIT'; index: number }
-  | { type: 'CAM_REMOVE'; index: number }
-  | { type: 'CAM_TOGGLE'; index: number }
-  | { type: 'CAM_MOVE'; index: number; up: boolean }
-  | { type: 'CAM_SAVE'; at?: number }
+export type { CamAction, CamState }
 
 const CAM_TYPES = new Set<string>([
   'CAM_OPEN',
@@ -87,7 +62,7 @@ const edited = (cam: CamState, field: string, value: string): CamState => {
   const values = field === 'depthMm' && cam.editing === null ? { ...nextValues, stepDownMm: value } : nextValues
   const form: CamForm = { ...cam.form, values }
   const op = formOperation(form, cam.editing === null ? null : cam.program.operations[cam.editing])
-  const problem = formProblems(cam.program, op)[0] ?? null
+  const problem = formProblems(cam.program, values, op)[0] ?? null
   const preview = emitOf({ ...cam.program, operations: [...cam.program.operations, op] })
   return { ...cam, form: { ...form, error: problem }, error: problem, preview }
 }
@@ -158,7 +133,7 @@ export function camReducer(s: MachineState, a: CamAction): Result {
       if (s.cam === null) return closed(s)
       const form = newForm(a.kind, s.cam.program)
       const op = formOperation(form, null)
-      const problem = formProblems(s.cam.program, op)[0] ?? null
+      const problem = formProblems(s.cam.program, form.values, op)[0] ?? null
       const preview = emitOf({ ...s.cam.program, operations: [...s.cam.program.operations, op] })
       return {
         s: { ...s, cam: { ...s.cam, form: { ...form, error: problem }, editing: null, error: problem, preview } },
@@ -177,7 +152,7 @@ export function camReducer(s: MachineState, a: CamAction): Result {
       if (cam.form === null) return { s, msg: 'Сначала выберите операцию', level: 'warn' }
       const editing = cam.editing === null ? null : (cam.program.operations[cam.editing] ?? null)
       const op = formOperation(cam.form, editing)
-      const problem = formProblems(cam.program, op)[0]
+      const problem = formProblems(cam.program, cam.form.values, op)[0]
       if (problem !== undefined) {
         return {
           s: { ...s, cam: { ...cam, form: { ...cam.form, error: problem }, error: problem } },

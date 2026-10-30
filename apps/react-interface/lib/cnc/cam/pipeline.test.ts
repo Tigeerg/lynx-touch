@@ -12,6 +12,8 @@ import { describe, expect, it } from 'vitest'
 import { ETL_CASES, parseSummary } from './etl-cases'
 import { buildProgram, estimateSeconds, operationUuid } from './path'
 import { emitProgram } from './emit'
+import { moveWords, openModal } from './emit-moves'
+import { freshState } from './emit-state'
 import { faceLayout } from './path-face'
 import { pocketLayout } from './path-pocket'
 import { cutLengthMm, faceStats, pocketStats } from './path-stats'
@@ -34,6 +36,25 @@ const spanMoves = (path: ProgramPath, index: number) => {
   const span = path.operations[index]
   const next = index + 1 < path.operations.length ? path.operations[index + 1].first : path.moves.length
   return { moves: path.moves.slice(span.first, next), first: span.first }
+}
+
+/**
+ * The first block of every operation of the file. An operation opens after the header and after
+ * every `M1`; a drilling operation opens with a `G0 Z` to the R plane and names XY on its cycle
+ * block, any other kind opens with the rapid that names X and Y.
+ */
+const openingsOf = (lines: string[]): { opening: string; cycle: string }[] => {
+  const openings: { opening: string; cycle: string }[] = []
+  // The span boundaries: the header, every M1 and the end of the file.
+  const bounds = [0, ...lines.flatMap((line, index) => (/^N\d+ M1$/.test(line) ? [index + 1] : [])), lines.length]
+  for (let part = 0; part + 1 < bounds.length; part += 1) {
+    const span = lines.slice(bounds[part], bounds[part + 1])
+    const opening = span.find((line) => /^N\d+ G0 X-?[\d.]+ Y-?[\d.]+/.test(line))
+    const cycle = span.find((line) => /^N\d+ G8[13] X-?[\d.]+ Y-?[\d.]+/.test(line))
+    if (opening !== undefined) openings.push({ opening, cycle: '' })
+    else if (cycle !== undefined) openings.push({ opening: '', cycle })
+  }
+  return openings
 }
 
 describe('emitted G-code equals the demo', () => {
@@ -113,6 +134,39 @@ describe('layout stats equal the demo plans', () => {
   }
 })
 
+describe('the first rapid of an operation', () => {
+  // The park leaves the tool with XY unknown; the modal zero is not a coordinate the operator
+  // typed. The reference files of `etl/` start every operation off the zero of the plane, so a
+  // start at a zero coordinate is checked here, on an operation of the same emitter.
+  const emitted = (name: string): string[] => {
+    const { program, path } = planned(name)
+    return emitProgram(program, path)
+  }
+
+  it('writes both X and Y even when the start of the operation is a zero coordinate', () => {
+    const lines = emitted('pocket')
+    // The first move of the operation to X0 Y0: the words are there although the modal zero is 0.
+    const start = lines.findIndex((line) => /^N\d+ G0 X-26\.000 Y-16\.000$/.test(line))
+    expect(start).toBeGreaterThan(0)
+    const modal = openModal({ x: 0, y: 0, z: 5 }, freshState())
+    const words = moveWords({ kind: 'rapid', to: { x: 0, y: 0, z: 5 } }, modal)
+    expect(words).toBe('G0 X0.000 Y0.000')
+  })
+
+  it('names X and Y of the start of every operation of the references', () => {
+    for (const { name } of ETL_CASES) {
+      const ops = enabledOps(planned(name).program)
+      const openings = openingsOf(etl(`${name}.ngc`).split('\n'))
+      expect(openings.length).toBe(ops.length)
+      openings.forEach((item, index) => {
+        const what = `the first move of operation ${String(index + 1)} of ${name}`
+        if (ops[index].kind === 'drill') expect(item.cycle, what).toMatch(/ G8[13] X-?[\d.]+ Y-?[\d.]+/)
+        else expect(item.opening, what).toMatch(/ G0 X-?[\d.]+ Y-?[\d.]+/)
+      })
+    }
+  })
+})
+
 describe('the program block identifier', () => {
   it('names a stage the way the demo does', () => {
     const { path } = planned('mixed')
@@ -129,6 +183,19 @@ describe('safety properties of the reference programs', () => {
       for (const move of path.moves) {
         if (move.kind === 'rapid') expect(move.to.z).toBeGreaterThanOrEqual(top - 1e-9)
       }
+    })
+
+    it(`puts X and Y on the first rapid of every operation in ${name}`, () => {
+      // A drilling operation opens with a `G0 Z` to the R plane and puts XY on the `G81`/`G83`
+      // block itself (`cycleBlocks` writes both); any other kind opens with a `G0 X.. Y..`.
+      const ops = enabledOps(planned(name).program)
+      const openings = openingsOf(etl(`${name}.ngc`).split('\n'))
+      expect(openings.length).toBe(ops.length)
+      openings.forEach((item, index) => {
+        const what = `the first move of operation ${String(index + 1)} of ${name}`
+        if (ops[index].kind === 'drill') expect(item.cycle, what).toMatch(/ G8[13] X-?[\d.]+ Y-?[\d.]+/)
+        else expect(item.opening, what).toMatch(/ G0 X-?[\d.]+ Y-?[\d.]+/)
+      })
     })
 
     it(`keeps G43 after every tool change in ${name}`, () => {

@@ -14,6 +14,7 @@
 // first problem and a test can compare the first field: the program (WCS, the empty list) first,
 // then per operation tool, cutting data, depth, step, shape and peck, then safe Z and G64.
 export type { Problem, Validation } from './validate-common'
-export { EPS, MIN_PECK_MM, MIN_STEP_MM, WCS_WORDS, add, tableRowFor, validate } from './validate-common'
+export { EPS, MIN_PECK_MM, MIN_STEP_MM, WCS_WORDS, add, numberFields, tableRowFor, validate } from './validate-common'
+export type { NumberField } from './validate-common'
 export { checkGeometry, checkPeck } from './validate-shape'
 export { checkSafeZ, checkTolerance } from './validate-program'

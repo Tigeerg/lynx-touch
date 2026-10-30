@@ -229,6 +229,50 @@ describe('вид в форме и обратно: строка -> операци
     expect(formOperation(form, op)).toEqual(op)
   })
 
+  it('поле, которое ещё не число, не кладёт NaN в документ', () => {
+    const { program, op } = faceOp()
+    // The operator clears the depth (an empty field is the fallback of the form) and mistypes the
+    // step-over ("abc" is a number that is not a number). The form edits the operation it opened.
+    const form: CamForm = { op: op.kind, values: { ...valuesOf(op), depthMm: '', stepOverPct: 'abc' }, error: null }
+    const next = formOperation(form, op)
+
+    // No number of the operation is NaN: the document is one `validate` and the emitter can read.
+    expect(JSON.stringify(next)).not.toMatch(/null|NaN/)
+    // The operation of the reference is the face of the demo: depth 5, step-down 2.
+    expect(next.depthMm).toBe(5)
+    expect(op.depthMm).toBe(5)
+    void 0
+    expect(next.kind).toBe('face')
+    if (next.kind !== 'face' || op.kind !== 'face') throw new Error('the edited operation kept its kind')
+    expect(Number.isFinite(next.stepOverPct)).toBe(true)
+    expect(next.stepOverPct).toBe(op.stepOverPct)
+    // The typed text is still in the form for the operator to finish.
+    expect(form.values.stepOverPct).toBe('abc')
+    expect(program.operations).toEqual([op])
+  })
+
+  it('CAM_PARAM с буквой в числовом поле отказывает у этого поля', () => {
+    const s = run(opened(), { type: 'CAM_OP', kind: 'face' }, { type: 'CAM_PARAM', field: 'depthMm', value: 'abc' })
+
+    expect(s.cam?.form?.error?.field).toBe('depthMm')
+    expect(s.cam?.preview).not.toBeNull()
+    expect(JSON.stringify(s.cam?.preview)).not.toMatch(/NaN/)
+  })
+
+  it('CAM_ACCEPT не кладёт NaN, даже когда поле пустое', () => {
+    const s = run(
+      opened(),
+      { type: 'CAM_OP', kind: 'face' },
+      { type: 'CAM_PARAM', field: 'depthMm', value: '' },
+      { type: 'CAM_PARAM', field: 'stepOverPct', value: 'abc' },
+      { type: 'CAM_ACCEPT' },
+    )
+
+    // The form names the input the operator typed into; the list names the rule (`stepOver`).
+    expect(s.cam?.form?.error?.field).toBe('stepOverPct')
+    expect(camOf(s).program.operations).toEqual([])
+  })
+
   it('правленое поле меняет только себя', () => {
     const { op } = faceOp()
     const form: CamForm = { op: op.kind, values: { ...valuesOf(op), depthMm: '4' }, error: null }

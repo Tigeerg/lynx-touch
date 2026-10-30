@@ -8,7 +8,7 @@ import { ArrowDown, ArrowUp, Pencil, Plus, Power, Trash2, TriangleAlert } from '
 import type { Dispatch } from 'react'
 import type { CamAction } from '@/lib/cnc/cam/cam'
 import type { Operation, QuickProgram } from '@/lib/cnc/cam/ops'
-import { formProblems } from '@/lib/cnc/cam/form'
+import { formProblems, valuesOf } from '@/lib/cnc/cam/form'
 import { cn } from '@/lib/utils'
 import { useUiMode } from '../ui-mode-context'
 import { formatMm, KIND_LABEL, keySize, toolText } from './cam-labels'
@@ -90,7 +90,7 @@ function OperationCard({
   icon: string
   dispatch: Dispatch<CamAction>
 }) {
-  const problem = formProblems(program, op)[0]
+  const problem = formProblems(program, valuesOf(op), op)[0]
   const off = !op.enabled
   return (
     <li

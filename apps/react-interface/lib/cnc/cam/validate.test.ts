@@ -259,6 +259,54 @@ describe('shape rules', () => {
   })
 })
 
+describe('a field that is not a number', () => {
+  // The comparisons of the rules (`x <= 0`, `x > 90`) are false for `NaN`, so a number that is not
+  // a number would pass every rule and reach the planner. The field is named instead.
+  it('names a NaN depth and does not pass it as valid', () => {
+    const result = validate(program([face({ depthMm: Number.NaN })]))
+    expect(result.ok).toBe(false)
+    expect(result.ok ? [] : fields(result.bad)).toContain('depthMm')
+  })
+
+  it('names a NaN step-over under the field of the shape rule', () => {
+    const result = validate(program([pocket({ stepOverPct: Number.NaN })]))
+    expect(result.ok).toBe(false)
+    expect(result.ok ? [] : fields(result.bad)).toContain('stepOver')
+  })
+
+  it('names a NaN coordinate of every kind', () => {
+    const cases = [
+      face({ z: Number.NaN }),
+      pocket({ rect: { x: 0, y: 0, w: Number.NaN, h: 40 } }),
+      circlePocket({ circle: { x: 0, y: 0, r: Number.NaN } }),
+      drill({ hole: { x: Number.NaN, y: 0, r: 3 } }),
+      drill({ pattern: 'grid', cols: Number.NaN }),
+      drill({ pattern: 'circle', count: Number.NaN }),
+    ]
+    for (const op of cases) expect(validate(program([op])).ok).toBe(false)
+  })
+
+  it('names a NaN tool, cutting data and peck', () => {
+    const cases = [
+      face({ tool: { number: 1, diameterMm: Number.NaN, hNumber: 1 } }),
+      face({ tool: { number: Number.NaN, diameterMm: 10, hNumber: 1 } }),
+      face({ cutting: { spindleRpm: Number.NaN, feedMmMin: 716, plungeFeedMmMin: 179 } }),
+      face({ cutting: { spindleRpm: 3979, feedMmMin: Number.NaN, plungeFeedMmMin: 179 } }),
+      face({ cutting: { spindleRpm: 3979, feedMmMin: 716, plungeFeedMmMin: Number.NaN } }),
+      drill({ peckMm: Number.NaN }),
+    ]
+    for (const op of cases) expect(validate(program([op])).ok).toBe(false)
+  })
+
+  it('leaves the field of the problem to the form: the words name the value', () => {
+    const result = validate(program([pocket({ rect: { x: 0, y: 0, w: Number.NaN, h: 40 } })]))
+    expect(result.ok ? [] : result.bad).toContainEqual({
+      field: 'geometry',
+      reason: 'Поле «ширина кармана» не число: введите число.',
+    })
+  })
+})
+
 describe('helpers', () => {
   it('rates a drill by its body row and a mill by the flat row of its material', () => {
     expect(

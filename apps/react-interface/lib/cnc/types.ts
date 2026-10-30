@@ -1,6 +1,8 @@
 import type { PathView } from './toolpath'
 import type { LadderState } from './ladder/types'
-import type { CamState } from './cam/cam'
+// The shape of the overlay, not the reducer: `./cam/types` has no import of a value, so this module
+// stays a leaf of the type graph (CLAUDE.md, section 2).
+import type { CamState } from './cam/types'
 
 export type {
   CoilKind,

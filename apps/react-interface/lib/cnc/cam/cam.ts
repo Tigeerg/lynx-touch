@@ -8,9 +8,14 @@
 // the result to the files. The write itself lives in `cam-save.ts` (`saveCam`), next to the refusal
 // of a busy machine and the confirmation of a replacement.
 //
-// The form keeps strings (`form.ts`), the preview is recomputed after every edit (the first version
-// is synchronous; the budget is measured, not guessed), and `CAM_ACCEPT` runs the same `validate`
-// as the planner. A refusal is a message to the operator and the document does not change.
+// The form keeps strings (`form.ts`), and `CAM_ACCEPT` runs the same `validate` as the planner. A
+// refusal is a message to the operator and the document does not change.
+//
+// A field edit and the preview are two different clocks (PLAN-QUICKPROG, 7.5): `CAM_PARAM` applies
+// the typed text and the problem at once, marks the preview `pending` and leaves it alone, and
+// `CAM_PREVIEW` from the UI timer recomputes it. The list and accept actions are not typing, so
+// they recompute straight away and clear the flag. A delayed timer never wins over a save: the
+// save reads the document, not the preview.
 import { isBusy } from '../guards'
 import { newProgram } from './defaults'
 import type { Operation } from './ops'
@@ -29,6 +34,7 @@ const CAM_TYPES = new Set<string>([
   'CAM_CLOSE',
   'CAM_OP',
   'CAM_PARAM',
+  'CAM_PREVIEW',
   'CAM_CANCEL',
   'CAM_ACCEPT',
   'CAM_EDIT',
@@ -43,7 +49,10 @@ export const isCamAction = (a: { type: string }): a is CamAction => CAM_TYPES.ha
 /** The overlay of a state; a CAM_* action without an open overlay is a no-op with a hint. */
 const closed = (s: MachineState): Result => ({ s, msg: 'Быстрая УП не открыта', level: 'warn' })
 
-/** The state with the typed field applied and the problem and the preview recomputed. */
+/**
+ * The state with the typed field applied and the problem recomputed. The preview waits: the operator
+ * still types, and at least one more keystroke may come within `PREVIEW_DEBOUNCE_MS`.
+ */
 const edited = (cam: CamState, field: string, value: string): CamState => {
   if (cam.form === null) return cam
   // The axial step follows the depth of a new form until the operator sets it: a default step deeper
@@ -53,8 +62,15 @@ const edited = (cam: CamState, field: string, value: string): CamState => {
   const form: CamForm = { ...cam.form, values }
   const op = formOperation(form, cam.editing === null ? null : cam.program.operations[cam.editing])
   const problem = formProblems(cam.program, values, op)[0] ?? null
-  const preview = emitOf({ ...cam.program, operations: [...cam.program.operations, op] })
-  return { ...cam, form: { ...form, error: problem }, error: problem, preview }
+  return { ...cam, form: { ...form, error: problem }, error: problem, pending: true }
+}
+
+/** The preview of the document with the form's operation, as `edited` used to build it. */
+const previewOf = (cam: CamState): string[] | null => {
+  if (cam.form === null) return cam.preview
+  const editing = cam.editing === null ? null : (cam.program.operations[cam.editing] ?? null)
+  const op = formOperation(cam.form, editing)
+  return emitOf({ ...cam.program, operations: [...cam.program.operations, op] })
 }
 
 /** The operations list with one index replaced; the index outside the list leaves the list. */
@@ -65,7 +81,7 @@ const withOperation = (cam: CamState, index: number, next: Operation | null): Ca
       ? cam.program.operations.filter((_, i) => i !== index)
       : cam.program.operations.map((op, i) => (i === index ? next : op))
   const program = { ...cam.program, operations }
-  return { ...cam, program, preview: emitOf(program), error: null }
+  return { ...cam, program, preview: emitOf(program), error: null, pending: false }
 }
 
 export function camReducer(s: MachineState, a: CamAction): Result {
@@ -95,12 +111,25 @@ export function camReducer(s: MachineState, a: CamAction): Result {
       const problem = formProblems(s.cam.program, form.values, op)[0] ?? null
       const preview = emitOf({ ...s.cam.program, operations: [...s.cam.program.operations, op] })
       return {
-        s: { ...s, cam: { ...s.cam, form: { ...form, error: problem }, editing: null, error: problem, preview } },
+        s: {
+          ...s,
+          cam: { ...s.cam, form: { ...form, error: problem }, editing: null, error: problem, preview, pending: false },
+        },
       }
     }
 
     case 'CAM_PARAM':
       return s.cam === null ? closed(s) : { s: { ...s, cam: edited(s.cam, a.field, a.value) } }
+
+    case 'CAM_PREVIEW': {
+      if (s.cam === null) return closed(s)
+      const cam = s.cam
+      // Without an unfinished edit there is nothing to catch up with; a late tick is a no-op.
+      if (cam.pending !== true) return { s }
+      return {
+        s: { ...s, cam: { ...cam, preview: previewOf(cam), pending: false, previewAt: a.at ?? cam.previewAt } },
+      }
+    }
 
     case 'CAM_CANCEL':
       return s.cam === null ? closed(s) : { s: { ...s, cam: { ...s.cam, form: null, editing: null, error: null } } }
@@ -125,7 +154,12 @@ export function camReducer(s: MachineState, a: CamAction): Result {
           : cam.program.operations.map((old, i) => (i === cam.editing ? op : old))
       const program = { ...cam.program, operations }
       return {
-        s: { ...s, cam: { ...cam, program, form: null, editing: null, error: null, preview: emitOf(program) } },
+        // Not typing: the preview of the document is recomputed here, so a field edit that never met
+        // its timer leaves nothing stale behind.
+        s: {
+          ...s,
+          cam: { ...cam, program, form: null, editing: null, error: null, preview: emitOf(program), pending: false },
+        },
         msg: cam.editing === null ? 'Операция добавлена' : 'Операция изменена',
       }
     }
@@ -158,7 +192,7 @@ export function camReducer(s: MachineState, a: CamAction): Result {
       operations[a.index] = operations[to]
       operations[to] = moved
       const program = { ...s.cam.program, operations }
-      return { s: { ...s, cam: { ...s.cam, program, preview: emitOf(program) } } }
+      return { s: { ...s, cam: { ...s.cam, program, preview: emitOf(program), pending: false } } }
     }
 
     case 'CAM_SAVE':

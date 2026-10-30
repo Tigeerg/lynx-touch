@@ -21,7 +21,8 @@ export const SAVE_CONFIRM_MS = 5_000
 /**
  * The emitted file of the document, or null when the document cannot be planned. The preview (in
  * `cam.ts`) and the save read the same function, so what the operator saved is what the operator
- * saw.
+ * saw. The save reads `cam.program`, not `cam.preview`: a field edit waiting for its timer does not
+ * hold back the file, and the preview lines are the file the save just wrote.
  */
 export const emitOf = (program: CamState['program']): string[] | null => {
   const built = buildProgram(program)
@@ -108,7 +109,7 @@ export const saveCam = (s: MachineState, cam: CamState, at: number | undefined):
   )
   const backup = existing === undefined ? '' : `; прежняя версия в ${stem}.bak`
   return {
-    s: { ...written, cam: { ...cam, saved: name, preview: lines, pendingSave: null } },
+    s: { ...written, cam: { ...cam, saved: name, preview: lines, pending: false, pendingSave: null } },
     msg: `УП записана в файл ${name} — ${String(lines.length)} строк, модель — в ${stem}.qprog${backup}`,
   }
 }

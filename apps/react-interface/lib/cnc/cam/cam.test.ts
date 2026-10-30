@@ -65,10 +65,13 @@ describe('форма операции: выбор вида и правка по�
     expect(camOf(s).form?.op).toBe('pocket')
   })
 
-  it('CAM_PARAM обновляет поле и пересчитывает предпросмотр', () => {
-    const s = run(opened(), { type: 'CAM_OP', kind: 'face' }, { type: 'CAM_PARAM', field: 'depthMm', value: '3' })
+  it('CAM_PARAM обновляет поле сразу, а предпросмотр ждёт CAM_PREVIEW', () => {
+    // PLAN-QUICKPROG, 7.5: the operator sees the typed text at once, the preview waits for the last
+    // keystroke and the `CAM_PREVIEW` the UI timer sends.
+    const typed = run(opened(), { type: 'CAM_OP', kind: 'face' }, { type: 'CAM_PARAM', field: 'depthMm', value: '3' })
+    const s = run(typed, { type: 'CAM_PREVIEW', at: 150 })
 
-    expect(camOf(s).form?.values.depthMm).toBe('3')
+    expect(camOf(typed).form?.values.depthMm).toBe('3')
     expect(camOf(s).preview?.length).toBeGreaterThan(2)
   })
 
@@ -255,7 +258,8 @@ describe('вид в форме и обратно: строка -> операци
   })
 
   it('CAM_PARAM с буквой в числовом поле отказывает у этого поля', () => {
-    const s = run(opened(), { type: 'CAM_OP', kind: 'face' }, { type: 'CAM_PARAM', field: 'depthMm', value: 'abc' })
+    const typed = run(opened(), { type: 'CAM_OP', kind: 'face' }, { type: 'CAM_PARAM', field: 'depthMm', value: 'abc' })
+    const s = run(typed, { type: 'CAM_PREVIEW', at: 150 })
 
     expect(s.cam?.form?.error?.field).toBe('depthMm')
     expect(s.cam?.preview).not.toBeNull()

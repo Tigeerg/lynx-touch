@@ -5,11 +5,13 @@
 // talks about. Every edit is `CAM_PARAM`; the document changes only on «Добавить в программу».
 //
 // The form keeps no local copy of the values: `CamForm.values` in the state is the single source,
-// so a button that fires twice cannot show a stale number.
-import { useState } from 'react'
+// so a button that fires twice cannot show a stale number. The preview is the exception: a field
+// edit applies at once and the preview waits 150 ms for the last keystroke (`CAM_PREVIEW`).
+import { useEffect, useRef, useState } from 'react'
 import { CircleCheck, TriangleAlert } from 'lucide-react'
 import type { Action } from '@/lib/cnc/machine'
 import type { CamForm } from '@/lib/cnc/cam/form'
+import { needsPreview, previewTimer, waitsForPreview } from '@/lib/cnc/cam/cam-debounce'
 import { cn } from '@/lib/utils'
 import { useUiMode } from '../ui-mode-context'
 import {
@@ -40,14 +42,29 @@ export function CamForm({
   form,
   editing,
   problem,
+  pending,
   dispatch,
 }: {
   form: CamForm
   editing: boolean
   problem: { field: string; reason: string } | null
+  /** The preview of this form is older than the typed text: a timer will recompute it. */
+  pending: boolean
   dispatch: (a: Action) => void
 }) {
   const touch = useUiMode()?.mode === 'touch'
+  // One timer per form: a new keystroke moves it, leaving the form cancels it, so a closed form
+  // cannot send `CAM_PREVIEW` about numbers nobody shows any more.
+  const timer = useRef(previewTimer())
+  const formRef = useRef(form)
+  formRef.current = form
+  const preview = () => dispatch({ type: 'CAM_PREVIEW', at: Date.now() })
+  useEffect(() => {
+    if (pending) timer.current.arm(preview)
+  }, [pending])
+  // Leaving the form (accept, cancel, another operation) drops the timer: no `CAM_PREVIEW` follows
+  // numbers the operator no longer sees.
+  useEffect(() => () => timer.current.cancel(), [])
   const [tab, setTab] = useState<CamTab>('geometry')
   const [active, setActive] = useState<string | null>(null)
   const errors = errorsByField(form.error ? [form.error] : [])
@@ -99,7 +116,10 @@ export function CamForm({
               touch={touch}
               active={active === field.key}
               onFocus={() => setActive(field.key)}
-              onChange={(value) => dispatch({ type: 'CAM_PARAM', field: field.key, value })}
+              onChange={(value) => {
+                dispatch({ type: 'CAM_PARAM', field: field.key, value })
+                if (needsPreview(form, formRef.current)) timer.current.arm(preview)
+              }}
             />
           ))}
         </fieldset>

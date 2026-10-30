@@ -78,7 +78,13 @@ function CamOverlayBody({ cam, state, dispatch }: { cam: CamState; state: Machin
         <OperationPicker dispatch={dispatch} />
       </section>
     ) : (
-      <CamForm form={cam.form} editing={cam.editing !== null} problem={cam.error} dispatch={dispatch} />
+      <CamForm
+        form={cam.form}
+        editing={cam.editing !== null}
+        problem={cam.error}
+        pending={cam.pending === true}
+        dispatch={dispatch}
+      />
     )
   const preview = <CamPreview preview={cam.preview} />
 

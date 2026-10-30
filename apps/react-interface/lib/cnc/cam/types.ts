@@ -22,6 +22,16 @@ export interface CamState {
   error: { field: string; reason: string } | null
   /** The lines the preview draws: the emitted file of the current document. */
   preview: string[] | null
+  /**
+   * The moment the preview was last recomputed (`CAM_PREVIEW` reads it from the action, never from
+   * the reducer). Absent until the first recompute of the overlay.
+   */
+  previewAt?: number
+  /**
+   * A field edit arrived and the preview is older than the form. `CAM_PREVIEW` recomputes and clears
+   * it; every other action that recomputes does the same, so the flag never lies about the lines.
+   */
+  pending?: boolean
   /** The name of the file the last `CAM_SAVE` wrote; the next save replaces it. */
   saved: string | null
   /**
@@ -38,6 +48,7 @@ export type CamAction =
   | { type: 'CAM_CLOSE' }
   | { type: 'CAM_OP'; kind: OperationKind }
   | { type: 'CAM_PARAM'; field: string; value: string }
+  | { type: 'CAM_PREVIEW'; at?: number }
   | { type: 'CAM_CANCEL' }
   | { type: 'CAM_ACCEPT' }
   | { type: 'CAM_EDIT'; index: number }

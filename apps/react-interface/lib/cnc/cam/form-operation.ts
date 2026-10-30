@@ -39,8 +39,9 @@ export function formOperation(form: CamForm, editing: Operation | null): Operati
  */
 export function formProblems(program: QuickProgram, values: Record<string, string>, op: Operation): Problem[] {
   // A new form copies the depth into the axial step until the operator sets the step (`depth` and
-  // `step` are one value), so a typed depth answers for the step the operator did not touch.
-  const fixed = stepOfDepth(values, op)
+  // `step` are one value), so a typed depth answers for the step the operator did not touch. A
+  // chamfer's depth is its own leg: the same copy keeps the frame the operator reads consistent.
+  const fixed = chamferDepth(stepOfDepth(values, op), values)
   const typed = numberFields(op).filter((item) => !Number.isFinite(num(values, item.form, item.value)))
   if (typed.length > 0) {
     return typed.map((item) => ({ field: item.form, reason: `Поле «${item.label}» не число: введите число.` }))
@@ -78,4 +79,13 @@ const stepOfDepth = (values: Record<string, string>, op: Operation): Operation =
   const depth = num(values, 'depthMm', op.depthMm)
   if (!Number.isFinite(depth)) return op
   return { ...op, stepDownMm: depth }
+}
+
+/**
+ * The depth of a chamfer follows its leg: the bottom of the cut is `topZ - chamferMm`, so a typed
+ * chamfer writes the depth and the frame the operator reads stays the one the planner cuts.
+ */
+const chamferDepth = (op: Operation, values: Record<string, string>): Operation => {
+  if (op.kind !== 'chamfer' || !Number.isFinite(num(values, 'chamferMm', op.chamferMm))) return op
+  return { ...op, depthMm: num(values, 'chamferMm', op.chamferMm) }
 }

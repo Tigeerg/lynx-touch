@@ -23,6 +23,8 @@ export function opHead(text: string, line: number): OpHead {
   if (text === 'pocket') return { kind: 'pocket', drill: null }
   if (text === 'circle') return { kind: 'circle-pocket', drill: null }
   if (text === 'contour') return { kind: 'contour', drill: null }
+  if (text === 'slot') return { kind: 'slot', drill: null }
+  if (text === 'chamfer') return { kind: 'chamfer', drill: null }
   throw new QprogError(line, `неизвестный вид операции '${text}'.`)
 }
 
@@ -33,6 +35,8 @@ export const SHAPE_KEYS: Record<Operation['kind'], string[]> = {
   'circle-pocket': ['circle', 'finishAllowance', 'stepOver'],
   drill: [],
   contour: ['points', 'closed', 'allowance', 'side'],
+  slot: ['from', 'to', 'width', 'stepOver'],
+  chamfer: ['from', 'to', 'chamfer'],
 }
 
 /** The shape keys of a drilling layout; the layout is chosen by the `op` word. */
@@ -168,10 +172,25 @@ function millShape(op: Operation, sub: string, words: string[], key: string, whe
     arity(words, 1, key, where)
     if (words[1] !== 'material' && words[1] !== 'air') throw new QprogError(0, `${where}op.side ждёт material или air.`)
     op.side = words[1]
-  } else if (sub === 'stepOver' && (op.kind === 'face' || op.kind === 'pocket' || op.kind === 'circle-pocket')) {
-    // The face keeps its own step; both pockets carry theirs (PLAN-QUICKPROG, 7.3).
+  } else if (
+    sub === 'stepOver' &&
+    (op.kind === 'face' || op.kind === 'pocket' || op.kind === 'circle-pocket' || op.kind === 'slot')
+  ) {
+    // The face keeps its own step, both pockets and the slot carry theirs (PLAN-QUICKPROG, 7.3, 7.6).
     arity(words, 1, key, where)
     op.stepOverPct = num(words, 1, key, where)
+  } else if ((sub === 'from' || sub === 'to') && (op.kind === 'slot' || op.kind === 'chamfer')) {
+    // The point of a slot or a chamfer is `x y z`; the plane of the cut is the operation's top.
+    arity(words, 3, key, where)
+    const point = { x: num(words, 1, key, where), y: num(words, 2, key, where), z: num(words, 3, key, where) }
+    if (sub === 'from') op.from = point
+    else op.to = point
+  } else if (sub === 'width' && op.kind === 'slot') {
+    arity(words, 1, key, where)
+    op.widthMm = num(words, 1, key, where)
+  } else if (sub === 'chamfer' && op.kind === 'chamfer') {
+    arity(words, 1, key, where)
+    op.chamferMm = num(words, 1, key, where)
   } else {
     throw new QprogError(0, `${where}неизвестное поле '${key}' для операции этого вида.`)
   }

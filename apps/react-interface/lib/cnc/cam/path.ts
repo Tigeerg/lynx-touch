@@ -18,6 +18,8 @@ import { planFace } from './path-face'
 import { planRectPocket } from './path-pocket'
 import { planCirclePocket } from './path-circle-pocket'
 import { planContour } from './path-contour'
+import { planSlot } from './path-slot'
+import { planChamfer } from './path-chamfer'
 import { drillCycleMinutes, planDrill } from './path-drill'
 import { validate } from './validate'
 
@@ -82,6 +84,12 @@ const planOperation = (program: QuickProgram, operation: Operation, out: PathBui
     }
     case 'contour':
       planContour(program, operation, out)
+      return 0
+    case 'slot':
+      planSlot(program, operation, out)
+      return 0
+    case 'chamfer':
+      planChamfer(program, operation, out)
       return 0
   }
 }

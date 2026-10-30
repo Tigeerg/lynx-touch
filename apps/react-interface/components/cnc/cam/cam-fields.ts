@@ -60,6 +60,21 @@ const GEOMETRY: Record<OperationKind, FieldSpec[]> = {
     { key: 'allowanceMm', label: 'Припуск', unit: 'мм', hint: 'След по профилю сверх радиуса фрезы' },
     { key: 'side', label: 'Сторона', unit: '', hint: 'В материал или наружу' },
   ],
+  slot: [
+    { key: 'from.x', label: 'Начало X', unit: 'мм', hint: 'Начало оси паза' },
+    { key: 'from.y', label: 'Начало Y', unit: 'мм', hint: 'Начало оси паза' },
+    { key: 'to.x', label: 'Конец X', unit: 'мм', hint: 'Конец оси паза' },
+    { key: 'to.y', label: 'Конец Y', unit: 'мм', hint: 'Конец оси паза' },
+    { key: 'widthMm', label: 'Ширина', unit: 'мм', hint: 'Ширина паза поперёк оси, не уже фрезы' },
+    { key: 'stepOverPct', label: 'Шаг проходов', unit: '%', hint: 'Доля диаметра между продольными проходами' },
+  ],
+  chamfer: [
+    { key: 'from.x', label: 'Начало X', unit: 'мм', hint: 'Начало кромки' },
+    { key: 'from.y', label: 'Начало Y', unit: 'мм', hint: 'Начало кромки' },
+    { key: 'to.x', label: 'Конец X', unit: 'мм', hint: 'Конец кромки' },
+    { key: 'to.y', label: 'Конец Y', unit: 'мм', hint: 'Конец кромки' },
+    { key: 'chamferMm', label: 'Фаска', unit: 'мм', hint: 'Катет фаски, не больше радиуса фрезы' },
+  ],
   drill: [
     { key: 'pattern', label: 'Схема', unit: '', hint: 'Отверстие, сетка или по кругу' },
     { key: 'body', label: 'Тело сверла', unit: '', hint: 'Материал сверла задаёт таблицу режимов' },

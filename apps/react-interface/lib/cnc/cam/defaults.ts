@@ -7,6 +7,7 @@ import type { DrillBody, Material } from './feeds'
 import { cuttingFor } from './feeds'
 import type { NewOperation } from './operation-init'
 import type {
+  ChamferOperation,
   CirclePocketOperation,
   ContourOperation,
   DrillOperation,
@@ -14,6 +15,7 @@ import type {
   Operation,
   QuickProgram,
   RectPocketOperation,
+  SlotOperation,
   StockBox,
   ToolRef,
 } from './ops'
@@ -44,6 +46,9 @@ export const SAFE_Z_CLEARANCE_MM = 5
 /** The depth and the axial step of a new operation, mm, as the `--op` defaults. */
 export const DEFAULT_DEPTH_MM = 2
 export const DEFAULT_STEP_DOWN_MM = 2
+
+/** The leg of a new chamfer, mm: one pass of a flat mill, under the radius of the default tool. */
+export const DEFAULT_CHAMFER_MM = 1
 
 /** A new program: schema 1, G54, G64 0.01, the M1 stop on and the safe Z 5 mm above the stock. */
 export const newProgram = (stock: StockBox = DEFAULT_STOCK, name = 'QUICK'): QuickProgram => ({
@@ -88,6 +93,8 @@ export function newOperation(kind: 'pocket', init: NewOperation): RectPocketOper
 export function newOperation(kind: 'circle-pocket', init: NewOperation): CirclePocketOperation
 export function newOperation(kind: 'drill', init: NewOperation): DrillOperation
 export function newOperation(kind: 'contour', init: NewOperation): ContourOperation
+export function newOperation(kind: 'slot', init: NewOperation): SlotOperation
+export function newOperation(kind: 'chamfer', init: NewOperation): ChamferOperation
 export function newOperation(kind: Operation['kind'], init: NewOperation): Operation
 export function newOperation(kind: Operation['kind'], init: NewOperation): Operation {
   const tool = init.tool ?? DEFAULT_TOOL
@@ -127,6 +134,32 @@ export function newOperation(kind: Operation['kind'], init: NewOperation): Opera
         closed: true,
         allowanceMm: 0,
         side: 'material',
+      }
+    }
+    case 'slot': {
+      const fields = common(init, tool, material, null)
+      // A 40 mm slot along X, as wide as the tool: the start an operator edits.
+      return {
+        ...fields,
+        kind,
+        from: { x: -20, y: 0, z: init.topZ },
+        to: { x: 20, y: 0, z: init.topZ },
+        widthMm: tool.diameterMm,
+        stepOverPct: STEP_OVER_PCT,
+      }
+    }
+    case 'chamfer': {
+      const fields = common(init, tool, material, null)
+      // A 30 mm edge along X: one leg of the mill, one pass. The depth is the chamfer, so the
+      // operation's depth follows it.
+      const chamferMm = DEFAULT_CHAMFER_MM
+      return {
+        ...fields,
+        depthMm: chamferMm,
+        kind,
+        from: { x: -15, y: 0, z: init.topZ },
+        to: { x: 15, y: 0, z: init.topZ },
+        chamferMm,
       }
     }
     case 'drill': {

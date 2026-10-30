@@ -4,8 +4,9 @@
 // allowance fits inside the contour and the raster step is between 10 and 100 % of the diameter.
 // Drilling: every hole with its body stands inside the stock, and the peck Q is a real step down
 // the hole. Contour: the profile has two points and every corner is open enough for the mill body
-// (`validate-contour.ts`). The reasons are the texts of the console of `apps/quickprog`, so the
-// panel and the demo say the same words.
+// (`validate-contour.ts`). Slot and chamfer: the two ends make a line, the mill fits the slot width,
+// the chamfer leg does not exceed the mill radius (`validate-slot.ts`). The reasons are the texts of
+// the console of `apps/quickprog`, so the panel and the demo say the same words.
 import { drillHoles } from './drill-holes'
 import { fmt } from './feeds'
 import type {
@@ -19,8 +20,9 @@ import type {
 import type { Problem } from './validate-common'
 import { EPS, MIN_PECK_MM, MIN_STEP_MM, add } from './validate-common'
 import { checkContour } from './validate-contour'
+import { checkChamfer, checkSlot } from './validate-slot'
 
-/** The shape rules of the kind of the operation: face, pocket, circle pocket or drilling. */
+/** The shape rules of the kind of the operation: face, pocket, circle pocket, drilling, contour, slot, chamfer. */
 export function checkGeometry(program: ProgramShape, op: Operation, out: Problem[]): void {
   // The narrow field by the kind: the union makes a forgotten kind a compile error.
   switch (op.kind) {
@@ -34,6 +36,10 @@ export function checkGeometry(program: ProgramShape, op: Operation, out: Problem
       return checkDrill(program, op, out)
     case 'contour':
       return checkContour(program, op, out)
+    case 'slot':
+      return checkSlot(op, out)
+    case 'chamfer':
+      return checkChamfer(op, out)
   }
 }
 

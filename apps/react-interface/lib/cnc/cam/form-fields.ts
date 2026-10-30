@@ -134,6 +134,23 @@ function valuesOfShape(op: Operation): Record<string, string> {
         allowanceMm: String(op.allowanceMm),
         side: op.side,
       }
+    case 'slot':
+      return {
+        'from.x': String(op.from.x),
+        'from.y': String(op.from.y),
+        'to.x': String(op.to.x),
+        'to.y': String(op.to.y),
+        widthMm: String(op.widthMm),
+        stepOverPct: String(op.stepOverPct),
+      }
+    case 'chamfer':
+      return {
+        'from.x': String(op.from.x),
+        'from.y': String(op.from.y),
+        'to.x': String(op.to.x),
+        'to.y': String(op.to.y),
+        chamferMm: String(op.chamferMm),
+      }
     case 'drill':
       return {
         pattern: op.pattern,
@@ -218,6 +235,21 @@ export function applyFields(op: Operation, v: Record<string, string>): Operation
         closed: on(v, 'closed', op.closed),
         allowanceMm: kept(v, 'allowanceMm', op.allowanceMm),
         side: str(v, 'side', op.side) === 'air' ? 'air' : 'material',
+      }
+    case 'slot':
+      return {
+        ...applyCommon(op, v),
+        from: { ...op.from, x: kept(v, 'from.x', op.from.x), y: kept(v, 'from.y', op.from.y) },
+        to: { ...op.to, x: kept(v, 'to.x', op.to.x), y: kept(v, 'to.y', op.to.y) },
+        widthMm: kept(v, 'widthMm', op.widthMm),
+        stepOverPct: kept(v, 'stepOverPct', op.stepOverPct),
+      }
+    case 'chamfer':
+      return {
+        ...applyCommon(op, v),
+        from: { ...op.from, x: kept(v, 'from.x', op.from.x), y: kept(v, 'from.y', op.from.y) },
+        to: { ...op.to, x: kept(v, 'to.x', op.to.x), y: kept(v, 'to.y', op.to.y) },
+        chamferMm: kept(v, 'chamferMm', op.chamferMm),
       }
     case 'drill': {
       const body = str(v, 'body', op.body) as DrillBody

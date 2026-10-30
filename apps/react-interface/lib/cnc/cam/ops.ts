@@ -61,7 +61,7 @@ export type Coolant = 'off' | 'mist' | 'flood'
 
 export type Wcs = 'G54' | 'G55' | 'G56' | 'G57' | 'G58' | 'G59'
 
-export type OperationKind = 'face' | 'pocket' | 'circle-pocket' | 'drill' | 'contour'
+export type OperationKind = 'face' | 'pocket' | 'circle-pocket' | 'drill' | 'contour' | 'slot' | 'chamfer'
 
 /** The fields every kind shares: the tool, the modes, the stock frame and the notes. */
 export interface OperationBase {
@@ -183,7 +183,45 @@ export interface ContourOperation extends OperationBase {
   side: 'material' | 'air'
 }
 
-export type Operation = FaceOperation | RectPocketOperation | CirclePocketOperation | DrillOperation | ContourOperation
+/**
+ * A straight keyway (PLAN-QUICKPROG, 7.6): the mill cuts from `from` to `to` along one straight, and
+ * `widthMm` is the width of the slot across the walk. A slot as wide as the mill is one pass; a wider
+ * one is several passes across, each `stepOverPct` of the diameter apart.
+ */
+export interface SlotOperation extends OperationBase {
+  kind: 'slot'
+  from: Point3
+  to: Point3
+  /** The width of the slot across the walk, mm; between `D` and `2D`. */
+  widthMm: number
+  /** The step between the strips across the slot, % of the diameter, as of a pocket. */
+  stepOverPct: number
+}
+
+/**
+ * A chamfer along one straight edge (PLAN-QUICKPROG, 7.6): the mill runs `from` -> `to`, sunk
+ * `chamferMm` below the top, so its corner takes the edge off. Only a straight edge is modelled;
+ * `grain` names the direction of the edge against the part and is kept for a later planner, the cut
+ * itself does not read it yet.
+ */
+export interface ChamferOperation extends OperationBase {
+  kind: 'chamfer'
+  from: Point3
+  to: Point3
+  /** The leg of the chamfer, mm; not above the mill radius. */
+  chamferMm: number
+  /** The edge against the grain of the part; the direction is not planned yet. */
+  grain?: 'along' | 'across'
+}
+
+export type Operation =
+  | FaceOperation
+  | RectPocketOperation
+  | CirclePocketOperation
+  | DrillOperation
+  | ContourOperation
+  | SlotOperation
+  | ChamferOperation
 
 /** The saved document (`.qprog` schema 1). It is loaded into the machine only by a command. */
 export interface QuickProgram {

@@ -73,6 +73,19 @@ function shapeLines(op: Operation): string {
         `op.points ${op.points.map((point) => `${num(point.x)} ${num(point.y)}`).join(' ')}\n` +
         `op.closed ${onOff(op.closed)}\nop.allowance ${num(op.allowanceMm)}\nop.side ${op.side}\n`
       )
+    case 'slot':
+      // The ends carry their `z`, the plane of the cut is the operation's top.
+      return (
+        `op.from ${num(op.from.x)} ${num(op.from.y)} ${num(op.from.z)}\n` +
+        `op.to ${num(op.to.x)} ${num(op.to.y)} ${num(op.to.z)}\n` +
+        `op.width ${num(op.widthMm)}\nop.stepOver ${num(op.stepOverPct)}\n`
+      )
+    case 'chamfer':
+      return (
+        `op.from ${num(op.from.x)} ${num(op.from.y)} ${num(op.from.z)}\n` +
+        `op.to ${num(op.to.x)} ${num(op.to.y)} ${num(op.to.z)}\n` +
+        `op.chamfer ${num(op.chamferMm)}\n`
+      )
     case 'drill':
       return drillLines(op)
   }

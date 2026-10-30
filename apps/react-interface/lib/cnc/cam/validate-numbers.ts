@@ -83,6 +83,25 @@ export function numberFields(op: Operation): NumberField[] {
       // The points are checked by the form (`pointsOf` in `form-fields.ts`): a point that is not
       // two numbers is named there, before an operation with `NaN` vertices exists.
       return [...common, field(op.allowanceMm, 'points', 'allowanceMm', 'припуск')]
+    case 'slot':
+      return [
+        ...common,
+        field(op.from.x, 'from', 'from.x', 'X начала паза'),
+        field(op.from.y, 'from', 'from.y', 'Y начала паза'),
+        field(op.to.x, 'to', 'to.x', 'X конца паза'),
+        field(op.to.y, 'to', 'to.y', 'Y конца паза'),
+        field(op.widthMm, 'widthMm', 'widthMm', 'ширина паза'),
+        field(op.stepOverPct, 'stepOver', 'stepOverPct', 'шаг проходов'),
+      ]
+    case 'chamfer':
+      return [
+        ...common,
+        field(op.from.x, 'from', 'from.x', 'X начала кромки'),
+        field(op.from.y, 'from', 'from.y', 'Y начала кромки'),
+        field(op.to.x, 'to', 'to.x', 'X конца кромки'),
+        field(op.to.y, 'to', 'to.y', 'Y конца кромки'),
+        field(op.chamferMm, 'chamferMm', 'chamferMm', 'фаска'),
+      ]
     case 'drill':
       return [
         ...common,

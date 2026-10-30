@@ -160,6 +160,7 @@ add_executable(quickprog_check
     tests/checks_post_head.cpp
     tests/checks_post_qprog.cpp
     tests/checks_post_cli.cpp
+    tests/checks_version.cpp
     tests/roundtrip_fixtures.h
 )
 target_link_libraries(quickprog_check PRIVATE quickprog_core quickprog_cli gvcore_quickprog)

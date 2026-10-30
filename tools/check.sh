@@ -40,8 +40,14 @@ have_plugin=0
 if [ -f build/qmlbackend/MockBackend/qmldir ] && [ -x build/viewer/gcodeviewer ]; then
     have_plugin=1
 fi
+# The quick programming demo: the self-check build/quickprog/quickprog_check.
+# Build - bash scripts/build-quickprog.sh.
+have_quickprog=0
+if [ -x build/quickprog/quickprog_check ]; then
+    have_quickprog=1
+fi
 
-echo "check: пробники = $have_probe, плагин MockBackend и вьювер = $have_plugin"
+echo "check: пробники = $have_probe, плагин MockBackend и вьювер = $have_plugin, quickprog = $have_quickprog"
 
 # Screenless mode for the whole run: viewer runs and the frame capture inherit it.
 # The offscreen frame is captured, but only a live platform renders the Quick3D scene.
@@ -52,12 +58,16 @@ while IFS='|' read -r label need cmdline; do
         ''|'#'*) continue ;;
     esac
     case "$need" in
-        probe|plugin|frame) ;;
+        probe|plugin|frame|quickprog) ;;
         *)
             print_bad "$label: неизвестное требование '$need' в tools/checks.txt"
             continue
             ;;
     esac
+    if [ "$need" = 'quickprog' ] && [ "$have_quickprog" != '1' ]; then
+        print_skip "$label (нет собранной проверки quickprog: bash scripts/build-quickprog.sh)"
+        continue
+    fi
     if [ "$need" = 'probe' ] && [ "$have_probe" != '1' ]; then
         print_skip "$label (нет собранных пробников: bash scripts/build-viewer.sh)"
         continue

@@ -224,6 +224,20 @@ if ($cppReady -and (Test-Path -LiteralPath $keyProbeExe) -and (Test-Path -Litera
   Skipped 'keyprobe.exe: нет собранного пробника или Qt'
 }
 
+# 9. The quick programming demo (apps/quickprog, PLAN-QUICKPROG): the self-check
+#    build/quickprog/quickprog_check.exe built by scripts/build-quickprog.ps1. It needs
+#    only the C++ compiler and the standard library, so it does not wait for the Qt/OCCT
+#    toolchain. The check compares the generator version with projects.json (the
+#    case prints skip when the manifest is not above the run directory) and runs the
+#    rest of the cases; a non-zero code is red. No built check - the step is skipped.
+$quickprogCheck = @('build/quickprog/quickprog_check.exe', 'build/quickprog/quickprog_check') |
+  Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if ($quickprogCheck) {
+  Run-Tool 'quickprog_check (сборка и проверки)' { & $quickprogCheck }
+} else {
+  Skipped 'quickprog_check: нет собранной проверки (scripts/build-quickprog.ps1)'
+}
+
 Write-Host ''
 if ($fail.Count -gt 0) {
   Write-Host "GUARD: FAIL ($($fail.Count))" -ForegroundColor Red

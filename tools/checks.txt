@@ -7,7 +7,8 @@
 # Requirements: probe - built probes needed (build/edges); plugin - the built
 # MockBackend QML module needed (build/qmlbackend/MockBackend/qmldir) and the
 # entry point build/viewer/gcodeviewer - without them not a single viewer run
-# starts; frame - frame capture (same build as plugin).
+# starts; frame - frame capture (same build as plugin); quickprog - the built
+# self-check of the quick programming demo (build/quickprog/quickprog_check).
 #
 # The executor calls commands from the repository root with QT_QPA_PLATFORM=offscreen
 # and counts a check red if the return code is non-zero or the output contains a
@@ -39,3 +40,4 @@ gcodeviewer offscreen|plugin|build/viewer/gcodeviewer data/cad-testdata/Test_mod
 stock_bind_probe|plugin|build/viewer/stock_bind_probe
 keyprobe (раскладки ru и en)|plugin|build/viewer/keyprobe data/cad-testdata/Test_model.ngc
 gcodeviewer --frame|frame|build/viewer/gcodeviewer --frame build/frame_check.png data/cad-testdata/Test_model.ngc
+quickprog (сборка и проверки)|quickprog|build/quickprog/quickprog_check

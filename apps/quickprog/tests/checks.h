@@ -44,6 +44,11 @@ void runQprogChecks();
 void runHelpChecks();
 void runOpRoundTripChecks();
 
+// The generator version against the manifest projects.json of the repository.
+namespace version_checks {
+void runVersionChecks();
+} // namespace version_checks
+
 // The viewer core round-trip (PLAN-QUICKPROG, section 10): the generated file
 // through gv::parseGcode and gv::parseUi*.
 namespace roundtrip_checks {

@@ -51,6 +51,9 @@ int main() {
     runPostHeadChecks();
     runPostQprogChecks();
     runPostCliChecks();
+    // The demo may be built and run outside the repository: the version case
+    // against projects.json then prints skip instead of a failure.
+    version_checks::runVersionChecks();
     if (qpcheck::failures() != 0) {
         std::printf("%d case(s) failed\n", qpcheck::failures());
         return 1;

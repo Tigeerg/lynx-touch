@@ -24,6 +24,7 @@ export const KIND_WORDS: Record<OperationKind, string> = {
   thread: 'thread',
   engrave: 'engrave',
   'pocket-island': 'pocket-island',
+  rest: 'rest',
   custom: 'custom',
   probe: 'probe',
 }

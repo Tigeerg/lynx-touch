@@ -25,7 +25,7 @@ import {
 
 const KINDS: OperationKind[] = ['face', 'pocket', 'circle-pocket', 'drill']
 const Q4: OperationKind[] = ['contour', 'slot', 'chamfer', 'tap', 'custom', 'probe']
-const Q5: OperationKind[] = ['counterbore', 'thread']
+const Q5: OperationKind[] = ['counterbore', 'thread', 'rest']
 
 const noLabelShort = (text: string) => text.trim().length >= 3
 

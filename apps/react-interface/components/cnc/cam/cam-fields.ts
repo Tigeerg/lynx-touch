@@ -151,6 +151,15 @@ const GEOMETRY: Record<OperationKind, FieldSpec[]> = {
     { key: 'islandAllowanceMm', label: 'Припуск на остров', unit: 'мм', hint: 'След на стенках острова' },
     { key: 'stepOverPct', label: 'Шаг растра', unit: '%', hint: 'Доля диаметра фрезы, 10..100 %' },
   ],
+  rest: [
+    { key: 'source', label: 'Исходные операции', unit: '', hint: 'Номера операций через пробел: чей остаток снимаем' },
+    { key: 'rect.x', label: 'Область X', unit: 'мм', hint: 'Левый край области; 0 и 0 — вся заготовка' },
+    { key: 'rect.y', label: 'Область Y', unit: 'мм', hint: 'Нижний край области; 0 и 0 — вся заготовка' },
+    { key: 'rect.w', label: 'Область ширина', unit: 'мм', hint: 'Размер области по X; 0 — вся заготовка' },
+    { key: 'rect.h', label: 'Область высота', unit: 'мм', hint: 'Размер области по Y; 0 — вся заготовка' },
+    { key: 'allowanceMm', label: 'Припуск', unit: 'мм', hint: 'След в остатке сверх радиуса фрезы' },
+    { key: 'stepOverPct', label: 'Шаг растра', unit: '%', hint: 'Доля диаметра фрезы, 10..100 %' },
+  ],
   custom: [
     { key: 'gcode', label: 'Строки G-кода', unit: '', hint: 'По строке на строку; блок проверяет только вьювер' },
   ],
@@ -229,7 +238,7 @@ export const CHOICES: Record<string, readonly string[]> = {
  * keeps its own lines. A contour and a probe hold their points as one list typed by hand, so they
  * get the same box: a single line of twenty vertices is unreadable on 1024x600.
  */
-export const MULTILINE: readonly string[] = ['gcode', 'points', 'text']
+export const MULTILINE: readonly string[] = ['gcode', 'points', 'text', 'source']
 
 /** The list of lines of a multi-line field, as `CustomOperation.gcode` holds it. */
 export { linesOf } from '@/lib/cnc/cam/form-lines'
@@ -294,6 +303,9 @@ const HINTS: [RegExp, string][] = [
   [/Символ|Пустой текст/, 'text'],
   [/Высота (надписи|меньше)/, 'heightMm'],
   [/Остров|зазор меньше фрезы/, 'island'],
+  // A rest names its sources, its footprint and its empty result.
+  [/Исходн|источник|вне списка|кармана: пропущена|Остатк/, 'source'],
+  [/Область остатка/, 'rect.w'],
 ]
 
 /** The input a reason talks about; the check's own field when no wording is more specific. */

@@ -34,6 +34,7 @@ export type {
   TapOperation,
 } from './ops-kinds'
 export type { EngraveOperation, IslandPocketOperation, ThreadOperation } from './ops-kinds-q5'
+export type { RestOperation } from './ops-kinds-rest'
 
 import type {
   ChamferOperation,
@@ -55,6 +56,7 @@ import type {
   TapOperation,
 } from './ops-kinds'
 import type { EngraveOperation, IslandPocketOperation, ThreadOperation } from './ops-kinds-q5'
+import type { RestOperation } from './ops-kinds-rest'
 
 /** A point in machine coordinates, mm; `z` is the tool tip (the trajectory centre). */
 export interface Point3 {
@@ -119,6 +121,7 @@ export type OperationKind =
   | 'thread'
   | 'engrave'
   | 'pocket-island'
+  | 'rest'
   | 'custom'
   | 'probe'
 
@@ -150,6 +153,7 @@ export type Operation =
   | ThreadOperation
   | EngraveOperation
   | IslandPocketOperation
+  | RestOperation
   | CustomOperation
   | ProbeOperation
 

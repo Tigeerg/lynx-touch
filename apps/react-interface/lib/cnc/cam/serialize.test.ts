@@ -190,3 +190,63 @@ describe('the reader names the line and the field', () => {
     expect(op.stepOverPct).toBe(70)
   })
 })
+
+describe('the rest operation of the file (PLAN-QUICKPROG 7.6, Q5)', () => {
+  /** A document with a pocket and a rest that takes its area out of the same footprint. */
+  const restProgram = (): QuickProgram => ({
+    ...newProgram(STOCK, 'REST'),
+    operations: [
+      {
+        ...newOperation('pocket', { id: 'Карман', topZ: 0, depthMm: 4, stepDownMm: 2, tool: tool(1, 8) }),
+        cutting: cutting(5968, 859, 215),
+        rect: { x: -30, y: -20, w: 60, h: 40 },
+      },
+      {
+        ...newOperation('rest', { id: 'Остаток', topZ: 0, depthMm: 4, stepDownMm: 2, tool: tool(2, 4) }),
+        cutting: cutting(8000, 700, 200),
+        source: [0, 2],
+        rect: { x: -30, y: -20, w: 60, h: 40 },
+        allowanceMm: 0.1,
+        stepOverPct: 60,
+      },
+    ],
+  })
+
+  it('writes `op rest`, the sources one per line and the footprint', () => {
+    const text = serializeProgram(restProgram())
+    expect(text).toContain('op rest "Остаток"')
+    expect(text).toContain('op.source 0 2')
+    expect(text).toContain('op.rect -30 -20 60 40')
+    expect(text).toContain('op.allowance 0.1')
+    expect(text).toContain('op.stepOver 60')
+  })
+
+  it('round-trips the fields of the rest', () => {
+    const text = serializeProgram(restProgram())
+    const parsed = parseProgram(text)
+    if (!parsed.ok) throw new Error(`${String(parsed.line)}: ${parsed.reason}`)
+    const op = parsed.program.operations[1]
+    if (op.kind !== 'rest') throw new Error(`the rest did not parse as a rest: ${op.kind}`)
+    expect(op.source).toEqual([0, 2])
+    expect(op.rect).toEqual({ x: -30, y: -20, w: 60, h: 40 })
+    expect(op.allowanceMm).toBeCloseTo(0.1, 9)
+    expect(op.stepOverPct).toBe(60)
+  })
+
+  it('reads an empty source as the whole footprint', () => {
+    const text = serializeProgram(restProgram()).replace('op.source 0 2\n', 'op.source\n')
+    const parsed = parseProgram(text)
+    if (!parsed.ok) throw new Error(parsed.reason)
+    const op = parsed.program.operations[1]
+    if (op.kind !== 'rest') throw new Error('the rest did not parse as a rest')
+    expect(op.source).toEqual([])
+  })
+
+  it('refuses a source that is not an index', () => {
+    const text = serializeProgram(restProgram()).replace('op.source 0 2', 'op.source 0 -1')
+    const parsed = parseProgram(text)
+    expect(parsed.ok).toBe(false)
+    if (parsed.ok) return
+    expect(parsed.reason).toContain('op.source')
+  })
+})

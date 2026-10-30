@@ -36,7 +36,7 @@ export function OperationCard({
   dispatch: Dispatch<CamAction>
 }) {
   const problem = formProblems(program, valuesOf(op), op)[0]
-  const warnings = kindWarnings(op)
+  const warnings = kindWarnings(op, program)
   const off = !op.enabled
   const [open, setOpen] = useState(false)
   const target = touch ? 'min-h-11 min-w-11' : 'h-6 px-1'

@@ -26,6 +26,7 @@ import { planCounterbore } from './path-counterbore'
 import { planThread } from './path-thread'
 import { planEngrave } from './path-engrave'
 import { planIslandPocket } from './path-pocket-island'
+import { planRest } from './path-rest'
 import { counterboreMinutes } from './bores'
 import { validate } from './validate'
 
@@ -114,6 +115,10 @@ const planOperation = (program: QuickProgram, operation: Operation, out: PathBui
       return 0
     case 'pocket-island':
       planIslandPocket(program, operation, out)
+      return 0
+    case 'rest':
+      // The cells left by the earlier pockets; nothing left plans no move and the check warns.
+      planRest(program, operation, out)
       return 0
     case 'custom':
       // The lines are the program: no move is planned and the viewer parser is their only check.

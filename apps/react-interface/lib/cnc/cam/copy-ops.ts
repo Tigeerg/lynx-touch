@@ -66,7 +66,9 @@ function turnRule(op: Operation): TurnRule {
       return { rule: 'refused', reason: 'Плоскость не поворачивается: слой снимается по всей заготовке.' }
     case 'pocket':
     case 'pocket-island':
+    case 'rest':
       // A pocket with an island has two rectangles: only a quarter turn keeps both of them boxes.
+      // A rest copies its footprint, not its sources: the indexes point into this document.
       return { rule: 'quarter' }
     case 'circle-pocket':
     case 'drill':
@@ -136,6 +138,11 @@ export function cloneOperation(
         rect: angleDeg === 0 ? rect : turnedRect(rect, angleDeg, cx, cy),
         island: angleDeg === 0 ? island : turnedRect(island, angleDeg, cx, cy),
       }
+    }
+    case 'rest': {
+      if (angleDeg !== 0 && !isQuarterTurn(angleDeg)) return null
+      const rect = { ...op.rect, x: op.rect.x + dx, y: op.rect.y + dy }
+      return { ...op, id, rect: angleDeg === 0 ? rect : turnedRect(rect, angleDeg, cx, cy) }
     }
     case 'circle-pocket':
       return { ...op, id, circle: { ...op.circle, ...place({ ...op.circle, z: 0 }) } }
@@ -213,7 +220,7 @@ export function rotatedCopies(
   if (turn.copies + 1 > MAX_COPIES) return { ok: false, reason: `Слишком много копий: больше ${String(MAX_COPIES)}` }
   const refused = copyRefusal(op)
   if (refused !== null) return { ok: false, reason: refused }
-  if ((op.kind === 'pocket' || op.kind === 'pocket-island') && !isQuarterTurn(turn.angleDeg)) {
+  if ((op.kind === 'pocket' || op.kind === 'pocket-island' || op.kind === 'rest') && !isQuarterTurn(turn.angleDeg)) {
     return { ok: false, reason: 'Поворот кармана — только кратно 90 градусам.' }
   }
   const copies: Operation[] = [op]

@@ -81,6 +81,16 @@ function islandLines(op: Extract<Operation, { kind: 'pocket-island' }>): string 
   )
 }
 
+/** The lines of a rest operation: the sources one per line, the footprint, the allowance, the step. */
+function restLines(op: Extract<Operation, { kind: 'rest' }>): string {
+  const sources = op.source.length > 0 ? `op.source ${op.source.map(String).join(' ')}\n` : 'op.source\n'
+  return (
+    sources +
+    `op.rect ${num(op.rect.x)} ${num(op.rect.y)} ${num(op.rect.w)} ${num(op.rect.h)}\n` +
+    `op.allowance ${num(op.allowanceMm)}\nop.stepOver ${num(op.stepOverPct)}\n`
+  )
+}
+
 /**
  * The lines of a custom block: one `op.gcode <text>` per program line, the text quoted exactly as
  * `op.notes` and `op.name` are. An empty line is the bare key, so the list keeps its blanks.
@@ -168,6 +178,8 @@ function shapeLines(op: Operation): string {
       return engraveLines(op)
     case 'pocket-island':
       return islandLines(op)
+    case 'rest':
+      return restLines(op)
     case 'custom':
       return gcodeLines(op.gcode)
     case 'probe':

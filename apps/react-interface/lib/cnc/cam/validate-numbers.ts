@@ -201,5 +201,17 @@ export function numberFields(op: Operation): NumberField[] {
         field(op.rangeMm, 'rangeMm', 'rangeMm', 'диапазон обмера'),
         field(op.touchFeedMmMin, 'touchFeedMmMin', 'touchFeedMmMin', 'подача касания'),
       ]
+    case 'rest':
+      // The sources are a list of indexes, checked by `validate-rest.ts`: a broken `source` there is
+      // named as a source, not as a number; the footprint and the step are numbers of the form.
+      return [
+        ...common,
+        field(op.rect.x, 'geometry', 'rect.x', 'X области остатка'),
+        field(op.rect.y, 'geometry', 'rect.y', 'Y области остатка'),
+        field(op.rect.w, 'rect.w', 'rect.w', 'ширина области остатка'),
+        field(op.rect.h, 'rect.h', 'rect.h', 'высота области остатка'),
+        field(op.allowanceMm, 'allowanceMm', 'allowanceMm', 'припуск остатка'),
+        field(op.stepOverPct, 'stepOver', 'stepOverPct', 'шаг растра'),
+      ]
   }
 }

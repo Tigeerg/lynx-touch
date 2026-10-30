@@ -8,7 +8,7 @@ import type { Operation } from './ops'
 import { pointsText } from './contour-points'
 import { linesText } from './form-lines'
 import { probePointsText } from './probe-points'
-import { counterboreValues, threadValues } from './form-fields-q5'
+import { counterboreValues, sourceText, threadValues } from './form-fields-q5'
 import { engraveValues, islandValues } from './form-fields-q5a'
 
 export function valuesOfShape(op: Operation): Record<string, string> {
@@ -84,6 +84,16 @@ export function valuesOfShape(op: Operation): Record<string, string> {
       return islandValues(op)
     case 'custom':
       return { gcode: linesText(op.gcode) }
+    case 'rest':
+      return {
+        source: sourceText(op.source),
+        'rect.x': String(op.rect.x),
+        'rect.y': String(op.rect.y),
+        'rect.w': String(op.rect.w),
+        'rect.h': String(op.rect.h),
+        allowanceMm: String(op.allowanceMm),
+        stepOverPct: String(op.stepOverPct),
+      }
     case 'probe':
       return {
         points: probePointsText(op.points),

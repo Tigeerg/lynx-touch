@@ -6,8 +6,9 @@
 // numbers keep the arity of their key. `true` when the key was of this module, so the reader of the
 // other shapes is not called with it.
 import type { Operation } from './ops'
-import { restAfter, unquoteText } from './serialize-words'
+import { parseInteger, restAfter, unquoteText } from './serialize-words'
 import { arity, num } from './read-op-words'
+import { QprogError } from './qprog-error'
 
 /** The rectangle of an island pocket: `x y w h` on one line, as a pocket's `op.rect` is. */
 const rectOf = (words: string[], key: string, where: string) => {
@@ -59,7 +60,38 @@ function islandKey(
   }
 }
 
-/** Reads one shape key of the two kinds; `false` when the key is of another kind. */
+/**
+ * A rest key: `source` is the list of document indexes as the rest of the line (empty is no
+ * source), `rect` is the footprint of four numbers, `allowance` and `stepOver` are one number each.
+ */
+function restKey(
+  op: Extract<Operation, { kind: 'rest' }>,
+  sub: string,
+  words: string[],
+  key: string,
+  where: string,
+): void {
+  if (sub === 'source') {
+    const list: number[] = []
+    for (const word of words.slice(1)) {
+      const value = parseInteger(word)
+      if (value === null || value < 0) throw new QprogError(0, `${where}op.source ждёт целые индексы: '${word}'.`)
+      if (!list.includes(value)) list.push(value)
+    }
+    op.source = list
+    return
+  }
+  if (sub === 'rect') {
+    op.rect = rectOf(words, key, where)
+    return
+  }
+  arity(words, 1, key, where)
+  const value = num(words, 1, key, where)
+  if (sub === 'allowance') op.allowanceMm = value
+  else op.stepOverPct = value
+}
+
+/** Reads one shape key of the kinds; `false` when the key is of another kind. */
 export function readPathShapeKey(
   op: Operation,
   sub: string,
@@ -74,6 +106,10 @@ export function readPathShapeKey(
   }
   if (op.kind === 'pocket-island') {
     islandKey(op, sub, words, key, where)
+    return true
+  }
+  if (op.kind === 'rest') {
+    restKey(op, sub, words, key, where)
     return true
   }
   return false

@@ -23,6 +23,7 @@ const KINDS: OperationKind[] = [
   'tap',
   'engrave',
   'pocket-island',
+  'rest',
   'custom',
   'probe',
 ]
@@ -40,6 +41,7 @@ describe('слова оверлея', () => {
       'Метчик',
       'Гравировка',
       'Карман с островом',
+      'Остаточная обработка',
       'Custom G Code',
       'Блок щупа',
     ])
@@ -59,6 +61,18 @@ describe('слова оверлея', () => {
     expect(keySize(engrave)).toBe('«ТЕКСТ» 5 мм')
     const island = newOperation('pocket-island', { id: '', topZ: 0 })
     expect(keySize(island)).toBe('60×40 · остров 20×20')
+    const rest = newOperation('rest', { id: '', topZ: 0 })
+    expect(keySize(rest)).toBe('вся площадь · нет исходных')
+    expect(keySize({ ...rest, rect: { x: 0, y: 0, w: 60, h: 40 }, source: [0, 1] })).toBe('60×40 · из 1, 2')
+  })
+
+  it('предупреждения остатка читаются из документа, а не из одной операции', () => {
+    const rest = newOperation('rest', { id: '', topZ: 0 })
+    expect(kindWarnings(rest)).toEqual([])
+    const program = { ...newProgram(), operations: [rest] }
+    expect(kindWarnings(rest, program)).toContain(
+      'Нет исходных операций: остаток не определён, программа пойдёт по всей площади',
+    )
   })
 
   it('ошибка гравировки находит поле текста, ошибка острова — поле острова', () => {

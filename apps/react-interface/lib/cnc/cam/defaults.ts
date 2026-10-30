@@ -7,7 +7,7 @@ import type { DrillBody, Material } from './feeds'
 import { cuttingFor } from './feeds'
 import type { NewOperation } from './operation-init'
 import { newProbe } from './defaults-probe'
-import { newCounterbore, newEngrave, newIslandPocket, newThread } from './defaults-q5'
+import { newCounterbore, newEngrave, newIslandPocket, newRest, newThread } from './defaults-q5'
 import { common } from './defaults-common'
 export { DEFAULT_DWELL_SEC, DEFAULT_SEAT_DEPTH_MM, DEFAULT_SEAT_DIAMETER_MM } from './defaults-q5'
 export { DEFAULT_PROBE_RANGE_MM, TOUCH_FEED_MM_MIN } from './probe-defaults'
@@ -25,6 +25,7 @@ import type {
   ProbeOperation,
   QuickProgram,
   RectPocketOperation,
+  RestOperation,
   SlotOperation,
   StockBox,
   TapOperation,
@@ -115,6 +116,7 @@ export function newOperation(kind: 'counterbore', init: NewOperation): Counterbo
 export function newOperation(kind: 'thread', init: NewOperation): ThreadOperation
 export function newOperation(kind: 'engrave', init: NewOperation): EngraveOperation
 export function newOperation(kind: 'pocket-island', init: NewOperation): IslandPocketOperation
+export function newOperation(kind: 'rest', init: NewOperation): RestOperation
 export function newOperation(kind: 'custom', init: NewOperation): CustomOperation
 export function newOperation(kind: 'probe', init: NewOperation): ProbeOperation
 export function newOperation(kind: Operation['kind'], init: NewOperation): Operation
@@ -128,6 +130,7 @@ export function newOperation(kind: Operation['kind'], init: NewOperation): Opera
   if (kind === 'thread') return newThread(init, tool, material)
   if (kind === 'engrave') return newEngrave(init, tool, material)
   if (kind === 'pocket-island') return newIslandPocket(init, tool, material)
+  if (kind === 'rest') return newRest(init, tool, material)
   switch (kind) {
     case 'face': {
       const fields = common(init, tool, material, null)

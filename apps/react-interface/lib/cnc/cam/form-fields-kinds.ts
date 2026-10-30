@@ -12,7 +12,7 @@ import { kept, int, str, on } from './form-fields'
 import { pointsOf } from './contour-points'
 import { customWithText } from './form-lines'
 import { probeAxis, probePointsOf } from './probe-points'
-import { counterboreFields, threadFields } from './form-fields-q5'
+import { counterboreFields, sourceIndexes, threadFields } from './form-fields-q5'
 import { engraveFields, islandFields } from './form-fields-q5a'
 
 /** The shape values of the kind; the narrow switch is what makes a forgotten kind a compile error. */
@@ -120,6 +120,22 @@ export function fieldsOfShape(op: Operation, v: Record<string, string>, common: 
       const next = customWithText(op, v.gcode)
       return { ...common, kind: 'custom', gcode: next.gcode }
     }
+    case 'rest':
+      return {
+        ...common,
+        kind: 'rest',
+        // The sources are read by `sourceIndexes`: a text that is not a list keeps the list, so a
+        // half-typed field never wipes the indexes the operator chose.
+        source: sourceIndexes(v, 'source', op.source),
+        rect: {
+          x: kept(v, 'rect.x', op.rect.x),
+          y: kept(v, 'rect.y', op.rect.y),
+          w: kept(v, 'rect.w', op.rect.w),
+          h: kept(v, 'rect.h', op.rect.h),
+        },
+        allowanceMm: kept(v, 'allowanceMm', op.allowanceMm),
+        stepOverPct: kept(v, 'stepOverPct', op.stepOverPct),
+      }
     case 'probe':
       return {
         ...common,

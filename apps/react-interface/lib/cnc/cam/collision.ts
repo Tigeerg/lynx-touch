@@ -22,6 +22,7 @@ import type { Operation, QuickProgram } from './ops'
 import { probeWarnings } from './probe'
 import { counterboreWarnings } from './validate-counterbore'
 import { tapWarnings } from './validate-tap'
+import { restWarnings } from './validate-rest'
 import { viewerErrors } from './viewer-check'
 
 /** One finding of the check: the field of the operator's list and the reason in the operator's words. */
@@ -146,6 +147,11 @@ export function checkProgram(program: QuickProgram, path: CamPath): CollisionRes
     // A touch feed above the working feed is the same kind of finding: shown and written, never a block.
     if (operation.kind === 'probe') {
       for (const item of probeWarnings(operation)) warnings.push({ field: fieldOf(index), reason: item.reason })
+    }
+    // A rest with no source, with a source that leaves no pocket, or with nothing left, is that
+    // same kind of finding: named in the file, written, never a refused save (`validate-rest.ts`).
+    if (operation.kind === 'rest') {
+      for (const item of restWarnings(program, operation)) warnings.push({ field: fieldOf(index), reason: item.reason })
     }
   })
   return { errors, warnings }

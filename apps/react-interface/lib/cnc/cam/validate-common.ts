@@ -54,7 +54,7 @@ export function validate(program: QuickProgram): Validation {
     bad.push({ field: 'operations', reason: 'В программе нет ни одной операции.' })
     return finish(bad)
   }
-  for (const op of program.operations) {
+  for (const [index, op] of program.operations.entries()) {
     if (!op.enabled) continue
     // A number of the document that is not a number is the clearest wrong field there is: a
     // half-typed form (`stepOver` = "abc") is refused by name, and the checks below, which compare
@@ -66,7 +66,8 @@ export function validate(program: QuickProgram): Validation {
     if (op.kind !== 'custom' && op.kind !== 'probe') checkCutting(op, bad)
     checkDepth(program, op, bad)
     checkStep(op, bad)
-    checkGeometry(program, op, bad)
+    // A rest operation reads its own place in the list: a source may not name itself.
+    checkGeometry(program, op, bad, index)
     checkPeck(op, bad)
   }
   checkSafeZ(program, bad)
@@ -182,7 +183,8 @@ function checkStep(op: Operation, out: Problem[]): void {
       op.kind === 'tap' ||
       op.kind === 'counterbore' ||
       op.kind === 'thread' ||
-      op.kind === 'pocket-island') &&
+      op.kind === 'pocket-island' ||
+      op.kind === 'rest') &&
     op.stepDownMm >= 0
   )
     return

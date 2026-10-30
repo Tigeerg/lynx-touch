@@ -13,6 +13,7 @@ import type {
   EngraveOperation,
   IslandPocketOperation,
   Material,
+  RestOperation,
   ThreadOperation,
   ToolRef,
 } from './ops'
@@ -110,6 +111,22 @@ export function newIslandPocket(init: NewOperation, tool: ToolRef, material: Mat
     rect: { x: -30, y: -20, w: 60, h: 40 },
     island: { x: -10, y: -10, w: 20, h: 20 },
     islandAllowanceMm: DEFAULT_ISLAND_ALLOWANCE_MM,
+    stepOverPct: THREAD_STEP_OVER_PCT,
+  }
+}
+
+/**
+ * A new rest operation: no source (the whole footprint, with the warning the check prints) and no
+ * footprint of its own, so the form opens on "the whole stock" and the operator narrows it.
+ */
+export function newRest(init: NewOperation, tool: ToolRef, material: Material): RestOperation {
+  const fields = common(init, tool, material, null)
+  return {
+    ...fields,
+    kind: 'rest',
+    source: [],
+    rect: { x: 0, y: 0, w: 0, h: 0 },
+    allowanceMm: 0,
     stepOverPct: THREAD_STEP_OVER_PCT,
   }
 }

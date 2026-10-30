@@ -113,3 +113,30 @@ export function threadFields(op: ThreadOperation, v: Record<string, string>, com
     stepOverPct: kept(v, 'stepOverPct', op.stepOverPct),
   }
 }
+
+/**
+ * The sources of a rest operation, as the form shows them: the indexes one per line. The form has
+ * no list widget, so the operator types the numbers of the operations of the list, as the `.qprog`
+ * carries them; the text is the same in both places.
+ */
+export const sourceText = (source: number[]): string => source.join('\n')
+
+/**
+ * The source list read back from the field. A text that does not parse keeps the document list: the
+ * form names no field of its own for a half-typed list, and the check names an index out of range.
+ * A repeated index is dropped, so `0 2 0` is the two sources the operator meant.
+ */
+export function sourceIndexes(v: Record<string, string>, key: string, current: number[]): number[] {
+  const text = v[key]
+  if (text === undefined) return current
+  const words = text.split(/[\s,;]+/).filter((word) => word.length > 0)
+  if (words.length === 0) return []
+  const out: number[] = []
+  for (const word of words) {
+    if (!/^\d+$/.test(word)) return current
+    const value = Number(word)
+    if (!Number.isSafeInteger(value)) return current
+    if (!out.includes(value)) out.push(value)
+  }
+  return out
+}

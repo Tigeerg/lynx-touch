@@ -37,6 +37,7 @@ export function opHead(text: string, line: number): OpHead {
   if (text === 'thread') return { kind: 'thread', drill: null }
   if (text === 'engrave') return { kind: 'engrave', drill: null }
   if (text === 'pocket-island') return { kind: 'pocket-island', drill: null }
+  if (text === 'rest') return { kind: 'rest', drill: null }
   if (text === 'custom') return { kind: 'custom', drill: null }
   if (text === 'probe') return { kind: 'probe', drill: null }
   throw new QprogError(line, `неизвестный вид операции '${text}'.`)
@@ -56,6 +57,7 @@ export const SHAPE_KEYS: Record<Operation['kind'], string[]> = {
   thread: ['hole', 'pitch', 'internal', 'threadDepth', 'allowance', 'stepOver'],
   engrave: ['text', 'x', 'y', 'height', 'angle'],
   'pocket-island': ['rect', 'island', 'islandAllowance', 'stepOver'],
+  rest: ['source', 'rect', 'allowance', 'stepOver'],
   custom: [],
   probe: ['points', 'range', 'touch', 'axis'],
 }

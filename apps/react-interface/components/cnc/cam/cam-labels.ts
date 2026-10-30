@@ -9,6 +9,7 @@ import { slotWarnings } from '@/lib/cnc/cam/validate-slot'
 import { tapWarnings } from '@/lib/cnc/cam/validate-tap'
 import { counterboreWarnings } from '@/lib/cnc/cam/validate-counterbore'
 import { pathWarnings } from '@/lib/cnc/cam/validate-paths'
+import { restWarnings } from '@/lib/cnc/cam/validate-rest'
 
 /** The kind names of the picker and of an operation card; P1 requires the word, not the icon. */
 export const KIND_LABEL: Record<OperationKind, string> = {
@@ -24,6 +25,7 @@ export const KIND_LABEL: Record<OperationKind, string> = {
   thread: 'Резьбовая фреза',
   engrave: 'Гравировка',
   'pocket-island': 'Карман с островом',
+  rest: 'Остаточная обработка',
   custom: 'Custom G Code',
   probe: 'Блок щупа',
 }
@@ -68,6 +70,11 @@ export function keySize(op: Operation): string {
       return `«${op.text}» ${formatMm(op.heightMm)} мм`
     case 'pocket-island':
       return `${formatMm(op.rect.w)}×${formatMm(op.rect.h)} · остров ${formatMm(op.island.w)}×${formatMm(op.island.h)}`
+    case 'rest': {
+      const area = op.rect.w > 0 && op.rect.h > 0 ? `${formatMm(op.rect.w)}×${formatMm(op.rect.h)}` : 'вся площадь'
+      const sources = op.source.length === 0 ? 'нет исходных' : `из ${op.source.map((i) => String(i + 1)).join(', ')}`
+      return `${area} · ${sources}`
+    }
     case 'custom':
       return `${String(op.gcode.length)} стр. · проверьте вручную`
     case 'probe': {
@@ -100,7 +107,7 @@ export function headerText(program: QuickProgram): { wcs: string; g64: string; s
  * the count as a sign, the reason stays in the module that owns the rule; a tap without rigid
  * tapping is an error of the save and never lands here.
  */
-export function kindWarnings(op: Operation): string[] {
+export function kindWarnings(op: Operation, program?: QuickProgram): string[] {
   switch (op.kind) {
     case 'tap':
       return tapWarnings(op).map((w) => w.reason)
@@ -113,6 +120,10 @@ export function kindWarnings(op: Operation): string[] {
     case 'engrave':
     case 'pocket-island':
       return pathWarnings(op).map((w) => w.reason)
+    case 'rest':
+      // The empty source and the empty rest are read against the document; a card without the
+      // document keeps the sources it can judge on its own (none) and shows no warning.
+      return program === undefined ? [] : restWarnings(program, op).map((w) => w.reason)
     default:
       return []
   }

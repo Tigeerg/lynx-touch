@@ -53,6 +53,7 @@ const FAMILY: Record<Operation['kind'], string> = {
   thread: 'FLAT',
   engrave: 'FLAT',
   'pocket-island': 'FLAT',
+  rest: 'FLAT',
   custom: 'CODE',
   probe: 'PROBE',
 }

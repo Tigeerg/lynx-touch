@@ -17,6 +17,7 @@ import type {
   FaceOperation,
   Operation,
   ProgramShape,
+  QuickProgram,
   RectPocketOperation,
 } from './ops'
 import type { Problem } from './validate-common'
@@ -28,12 +29,14 @@ import { checkCustom } from './validate-custom'
 import { checkCounterbore } from './validate-counterbore'
 import { probeValidation } from './probe'
 import { checkPathKind } from './validate-paths'
+import { checkRest } from './validate-rest'
 
 /** The shape rules of the kind of the operation: face, pocket, circle pocket, drilling, contour, slot, chamfer. */
 export function checkGeometry(
   program: ProgramShape & { params?: Record<string, number> },
   op: Operation,
   out: Problem[],
+  index = -1,
 ): void {
   // The narrow field by the kind: the union makes a forgotten kind a compile error.
   switch (op.kind) {
@@ -61,6 +64,9 @@ export function checkGeometry(
     case 'pocket-island':
       // The text of an engraving and the island of a pocket live in `validate-paths.ts`.
       return checkPathKind(op, out)
+    case 'rest':
+      // The sources and the footprint: `validate-rest.ts` (the whole document, not the shape alone).
+      return checkRest(restProgram(program), op, index, out)
     case 'custom':
       return checkCustom(op, out)
     case 'probe':
@@ -205,3 +211,13 @@ export function checkPeck(op: Operation, out: Problem[]): void {
     add(out, 'peck', `Шаг вывода стружки Q${fmt(peck)} мм меньше 0.1 мм: цикл будет только дробить стружку.`)
   }
 }
+
+/**
+ * The document a rest rule reads: the sources are indexes into the operations list, so the shape
+ * check needs the list. A caller of `checkGeometry` without the document (a shape-only test) gets an
+ * empty list, where every index is out of range; `validate` always passes the document.
+ */
+const restProgram = (program: ProgramShape & { operations?: Operation[] }): QuickProgram => ({
+  ...(program as QuickProgram),
+  operations: program.operations ?? [],
+})

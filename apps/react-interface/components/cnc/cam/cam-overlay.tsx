@@ -25,6 +25,16 @@ import { OperationPicker } from './operation-picker'
 
 type Column = 'list' | 'form' | 'preview'
 
+/**
+ * The line under the header, in the order the operator needs it: a save waiting for the second
+ * press, then a problem of the form, then the file the last save wrote.
+ */
+const statusLine = (pending: CamState['pendingSave'], warning: string | null, saved: string | null): string => {
+  if (pending !== null) return `Нажмите ещё раз для замены ${pending.name}`
+  if (warning !== null) return warning
+  return `УП записана в файл ${saved ?? ''}`
+}
+
 const SEGMENTS: { id: Column; label: string }[] = [
   { id: 'list', label: 'Список' },
   { id: 'form', label: 'Форма' },
@@ -48,12 +58,17 @@ function CamOverlayBody({ cam, state, dispatch }: { cam: CamState; state: Machin
   const { wcs, g64, stock } = headerText(cam.program)
   const warning = cam.error?.reason ?? null
   const saved = cam.saved
+  // The file the last save found in the way (PLAN-QUICKPROG, 7.5): the header asks for one more
+  // press and the save button is «Заменить» while the confirmation stands.
+  const pending = cam.pendingSave
 
   // The picked segment only wins while it still shows the form: a tile press and «Отмена» switch
   // to the state-driven column, so the form appears and goes away without a second tap.
   const show = (id: Column) => setPicked(id === 'form' || id === 'list' ? null : id)
   const close = () => dispatch({ type: 'CAM_CLOSE' })
-  const save = () => dispatch({ type: 'CAM_SAVE' })
+  // The moment of the press comes from the action, not from the reducer: the window of the
+  // confirmation is measured by the second press against this stamp.
+  const save = () => dispatch({ type: 'CAM_SAVE', at: Date.now() })
   const busy = state.run === 'RUN' || state.run === 'HOLD'
 
   const list = <OperationList program={cam.program} editing={cam.editing} dispatch={dispatch} />
@@ -93,14 +108,20 @@ function CamOverlayBody({ cam, state, dispatch }: { cam: CamState; state: Machin
                 type="button"
                 tabIndex={-1}
                 onClick={save}
-                title={busy ? 'Остановите программу перед записью УП' : 'Записать .ngc в список файлов'}
+                title={
+                  busy
+                    ? 'Остановите программу перед записью УП'
+                    : pending
+                      ? `Нажмите ещё раз, чтобы заменить ${pending.name}`
+                      : 'Записать .ngc в список файлов'
+                }
                 className={cn(
                   'flex items-center gap-1.5 rounded-md border-2 border-primary bg-primary px-2.5 text-xs font-bold text-primary-foreground transition-opacity hover:opacity-90',
                   touch ? 'min-h-11' : 'min-h-8',
                 )}
               >
                 <Save className="size-4" aria-hidden="true" />
-                Сохранить УП
+                {pending ? 'Заменить' : 'Сохранить УП'}
               </button>
               <button
                 type="button"
@@ -116,16 +137,16 @@ function CamOverlayBody({ cam, state, dispatch }: { cam: CamState; state: Machin
               </button>
             </div>
           </div>
-          {(warning ?? (saved ? `УП записана в файл ${saved}` : null)) && (
+          {(pending ?? warning ?? saved) && (
             <p
               role="status"
               className={cn(
                 'flex min-w-0 items-center gap-1.5 text-[10px] font-semibold',
-                warning ? 'text-destructive' : 'text-success',
+                warning ? 'text-destructive' : pending ? 'text-warning' : 'text-success',
               )}
             >
-              {warning && <TriangleAlert className="size-3 shrink-0" aria-hidden="true" />}
-              <span className="truncate">{warning ?? `УП записана в файл ${saved ?? ''}`}</span>
+              {(pending || warning) && <TriangleAlert className="size-3 shrink-0" aria-hidden="true" />}
+              <span className="truncate">{statusLine(pending, warning, saved)}</span>
             </p>
           )}
           {touch && (

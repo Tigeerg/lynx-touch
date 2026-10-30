@@ -146,7 +146,7 @@ describe('сохранение УП', () => {
     const document = { ...newProgram(program.stock, 'FACE'), operations: [op] }
     return {
       ...opened(),
-      cam: { program: document, form: null, editing: null, error: null, preview: null, saved: null },
+      cam: { program: document, form: null, editing: null, error: null, preview: null, saved: null, pendingSave: null },
     }
   }
 
@@ -174,8 +174,11 @@ describe('сохранение УП', () => {
     if (!built.ok) throw new Error(built.problems.join('; '))
 
     const file = currentFile(s)
-    expect(s.files.length).toBe(base.files.length + 1)
-    expect(s.activeFile).toBe(s.files.length - 1)
+    // The document goes to the files twice (the program and the model beside it, 7.5), and the
+    // program is the one that opens: the model does not take the focus.
+    expect(s.files.length).toBe(base.files.length + 2)
+    expect(file.name.endsWith('.ngc')).toBe(true)
+    expect(s.activeFile).toBe(s.files.indexOf(file))
     expect(file.lines).toEqual(emitProgram(program, built.path))
     expect(file.lines.length).toBeGreaterThan(2)
     expect(file.name.length).toBeGreaterThan(0)

@@ -21,13 +21,32 @@ export const setLines = (s: MachineState, lines: string[], at?: number): Machine
 
 /**
  * Writes the lines into the file `name`: an existing file of that name is replaced, a new one is
- * appended and becomes active. The second point of write next to `setLines`, for a subsystem that
- * produces a whole file (the quick program) instead of editing the active one.
+ * appended. The second point of write next to `setLines`, for a subsystem that produces a whole
+ * file (the quick program) instead of editing the active one.
+ *
+ * `active` says whether the written file becomes the one the editor and the screen show. The
+ * quick program writes the `.bak` and the `.qprog` beside its NC file, so those go in with
+ * `active: false` and the operator still sees the program that was just saved.
  */
-export const putFile = (s: MachineState, name: string, title: string, lines: string[], at?: number): MachineState => {
+export const putFile = (
+  s: MachineState,
+  name: string,
+  title: string,
+  lines: string[],
+  at?: number,
+  active = true,
+): MachineState => {
   const modified = at === undefined ? '' : formatStamp(at)
   const i = s.files.findIndex((f) => f.name === name)
   if (i >= 0)
-    return { ...s, files: s.files.map((f, k) => (k === i ? { ...f, title, lines, modified } : f)), activeFile: i }
-  return { ...s, files: [...s.files, { name, title, lines, modified }], activeFile: s.files.length }
+    return {
+      ...s,
+      files: s.files.map((f, k) => (k === i ? { ...f, title, lines, modified } : f)),
+      activeFile: active ? i : s.activeFile,
+    }
+  return {
+    ...s,
+    files: [...s.files, { name, title, lines, modified }],
+    activeFile: active ? s.files.length : s.activeFile,
+  }
 }

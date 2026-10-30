@@ -5,18 +5,17 @@
 // registers the entry, `subsystem.ts` holds the shape. A subsystem does not import `machine.ts`.
 //
 // The document is not the machine: the overlay edits a `QuickProgram`, and only `CAM_SAVE` hands
-// the result to the files. Writing goes through `setLines` (`files.ts`) as the one point of write:
-// the operator gets the G-code in the panel's file list and opens it in the editor.
+// the result to the files. The write itself lives in `cam-save.ts` (`saveCam`), next to the refusal
+// of a busy machine and the confirmation of a replacement.
 //
 // The form keeps strings (`form.ts`), the preview is recomputed after every edit (the first version
 // is synchronous; the budget is measured, not guessed), and `CAM_ACCEPT` runs the same `validate`
 // as the planner. A refusal is a message to the operator and the document does not change.
-import { putFile } from '../files'
 import { isBusy } from '../guards'
 import { newProgram } from './defaults'
-import { emitProgram } from './emit'
 import type { Operation } from './ops'
 import { buildProgram } from './path'
+import { emitOf, saveCam } from './cam-save'
 import type { Result } from '../subsystem'
 import type { MachineState } from '../types'
 import type { CamForm } from './form'
@@ -44,15 +43,6 @@ export const isCamAction = (a: { type: string }): a is CamAction => CAM_TYPES.ha
 /** The overlay of a state; a CAM_* action without an open overlay is a no-op with a hint. */
 const closed = (s: MachineState): Result => ({ s, msg: 'Быстрая УП не открыта', level: 'warn' })
 
-/**
- * The emitted file of the document, or null when the document cannot be planned. The preview and
- * the save read the same function, so what the operator saved is what the operator saw.
- */
-const emitOf = (program: CamState['program']): string[] | null => {
-  const built = buildProgram(program)
-  return built.ok ? emitProgram(program, built.path) : null
-}
-
 /** The state with the typed field applied and the problem and the preview recomputed. */
 const edited = (cam: CamState, field: string, value: string): CamState => {
   if (cam.form === null) return cam
@@ -78,38 +68,6 @@ const withOperation = (cam: CamState, index: number, next: Operation | null): Ca
   return { ...cam, program, preview: emitOf(program), error: null }
 }
 
-/** The file name of a save: the program name, the operation count and the moment of the write. */
-const fileName = (cam: CamState): string => {
-  const base = cam.program.name.trim() || 'QUICK'
-  return `${base}-${String(cam.program.operations.length)}.ngc`
-}
-
-/** The refusal of a save: the machine is not idle. The files do not change. */
-const saveBlocked = (s: MachineState): Result | null => {
-  if (s.run === 'ESTOP') return { s, msg: 'Сначала сбросьте аварию — запись УП запрещена', level: 'warn' }
-  if (isBusy(s)) return { s, msg: 'Остановите программу перед записью УП', level: 'warn' }
-  return null
-}
-
-const save = (s: MachineState, cam: CamState, at: number | undefined): Result => {
-  const blocked = saveBlocked(s)
-  if (blocked !== null) return blocked
-  if (cam.program.operations.length === 0)
-    return { s, msg: 'В программе нет операций: добавьте хотя бы одну', level: 'warn' }
-  const lines = emitOf(cam.program)
-  if (lines === null) {
-    const built = buildProgram(cam.program)
-    const reason = built.ok ? '' : built.problems[0]
-    return { s, msg: `УП не сохранена: ${reason}`, level: 'error' }
-  }
-  const name = cam.saved ?? fileName(cam)
-  const written = putFile(s, name, name, lines, at)
-  return {
-    s: { ...written, cam: { ...cam, saved: name, preview: lines } },
-    msg: `УП записана в файл ${name} — ${String(lines.length)} строк`,
-  }
-}
-
 export function camReducer(s: MachineState, a: CamAction): Result {
   switch (a.type) {
     case 'CAM_OPEN': {
@@ -122,6 +80,7 @@ export function camReducer(s: MachineState, a: CamAction): Result {
         error: null,
         preview: null,
         saved: null,
+        pendingSave: null,
       }
       return { s: { ...s, cam } }
     }
@@ -203,6 +162,6 @@ export function camReducer(s: MachineState, a: CamAction): Result {
     }
 
     case 'CAM_SAVE':
-      return s.cam === null ? closed(s) : save(s, s.cam, a.at)
+      return s.cam === null ? closed(s) : saveCam(s, s.cam, a.at)
   }
 }

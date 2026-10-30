@@ -24,6 +24,12 @@ export interface CamState {
   preview: string[] | null
   /** The name of the file the last `CAM_SAVE` wrote; the next save replaces it. */
   saved: string | null
+  /**
+   * The file the last save found already present, the moment of that press and the document the
+   * operator confirmed. The next save of that same document within `SAVE_CONFIRM_MS` replaces the
+   * file; any other save asks again.
+   */
+  pendingSave: { name: string; at: number; program: QuickProgram } | null
 }
 
 /** The `CAM_*` actions of the registry; the reducer switches on them by kind. */

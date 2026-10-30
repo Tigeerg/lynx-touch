@@ -20,6 +20,11 @@ export interface CamMove {
   to: Point3
   feedMmMin?: number
   arc?: { cw: boolean; i: number; j: number }
+  /**
+   * The index of the operation in the document that planned this move (`path.ts` writes it). A move
+   * of a hand-built path may omit it; the collision check then binds nothing to the operator's list.
+   */
+  operation?: number
 }
 
 /** The result of the planner: moves, not lines of G-code, with the box and the estimates. */

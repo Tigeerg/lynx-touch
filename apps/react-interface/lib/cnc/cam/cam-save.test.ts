@@ -9,12 +9,14 @@ import { describe, expect, it } from 'vitest'
 import { initialState, reducer, type Action } from '../machine'
 import { currentFile } from '../files'
 import type { MachineState, ProgramFile } from '../types'
-import { newProgram } from './defaults'
+import { newOperation, newProgram } from './defaults'
+import type { Operation } from './ops'
 import { ETL_CASES } from './etl-cases'
 import { emitProgram } from './emit'
 import { buildProgram } from './path'
 import { parseProgram, serializeProgram } from './serialize'
 import type { CamState } from './cam'
+import { validate } from './validate'
 
 const camOf = (s: MachineState): CamState => {
   if (s.cam === null) throw new Error('the overlay is closed')
@@ -54,6 +56,66 @@ const fileOf = (s: MachineState, name: string): ProgramFile => {
   if (file === undefined) throw new Error(`no file ${name}`)
   return file
 }
+
+/** A document of one pocket at `x`, `w` wide, cut by a mill of `diameter`: the collision cases. */
+const pocketDocument = (name: string, x: number, w: number, depthMm = 4, diameter = 8): MachineState => {
+  const op: Operation = {
+    ...newOperation('pocket', {
+      id: 'Карман',
+      topZ: 0,
+      depthMm,
+      stepDownMm: 2,
+      tool: { number: 1, diameterMm: diameter, hNumber: 1 },
+    }),
+    rect: { x, y: -15, w, h: 30 },
+  }
+  const document = { ...newProgram(newProgram().stock, name), operations: [op] }
+  const opened = reducer(initialState, { type: 'CAM_OPEN' })
+  return {
+    ...opened,
+    cam: { program: document, form: null, editing: null, error: null, preview: null, saved: null, pendingSave: null },
+  }
+}
+
+describe('сохранение УП: проверка коллизии', () => {
+  it('ошибка проверки не пишет файл и возвращает level: error', () => {
+    // The save runs validate, the planner and the collision check in that order. A document that
+    // fails the rules stops at the first step, so no file appears and the message names the field.
+    // The collision check itself has no error of its own: the depth rule lives in validate, and a
+    // second copy would drift from it.
+    const base = pocketDocument('DEEP', -20, 40, 30)
+    if (base.cam === null) throw new Error('the overlay is closed')
+    expect(validate(base.cam.program).ok).toBe(false)
+    const before = base.files.length
+    const s = run(base, { type: 'CAM_SAVE', at: 1_000 })
+
+    expect(s.message?.level).toBe('error')
+    expect(s.message?.text).toContain('depthMm')
+    expect(s.files.length).toBe(before)
+    expect(s.files.some((f) => f.name.startsWith('DEEP'))).toBe(false)
+  })
+
+  it('предупреждение не блокирует запись и попадает в УП строкой QUICKPROG WARNING', () => {
+    // The pocket raster ends at X 56, past the stock edge of 50; the mill of radius 4 mm overruns.
+    const base = pocketDocument('EDGE', 20, 40)
+    const s = run(base, { type: 'CAM_SAVE', at: 1_000 })
+
+    expect(s.message?.level).not.toBe('error')
+    expect(s.message?.text).toContain('предупрежден')
+    const written = fileOf(s, 'EDGE-1.ngc').lines
+    expect(written.some((line) => line.includes('QUICKPROG WARNING'))).toBe(true)
+    // The warning stands right after the UI_OP tag of its own operation.
+    const opLine = written.findIndex((line) => line.includes('UI_OP'))
+    expect(written[opLine + 1]).toContain('QUICKPROG WARNING')
+  })
+
+  it('без предупреждений текст совпадает с emitProgram байт в байт', () => {
+    const base = pocketDocument('CLEAN', -20, 40)
+    const s = run(base, { type: 'CAM_SAVE', at: 1_000 })
+
+    expect(fileOf(s, 'CLEAN-1.ngc').lines).toEqual(previewOf(base))
+  })
+})
 
 describe('сохранение УП: подтверждение замены', () => {
   it('первое нажатие при занятом имени не пишет, а просит подтверждение', () => {

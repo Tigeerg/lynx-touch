@@ -24,7 +24,8 @@ import type { Block, EmitState } from './emit-state'
 import { freshState, preambleBlocks, trailerBlocks } from './emit-state'
 import { footerBlocks, headerBlocks } from './emit-frame'
 import { cycleBlocks, moveBlocks } from './emit-moves'
-import { coord, effectiveH, numberedBlock, SEQUENCE_STEP } from './emit-words'
+import { commentSafe, coord, effectiveH, numberedBlock, SEQUENCE_STEP } from './emit-words'
+import type { Issue } from './collision'
 
 /** The first block number of the file, the reference post's start. */
 const FIRST_SEQUENCE = 10
@@ -35,8 +36,17 @@ const FIRST_SEQUENCE = 10
  */
 const parkPoint = (safeZ: number): Point3 => ({ x: Number.NaN, y: Number.NaN, z: safeZ })
 
-/** The blocks of one operation: its preamble, its moves or cycle, its trailer. */
-const operationBlocks = (program: QuickProgram, path: ProgramPath, index: number, state: EmitState): Block[] => {
+/** One comment line of the file: `(QUICKPROG WARNING: <reason>)`, the operator's words kept. */
+const warningComment = (reason: string): string => `(QUICKPROG WARNING: ${commentSafe(reason)})`
+
+/** The blocks of one operation: its preamble, its warnings, its moves or cycle, its trailer. */
+const operationBlocks = (
+  program: QuickProgram,
+  path: ProgramPath,
+  index: number,
+  state: EmitState,
+  warnings: Issue[],
+): Block[] => {
   const spans = path.operations
   const span = spans[index]
   const operation = program.operations[span.opIndex]
@@ -51,6 +61,14 @@ const operationBlocks = (program: QuickProgram, path: ProgramPath, index: number
       state,
     ),
   ]
+  // The warnings of this operation stand right after its UI_OP tag, before the tool change. The
+  // preamble opens with M1 when `stopAfterOp` is on, so the tag is found by its text, not its place.
+  const field = `operations[${String(span.opIndex)}]`
+  const own = warnings.filter((item) => item.field === field).map((item) => ({ text: warningComment(item.reason) }))
+  if (own.length > 0) {
+    const at = blocks.findIndex((block) => block.text.startsWith('(UI_OP:'))
+    blocks.splice(at < 0 ? blocks.length : at + 1, 0, ...own)
+  }
   const park = parkPoint(program.safeZ)
   let parked = park
   if (operation.kind === 'drill') {
@@ -77,11 +95,17 @@ const operationBlocks = (program: QuickProgram, path: ProgramPath, index: number
   return blocks
 }
 
-/** The whole file as lines: the percent sign, the header, every operation, the footer. */
-export function emitProgram(program: QuickProgram, path: ProgramPath): string[] {
+/**
+ * The whole file as lines: the percent sign, the header, every operation, the footer. `warnings`
+ * are the findings of `checkProgram`: each one is printed as a comment right after the `UI_OP` tag
+ * of its operation. An empty list prints no comment, so the file is byte for byte the reference one.
+ */
+export function emitProgram(program: QuickProgram, path: ProgramPath, warnings: Issue[] = []): string[] {
   const state = freshState()
   const blocks: Block[] = [...headerBlocks(program)]
-  path.operations.forEach((_, index) => blocks.push(...operationBlocks(program, path, index, state)))
+  // A finding without an operation field (an empty list) has no UI_OP line to stand under.
+  const own = warnings.filter((item) => /^operations\[\d+\]$/.test(item.field))
+  path.operations.forEach((_, index) => blocks.push(...operationBlocks(program, path, index, state, own)))
   blocks.push(...footerBlocks())
   let sequence = FIRST_SEQUENCE
   const lines = ['%']

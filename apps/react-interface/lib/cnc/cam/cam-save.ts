@@ -5,12 +5,19 @@
 // the refusal of a busy machine, the name of the file, the confirmation of a replacement and the
 // three files that go to the panel: the old lines as `.bak`, the G-code as `.ngc`, the model as
 // `.qprog`. The time comes from the action, never from the reducer.
+//
+// The save runs the checks in one order (PLAN-QUICKPROG, 7.5): `validate` first, then
+// `buildProgram` on a valid document, then `checkProgram` on the path. A collision error blocks the
+// write and nothing changes; a collision warning is printed into the file as a comment and the write
+// goes on, the message naming how many warnings the file carries.
 import { putFile } from '../files'
 import { isBusy } from '../guards'
+import { checkProgram, type CollisionResult } from './collision'
 import { emitProgram } from './emit'
 import type { QuickProgram } from './ops'
 import { buildProgram } from './path'
 import { serializeProgram } from './serialize'
+import { validate } from './validate'
 import type { Result } from '../subsystem'
 import type { MachineState } from '../types'
 import type { CamState } from './types'
@@ -23,10 +30,16 @@ export const SAVE_CONFIRM_MS = 5_000
  * `cam.ts`) and the save read the same function, so what the operator saved is what the operator
  * saw. The save reads `cam.program`, not `cam.preview`: a field edit waiting for its timer does not
  * hold back the file, and the preview lines are the file the save just wrote.
+ *
+ * The warnings of `checkProgram` are `emitted` into the file; a caller that asks for the plan as
+ * well gets it and the collision result, so the save does not build the path twice.
  */
-export const emitOf = (program: CamState['program']): string[] | null => {
+export const emitOf = (program: CamState['program'], found?: { current: CollisionResult | null }): string[] | null => {
   const built = buildProgram(program)
-  return built.ok ? emitProgram(program, built.path) : null
+  if (!built.ok) return null
+  const checked = checkProgram(program, built.path)
+  if (found !== undefined) found.current = checked
+  return emitProgram(program, built.path, checked.warnings)
 }
 
 /** The file name of a save: the program name and the operation count. */
@@ -84,12 +97,25 @@ export const saveCam = (s: MachineState, cam: CamState, at: number | undefined):
   if (blocked !== null) return blocked
   if (cam.program.operations.length === 0)
     return { s, msg: 'В программе нет операций: добавьте хотя бы одну', level: 'warn' }
-  const lines = emitOf(cam.program)
-  if (lines === null) {
+  // The order of the checks (PLAN-QUICKPROG, 7.5): the document, then its plan, then the path. The
+  // empty list is an error of the check; the message of the validation names the field beside it.
+  const checked = validate(cam.program)
+  if (!checked.ok) {
+    const first = checked.bad[0]
+    return { s, msg: `УП не сохранена: ${first.field}: ${first.reason}`, level: 'error' }
+  }
+  const found: { current: CollisionResult | null } = { current: null }
+  const lines = emitOf(cam.program, found)
+  if (lines === null || found.current === null) {
     const built = buildProgram(cam.program)
     const reason = built.ok ? '' : built.problems[0]
     return { s, msg: `УП не сохранена: ${reason}`, level: 'error' }
   }
+  if (found.current.errors.length > 0) {
+    const first = found.current.errors[0]
+    return { s, msg: `УП не сохранена: ${first.field}: ${first.reason}`, level: 'error' }
+  }
+  const warnings = found.current.warnings.length
   const name = cam.saved ?? fileName(cam)
   const existing = s.files.find((f) => f.name === name)
   if (existing !== undefined && !confirmed(cam, name, at)) return askReplace(s, cam, name, at)
@@ -108,8 +134,9 @@ export const saveCam = (s: MachineState, cam: CamState, at: number | undefined):
     false,
   )
   const backup = existing === undefined ? '' : `; прежняя версия в ${stem}.bak`
+  const notes = warnings === 0 ? '' : `, предупреждений ${String(warnings)}`
   return {
     s: { ...written, cam: { ...cam, saved: name, preview: lines, pending: false, pendingSave: null } },
-    msg: `УП записана в файл ${name} — ${String(lines.length)} строк, модель — в ${stem}.qprog${backup}`,
+    msg: `УП записана в файл ${name} — ${String(lines.length)} строк${notes}, модель — в ${stem}.qprog${backup}`,
   }
 }

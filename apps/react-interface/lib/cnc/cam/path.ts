@@ -82,6 +82,16 @@ const planOperation = (program: QuickProgram, operation: Operation, out: PathBui
   }
 }
 
+/** The document index of the operation a move stands in, by its position in the path. */
+const operationOf = (spans: OperationSpan[], at: number): number => {
+  let found = 0
+  for (const span of spans) {
+    if (span.first > at) break
+    found = span.opIndex
+  }
+  return found
+}
+
 /**
  * The plan of a program: the document is validated first, then every
  * enabled operation is planned in order. The uuid of the path comes from `path-uuid.ts`, so a
@@ -99,8 +109,11 @@ export function planProgram(program: QuickProgram): PlanResult {
     cycleMinutes += planOperation(program, operation, out)
     operations.push({ opIndex, first })
   })
+  // Every move names the operation it belongs to (`operations` index in the document), so the
+  // collision check binds a problem to the operator's list entry without a second span lookup.
   const cut = out.result()
-  const path: ProgramPath = { ...cut, operations, cycleMinutes }
+  const moves = cut.moves.map((move, at) => ({ ...move, operation: operationOf(operations, at) }))
+  const path: ProgramPath = { ...cut, moves, operations, cycleMinutes }
   return { ok: true, path }
 }
 

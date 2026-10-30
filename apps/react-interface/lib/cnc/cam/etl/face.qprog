@@ -1,0 +1,21 @@
+schema 1
+name "FACE"
+units mm
+wcs G54
+stock -50 -40 -20 50 40 0
+safeZ 5
+g64P 0.01
+g64Q 0.01
+stopAfterOp on
+op face "Плоскость"
+op.enabled on
+op.tool 1 12
+op.spindle 3979
+op.feed 716
+op.plunge 179
+op.coolant flood
+op.topZ 0
+op.depth 5
+op.stepDown 2
+op.z -5
+op.stepOver 60

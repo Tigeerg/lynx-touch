@@ -63,9 +63,10 @@ export function drillCycle(program: QuickProgram, operation: DrillOperation): Dr
   const peckMm = peck ? (operation.peckMm > 0 ? operation.peckMm : operation.tool.diameterMm) : 0
   const top = operation.topZ
   const defaultR = Math.max(Math.min(top + RISE_MM, program.safeZ), top)
-  // The document has no explicit R of a cycle in schema 1: the form may set it later, and the
-  // default is the one above.
-  const rZ = defaultR
+  // An R of the document at or above the top is used as typed, clamped to safe Z from above; a
+  // value below the top would rapid-descend into the material, so it means "the default".
+  const asked = operation.hasR && operation.rMm >= top
+  const rZ = asked ? Math.min(operation.rMm, Math.max(program.safeZ, top)) : defaultR
   return { peck, depthZ: top - operation.depthMm, rZ, peckMm, feedMmMin: operation.cutting.feedMmMin }
 }
 

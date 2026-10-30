@@ -119,6 +119,8 @@ export function newOperation(kind: Operation['kind'], init: NewOperation): Opera
         pattern: 'hole',
         body,
         peckMm: init.peckMm ?? 0,
+        rMm: 0,
+        hasR: false,
         hole: { x: 0, y: 0, r: tool.diameterMm / 2 },
         x0: 0,
         y0: 0,

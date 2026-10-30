@@ -1,0 +1,21 @@
+schema 1
+name "DRILL"
+units mm
+wcs G54
+stock -50 -40 -20 50 40 0
+safeZ 5
+g64P 0.01
+g64Q 0.01
+stopAfterOp on
+op drill "Отверстия"
+op.enabled on
+op.tool 3 5
+op.spindle 2546
+op.feed 255
+op.plunge 255
+op.coolant flood
+op.topZ 0
+op.depth 3
+op.stepDown 0
+op.hole -10 5 2.5
+op.peck 0

@@ -146,6 +146,13 @@ export interface DrillOperation extends OperationBase {
   pattern: DrillPattern
   body: DrillBody
   peckMm: number
+  /**
+   * The R plane of the cycle, mm, and whether the document set it. A zero is not "R at the top"
+   * but "the default" (one millimetre above the top, clamped to safe Z), the same way a zero peck
+   * is not a peck. Both are part of the `.qprog` (`op.r`) and of the demo model.
+   */
+  rMm: number
+  hasR: boolean
   /** The single hole: `hole` is the centre and the drill radius. The ring uses `hole.x/y`. */
   hole: Circle
   x0: number

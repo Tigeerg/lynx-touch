@@ -1,0 +1,23 @@
+schema 1
+name "POCKET"
+units mm
+wcs G54
+stock -50 -40 -20 50 40 0
+safeZ 5
+g64P 0.01
+g64Q 0.01
+stopAfterOp on
+op pocket "Карман"
+op.enabled on
+op.tool 4 10
+op.spindle 4775
+op.feed 860
+op.plunge 215
+op.coolant flood
+op.topZ 0
+op.depth 3
+op.stepDown 1.5
+op.rect -25 -15 50 30
+op.cornerRadius 0
+op.finishAllowance 0.5
+op.stepOver 65

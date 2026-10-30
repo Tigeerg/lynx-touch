@@ -55,7 +55,10 @@
   `functions-panel.tsx` — функции). Диалог обмера инструмента — `tool-measure-dialog.tsx` — фасад над
   `tool-measure-dialog/` (`measure-scene.tsx` — визуализация датчика, `scene-defs.tsx` — его градиенты и
   метки, `measure-readout.tsx` — результат, `param-fields.tsx` — параметры подвода, `phase-label.ts` — слова
-  стадий). Наборы софт-кеев по экранам — `softkeys/screens/*.ts` под фасадом `softkey-screens.ts`. Сенсорный
+  стадий). Оверлей быстрой УП — `cam/` (`cam-overlay.tsx` — каркас и две раскладки, `operation-picker.tsx` —
+  плитки видов, `operation-list.tsx` — карточки операций, `cam-form.tsx` — форма с вкладками,
+  `cam-preview.tsx` — 2D по тем же ходам, `cam-fields.ts` — подписи и группы полей, `cam-labels.ts` —
+  надписи карточек, `keypad.tsx` — цифровой блок сенсора). Наборы софт-кеев по экранам — `softkeys/screens/*.ts` под фасадом `softkey-screens.ts`. Сенсорный
   вариант — `components/cnc/touch/`; переключатель — `ui-mode.tsx`,
   контекст — `ui-mode-context.ts`.
 * `lib/cnc/` — **чистая логика станка, без JSX, React и DOM**: `machine.ts` (редьюсер, сводит подсистемы
@@ -64,7 +67,10 @@
   предикаты), `ladder-parse.ts` (разбор сравнения), `ladder-reducer.ts` (редьюсер редактора), `ladder-forms.ts`
   (форма элемента), `ladder-schemes.ts` (менеджер схем), `ladder-nav.ts` (курсор и навигация по цепям),
   `ladder-rung.ts` (построение цепи: свободный адрес, новая цепь, копия) — листья графа, на них опираются
-  форма, схемы и редьюсер; `ladder/types.ts` (типы ПЛК); `types.ts` держит
+  форма, схемы и редьюсер; `ladder/types.ts` (типы ПЛК); быстрое программирование — `cam/` (типы `ops.ts`,
+  режимы `feeds.ts`, проверки `validate*.ts`, планировщики `path*.ts`, вывод УП `emit*.ts`, `.qprog`
+  `serialize*.ts`, подсистема `cam.ts`, эталоны демо в `etl/`; `types.ts` берёт `CamState` из `cam/types.ts`);
+  `types.ts` держит
   `MachineState` и реэкспортирует типы ПЛК как прежняя точка входа; `ladder-scan.ts` — скан ПЛК, `nav.ts`,
   `cycle.ts` — фасад над каталогом `cycle/` (`cycle-exec.ts` — исполнение кадра, `cycle-actions.ts` —
   объединение действий, `cycle-reducer.ts` — редьюсер), `control.ts`, `service.ts`), `types.ts`, `coords.ts`,
@@ -153,8 +159,10 @@
   `machine.ts` через него; `machine.ts` сводит, а не впитывает.
 * Новый слой вьювера — в соответствующий каталог `cpp/` (`core` — чистое, `occt` — STEP, `qt`/`qmlbackend` —
   мост, `viewer` — точка входа); проверку — пробником рядом.
-* Новая операция быстрого программирования — свой вариант в `Operation` (`apps/quickprog/core/ops.h`),
-  планировщик в `core/path*`, правило проверки в `core/validate`: `std::variant` не даёт молча пропустить
-  операцию, а вьюверу она обязана отдать те же теги, что и постпроцессор.
+* Новая операция быстрого программирования заводится **в обоих конвейерах**: в демо — вариант `Operation`
+  (`apps/quickprog/core/ops.h`), планировщик в `core/path*`, правило в `core/validate`; в панели — вариант в
+  `lib/cnc/cam/ops.ts`, планировщик `path-*.ts`, правило в `validate*.ts`, поля в `cam-fields.ts` и
+  `.qprog`. Иначе вид компилируется, но не планируется. Вьюверу операция обязана отдать те же теги, что и
+  постпроцессор.
 * Новый каталог обосновывают в этом файле; размер файла держат в ориентире 250 строк (`CLAUDE.md`, раздел 2),
   превышение — с записью в [TODO.md](TODO.md).

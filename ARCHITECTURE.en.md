@@ -58,7 +58,10 @@ Layers, top to bottom:
   functions). The tool measure dialog — `tool-measure-dialog.tsx` — is a facade over `tool-measure-dialog/`
   (`measure-scene.tsx` — the setter visualisation, `scene-defs.tsx` — its gradients and marks,
   `measure-readout.tsx` — the result, `param-fields.tsx` — the approach parameters, `phase-label.ts` — the
-  stage words). The per-screen softkey sets live in `softkeys/screens/*.ts` under the `softkey-screens.ts`
+  stage words). The quick program overlay — `cam/` (`cam-overlay.tsx` — the frame and the two layouts,
+  `operation-picker.tsx` — the kind tiles, `operation-list.tsx` — the operation cards, `cam-form.tsx` — the form
+  with tabs, `cam-preview.tsx` — the 2D view over the same moves, `cam-fields.ts` — field captions and groups,
+  `cam-labels.ts` — card words, `keypad.tsx` — the touch digit pad). The per-screen softkey sets live in `softkeys/screens/*.ts` under the `softkey-screens.ts`
   facade. Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
   `ui-mode-context.ts`.
 * `lib/cnc/` — **pure machine logic, no JSX, React, or DOM**: `machine.ts` (reducer that composes the
@@ -68,7 +71,10 @@ Layers, top to bottom:
   (editor reducer), `ladder-forms.ts` (element form), `ladder-schemes.ts` (scheme manager),
   `ladder-nav.ts` (cursor and rung navigation), `ladder-rung.ts` (rung building: free address, new rung, a
   copy) — leaves of the graph that the form, the schemes and the reducer stand on; `ladder/types.ts`
-  (PLC types); `types.ts` keeps `MachineState` and re-exports the PLC types as the former entry point),
+  (PLC types); quick programming — `cam/` (types `ops.ts`, feeds `feeds.ts`, checks `validate*.ts`, planners
+  `path*.ts`, the NC output `emit*.ts`, `.qprog` `serialize*.ts`, the subsystem `cam.ts`, the demo references in
+  `etl/`; `types.ts` takes `CamState` from `cam/types.ts`); `types.ts` keeps `MachineState` and re-exports the
+  PLC types as the former entry point),
   `ladder-scan.ts` is the PLC scan,
   `nav.ts`, `cycle.ts` — a facade over the `cycle/` directory (`cycle-exec.ts` is the block execution,
   `cycle-actions.ts` the action union, `cycle-reducer.ts` the reducer), `control.ts`, `service.ts`), `types.ts`,
@@ -160,8 +166,10 @@ panel (`docs/PLAN-QUICKPROG.md`, section 7.2).
   into `machine.ts` through it; `machine.ts` composes, it does not absorb.
 * A new viewer layer — into the matching `cpp/` directory (`core` — pure, `occt` — STEP, `qt`/`qmlbackend` —
   bridge, `viewer` — entry point); its check is a probe next to it.
-* A new quick programming operation is its own variant in `Operation` (`apps/quickprog/core/ops.h`), a planner
-  in `core/path*` and a check rule in `core/validate`: `std::variant` does not let an operation be silently
-  skipped, and the viewer must get the same tags as from the postprocessor.
+* A new quick programming operation is added **to both pipelines**: in the demo a variant in `Operation`
+  (`apps/quickprog/core/ops.h`), a planner in `core/path*`, a rule in `core/validate`; in the panel a variant in
+  `lib/cnc/cam/ops.ts`, a planner `path-*.ts`, a rule in `validate*.ts`, the fields in `cam-fields.ts` and
+  `.qprog`. Otherwise the kind compiles but is never planned. The viewer must get the same tags as from the
+  postprocessor.
 * A new directory is justified in this file; file size stays around the 250-line guideline (`CLAUDE.md`,
   section 2), and exceeding it is recorded in [TODO.md](TODO.md).

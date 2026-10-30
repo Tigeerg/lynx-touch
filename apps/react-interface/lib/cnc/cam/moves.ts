@@ -30,4 +30,6 @@ export interface CamPath {
   lengthMm: number
   /** Estimated cutting and travel time, minutes. */
   cycleMinutes: number
+  /** The plan identity: `<uuid>/op<n>` names a stage, so a stale preview can be told from a fresh one. */
+  uuid: string
 }

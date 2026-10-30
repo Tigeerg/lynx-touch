@@ -18,3 +18,16 @@ export const setLines = (s: MachineState, lines: string[], at?: number): Machine
     i === s.activeFile ? { ...f, lines, modified: at === undefined ? f.modified : formatStamp(at) } : f,
   ),
 })
+
+/**
+ * Writes the lines into the file `name`: an existing file of that name is replaced, a new one is
+ * appended and becomes active. The second point of write next to `setLines`, for a subsystem that
+ * produces a whole file (the quick program) instead of editing the active one.
+ */
+export const putFile = (s: MachineState, name: string, title: string, lines: string[], at?: number): MachineState => {
+  const modified = at === undefined ? '' : formatStamp(at)
+  const i = s.files.findIndex((f) => f.name === name)
+  if (i >= 0)
+    return { ...s, files: s.files.map((f, k) => (k === i ? { ...f, title, lines, modified } : f)), activeFile: i }
+  return { ...s, files: [...s.files, { name, title, lines, modified }], activeFile: s.files.length }
+}

@@ -3,6 +3,7 @@
 // import these from here instead of machine.ts, so the module graph has no circle and machine.ts
 // composes the subsystems instead of absorbing them (CLAUDE.md, section 2). Result was copied in
 // every subsystem and Dispatch in two; both have one source here.
+import type { CamAction } from './cam/cam'
 import type { ControlAction } from './control'
 import type { CycleAction } from './cycle'
 import type { EditorAction } from './editor'
@@ -34,6 +35,7 @@ export type MachineAction =
 /** Every action the panel can send: the machine's own plus one union per subsystem. */
 export type Action =
   | MachineAction
+  | CamAction
   | ProgAction
   | LadderAction
   | MpgAction

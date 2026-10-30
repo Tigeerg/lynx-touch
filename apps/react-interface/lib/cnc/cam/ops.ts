@@ -104,8 +104,6 @@ export interface CirclePocketOperation extends OperationBase {
   stepOverPct: number
 }
 
-export type DrillPattern = 'hole' | 'grid' | 'circle'
-
 /** A single hole at the centre; the radius of `hole` is the drill radius. */
 export interface DrillHoleGeometry {
   pattern: 'hole'
@@ -136,6 +134,9 @@ export interface DrillRingGeometry {
 }
 
 export type DrillGeometry = DrillHoleGeometry | DrillGridGeometry | DrillRingGeometry
+
+/** The hole layout of one drilling operation: one hole, a grid or a ring. */
+export type DrillPattern = DrillGeometry['pattern']
 
 /**
  * Drilling: one kind, three hole layouts. `peckMm` above zero selects G83 with that Q, zero leaves

@@ -1,5 +1,6 @@
 import type { PathView } from './toolpath'
 import type { LadderState } from './ladder/types'
+import type { CamState } from './cam/cam'
 
 export type {
   CoilKind,
@@ -257,6 +258,8 @@ export interface MachineState {
   service: ServiceState
   probe: ProbeState
   sim: SimState
+  /** The quick-program overlay (PLAN-QUICKPROG, 7.4): null when it is closed. */
+  cam: CamState | null
   test: TestState
   toolMeasure: ToolMeasureState
   search: SearchState

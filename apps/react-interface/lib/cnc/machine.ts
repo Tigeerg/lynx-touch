@@ -1,3 +1,4 @@
+import { camReducer, isCamAction } from './cam/cam'
 import { controlReducer, isControlAction } from './control'
 import { zeroAxes } from './coords'
 import { cycleReducer, isCycleAction } from './cycle'
@@ -110,6 +111,7 @@ export const initialState: MachineState = {
     prev: null,
   },
   sim: idleSim(),
+  cam: null,
   test: initialTest,
   toolMeasure: initialToolMeasure,
   search: { open: false, query: '', replace: '' },
@@ -120,6 +122,7 @@ export const initialState: MachineState = {
 // registered here and nowhere else, so joining the machine is a line, not another `if`
 // (CLAUDE.md, section 6.8). subsystem.ts holds the shape of an entry and the action union.
 const SUBSYSTEMS: Subsystem[] = [
+  defineSubsystem({ claims: isCamAction, reduce: camReducer }),
   defineSubsystem({ claims: isLadderAction, reduce: ladderReducer }),
   defineSubsystem({ claims: isProgAction, reduce: progReducer }),
   defineSubsystem({ claims: isMpgAction, reduce: mpgReducer }),

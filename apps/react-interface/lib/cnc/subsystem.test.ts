@@ -63,19 +63,35 @@ const sourceWithReexports = (name: string) => sourcesWithReexports(name).join('\
 const machine = source('machine')
 const leaf = source('subsystem')
 
-/** The predicate each subsystem module exports (`export const isXxxAction`), by module. */
+const PREDICATE = /export const (is[A-Za-z]+Action)/
+
+/**
+ * The predicate each subsystem module exports (`export const isXxxAction`), by module. A subsystem
+ * that lives in a directory (cam/, cycle/, ladder/) is named after the directory, as the registry
+ * imports it; its own module and its submodules are read through the directory walk.
+ */
 const subsystemPredicates = () => {
   const skip = new Set(['machine', 'subsystem'])
-  const names = readdirSync(new URL('.', import.meta.url))
-    .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
-    .map((f) => f.replace(/\.ts$/, ''))
+  const isDir = (url: URL) => existsSync(url) && statSync(url).isDirectory()
+  const names = readdirSync(new URL('.', import.meta.url), { withFileTypes: true })
+    .filter((e) => e.isDirectory() || (e.isFile() && e.name.endsWith('.ts') && !e.name.endsWith('.test.ts')))
+    .map((e) => e.name.replace(/\.ts$/, ''))
     .filter((name) => !skip.has(name))
-  const found: string[] = []
+  const found = new Set<string>()
   for (const name of names) {
-    const m = /export const (is[A-Za-z]+Action)/.exec(sourceWithReexports(name))
-    if (m) found.push(m[1])
+    const dir = new URL(`${name}/`, new URL('.', import.meta.url))
+    if (!isDir(dir)) {
+      const match = PREDICATE.exec(sourceWithReexports(name))
+      if (match) found.add(match[1])
+      continue
+    }
+    for (const file of readdirSync(dir)) {
+      if (!file.endsWith('.ts') || file.endsWith('.test.ts')) continue
+      const match = PREDICATE.exec(sourceWithReexports(`${name}/${file.replace(/\.ts$/, '')}`))
+      if (match) found.add(match[1])
+    }
   }
-  return found.sort()
+  return [...found].sort()
 }
 
 describe('реестр действий: машина сводит подсистемы, а не впитывает их', () => {

@@ -8,6 +8,8 @@
 // between files.
 #pragma once
 
+#include <filesystem>
+
 // ---- the document, the planner and the emitter ---------------------------
 
 void runFaceChecks();
@@ -45,9 +47,18 @@ void runHelpChecks();
 void runOpRoundTripChecks();
 
 // The generator version against the manifest projects.json of the repository.
+// findRoot walks up to the directory with projects.json; empty outside the
+// repository. Shared by checks_imports.cpp, which reads the same tree.
 namespace version_checks {
+std::filesystem::path findRoot();
 void runVersionChecks();
 } // namespace version_checks
+
+// The import graph of core/ and cli/: no circles, no layer edges. The circle
+// once existed through constexpr tables and only the separate build saw it.
+namespace import_checks {
+void runImportChecks();
+} // namespace import_checks
 
 // The viewer core round-trip (PLAN-QUICKPROG, section 10): the generated file
 // through gv::parseGcode and gv::parseUi*.

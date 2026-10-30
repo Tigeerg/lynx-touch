@@ -117,6 +117,14 @@ add_library(quickprog_cli STATIC
 )
 target_include_directories(quickprog_cli PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(quickprog_cli PUBLIC quickprog_core)
+# The console is built with the viewer search path, as the product assembles it:
+# modules/gcode-viewer/cpp next to the demo root. The import graph case resolves
+# "core/<name>.h" of the viewer the way the compiler does, so a console include
+# of the viewer would reach the case as a layer violation, not as an unknown
+# demo header. The demo itself must not include modules/** (checks_imports.cpp
+# fails on it); the path only makes such an include compile.
+target_include_directories(quickprog_cli PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/gcode-viewer/cpp)
 
 add_executable(quickprog main.cpp)
 target_link_libraries(quickprog PRIVATE quickprog_cli)
@@ -161,9 +169,18 @@ add_executable(quickprog_check
     tests/checks_post_qprog.cpp
     tests/checks_post_cli.cpp
     tests/checks_version.cpp
+    tests/checks_imports.cpp
+    tests/import_graph.h
     tests/roundtrip_fixtures.h
 )
 target_link_libraries(quickprog_check PRIVATE quickprog_core quickprog_cli gvcore_quickprog)
+# The same search path as the product has when it builds the demo and the
+# viewer: modules/gcode-viewer/cpp. Only the check sees it; the console target
+# quickprog_cli stays without modules/**. The import graph case must resolve
+# "core/ui_tags.h" the way the compiler does for the check, otherwise a console
+# include of the viewer would look like a missing demo header.
+target_include_directories(quickprog_check PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/gcode-viewer/cpp)
 set_target_properties(quickprog_check PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${QP_OUTPUT_DIR}")
 
 enable_testing()

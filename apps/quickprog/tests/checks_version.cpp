@@ -22,8 +22,6 @@
 
 namespace version_checks {
 
-namespace {
-
 // The nearest directory above the current one that has projects.json; empty
 // when the walk reaches the root. The binary may live in any build directory,
 // so the repository is found by content, not by a fixed place of the check.
@@ -43,6 +41,8 @@ std::filesystem::path findRoot() {
         start = start.parent_path();
     }
 }
+
+namespace {
 
 // The version of `wanted` in the manifest, empty when absent. Narrow reading:
 // the projects array and the id/version fields of an entry.

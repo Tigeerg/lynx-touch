@@ -54,6 +54,9 @@ int main() {
     // The demo may be built and run outside the repository: the version case
     // against projects.json then prints skip instead of a failure.
     version_checks::runVersionChecks();
+    // The import graph of the demo sources: no circle, no layer edge. Before
+    // the version case would be fine too; it reads the tree, not the numbers.
+    import_checks::runImportChecks();
     if (qpcheck::failures() != 0) {
         std::printf("%d case(s) failed\n", qpcheck::failures());
         return 1;

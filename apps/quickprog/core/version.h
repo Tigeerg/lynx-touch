@@ -10,6 +10,6 @@
 namespace qp {
 
 constexpr const char* kGeneratorName = "quickprog";
-constexpr const char* kGeneratorVersion = "0.1.0";
+constexpr const char* kGeneratorVersion = "0.2.0";
 
 } // namespace qp

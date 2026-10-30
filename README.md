@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img alt="Версия" src="https://img.shields.io/badge/версия-0.29.0-blue">
+  <img alt="Версия" src="https://img.shields.io/badge/версия-0.30.0-blue">
   <img alt="Лицензия" src="https://img.shields.io/badge/лицензия-Apache--2.0-green">
   <img alt="Платформы" src="https://img.shields.io/badge/платформы-Windows%20%7C%20Linux-lightgrey">
   <img alt="Стек" src="https://img.shields.io/badge/стек-React%20%7C%20Qt%2FQML%20%7C%20C%2B%2B%2FOCCT-informational">
@@ -44,7 +44,7 @@ QtQuick3D и OpenCASCADE.
 ## 🧩 Состав
 
 **Lynx Touch** — продукт из пяти независимо версионируемых проектов (манифест — [`projects.json`](projects.json)).
-Версия продукта — `0.29.0` ([`VERSION`](VERSION)); правила ведения — [`VERSIONING.md`](VERSIONING.md).
+Версия продукта — `0.30.0` ([`VERSION`](VERSION)); правила ведения — [`VERSIONING.md`](VERSIONING.md).
 
 | Проект | Версия | Стек | Что это |
 |---|---|---|---|
@@ -52,7 +52,7 @@ QtQuick3D и OpenCASCADE.
 | **qt-interface** — [Qt-порт](apps/qt-interface) | `0.5.8` | QML | Перенос интерфейса на Qt/QML (`main.qml`, данные — `preview.qml`) |
 | **gcode-viewer** — [3D-вьювер УП](modules/gcode-viewer) | `0.58.6` | QtQuick3D · C++ · OCCT | Траектория, деталь, инструмент, коллизии, поле съёма |
 | **cad-testdata** — [тестовые данные](data/cad-testdata) | `0.5.1` | данные · постпроцессор | Тестовые УП/модели и постпроцессор с тегами `UI_*` |
-| **quickprog** — [демо быстрого программирования](apps/quickprog) | `0.1.0` | C++ · stdlib | Операции (торцевание, карманы, сверление) → ходы → плоская УП с тегами `UI_*`; консоль, без Qt |
+| **quickprog** — [демо быстрого программирования](apps/quickprog) | `0.2.0` | C++ · stdlib | Операции (торцевание, карманы, сверление) → ходы → плоская УП с тегами `UI_*`; консоль, без Qt |
 
 ## ✨ Возможности
 

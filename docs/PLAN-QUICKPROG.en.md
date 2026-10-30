@@ -257,6 +257,52 @@ MVP uses the tool centreline, no `G41/G42`: radius compensation and lead-ins are
 gouge is too easy. Drilling uses `G81`/`G83`; `G84` is P1 and only if the machine confirms rigid tapping. Arcs
 use `G2/G3` with `I/J`; a full circle is two half-arcs or `I/J` without an end point (check in the viewer).
 
+## 7.3 Machine readiness (the second pass of the demo)
+
+The first pass proved the pipeline and got the technologist's list of what a real NC program needs. The second
+pass closes the postprocessor part — without it the demo stays a showcase. The reference for how it is done is
+the existing postprocessor output, `data/cad-testdata/Test_model.ngc` (lines N20, N55, N145, N155, N180).
+
+**What we add (the decision):**
+
+| What was missing | How we solve it | Where |
+|---|---|---|
+| Tool length offset `G43` | the tool gets an offset number `hNumber` (equal to the tool number by default); after `T.. M6` comes `G43 Z<safe> H<n>`, as `N55 G43 Z15. H2` in the reference | `core/ops.h` (`ToolRef`), `core/emit.cpp`, `.qprog` (`op.h`), `--help` (`--h`) |
+| The tool change happens off the park position | `G53 G0 Z0` before every `M6` (and at the program start), as `N20 G53 G0 Z0` in the reference: the machine goes to its machine zero, not to the part safe height | `core/emit*` |
+| No stop between operations | `M1` before every operation but the first: the operator inspects the channel and clears the chips; the switch is the document field `stopAfterOp` and `--stop` (on by default), `stopAfterOp on` in `.qprog` | `Program`, `emit` |
+| No smoothing | `G64 P<tolerance> Q<tolerance>` in the header after the offset, the tolerances are program fields (`g64P`, `g64Q`, 0.01 mm by default as `N180 G64 P0.01 Q0.01`), changed by `.qprog` and `--g64` | `Program`, `emit_frame` |
+| The pocket raster step is hard-coded | the step is a field of every pocket operation (`stepOverPct`, 70 % by default), in `.qprog` (`op.stepOver`) and `--help` (`--step-over`); the rectangular pocket keeps it as the value for the wall pass | `RectPocketOp`, `CirclePocketOp`, `path_pocket*` |
+| Drill feeds by rule of thumb | a table by material for a drill (HSS and carbide as separate rows), as for a mill; the source line prints the material and the drill type | `core/feeds` |
+
+**The block order of an operation after the change** (the same as the reference):
+
+```
+(UI_TOOL: T=.. TYPE=.. D=..)
+G53 G0 Z0            only on a tool change and at the program start
+T.. M6
+G43 Z<safe> H<n>
+S.. M3
+M8
+<moves of the operation>
+M9 M5
+G53 G0 Z0            at the program end
+M30
+```
+
+`M1` goes before the `UI_OP` of the next operation (after `M9/M5` of the previous one): the operator sees the
+pause on the operation boundary, not inside one.
+
+**Boundaries.** The offset number is a row of the control's offset table; the demo does not check it, the
+operator sets it (the tool number by default). The demo does not do the real `G43` work (gauge length, the
+setter): the line is printed, the machine takes the number from its own table. `G64` is a tolerance, not a
+speed; the technologist checks its value on the machine.
+
+**Acceptance.** The `.ngc` has `G43 H` after every tool change, `G53 G0 Z0` before every change and in the
+finale, `M1` before every operation but the first, `G64` in the header; the raster step changes from `.qprog`
+and is visible in the summary; a drill takes its row from the table with the source. Checks hold all of it, not
+the eyes: every element is a separate `quickprog_check` case, and the round trip through the viewer parser must
+not break on `G53`/`G43`/`M1`/`G64`.
+
 ## 8. Checks and safety
 
 * Generation is disabled on `ESTOP`, while busy and with an invalid tool table; the form checks `isBusy(s)`.

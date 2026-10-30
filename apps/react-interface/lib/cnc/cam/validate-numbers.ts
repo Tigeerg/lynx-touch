@@ -119,5 +119,26 @@ export function numberFields(op: Operation): NumberField[] {
         field(op.arcDeg, 'geometry', 'arcDeg', 'угол дуги'),
         field(op.peckMm, 'peck', 'peckMm', 'шаг вывода стружки'),
       ]
+    case 'tap':
+      return [
+        ...common,
+        field(op.pitchMm, 'pitchMm', 'pitchMm', 'шаг резьбы'),
+        field(op.hole.x, 'geometry', 'hole.x', 'X отверстия'),
+        field(op.hole.y, 'geometry', 'hole.y', 'Y отверстия'),
+        field(op.hole.r, 'geometry', 'hole.r', 'радиус резьбы'),
+        field(op.x0, 'geometry', 'x0', 'X первого отверстия'),
+        field(op.y0, 'geometry', 'y0', 'Y первого отверстия'),
+        field(op.cols, 'geometry', 'cols', 'число столбцов'),
+        field(op.rows, 'geometry', 'rows', 'число строк'),
+        field(op.dx, 'dx', 'dx', 'шаг по X'),
+        field(op.dy, 'dy', 'dy', 'шаг по Y'),
+        field(op.count, 'geometry', 'count', 'число отверстий'),
+        field(op.startDeg, 'geometry', 'startDeg', 'начальный угол'),
+        field(op.arcDeg, 'geometry', 'arcDeg', 'угол дуги'),
+      ]
+    case 'custom':
+      // The lines are text, not numbers: the empty list is the only rule (`validate-custom.ts`) and
+      // the viewer parser reads the words (`viewer-check.ts`).
+      return [...common]
   }
 }

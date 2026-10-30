@@ -38,8 +38,16 @@ export const tag = (body: string): string => `(${body})`
  */
 export const commentSafe = (text: string): string => text.replace(/[()]/g, ' ').replace(/[\r\n]/g, '')
 
-/** The viewer labels a stage by tool family: FLAT for the milling kinds, DRILL otherwise. */
-export const toolType = (operation: Operation): string => (operation.kind === 'drill' ? 'DRILL' : 'FLAT')
+/** The viewer labels a stage by tool family: FLAT for the milling kinds, DRILL for a hole, TAP for a
+ * tap; a free block has no family of its own and is read as CODE. */
+export const toolType = (operation: Operation): string =>
+  operation.kind === 'drill'
+    ? 'DRILL'
+    : operation.kind === 'tap'
+      ? 'TAP'
+      : operation.kind === 'custom'
+        ? 'CODE'
+        : 'FLAT'
 
 /** The row of the G43 table of a tool: the explicit number, else the tool number. Never zero. */
 export const effectiveH = (operation: Operation): number =>

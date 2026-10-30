@@ -9,13 +9,14 @@ import { describe, expect, it } from 'vitest'
 import { initialState, reducer, type Action } from '../machine'
 import { currentFile } from '../files'
 import type { MachineState } from '../types'
-import { DEFAULT_DEPTH_MM, newProgram } from './defaults'
+import { DEFAULT_DEPTH_MM, newOperation, newProgram } from './defaults'
 import { ETL_CASES } from './etl-cases'
 import { emitProgram } from './emit'
 import { buildProgram } from './path'
 import type { CamState } from './cam'
 import type { CamForm } from './form'
 import { formOperation, newForm, valuesOf } from './form'
+import { RIGID_TAPPING_PARAM, validate } from './validate'
 
 const camOf = (s: MachineState): CamState => {
   if (s.cam === null) throw new Error('the overlay is closed')
@@ -288,5 +289,26 @@ describe('вид в форме и обратно: строка -> операци
     expect(next.depthMm).toBe(4)
     expect(next.stepDownMm).toBe(op.stepDownMm)
     expect(next.tool).toEqual(op.tool)
+  })
+})
+
+describe('the machine parameters travel with the document', () => {
+  // The tap check reads the rigid tapping switch from the machine, and the document is not the
+  // machine: the overlay copies the switch when it opens, so a document saved on one machine does
+  // not carry the switch of another, while the form still sees the real setting.
+  const tap = () =>
+    newOperation('tap', { id: 'Метчик', topZ: 0, depthMm: 8, tool: { number: 5, diameterMm: 6, hNumber: 5 } })
+
+  it('an open overlay carries the switch and a tap passes when it is on', () => {
+    const on = { ...initialState, params: { ...initialState.params, [RIGID_TAPPING_PARAM]: 1 } }
+    const s = run(on, { type: 'CAM_OPEN' })
+    expect(s.cam?.program.params?.[RIGID_TAPPING_PARAM]).toBe(1)
+    expect(validate({ ...s.cam!.program, operations: [tap()] }).ok).toBe(true)
+  })
+
+  it('off by default: the same tap is refused', () => {
+    const s = run(initialState, { type: 'CAM_OPEN' })
+    expect(s.cam?.program.params?.[RIGID_TAPPING_PARAM] ?? 0).toBe(0)
+    expect(validate({ ...s.cam!.program, operations: [tap()] }).ok).toBe(false)
   })
 })

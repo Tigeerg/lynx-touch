@@ -89,8 +89,11 @@ export function camReducer(s: MachineState, a: CamAction): Result {
     case 'CAM_OPEN': {
       if (isBusy(s)) return { s, msg: 'Остановите программу перед быстрой УП', level: 'warn' }
       if (s.run === 'ESTOP') return { s, msg: 'Сначала сбросьте аварию', level: 'warn' }
+      // The machine parameters travel with the document, not in it: the tap check reads the rigid
+      // tapping switch from the same state the panel shows, and a document saved on one machine
+      // does not carry the switch of another.
       const cam: CamState = {
-        program: newProgram(),
+        program: { ...newProgram(), params: { ...s.params } },
         form: null,
         editing: null,
         error: null,

@@ -42,7 +42,7 @@ const writeCircle = (op: Operation, sub: string, words: string[], key: string, w
 /** The geometry keys of a drilling layout: `hole`, `grid`, `circle`, `count`, `start`, `arc`. */
 function drillShape(op: Operation, sub: string, words: string[], key: string, where: string): void {
   const drill = asDrill(op)
-  if (sub === 'hole' || sub === 'circle') {
+  if (sub === 'hole' || (sub === 'circle' && (op.kind === 'drill' || op.kind === 'circle-pocket'))) {
     writeCircle(op, sub, words, key, where)
   } else if (sub === 'grid') {
     arity(words, 6, key, where)
@@ -116,8 +116,13 @@ export function readDrillR(op: Operation, words: string[], key: string, where: s
   drill.hasR = true
 }
 
+/** The layout keys a tap shares with a drill: the same words, the same fields (`ops-kinds.ts`). */
+export const TAP_LAYOUT_KEYS: readonly string[] = ['hole', 'grid', 'circle', 'count', 'start', 'arc', 'fullTurn']
+
 /** Reads one shape key of a classic kind into `op`; a key of another kind is a failure. */
 export function readClassicShapeKey(op: Operation, sub: string, words: string[], key: string, where: string): void {
-  if (op.kind === 'drill') drillShape(op, sub, words, key, where)
-  else millShape(op, sub, words, key, where)
+  // A tap reuses the drilling layout keys: the same `hole`/`grid`/`circle` words write its fields.
+  if (op.kind === 'drill' || (op.kind === 'tap' && TAP_LAYOUT_KEYS.includes(sub))) {
+    drillShape(op, sub, words, key, where)
+  } else millShape(op, sub, words, key, where)
 }

@@ -18,6 +18,7 @@ export type {
   ChamferOperation,
   CirclePocketOperation,
   ContourOperation,
+  CustomOperation,
   DrillGeometry,
   DrillGridGeometry,
   DrillHoleGeometry,
@@ -27,12 +28,14 @@ export type {
   FaceOperation,
   RectPocketOperation,
   SlotOperation,
+  TapOperation,
 } from './ops-kinds'
 
 import type {
   ChamferOperation,
   CirclePocketOperation,
   ContourOperation,
+  CustomOperation,
   DrillGeometry,
   DrillGridGeometry,
   DrillHoleGeometry,
@@ -42,6 +45,7 @@ import type {
   FaceOperation,
   RectPocketOperation,
   SlotOperation,
+  TapOperation,
 } from './ops-kinds'
 
 /** A point in machine coordinates, mm; `z` is the tool tip (the trajectory centre). */
@@ -94,7 +98,8 @@ export type Coolant = 'off' | 'mist' | 'flood'
 
 export type Wcs = 'G54' | 'G55' | 'G56' | 'G57' | 'G58' | 'G59'
 
-export type OperationKind = 'face' | 'pocket' | 'circle-pocket' | 'drill' | 'contour' | 'slot' | 'chamfer'
+export type OperationKind =
+  'face' | 'pocket' | 'circle-pocket' | 'drill' | 'contour' | 'slot' | 'chamfer' | 'tap' | 'custom'
 
 /** The fields every kind shares: the tool, the modes, the stock frame and the notes. */
 export interface OperationBase {
@@ -119,6 +124,8 @@ export type Operation =
   | ContourOperation
   | SlotOperation
   | ChamferOperation
+  | TapOperation
+  | CustomOperation
 
 /** The saved document (`.qprog` schema 1). It is loaded into the machine only by a command. */
 export interface QuickProgram {
@@ -135,6 +142,12 @@ export interface QuickProgram {
   /** An M1 stop before every operation after the first. */
   stopAfterOp: boolean
   operations: Operation[]
+  /**
+   * The machine parameters the document is checked against, by catalogue id (`service-data.ts`).
+   * Not part of the `.qprog`: they are the machine, not the part. A missing key reads as its
+   * catalogue default (`paramValue`), so a document without them is still checkable.
+   */
+  params?: Record<string, number>
 }
 
 /** The program fields a shape rule reads: the stock, which every kind checks against. */

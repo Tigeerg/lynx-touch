@@ -21,6 +21,7 @@ import { planContour } from './path-contour'
 import { planSlot } from './path-slot'
 import { planChamfer } from './path-chamfer'
 import { drillCycleMinutes, planDrill } from './path-drill'
+import { planTap, tapCycleMinutes } from './path-tap'
 import { validate } from './validate'
 
 export { moveLength } from './path-builder'
@@ -90,6 +91,13 @@ const planOperation = (program: QuickProgram, operation: Operation, out: PathBui
       return 0
     case 'chamfer':
       planChamfer(program, operation, out)
+      return 0
+    case 'tap': {
+      const plan = planTap(program, operation, out)
+      return tapCycleMinutes(operation, plan.points.length)
+    }
+    case 'custom':
+      // The lines are the program: no move is planned and the viewer parser is their only check.
       return 0
   }
 }

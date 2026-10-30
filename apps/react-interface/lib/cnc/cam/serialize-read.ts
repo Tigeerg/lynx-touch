@@ -82,7 +82,9 @@ function readDocument(text: string): QuickProgram {
     // is an error, not "last wins". The `op` head opens a new operation by design.
     if (key !== 'op') {
       const scope = operation !== null && key.startsWith('op.') ? operation.seen : header.seen
-      if (scope.includes(key)) at(`поле '${key}' повторяется.`)
+      // `op.gcode` of a custom block is a list: one line per entry, so a repeat is the list growing.
+      const listed = key === 'op.gcode' && operation !== null && operation.op.kind === 'custom'
+      if (!listed && scope.includes(key)) at(`поле '${key}' повторяется.`)
     }
     if (key === 'op') {
       if (operation !== null) closeOperation(operation, lineNo)

@@ -1,7 +1,7 @@
 // The "System" section of the machine INI catalogue: the DISPLAY, EMC, FILTER and TRAJ groups.
 // Data only; the row shape and the builders live in ./def.
 import { THEME_OPTIONS } from './display'
-import { p, type ParamDef } from './def'
+import { OFF_ON, p, type ParamDef } from './def'
 
 export const SYSTEM_PARAMS: readonly ParamDef[] = Object.freeze([
   p({
@@ -245,6 +245,20 @@ export const SYSTEM_PARAMS: readonly ParamDef[] = Object.freeze([
     options: ['—', 'linuxcnc.gif'],
   }),
   p({ group: 'DISPLAY', key: 'INTRO_TIME', label: 'Время заставки', unit: 'с', step: 1, min: 0, max: 30, default: 5 }),
+  // The machine promise of rigid tapping (`rigid_tapping` of PLAN-QUICKPROG 7.6): the panel has no
+  // INI of its own, so the switch lives in the settings of the machine and the tap check reads it
+  // (`RIGID_TAPPING_PARAM`). Off by default: a spindle without the feature cannot stop inside a hole.
+  p({
+    group: 'EMC',
+    key: 'RIGID_TAPPING',
+    label: 'Жёсткое нарезание резьбы',
+    step: 1,
+    min: 0,
+    max: 1,
+    default: 0,
+    options: OFF_ON,
+    free: true,
+  }),
   p({
     group: 'FILTER',
     key: 'PROGRAM_EXTENSION',

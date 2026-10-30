@@ -17,15 +17,17 @@
 //
 // The file is a list of lines for `setLines`, not a file: `CAM_SAVE` writes it through `files.ts`.
 import type { CamMove } from './moves'
-import type { Point3, QuickProgram } from './ops'
+import type { Operation, Point3, QuickProgram } from './ops'
 import { operationUuid, type ProgramPath } from './path'
 import { drillPlan } from './path-drill'
+import { tapPlan } from './path-tap'
 import type { Block, EmitState } from './emit-state'
 import { freshState, preambleBlocks, trailerBlocks } from './emit-state'
 import { footerBlocks, headerBlocks } from './emit-frame'
-import { cycleBlocks, moveBlocks } from './emit-moves'
+import { cycleBlocks, moveBlocks, tapCycleBlocks } from './emit-moves'
 import { commentSafe, coord, effectiveH, numberedBlock, SEQUENCE_STEP } from './emit-words'
 import type { Issue } from './collision'
+import { viewerIssues } from './viewer-check'
 
 /** The first block number of the file, the reference post's start. */
 const FIRST_SEQUENCE = 10
@@ -38,6 +40,19 @@ const parkPoint = (safeZ: number): Point3 => ({ x: Number.NaN, y: Number.NaN, z:
 
 /** One comment line of the file: `(QUICKPROG WARNING: <reason>)`, the operator's words kept. */
 const warningComment = (reason: string): string => `(QUICKPROG WARNING: ${commentSafe(reason)})`
+
+/**
+ * The warning comments of a custom block, read from the file of the operation alone (`viewerIssues`).
+ * The tags are added here, so the parser sees the same `UI_OP`/`UI_TOOL` a saved file would have; a
+ * finding about those tags is not a finding about the typed lines and is left out.
+ */
+const customWarnings = (lines: string[]): Block[] =>
+  viewerIssues(['(UI_OP: custom)', ...lines])
+    // An error keeps the save from happening (`checkProgram`); it is named here as well, because the
+    // preview of a broken block is still drawn and the line of the fault has to be visible.
+    .filter((issue) => issue.level === 'warning' || issue.code.startsWith('arc-') || issue.code.startsWith('cycle-'))
+    .filter((issue) => !issue.code.startsWith('file-') && !issue.code.startsWith('op-'))
+    .map((issue) => ({ text: warningComment(`СВОЙ КОД, СТРОКА ${String(issue.line - 1)}: ${issue.text}`) }))
 
 /** The blocks of one operation: its preamble, its warnings, its moves or cycle, its trailer. */
 const operationBlocks = (
@@ -71,7 +86,20 @@ const operationBlocks = (
   }
   const park = parkPoint(program.safeZ)
   let parked = park
-  if (operation.kind === 'drill') {
+  if (operation.kind === 'custom') {
+    // The typed lines are the program: they stand after the tags, the tool change and the spindle,
+    // and the trailer stops the spindle after them. A custom block never starts a spindle itself:
+    // the words of its lines do.
+    const typed = operation.gcode
+    const parser = customWarnings(typed)
+    if (parser.length > 0) blocks.push(...parser)
+    // The list is `lines` of the type (PLAN-QUICKPROG 7.6), and a bare `N` on a blank line is a
+    // fault of the file: a blank line of the operator is written as a comment that adds no words.
+    for (const line of typed) blocks.push({ text: line.trim() === '' ? '()' : line })
+    // The machine stops the spindle and the coolant at the end of the block, so the trailer words
+    // are the same; a tool the block started is left as the lines leave it.
+    parked = park
+  } else if (operation.kind === 'drill') {
     // A cycle is a machine feature, not a path: the holes come from the same layout the planner drew.
     const plan = drillPlan(program, operation)
     if (plan.points.length > 0) {
@@ -85,6 +113,14 @@ const operationBlocks = (
       )
     }
     // G80 brings the drill back to the R plane, not to safe Z; the trailer parks it.
+    parked = { ...park, z: plan.cycle.rZ }
+  } else if (operation.kind === 'tap') {
+    // The tapping cycle is written by the machine, the holes come from the same layout the planner drew.
+    const plan = tapPlan(program, operation)
+    if (plan.points.length > 0) {
+      blocks.push({ text: `G0 Z${coord(plan.cycle.rZ)}` })
+      blocks.push(...tapCycleBlocks(plan.points, plan.cycle, state))
+    }
     parked = { ...park, z: plan.cycle.rZ }
   } else {
     const moves: CamMove[] = path.moves.slice(span.first, last)

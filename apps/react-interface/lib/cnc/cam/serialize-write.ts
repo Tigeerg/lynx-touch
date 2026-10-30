@@ -11,12 +11,41 @@
 //
 // `g64P`/`g64Q` of a non-positive tolerance are written as a bare key: that is the console's "use
 // the default" and `validate` refuses the value on a run, so the file says what was typed.
-import type { DrillOperation, Material, Operation, QuickProgram } from './ops'
+import type { DrillOperation, Material, Operation, QuickProgram, TapOperation } from './ops'
 import { qprogNumber as num, KIND_WORDS, onOff, quoteText } from './serialize-words'
 
 /** The drill word of a kind on the `op` line: the ring is `drill-circle`, the default. */
 const drillWord = (op: DrillOperation): string =>
   op.pattern === 'grid' ? 'drill-grid' : op.pattern === 'circle' ? 'drill-circle' : 'drill'
+
+/** The layout lines of a tap: one `op.pattern` word, then the same keys a drill layout writes. */
+function tapLines(op: TapOperation): string {
+  const out = `op.pattern ${op.pattern}\nop.pitch ${num(op.pitchMm)}\n`
+  switch (op.pattern) {
+    case 'hole':
+      return out + `op.hole ${num(op.hole.x)} ${num(op.hole.y)} ${num(op.hole.r)}\n`
+    case 'grid':
+      return (
+        out +
+        `op.grid ${num(op.x0)} ${num(op.y0)} ${String(op.cols)} ${String(op.rows)} ` +
+        `${num(op.dx)} ${num(op.dy)}\n`
+      )
+    case 'circle':
+      return (
+        out +
+        `op.circle ${num(op.hole.x)} ${num(op.hole.y)} ${num(op.hole.r)}\n` +
+        `op.count ${String(op.count)}\nop.start ${num(op.startDeg)}\nop.arc ${num(op.arcDeg)}\n` +
+        `op.fullTurn ${onOff(op.fullTurn)}\n`
+      )
+  }
+}
+
+/**
+ * The lines of a custom block: one `op.gcode <text>` per program line, the text quoted exactly as
+ * `op.notes` and `op.name` are. An empty line is the bare key, so the list keeps its blanks.
+ */
+const gcodeLines = (lines: string[]): string =>
+  lines.map((line) => (line.length === 0 ? 'op.gcode\n' : `op.gcode ${quoteText(line)}\n`)).join('')
 
 /** The stock material line: aluminium is the default of an older file, so only steel is written. */
 const materialLine = (material: Material): string => (material === 'aluminium' ? '' : 'op.material steel\n')
@@ -88,6 +117,10 @@ function shapeLines(op: Operation): string {
       )
     case 'drill':
       return drillLines(op)
+    case 'tap':
+      return tapLines(op)
+    case 'custom':
+      return gcodeLines(op.gcode)
   }
 }
 
@@ -98,9 +131,10 @@ function commonLines(op: Operation): string {
   let out = `op ${kind}${id}\nop.enabled ${onOff(op.enabled)}\n`
   out += `op.tool ${String(op.tool.number)} ${num(op.tool.diameterMm)}\n`
   out += materialLine(op.material)
-  // A drill has one feed: its plunge line repeats the working feed, so a hand edit of one number
-  // cannot leave a stale second one behind.
-  const plunge = op.kind === 'drill' ? op.cutting.feedMmMin : op.cutting.plungeFeedMmMin
+  // A drill and a tap have one feed: their plunge line repeats the working feed, so a hand edit of one
+  // number cannot leave a stale second one behind.
+  const oneFeed = op.kind === 'drill' || op.kind === 'tap'
+  const plunge = oneFeed ? op.cutting.feedMmMin : op.cutting.plungeFeedMmMin
   // `op.h` is written only when the H row differs from the tool number: the demo writer leaves it
   // out for the common case (row = tool, or zero meaning the same), so its files round-trip.
   if (op.tool.hNumber !== 0 && op.tool.hNumber !== op.tool.number) out += `op.h ${String(op.tool.hNumber)}\n`

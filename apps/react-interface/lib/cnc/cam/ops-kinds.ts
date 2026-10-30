@@ -143,3 +143,42 @@ export interface ChamferOperation extends OperationBase {
   /** The edge against the grain of the part; the direction is not planned yet. */
   grain?: 'along' | 'across'
 }
+
+/**
+ * Tapping (`tap`, PLAN-QUICKPROG 7.6): a rigid tap drives one hole per spindle turn at the pitch, so
+ * the control runs `G84` and the planner writes only the hole centres. The layout is the drilling
+ * one and the coordinates are named the same (`hole`, `x0`, `cols`, ...), so `drillHoles` lays the
+ * grid and the ring out without a second copy. The tool of a tap is the tap: its diameter is the
+ * thread size, and the machine has to promise rigid tapping (`rigid_tapping`), or the cycle cannot
+ * be stopped inside the hole.
+ */
+export interface TapOperation extends OperationBase {
+  kind: 'tap'
+  pattern: DrillPattern
+  /** The thread pitch, mm per turn: the advance of the tool per spindle revolution. */
+  pitchMm: number
+  /** The hole: the centre and the thread radius. The ring uses `hole.x/y` as its centre. */
+  hole: Circle
+  x0: number
+  y0: number
+  cols: number
+  rows: number
+  dx: number
+  dy: number
+  count: number
+  startDeg: number
+  arcDeg: number
+  fullTurn: boolean
+}
+
+/**
+ * A free G-code block (`custom`, PLAN-QUICKPROG 7.6): the lines the operator typed, emitted as they
+ * are after the tags of the operation. It has no geometry, so the shape checks skip it; the viewer
+ * parser is the only check, and its errors keep the file from being emitted. The tool is optional:
+ * a block without a tool number changes no tool and prints no `UI_TOOL`.
+ */
+export interface CustomOperation extends OperationBase {
+  kind: 'custom'
+  /** The program lines, one per element, in the order of the file; comments and blanks are kept. */
+  gcode: string[]
+}

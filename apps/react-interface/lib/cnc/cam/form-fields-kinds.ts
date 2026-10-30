@@ -11,6 +11,7 @@ import type { DrillPattern, Operation } from './ops'
 import type { CommonFields } from './form-fields'
 import { kept, int, str, on } from './form-fields'
 import { pointsOf, pointsText } from './contour-points'
+import { customWithText, linesText } from './form-lines'
 
 /** The shape values of the kind; the narrow switch is what makes a forgotten kind a compile error. */
 export function valuesOfShape(op: Operation): Record<string, string> {
@@ -59,6 +60,25 @@ export function valuesOfShape(op: Operation): Record<string, string> {
         'to.y': String(op.to.y),
         chamferMm: String(op.chamferMm),
       }
+    case 'tap':
+      return {
+        pattern: op.pattern,
+        pitchMm: String(op.pitchMm),
+        'hole.x': String(op.hole.x),
+        'hole.y': String(op.hole.y),
+        'hole.r': String(op.hole.r),
+        x0: String(op.x0),
+        y0: String(op.y0),
+        cols: String(op.cols),
+        rows: String(op.rows),
+        dx: String(op.dx),
+        dy: String(op.dy),
+        count: String(op.count),
+        startDeg: String(op.startDeg),
+        arcDeg: String(op.arcDeg),
+      }
+    case 'custom':
+      return { gcode: linesText(op.gcode) }
     case 'drill':
       return {
         pattern: op.pattern,
@@ -149,6 +169,34 @@ export function fieldsOfShape(op: Operation, v: Record<string, string>, common: 
         to: { ...op.to, x: kept(v, 'to.x', op.to.x), y: kept(v, 'to.y', op.to.y) },
         chamferMm: kept(v, 'chamferMm', op.chamferMm),
       }
+    case 'tap':
+      return {
+        ...op,
+        ...common,
+        pattern: str(v, 'pattern', op.pattern) as DrillPattern,
+        pitchMm: kept(v, 'pitchMm', op.pitchMm),
+        hole: {
+          x: kept(v, 'hole.x', op.hole.x),
+          y: kept(v, 'hole.y', op.hole.y),
+          r: kept(v, 'hole.r', op.hole.r),
+        },
+        x0: kept(v, 'x0', op.x0),
+        y0: kept(v, 'y0', op.y0),
+        cols: int(v, 'cols', op.cols),
+        rows: int(v, 'rows', op.rows),
+        dx: kept(v, 'dx', op.dx),
+        dy: kept(v, 'dy', op.dy),
+        count: int(v, 'count', op.count),
+        startDeg: kept(v, 'startDeg', op.startDeg),
+        arcDeg: kept(v, 'arcDeg', op.arcDeg),
+        fullTurn: on(v, 'fullTurn', op.fullTurn),
+      }
+    case 'custom': {
+      // The text of the field is split back into the lines of the block; an absent field keeps the
+      // document lines, so a form that never touched the text does not wipe the block.
+      const next = customWithText(op, v.gcode)
+      return { ...common, kind: 'custom', gcode: next.gcode }
+    }
     case 'drill':
       return {
         ...op,

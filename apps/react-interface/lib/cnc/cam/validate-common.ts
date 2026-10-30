@@ -61,7 +61,8 @@ export function validate(program: QuickProgram): Validation {
     // with `<=`, see `NaN` as false and would let it through to the planner and the emitter.
     checkNumbers(op, bad)
     checkTool(op, bad)
-    checkCutting(op, bad)
+    // A custom block has no cut of its own: its spindle and feed code is in its own lines.
+    if (op.kind !== 'custom') checkCutting(op, bad)
     checkDepth(program, op, bad)
     checkStep(op, bad)
     checkGeometry(program, op, bad)
@@ -86,6 +87,9 @@ function checkNumbers(op: Operation, out: Problem[]): void {
 }
 
 function checkTool(op: Operation, out: Problem[]): void {
+  // A custom block may name no tool: it changes nothing and prints no UI_TOOL, which `viewerIssues`
+  // warns about. Every other kind cuts with a tool and needs the row of the table.
+  if (op.kind === 'custom') return
   if (op.tool.number <= 0) add(out, 'tool.number', 'Инструмент не выбран: укажите номер в таблице инструмента.')
   if (op.tool.hNumber < 0) {
     add(
@@ -145,6 +149,8 @@ function checkCutting(op: Operation, out: Problem[]): void {
 }
 
 function checkDepth(program: QuickProgram, op: Operation, out: Problem[]): void {
+  // A custom block has no depth of its own: its Z words are in its lines, the viewer checks them.
+  if (op.kind === 'custom') return
   const top = stockTop(program.stock)
   const bottom = stockBottom(program.stock)
   if (op.depthMm <= 0) {
@@ -164,9 +170,11 @@ function checkDepth(program: QuickProgram, op: Operation, out: Problem[]): void 
 }
 
 function checkStep(op: Operation, out: Problem[]): void {
-  // A drill descends in one cycle and never splits the hole; a zero step is its normal value. A
-  // negative step is a mistake of any kind.
-  if (op.kind === 'drill' && op.stepDownMm >= 0) return
+  // A drill and a tap descend in one cycle and never split the hole; a zero step is their normal
+  // value. A negative step is a mistake of any kind. A custom block has no step: its lines are its
+  // own program.
+  if (op.kind === 'custom') return
+  if ((op.kind === 'drill' || op.kind === 'tap') && op.stepDownMm >= 0) return
   if (!(op.stepDownMm > 0)) {
     add(out, 'stepDownMm', 'Шаг врезания должен быть больше нуля: иначе проходов не будет.')
   } else if (op.stepDownMm > op.depthMm && op.depthMm > 0) {

@@ -102,6 +102,41 @@ export interface CycleWords {
   feedMmMin: number
 }
 
+/** A rigid tapping cycle: the depth, the R plane and the feed of the tap (`pitch x rpm`). */
+export interface TapWords {
+  depthZ: number
+  rZ: number
+  feedMmMin: number
+}
+
+/**
+ * The blocks of one G84 tapping cycle: the first hole carries `G84 X Y Z R F`, the rest only move,
+ * and `G80` closes the cycle, as the drill does. There is no Q: a rigid tap does not peck.
+ */
+export const tapCycleBlocks = (holes: { x: number; y: number }[], cycle: TapWords, state: EmitState): Block[] => {
+  const blocks: Block[] = []
+  let hasFeed = state.hasFeed
+  let feed = state.feed
+  holes.forEach((hole, index) => {
+    if (index > 0) {
+      blocks.push({ text: `X${coord(hole.x)} Y${coord(hole.y)}` })
+      return
+    }
+    let words = `G84 X${coord(hole.x)} Y${coord(hole.y)} Z${coord(cycle.depthZ)}`
+    words += ` R${coord(cycle.rZ)}`
+    if (!hasFeed || Math.abs(cycle.feedMmMin - feed) > EPS) {
+      words += ` F${feedWord(cycle.feedMmMin)}`
+      hasFeed = true
+      feed = cycle.feedMmMin
+    }
+    blocks.push({ text: words })
+  })
+  blocks.push({ text: 'G80' })
+  state.hasFeed = hasFeed
+  state.feed = feed
+  return blocks
+}
+
 /** The blocks of one drilling cycle: the holes, the G80 that closes it, and the modal feed. */
 export const cycleBlocks = (holes: Point3[], cycle: CycleWords, state: EmitState): Block[] => {
   const blocks: Block[] = []

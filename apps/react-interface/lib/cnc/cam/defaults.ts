@@ -10,6 +10,7 @@ import type {
   ChamferOperation,
   CirclePocketOperation,
   ContourOperation,
+  CustomOperation,
   DrillOperation,
   FaceOperation,
   Operation,
@@ -17,6 +18,7 @@ import type {
   RectPocketOperation,
   SlotOperation,
   StockBox,
+  TapOperation,
   ToolRef,
 } from './ops'
 import { stockTop } from './ops'
@@ -50,6 +52,12 @@ export const DEFAULT_STEP_DOWN_MM = 2
 /** The leg of a new chamfer, mm: one pass of a flat mill, under the radius of the default tool. */
 export const DEFAULT_CHAMFER_MM = 1
 
+/**
+ * The pitch of a new tap, mm per turn: a standard M8 coarse thread, the one an operator starts from
+ * and edits. A hole of the default tool is too small for M8, but the form says so, not the default.
+ */
+export const DEFAULT_TAP_PITCH_MM = 1.25
+
 /** A new program: schema 1, G54, G64 0.01, the M1 stop on and the safe Z 5 mm above the stock. */
 export const newProgram = (stock: StockBox = DEFAULT_STOCK, name = 'QUICK'): QuickProgram => ({
   schema: 1,
@@ -70,6 +78,13 @@ export const toolRef = (number = DEFAULT_TOOL.number, diameterMm = DEFAULT_TOOL.
   diameterMm,
   hNumber: number,
 })
+
+/**
+ * The hole radius of a new tap, mm: the thread of a standard coarse M8 is 6.8 mm at the tap, and the
+ * rule of the thumb is `D - pitch`. The tap diameter the operator typed is the thread, so the hole
+ * follows the pitch of the form until the operator types a radius.
+ */
+const tapRadius = (diameterMm: number): number => Math.max((diameterMm - DEFAULT_TAP_PITCH_MM) / 2, 0)
 
 const common = (init: NewOperation, tool: ToolRef, material: Material, body: DrillBody | null) => ({
   id: init.id,
@@ -95,6 +110,8 @@ export function newOperation(kind: 'drill', init: NewOperation): DrillOperation
 export function newOperation(kind: 'contour', init: NewOperation): ContourOperation
 export function newOperation(kind: 'slot', init: NewOperation): SlotOperation
 export function newOperation(kind: 'chamfer', init: NewOperation): ChamferOperation
+export function newOperation(kind: 'tap', init: NewOperation): TapOperation
+export function newOperation(kind: 'custom', init: NewOperation): CustomOperation
 export function newOperation(kind: Operation['kind'], init: NewOperation): Operation
 export function newOperation(kind: Operation['kind'], init: NewOperation): Operation {
   const tool = init.tool ?? DEFAULT_TOOL
@@ -161,6 +178,33 @@ export function newOperation(kind: Operation['kind'], init: NewOperation): Opera
         to: { x: 15, y: 0, z: init.topZ },
         chamferMm,
       }
+    }
+    case 'tap': {
+      // The layout and the hole are the drilling ones; the tap has no peck and no R plane of its own.
+      const fields = { ...common(init, tool, material, null), stepDownMm: 0 }
+      return {
+        ...fields,
+        kind,
+        pattern: 'hole',
+        pitchMm: DEFAULT_TAP_PITCH_MM,
+        hole: { x: 0, y: 0, r: tapRadius(tool.diameterMm) },
+        x0: 0,
+        y0: 0,
+        cols: 1,
+        rows: 1,
+        dx: 0,
+        dy: 0,
+        count: 1,
+        startDeg: 0,
+        arcDeg: 360,
+        fullTurn: true,
+      }
+    }
+    case 'custom': {
+      // A free block has no cut of its own: the frame is kept for the header of the operation, the
+      // tool is empty (no change, no UI_TOOL) until the operator names one.
+      const fields = { ...common(init, tool, material, null), tool: { number: 0, diameterMm: 0, hNumber: 0 } }
+      return { ...fields, kind, gcode: [] }
     }
     case 'drill': {
       const body = init.body ?? 'hss'

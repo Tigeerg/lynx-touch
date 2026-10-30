@@ -90,6 +90,23 @@ const GEOMETRY: Record<OperationKind, FieldSpec[]> = {
     { key: 'arcDeg', label: 'Дуга', unit: '°', hint: 'Круг: сектор расстановки' },
     { key: 'peckMm', label: 'Шаг вывода стружки', unit: 'мм', hint: 'G83; 0 — сверлить за один проход' },
   ],
+  tap: [
+    { key: 'pattern', label: 'Схема', unit: '', hint: 'Отверстие, сетка или по кругу' },
+    { key: 'pitchMm', label: 'Шаг резьбы', unit: 'мм', hint: 'Подача за один оборот; G84 режет по шагу' },
+    { key: 'hole.x', label: 'Центр X', unit: 'мм', hint: 'Центр резьбы или круга отверстий' },
+    { key: 'hole.y', label: 'Центр Y', unit: 'мм', hint: 'Центр резьбы или круга отверстий' },
+    { key: 'hole.r', label: 'Радиус', unit: 'мм', hint: 'Радиус резьбы и круга' },
+    { key: 'cols', label: 'Столбцов', unit: 'шт', hint: 'Сетка: отверстий по X' },
+    { key: 'rows', label: 'Рядов', unit: 'шт', hint: 'Сетка: отверстий по Y' },
+    { key: 'dx', label: 'Шаг по X', unit: 'мм', hint: 'Сетка: расстояние между отверстиями' },
+    { key: 'dy', label: 'Шаг по Y', unit: 'мм', hint: 'Сетка: расстояние между рядами' },
+    { key: 'count', label: 'Отверстий', unit: 'шт', hint: 'Круг: сколько отверстий' },
+    { key: 'startDeg', label: 'Начало', unit: '°', hint: 'Круг: угол первого отверстия' },
+    { key: 'arcDeg', label: 'Дуга', unit: '°', hint: 'Круг: сектор расстановки' },
+  ],
+  custom: [
+    { key: 'gcode', label: 'Строки G-кода', unit: '', hint: 'По строке на строку; блок проверяет только вьювер' },
+  ],
 }
 
 /** The common fields of every kind: the frame of the pass. */
@@ -140,6 +157,16 @@ export const CHOICES: Record<string, readonly string[]> = {
   closed: ['on', 'off'] as const,
   side: ['material', 'air'] as const,
 }
+
+/**
+ * The inputs the form draws as a multi-line text: one line of text per list element. The form renders
+ * them with a textarea and splits the text back on the line breaks (`linesOf`), so the typed program
+ * keeps its own lines.
+ */
+export const MULTILINE: readonly string[] = ['gcode']
+
+/** The list of lines of a multi-line field, as `CustomOperation.gcode` holds it. */
+export { linesOf } from '@/lib/cnc/cam/form-lines'
 
 /** What the operator reads in a choice: the same words the console of the demo prints. */
 export const CHOICE_LABEL: Record<string, string> = {

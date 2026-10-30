@@ -81,6 +81,10 @@ export const newForm = (kind: OperationKind, program: QuickProgram): CamForm => 
   error: null,
 })
 
+/**
+ * The base values of an operation. A custom block has no cut of its own and may name no tool: its
+ * own lines are the program, so the mode fields stay in the form for the header tags only.
+ */
 const baseValues = (op: Operation): Record<string, string> => ({
   id: op.id,
   enabled: op.enabled ? 'on' : 'off',

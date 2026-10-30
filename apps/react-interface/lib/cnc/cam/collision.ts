@@ -19,6 +19,8 @@
 import { fmt } from './feeds'
 import type { CamMove, CamPath } from './moves'
 import type { Operation, QuickProgram } from './ops'
+import { tapWarnings } from './validate-tap'
+import { viewerErrors } from './viewer-check'
 
 /** One finding of the check: the field of the operator's list and the reason in the operator's words. */
 export interface Issue {
@@ -115,11 +117,25 @@ export function checkProgram(program: QuickProgram, path: CamPath): CollisionRes
     return { errors, warnings }
   }
   const groups = movesByOperation(path)
-  for (const [index, moves] of groups) {
-    const operation = program.operations[index]
-    if (operation === undefined || !operation.enabled) continue
-    const plan = planIssue(program, operation, index, moves)
+  program.operations.forEach((operation, index) => {
+    if (!operation.enabled) return
+    // A custom block plans no moves: the viewer parser is its only check, and a parser error keeps
+    // the file from being written, bound to the field of the typed lines.
+    if (operation.kind === 'custom') {
+      // The numbers of `viewerErrors` are counted over the component's own lines, so the code stands
+      // before them and the operator can find them by the number.
+      const line = viewerErrors(operation.gcode)[0]
+      if (line !== undefined) errors.push({ field: fieldOf(index), reason: line.text })
+      return
+    }
+    const moves = groups.get(index)
+    const plan = moves === undefined ? null : planIssue(program, operation, index, moves)
     if (plan !== null) warnings.push(plan)
-  }
+    // The tap rules that do not block a save (a pitch off the standard series) are the same kind
+    // of finding as the plan one: the operator sees them in the file and on the list.
+    if (operation.kind === 'tap') {
+      for (const item of tapWarnings(operation)) warnings.push({ field: fieldOf(index), reason: item.reason })
+    }
+  })
   return { errors, warnings }
 }

@@ -18,4 +18,5 @@ export { EPS, MIN_PECK_MM, MIN_STEP_MM, WCS_WORDS, add, numberFields, tableRowFo
 export type { NumberField } from './validate-common'
 export { checkGeometry, checkPeck } from './validate-shape'
 export { slotWarnings } from './validate-slot'
+export { RIGID_TAPPING_PARAM, isStandardPitch, STANDARD_PITCHES_MM, tapWarnings } from './validate-tap'
 export { checkSafeZ, checkTolerance } from './validate-program'

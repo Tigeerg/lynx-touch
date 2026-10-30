@@ -52,9 +52,11 @@ export const freshState = (): EmitState => ({
  * one function and not a chain of conditions spread over the printer.
  */
 export const operationStart = (operation: Operation, h: number, state: EmitState) => {
+  // A custom block without a tool number changes no tool: its lines are its own program.
   const toolChanged = state.tool !== operation.tool.number
+  const toolLess = operation.kind === 'custom' && operation.tool.number <= 0
   return {
-    changeTool: state.tool === 0 || toolChanged,
+    changeTool: !toolLess && (state.tool === 0 || toolChanged),
     g43: toolChanged || state.hNumber !== h,
     spindle: state.spindleRpm <= 0 || Math.abs(state.spindleRpm - operation.cutting.spindleRpm) > 1e-6,
     coolant: operation.coolant !== 'off' && !state.coolantOn,
@@ -80,10 +82,15 @@ export const preambleBlocks = (
   if (state.operationsStarted > 0 && stopAfterOp) next('M1')
   state.operationsStarted += 1
   const rules = operationStart(operation, h, state)
+  const toolLess = operation.kind === 'custom' && operation.tool.number <= 0
   const id = operation.id.length > 0 ? operation.id : 'Операция'
   next(tag(`UI_OP: ${commentSafe(id)}`))
   next(tag(`UI_STAGE: ${uuid}`))
-  next(tag(`UI_TOOL: T=${operation.tool.number} TYPE=${toolType(operation)} D=${num(operation.tool.diameterMm)}`))
+  // A block without a tool prints no UI_TOOL: the viewer then warns (`op-no-tool`), which is the
+  // honest reading of a stage the operator did not give a tool.
+  if (!toolLess) {
+    next(tag(`UI_TOOL: T=${operation.tool.number} TYPE=${toolType(operation)} D=${num(operation.tool.diameterMm)}`))
+  }
   if (rules.changeTool) {
     next('G53 G0 Z0')
     next(`T${operation.tool.number} M6`)

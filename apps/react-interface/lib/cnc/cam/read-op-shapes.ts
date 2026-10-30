@@ -1,14 +1,15 @@
 // The shape keys of the new kinds of a `.qprog` file (PLAN-QUICKPROG, 6, 7.4), C3: contour, slot,
-// chamfer.
+// chamfer, tap.
 //
 // The table of kinds, the shape keys of every kind and the common keys live in `read-op.ts`; the
 // classic kinds (drill, face, pocket, circle-pocket) are read by `read-op-classic.ts`. This module
 // owns the arity and the field of every `op.*` key of its kinds: a new key is one branch here and
 // one line in `serialize-write.ts`. A contour is the one kind whose shape is a list: `op.points`
 // takes pairs `x y` to the end of the line, the rest of the keys keep their fixed arity.
-import type { Operation } from './ops'
+import type { DrillGeometry, Operation, TapOperation } from './ops'
 import { arity, num, onOff } from './read-op-words'
 import { QprogError } from './qprog-error'
+import { readClassicShapeKey, TAP_LAYOUT_KEYS } from './read-op-classic'
 
 /** The profile of a contour: pairs of `x y` on one line, at least one pair and an even count. */
 function contourPoints(words: string[], where: string): { x: number; y: number; z: number }[] {
@@ -59,6 +60,20 @@ function contourKey(
   }
 }
 
+/** A tap operation, whose layout keys write the drilling fields the same way. */
+type Tap = Extract<Operation, { kind: 'tap' }>
+
+/** The layout word of a tap: the same three patterns and the words of a `.qprog` op line. */
+const TAP_WORDS: Record<string, DrillGeometry['pattern']> = { hole: 'hole', grid: 'grid', circle: 'circle' }
+
+/** The layout keys of a tap, shared with the drilling reader by name (`hole`, `grid`, ...). */
+function tapLayout(tap: Tap, sub: string, words: string[], key: string, where: string): void {
+  arity(words, 1, key, where)
+  const pattern = words[1] === undefined ? undefined : TAP_WORDS[words[1]]
+  if (pattern === undefined) throw new QprogError(0, `${where}op.pattern ждёт hole, grid или circle.`)
+  tap.pattern = pattern
+}
+
 /**
  * Reads one shape key of a new kind into `op`. `false` when the key is not of this module, so the
  * other shape reader of `read-op-classic.ts` may try it.
@@ -75,9 +90,17 @@ export function readNewShapeKey(op: Operation, sub: string, words: string[], key
   } else if (sub === 'width' && op.kind === 'slot') {
     arity(words, 1, key, where)
     op.widthMm = num(words, 1, key, where)
+  } else if (sub === 'pattern' && op.kind === 'tap') {
+    tapLayout(op, sub, words, key, where)
+  } else if (sub === 'pitch' && op.kind === 'tap') {
+    arity(words, 1, key, where)
+    op.pitchMm = num(words, 1, key, where)
   } else if (sub === 'chamfer' && op.kind === 'chamfer') {
     arity(words, 1, key, where)
     op.chamferMm = num(words, 1, key, where)
+  } else if (op.kind === 'tap' && TAP_LAYOUT_KEYS.includes(sub)) {
+    // The layout keys of a tap are the drilling ones: the classic reader writes the same fields.
+    readClassicShapeKey(op, sub, words, key, where)
   } else {
     return false
   }

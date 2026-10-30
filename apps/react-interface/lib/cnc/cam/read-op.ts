@@ -10,7 +10,7 @@ import type { Operation, QuickProgram } from './ops'
 import { COMMON_KEYS } from './read-header'
 import { parseInteger, restAfter, unquoteText } from './serialize-words'
 import { arity, num, onOff } from './read-op-words'
-import { DRILL_KEYS, readClassicShapeKey, readDrillR } from './read-op-classic'
+import { DRILL_KEYS, readClassicShapeKey, readDrillR, TAP_LAYOUT_KEYS } from './read-op-classic'
 import { readNewShapeKey } from './read-op-shapes'
 import { QprogError } from './qprog-error'
 
@@ -31,6 +31,8 @@ export function opHead(text: string, line: number): OpHead {
   if (text === 'contour') return { kind: 'contour', drill: null }
   if (text === 'slot') return { kind: 'slot', drill: null }
   if (text === 'chamfer') return { kind: 'chamfer', drill: null }
+  if (text === 'tap') return { kind: 'tap', drill: null }
+  if (text === 'custom') return { kind: 'custom', drill: null }
   throw new QprogError(line, `неизвестный вид операции '${text}'.`)
 }
 
@@ -43,10 +45,19 @@ export const SHAPE_KEYS: Record<Operation['kind'], string[]> = {
   contour: ['points', 'closed', 'allowance', 'side'],
   slot: ['from', 'to', 'width', 'stepOver'],
   chamfer: ['from', 'to', 'chamfer'],
+  tap: ['pattern', 'pitch'],
+  custom: [],
 }
 
 /** The common keys every kind writes. */
 function commonValue(op: Operation, sub: string, line: string, words: string[], key: string, where: string): boolean {
+  if (sub === 'gcode') {
+    // A custom block has one line per `op.gcode`: the reader keeps the order and the blanks. A bare
+    // key is an empty line, an unquoted text is taken as is (a hand edit of a comment).
+    if (op.kind !== 'custom') return false
+    op.gcode = [...op.gcode, words.length > 1 ? unquoteText(restAfter(line, 1)) : '']
+    return true
+  }
   if (sub === 'notes') {
     op.notes = words.length > 1 ? unquoteText(restAfter(line, 1)) : ''
     return true
@@ -79,11 +90,12 @@ function commonValue(op: Operation, sub: string, line: string, words: string[], 
     arity(words, 1, key, where)
     const value = num(words, 1, key, where)
     // A drill has one feed: the plunge follows the working feed whatever the file says.
-    const plunge = op.kind === 'drill' ? op.cutting.feedMmMin : op.cutting.plungeFeedMmMin
+    const oneFeed = op.kind === 'drill' || op.kind === 'tap'
+    const plunge = oneFeed ? op.cutting.feedMmMin : op.cutting.plungeFeedMmMin
     op.cutting =
       sub === 'feed'
-        ? { ...op.cutting, feedMmMin: value, plungeFeedMmMin: op.kind === 'drill' ? value : plunge }
-        : { ...op.cutting, plungeFeedMmMin: op.kind === 'drill' ? op.cutting.feedMmMin : value }
+        ? { ...op.cutting, feedMmMin: value, plungeFeedMmMin: oneFeed ? value : plunge }
+        : { ...op.cutting, plungeFeedMmMin: oneFeed ? op.cutting.feedMmMin : value }
   } else if (sub === 'coolant') {
     arity(words, 1, key, where)
     const value = words[1]
@@ -113,7 +125,14 @@ function commonValue(op: Operation, sub: string, line: string, words: string[], 
 /** The keys of a kind: common, shape, and the optional `h`, `material`, `drill`, `r`. */
 const keyKnown = (head: OpHead, sub: string): boolean =>
   COMMON_KEYS.includes(sub) ||
-  (head.kind === 'drill' ? DRILL_KEYS[head.drill as string] : SHAPE_KEYS[head.kind]).includes(sub) ||
+  // A custom block repeats its `op.gcode` by design: one line per program line, in order.
+  (head.kind === 'custom' && sub === 'gcode') ||
+  (head.kind === 'drill'
+    ? DRILL_KEYS[head.drill as string]
+    : head.kind === 'tap'
+      ? [...SHAPE_KEYS.tap, ...TAP_LAYOUT_KEYS]
+      : SHAPE_KEYS[head.kind]
+  ).includes(sub) ||
   ['h', 'material'].includes(sub) ||
   (head.kind === 'drill' && ['drill', 'r'].includes(sub))
 

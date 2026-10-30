@@ -16,6 +16,7 @@ export const KIND_LABEL: Record<OperationKind, string> = {
   chamfer: 'Фаска',
   tap: 'Метчик',
   custom: 'Custom G Code',
+  probe: 'Блок щупа',
 }
 
 /** A tool as the operator reads it in the table: `T01 ф10`. */
@@ -47,6 +48,10 @@ export function keySize(op: Operation): string {
     }
     case 'custom':
       return `${String(op.gcode.length)} стр. · проверьте вручную`
+    case 'probe': {
+      const count = op.points.length === 1 ? '1 точка' : `${String(op.points.length)} точек`
+      return `${op.axis} · ${count} · ${formatMm(op.rangeMm)} мм`
+    }
     case 'drill': {
       const diameter = `Ø${formatMm(op.hole.r * 2)}`
       const count = op.pattern === 'grid' ? op.cols * op.rows : op.pattern === 'circle' ? op.count : 1

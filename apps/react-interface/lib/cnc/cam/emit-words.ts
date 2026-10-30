@@ -39,15 +39,21 @@ export const tag = (body: string): string => `(${body})`
 export const commentSafe = (text: string): string => text.replace(/[()]/g, ' ').replace(/[\r\n]/g, '')
 
 /** The viewer labels a stage by tool family: FLAT for the milling kinds, DRILL for a hole, TAP for a
- * tap; a free block has no family of its own and is read as CODE. */
-export const toolType = (operation: Operation): string =>
-  operation.kind === 'drill'
-    ? 'DRILL'
-    : operation.kind === 'tap'
-      ? 'TAP'
-      : operation.kind === 'custom'
-        ? 'CODE'
-        : 'FLAT'
+ * tap, PROBE for a touch block; a free block has no family of its own and is read as CODE. */
+const FAMILY: Record<Operation['kind'], string> = {
+  face: 'FLAT',
+  pocket: 'FLAT',
+  'circle-pocket': 'FLAT',
+  contour: 'FLAT',
+  slot: 'FLAT',
+  chamfer: 'FLAT',
+  drill: 'DRILL',
+  tap: 'TAP',
+  custom: 'CODE',
+  probe: 'PROBE',
+}
+
+export const toolType = (operation: Operation): string => FAMILY[operation.kind]
 
 /** The row of the G43 table of a tool: the explicit number, else the tool number. Never zero. */
 export const effectiveH = (operation: Operation): number =>

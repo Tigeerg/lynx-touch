@@ -140,5 +140,13 @@ export function numberFields(op: Operation): NumberField[] {
       // The lines are text, not numbers: the empty list is the only rule (`validate-custom.ts`) and
       // the viewer parser reads the words (`viewer-check.ts`).
       return [...common]
+    case 'probe':
+      // The points are a list, read by the form (`probe-points.ts`); the numbers here are the frame
+      // of the touch: the range of the search and the touch feed.
+      return [
+        ...common,
+        field(op.rangeMm, 'rangeMm', 'rangeMm', 'диапазон обмера'),
+        field(op.touchFeedMmMin, 'touchFeedMmMin', 'touchFeedMmMin', 'подача касания'),
+      ]
   }
 }

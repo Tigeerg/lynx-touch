@@ -33,6 +33,7 @@ export function opHead(text: string, line: number): OpHead {
   if (text === 'chamfer') return { kind: 'chamfer', drill: null }
   if (text === 'tap') return { kind: 'tap', drill: null }
   if (text === 'custom') return { kind: 'custom', drill: null }
+  if (text === 'probe') return { kind: 'probe', drill: null }
   throw new QprogError(line, `неизвестный вид операции '${text}'.`)
 }
 
@@ -47,6 +48,7 @@ export const SHAPE_KEYS: Record<Operation['kind'], string[]> = {
   chamfer: ['from', 'to', 'chamfer'],
   tap: ['pattern', 'pitch'],
   custom: [],
+  probe: ['points', 'range', 'touch', 'axis'],
 }
 
 /** The common keys every kind writes. */
@@ -90,7 +92,7 @@ function commonValue(op: Operation, sub: string, line: string, words: string[], 
     arity(words, 1, key, where)
     const value = num(words, 1, key, where)
     // A drill has one feed: the plunge follows the working feed whatever the file says.
-    const oneFeed = op.kind === 'drill' || op.kind === 'tap'
+    const oneFeed = op.kind === 'drill' || op.kind === 'tap' || op.kind === 'probe'
     const plunge = oneFeed ? op.cutting.feedMmMin : op.cutting.plungeFeedMmMin
     op.cutting =
       sub === 'feed'

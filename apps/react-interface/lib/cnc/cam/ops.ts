@@ -26,6 +26,8 @@ export type {
   DrillPattern,
   DrillRingGeometry,
   FaceOperation,
+  ProbeAxis,
+  ProbeOperation,
   RectPocketOperation,
   SlotOperation,
   TapOperation,
@@ -43,6 +45,8 @@ import type {
   DrillPattern,
   DrillRingGeometry,
   FaceOperation,
+  ProbeAxis,
+  ProbeOperation,
   RectPocketOperation,
   SlotOperation,
   TapOperation,
@@ -99,7 +103,7 @@ export type Coolant = 'off' | 'mist' | 'flood'
 export type Wcs = 'G54' | 'G55' | 'G56' | 'G57' | 'G58' | 'G59'
 
 export type OperationKind =
-  'face' | 'pocket' | 'circle-pocket' | 'drill' | 'contour' | 'slot' | 'chamfer' | 'tap' | 'custom'
+  'face' | 'pocket' | 'circle-pocket' | 'drill' | 'contour' | 'slot' | 'chamfer' | 'tap' | 'custom' | 'probe'
 
 /** The fields every kind shares: the tool, the modes, the stock frame and the notes. */
 export interface OperationBase {
@@ -126,6 +130,7 @@ export type Operation =
   | ChamferOperation
   | TapOperation
   | CustomOperation
+  | ProbeOperation
 
 /** The saved document (`.qprog` schema 1). It is loaded into the machine only by a command. */
 export interface QuickProgram {

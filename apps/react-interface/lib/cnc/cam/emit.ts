@@ -28,6 +28,7 @@ import { cycleBlocks, moveBlocks, tapCycleBlocks } from './emit-moves'
 import { commentSafe, coord, effectiveH, numberedBlock, SEQUENCE_STEP } from './emit-words'
 import type { Issue } from './collision'
 import { viewerIssues } from './viewer-check'
+import { probeLines } from './probe'
 
 /** The first block number of the file, the reference post's start. */
 const FIRST_SEQUENCE = 10
@@ -114,6 +115,12 @@ const operationBlocks = (
     }
     // G80 brings the drill back to the R plane, not to safe Z; the trailer parks it.
     parked = { ...park, z: plan.cycle.rZ }
+  } else if (operation.kind === 'probe') {
+    // The touch lines are the whole operation: G38.2 per point and the retreat, after the tags and
+    // the tool change. The probe cuts nothing, so no move of the path is printed here, and the
+    // trailer parks it at safe Z after the last retreat.
+    for (const line of probeLines(operation)) blocks.push({ text: line })
+    parked = park
   } else if (operation.kind === 'tap') {
     // The tapping cycle is written by the machine, the holes come from the same layout the planner drew.
     const plan = tapPlan(program, operation)

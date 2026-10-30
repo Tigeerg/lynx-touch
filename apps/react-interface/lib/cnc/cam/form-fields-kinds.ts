@@ -12,6 +12,7 @@ import type { CommonFields } from './form-fields'
 import { kept, int, str, on } from './form-fields'
 import { pointsOf, pointsText } from './contour-points'
 import { customWithText, linesText } from './form-lines'
+import { probeAxis, probePointsOf, probePointsText } from './probe-points'
 
 /** The shape values of the kind; the narrow switch is what makes a forgotten kind a compile error. */
 export function valuesOfShape(op: Operation): Record<string, string> {
@@ -79,6 +80,13 @@ export function valuesOfShape(op: Operation): Record<string, string> {
       }
     case 'custom':
       return { gcode: linesText(op.gcode) }
+    case 'probe':
+      return {
+        points: probePointsText(op.points),
+        rangeMm: String(op.rangeMm),
+        touchFeedMmMin: String(op.touchFeedMmMin),
+        axis: op.axis,
+      }
     case 'drill':
       return {
         pattern: op.pattern,
@@ -197,6 +205,16 @@ export function fieldsOfShape(op: Operation, v: Record<string, string>, common: 
       const next = customWithText(op, v.gcode)
       return { ...common, kind: 'custom', gcode: next.gcode }
     }
+    case 'probe':
+      return {
+        ...common,
+        kind: 'probe',
+        // A list that is not triples keeps the document points, as the contour keeps its vertices.
+        points: probePointsOf(v, 'points', op.points) ?? op.points,
+        rangeMm: kept(v, 'rangeMm', op.rangeMm),
+        touchFeedMmMin: kept(v, 'touchFeedMmMin', op.touchFeedMmMin),
+        axis: probeAxis(v, 'axis', op.axis),
+      }
     case 'drill':
       return {
         ...op,

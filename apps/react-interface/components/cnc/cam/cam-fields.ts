@@ -107,6 +107,12 @@ const GEOMETRY: Record<OperationKind, FieldSpec[]> = {
   custom: [
     { key: 'gcode', label: 'Строки G-кода', unit: '', hint: 'По строке на строку; блок проверяет только вьювер' },
   ],
+  probe: [
+    { key: 'points', label: 'Точки обмера', unit: '', hint: 'Тройки «X Y Z» через точку с запятой' },
+    { key: 'axis', label: 'Ось касания', unit: '', hint: 'По какой оси щуп ищет поверхность' },
+    { key: 'rangeMm', label: 'Диапазон обмера', unit: 'мм', hint: 'Отвод после касания и ход поиска' },
+    { key: 'touchFeedMmMin', label: 'Подача касания', unit: 'мм/мин', hint: 'Скорость G38.2, не выше рабочей' },
+  ],
 }
 
 /** The common fields of every kind: the frame of the pass. */
@@ -156,6 +162,7 @@ export const CHOICES: Record<string, readonly string[]> = {
   pattern: ['hole', 'grid', 'circle'] as const,
   closed: ['on', 'off'] as const,
   side: ['material', 'air'] as const,
+  axis: ['X', 'Y', 'Z'] as const,
 }
 
 /**
@@ -183,6 +190,9 @@ export const CHOICE_LABEL: Record<string, string> = {
   on: 'Да',
   material: 'В материал',
   air: 'Наружу',
+  X: 'Ось X',
+  Y: 'Ось Y',
+  Z: 'Ось Z',
 }
 
 /** The fields of a kind that only one hole layout uses: the form hides the rest of the layouts. */

@@ -1,11 +1,11 @@
 // The shape keys of the new kinds of a `.qprog` file (PLAN-QUICKPROG, 6, 7.4), C3: contour, slot,
-// chamfer, tap.
+// chamfer, tap, probe.
 //
 // The table of kinds, the shape keys of every kind and the common keys live in `read-op.ts`; the
 // classic kinds (drill, face, pocket, circle-pocket) are read by `read-op-classic.ts`. This module
 // owns the arity and the field of every `op.*` key of its kinds: a new key is one branch here and
-// one line in `serialize-write.ts`. A contour is the one kind whose shape is a list: `op.points`
-// takes pairs `x y` to the end of the line, the rest of the keys keep their fixed arity.
+// one line in `serialize-write.ts`. Two kinds have a list: a contour takes pairs `x y` to the end of
+// the line, a probe triples `x y z`; the rest of the keys keep their fixed arity.
 import type { DrillGeometry, Operation, TapOperation } from './ops'
 import { arity, num, onOff } from './read-op-words'
 import { QprogError } from './qprog-error'
@@ -75,6 +75,25 @@ function tapLayout(tap: Tap, sub: string, words: string[], key: string, where: s
 }
 
 /**
+ * The touch points of a probe: triples `x y z` on one line, at least one triple and a multiple of
+ * three. The same list style as `op.points` of a contour, with the Z of every touch.
+ */
+function probePoints(words: string[], where: string): { x: number; y: number; z: number }[] {
+  if (words.length < 3 || words.length % 3 !== 0) {
+    throw new QprogError(0, `${where}op.points ждёт тройки 'x y z', а получило ${String(words.length)} знач.`)
+  }
+  const points: { x: number; y: number; z: number }[] = []
+  for (let i = 0; i + 2 < words.length; i += 3) {
+    points.push({
+      x: num(words, i, 'points', where),
+      y: num(words, i + 1, 'points', where),
+      z: num(words, i + 2, 'points', where),
+    })
+  }
+  return points
+}
+
+/**
  * Reads one shape key of a new kind into `op`. `false` when the key is not of this module, so the
  * other shape reader of `read-op-classic.ts` may try it.
  */
@@ -83,6 +102,7 @@ export function readNewShapeKey(op: Operation, sub: string, words: string[], key
     contourKey(op, sub, words, key, where)
     return true
   }
+  if (op.kind === 'probe') return probeKey(op, sub, words, key, where)
   if (sub === 'stepOver' && op.kind === 'slot') {
     slotStep(op, words, key, where)
   } else if ((sub === 'from' || sub === 'to') && (op.kind === 'slot' || op.kind === 'chamfer')) {
@@ -101,6 +121,33 @@ export function readNewShapeKey(op: Operation, sub: string, words: string[], key
   } else if (op.kind === 'tap' && TAP_LAYOUT_KEYS.includes(sub)) {
     // The layout keys of a tap are the drilling ones: the classic reader writes the same fields.
     readClassicShapeKey(op, sub, words, key, where)
+  } else {
+    return false
+  }
+  return true
+}
+
+/** A probe key: `points`, `range`, `touch`, `axis` (PLAN-QUICKPROG, 7.6). */
+function probeKey(
+  op: Extract<Operation, { kind: 'probe' }>,
+  sub: string,
+  words: string[],
+  key: string,
+  where: string,
+): boolean {
+  if (sub === 'points') op.points = probePoints(words.slice(1), where)
+  else if (sub === 'range') {
+    arity(words, 1, key, where)
+    op.rangeMm = num(words, 1, key, where)
+  } else if (sub === 'touch') {
+    arity(words, 1, key, where)
+    op.touchFeedMmMin = num(words, 1, key, where)
+  } else if (sub === 'axis') {
+    arity(words, 1, key, where)
+    if (words[1] !== 'X' && words[1] !== 'Y' && words[1] !== 'Z') {
+      throw new QprogError(0, `${where}op.axis ждёт X, Y или Z.`)
+    }
+    op.axis = words[1]
   } else {
     return false
   }

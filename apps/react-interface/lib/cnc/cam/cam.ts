@@ -17,6 +17,7 @@
 // they recompute straight away and clear the flag. A delayed timer never wins over a save: the
 // save reads the document, not the preview.
 import { isBusy } from '../guards'
+import { arrayCopies, rotatedCopies, type CopyResult } from './copy-ops'
 import { newProgram } from './defaults'
 import type { Operation } from './ops'
 import { buildProgram } from './path'
@@ -42,6 +43,8 @@ const CAM_TYPES = new Set<string>([
   'CAM_TOGGLE',
   'CAM_MOVE',
   'CAM_SAVE',
+  'CAM_ARRAY',
+  'CAM_ROTATE',
 ])
 
 export const isCamAction = (a: { type: string }): a is CamAction => CAM_TYPES.has(a.type)
@@ -200,5 +203,35 @@ export function camReducer(s: MachineState, a: CamAction): Result {
 
     case 'CAM_SAVE':
       return s.cam === null ? closed(s) : saveCam(s, s.cam, a.at)
+
+    case 'CAM_ARRAY': {
+      if (s.cam === null) return closed(s)
+      const op = s.cam.program.operations[a.index]
+      if (op === undefined) return { s, msg: 'Операции с таким номером нет', level: 'warn' }
+      return copied(s, s.cam, a.index, arrayCopies(op, a))
+    }
+
+    case 'CAM_ROTATE': {
+      if (s.cam === null) return closed(s)
+      const op = s.cam.program.operations[a.index]
+      if (op === undefined) return { s, msg: 'Операции с таким номером нет', level: 'warn' }
+      return copied(s, s.cam, a.index, rotatedCopies(op, a))
+    }
+  }
+}
+
+/**
+ * The document with the source and its copies in place of the source, or the refusal as a message.
+ * The copies are flattened here, on the action, so the list holds them and the `.qprog` stays flat;
+ * a refusal changes nothing but the message line.
+ */
+const copied = (s: MachineState, cam: CamState, at: number, result: CopyResult): Result => {
+  if (!result.ok) return { s, msg: result.reason, level: 'warn' }
+  const list = cam.program.operations
+  const operations = [...list.slice(0, at), ...result.operations, ...list.slice(at + 1)]
+  const program = { ...cam.program, operations }
+  return {
+    s: { ...s, cam: { ...cam, program, preview: emitOf(program), error: null, pending: false } },
+    msg: `Копий: ${String(result.operations.length - 1)}`,
   }
 }

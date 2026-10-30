@@ -21,6 +21,7 @@ export const KIND_WORDS: Record<OperationKind, string> = {
   chamfer: 'chamfer',
   tap: 'tap',
   custom: 'custom',
+  probe: 'probe',
 }
 
 /** The three geometry words of a drilling operation: one hole, a grid, a ring. */

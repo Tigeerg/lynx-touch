@@ -99,6 +99,10 @@ const planOperation = (program: QuickProgram, operation: Operation, out: PathBui
     case 'custom':
       // The lines are the program: no move is planned and the viewer parser is their only check.
       return 0
+    case 'probe':
+      // A touch touches the part, it does not cut it: the emitter writes the G38.2 block and the
+      // planner draws no move, so the path and the estimate stay the cutting ones.
+      return 0
   }
 }
 

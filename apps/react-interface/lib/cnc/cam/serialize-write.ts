@@ -121,6 +121,12 @@ function shapeLines(op: Operation): string {
       return tapLines(op)
     case 'custom':
       return gcodeLines(op.gcode)
+    case 'probe':
+      // The points carry all three coordinates: a touch along X or Y names the surface side too.
+      return (
+        `op.points ${op.points.map((point) => `${num(point.x)} ${num(point.y)} ${num(point.z)}`).join(' ')}\n` +
+        `op.range ${num(op.rangeMm)}\nop.touch ${num(op.touchFeedMmMin)}\nop.axis ${op.axis}\n`
+      )
   }
 }
 
@@ -131,9 +137,10 @@ function commonLines(op: Operation): string {
   let out = `op ${kind}${id}\nop.enabled ${onOff(op.enabled)}\n`
   out += `op.tool ${String(op.tool.number)} ${num(op.tool.diameterMm)}\n`
   out += materialLine(op.material)
-  // A drill and a tap have one feed: their plunge line repeats the working feed, so a hand edit of one
-  // number cannot leave a stale second one behind.
-  const oneFeed = op.kind === 'drill' || op.kind === 'tap'
+  // A drill, a tap and a probe have one feed: their plunge line repeats the working feed, so a hand
+  // edit of one number cannot leave a stale second one behind. The probe's own touch feed travels
+  // in `op.touch`, and the working feed is the one the form compares it against.
+  const oneFeed = op.kind === 'drill' || op.kind === 'tap' || op.kind === 'probe'
   const plunge = oneFeed ? op.cutting.feedMmMin : op.cutting.plungeFeedMmMin
   // `op.h` is written only when the H row differs from the tool number: the demo writer leaves it
   // out for the common case (row = tool, or zero meaning the same), so its files round-trip.

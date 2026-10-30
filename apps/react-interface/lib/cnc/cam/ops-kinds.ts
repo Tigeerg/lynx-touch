@@ -182,3 +182,26 @@ export interface CustomOperation extends OperationBase {
   /** The program lines, one per element, in the order of the file; comments and blanks are kept. */
   gcode: string[]
 }
+
+/** The axis a probe touches: the motion of `G38.2` runs along it. */
+export type ProbeAxis = 'X' | 'Y' | 'Z'
+
+/**
+ * A probe block (`probe`, PLAN-QUICKPROG 7.6): the touch measurements between the cutting
+ * operations. The tool is the probe of the tool table, so the common fields carry it as for any
+ * other kind. A measurement is a `G38.2` along `axis` to the coordinate of the point, at the touch
+ * feed, then a retreat of `rangeMm`; `depthMm` and `stepDownMm` are not read by it, the coordinate
+ * of the point is where the probe expects the surface. The sharing of the point coordinates
+ * between the axes is the console's rule: the point is the machine position the probe moves to.
+ */
+export interface ProbeOperation extends OperationBase {
+  kind: 'probe'
+  /** The touch points, machine coordinates; one `G38.2` per point. */
+  points: Point3[]
+  /** The retreat after every touch, mm, and the most the probe may travel to find the surface. */
+  rangeMm: number
+  /** The probing feed of `G38.2`, mm/min; above the working feed it is a warning. */
+  touchFeedMmMin: number
+  /** The axe of the touch: `Z` for a top, `X`/`Y` for a side. */
+  axis: ProbeAxis
+}

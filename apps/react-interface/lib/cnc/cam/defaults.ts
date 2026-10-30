@@ -6,6 +6,9 @@
 import type { DrillBody, Material } from './feeds'
 import { cuttingFor } from './feeds'
 import type { NewOperation } from './operation-init'
+import { newProbe } from './defaults-probe'
+import { common } from './defaults-common'
+export { DEFAULT_PROBE_RANGE_MM, TOUCH_FEED_MM_MIN } from './probe-defaults'
 import type {
   ChamferOperation,
   CirclePocketOperation,
@@ -14,6 +17,7 @@ import type {
   DrillOperation,
   FaceOperation,
   Operation,
+  ProbeOperation,
   QuickProgram,
   RectPocketOperation,
   SlotOperation,
@@ -86,19 +90,6 @@ export const toolRef = (number = DEFAULT_TOOL.number, diameterMm = DEFAULT_TOOL.
  */
 const tapRadius = (diameterMm: number): number => Math.max((diameterMm - DEFAULT_TAP_PITCH_MM) / 2, 0)
 
-const common = (init: NewOperation, tool: ToolRef, material: Material, body: DrillBody | null) => ({
-  id: init.id,
-  enabled: true,
-  tool,
-  cutting: cuttingFor(material, tool.diameterMm, body),
-  coolant: 'flood' as const,
-  material,
-  topZ: init.topZ,
-  depthMm: init.depthMm ?? DEFAULT_DEPTH_MM,
-  stepDownMm: init.stepDownMm ?? DEFAULT_STEP_DOWN_MM,
-  notes: '',
-})
-
 /**
  * A new operation of `kind`. The face plane sits at the bottom of the pass, both pockets take the
  * 70 % step and a drill has no axial step (one cycle) and no peck (the planner decides).
@@ -112,10 +103,12 @@ export function newOperation(kind: 'slot', init: NewOperation): SlotOperation
 export function newOperation(kind: 'chamfer', init: NewOperation): ChamferOperation
 export function newOperation(kind: 'tap', init: NewOperation): TapOperation
 export function newOperation(kind: 'custom', init: NewOperation): CustomOperation
+export function newOperation(kind: 'probe', init: NewOperation): ProbeOperation
 export function newOperation(kind: Operation['kind'], init: NewOperation): Operation
 export function newOperation(kind: Operation['kind'], init: NewOperation): Operation {
   const tool = init.tool ?? DEFAULT_TOOL
   const material = init.material ?? DEFAULT_MATERIAL
+  if (kind === 'probe') return newProbe(init, tool, material)
   switch (kind) {
     case 'face': {
       const fields = common(init, tool, material, null)

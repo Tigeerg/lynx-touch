@@ -56,3 +56,7 @@ export type CamAction =
   | { type: 'CAM_TOGGLE'; index: number }
   | { type: 'CAM_MOVE'; index: number; up: boolean }
   | { type: 'CAM_SAVE'; at?: number }
+  // The copies of an operation are flattened into the list at once (PLAN-QUICKPROG, 7.6): a grid
+  // `cols x rows` with its own step, or `copies` turns of `angleDeg` around `(cx, cy)`.
+  | { type: 'CAM_ARRAY'; index: number; cols: number; rows: number; dx: number; dy: number }
+  | { type: 'CAM_ROTATE'; index: number; angleDeg: number; cx: number; cy: number; copies: number }

@@ -19,6 +19,7 @@
 import { fmt } from './feeds'
 import type { CamMove, CamPath } from './moves'
 import type { Operation, QuickProgram } from './ops'
+import { probeWarnings } from './probe'
 import { tapWarnings } from './validate-tap'
 import { viewerErrors } from './viewer-check'
 
@@ -135,6 +136,10 @@ export function checkProgram(program: QuickProgram, path: CamPath): CollisionRes
     // of finding as the plan one: the operator sees them in the file and on the list.
     if (operation.kind === 'tap') {
       for (const item of tapWarnings(operation)) warnings.push({ field: fieldOf(index), reason: item.reason })
+    }
+    // A touch feed above the working feed is the same kind of finding: shown and written, never a block.
+    if (operation.kind === 'probe') {
+      for (const item of probeWarnings(operation)) warnings.push({ field: fieldOf(index), reason: item.reason })
     }
   })
   return { errors, warnings }

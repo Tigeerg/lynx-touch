@@ -8,6 +8,7 @@ import { newOperation } from './defaults'
 import type { CamForm } from './form-fields'
 import { applyFields, kept, num, str } from './form-fields'
 import { profileOf } from './contour-points'
+import { probeProfileOf } from './probe-points'
 import type { Operation, OperationKind, QuickProgram } from './ops'
 import type { Problem } from './validate'
 import { numberFields, validate } from './validate'
@@ -57,12 +58,14 @@ export function formProblems(program: QuickProgram, values: Record<string, strin
  * holds a list, not one number, so `numberFields` skips it and the text is read here.
  */
 function pointProblem(op: Operation, values: Record<string, string>): Problem | null {
-  if (op.kind !== 'contour') return null
+  if (op.kind !== 'contour' && op.kind !== 'probe') return null
   const text = values.points
   if (text === undefined || text.trim() === '') return null
-  const pairs = profileOf(text, op.topZ)
-  const at = pairs.findIndex((point) => point === null)
-  return at < 0 ? null : { field: 'points', reason: `Точка ${at + 1} задана не двумя числами X и Y.` }
+  const points = op.kind === 'contour' ? profileOf(text, op.topZ) : probeProfileOf(text)
+  const at = points.findIndex((point) => point === null)
+  if (at < 0) return null
+  const shape = op.kind === 'contour' ? 'двумя числами X и Y' : 'тремя числами X, Y и Z'
+  return { field: 'points', reason: `Точка ${at + 1} задана не ${shape}.` }
 }
 
 /**

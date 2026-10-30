@@ -25,6 +25,7 @@ import { checkContour } from './validate-contour'
 import { checkChamfer, checkSlot } from './validate-slot'
 import { checkTap } from './validate-tap'
 import { checkCustom } from './validate-custom'
+import { probeValidation } from './probe'
 
 /** The shape rules of the kind of the operation: face, pocket, circle pocket, drilling, contour, slot, chamfer. */
 export function checkGeometry(
@@ -52,6 +53,10 @@ export function checkGeometry(
       return checkTap(program, op, out)
     case 'custom':
       return checkCustom(op, out)
+    case 'probe':
+      // The probe rules are its own module: the touch list, the range and the touch feed.
+      for (const item of probeValidation(op)) add(out, item.field, item.reason)
+      return
   }
 }
 

@@ -61,8 +61,9 @@ export function validate(program: QuickProgram): Validation {
     // with `<=`, see `NaN` as false and would let it through to the planner and the emitter.
     checkNumbers(op, bad)
     checkTool(op, bad)
-    // A custom block has no cut of its own: its spindle and feed code is in its own lines.
-    if (op.kind !== 'custom') checkCutting(op, bad)
+    // A custom block has no cut of its own: its spindle and feed code is in its own lines. A probe
+    // touches at its own feed (op.touch) and needs no cutting data to be planned.
+    if (op.kind !== 'custom' && op.kind !== 'probe') checkCutting(op, bad)
     checkDepth(program, op, bad)
     checkStep(op, bad)
     checkGeometry(program, op, bad)
@@ -150,7 +151,8 @@ function checkCutting(op: Operation, out: Problem[]): void {
 
 function checkDepth(program: QuickProgram, op: Operation, out: Problem[]): void {
   // A custom block has no depth of its own: its Z words are in its lines, the viewer checks them.
-  if (op.kind === 'custom') return
+  // A probe measures, it does not cut: the coordinate of the touch is in the points, not a depth.
+  if (op.kind === 'custom' || op.kind === 'probe') return
   const top = stockTop(program.stock)
   const bottom = stockBottom(program.stock)
   if (op.depthMm <= 0) {
@@ -172,8 +174,8 @@ function checkDepth(program: QuickProgram, op: Operation, out: Problem[]): void 
 function checkStep(op: Operation, out: Problem[]): void {
   // A drill and a tap descend in one cycle and never split the hole; a zero step is their normal
   // value. A negative step is a mistake of any kind. A custom block has no step: its lines are its
-  // own program.
-  if (op.kind === 'custom') return
+  // own program, and a probe measures without a pass to split.
+  if (op.kind === 'custom' || op.kind === 'probe') return
   if ((op.kind === 'drill' || op.kind === 'tap') && op.stepDownMm >= 0) return
   if (!(op.stepDownMm > 0)) {
     add(out, 'stepDownMm', 'Шаг врезания должен быть больше нуля: иначе проходов не будет.')

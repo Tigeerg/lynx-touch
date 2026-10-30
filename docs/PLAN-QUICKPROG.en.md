@@ -374,6 +374,40 @@ takes two presses and keeps a `.bak`; a field edit rebuilds the preview at most 
 both `.ngc` and `.qprog`; the saved program parses in the viewer (segments, stages), and the live
 `gcodeviewer --smoke` run is a manual acceptance step.
 
+## 7.6 Q4 and Q5: the new operations
+
+The fifth and sixth passes widen the set of operations to what §2 promises. The rule is the same as
+in 7.4: the logic in `lib/cnc/cam/`, the form in `components/cnc/cam/`, one `.qprog` read by the demo and the
+panel, the references made by the demo. Every operation walks the same road: a type in `ops.ts`, the fields in
+`cam-fields.ts`, a planner `path-<kind>.ts`, a rule in `validate-<kind>.ts`, the output in `emit.ts`, `.qprog`,
+and tests over the numbers and the edges.
+
+**Q4 (P1).** The operations the plan finds necessary for a real part besides pockets and drilling.
+
+| Operation | What it does | Main risk and decision |
+|---|---|---|
+| **Contour** (closed and open) | milling along a profile: a polyline of `Point3` in the XY plane, a direction (climb or conventional), axial passes, an allowance | radius compensation: the **contour MVP has no `G41/G42`**, the path is the tool centre shifted by `D/2` along the profile normal towards the material; the normal comes from the segments, on the corners from the bisector. A concave corner sharper than the tool radius is a **validation error** "corner sharper than the tool" |
+| **Slot** | a straight groove: two points, width, depth, passes | width below the diameter is an error; width above two diameters is a warning "a contour is better"; the entry is clockwise on every pass for a slot wider than the tool |
+| **Tap** | a thread with `G84` | only if the machine confirms rigid tapping; a machine parameter `rigid_tapping`, off by default; with it off a validation error names rigid tapping |
+| **Chamfer** | an edge break along a profile: `chamferMm` | a chamfer above `D/2` is an error; the MVP handles straight segments only, an arc is a warning |
+| **Array and rotate** | copies of an operation on a grid and around a point | the copies are **expanded into a flat list** on accept, no separate `.qprog` kind: simpler to check and to emit; the limit is 100 copies |
+| **`Custom G Code`** | a block of arbitrary G-code | a separate kind, **not checked geometrically**, but it passes the viewer parser rules (`viewerIssues`); the list marks it as "check by hand" |
+| **Probe block** | measuring between operations (`G38.2`/`G31` by the machine) | the MVP takes the probe from the tool table and an `M6`; the measuring logic itself comes later, here the range and the touch feed |
+
+**Q5 (P2).** The operations that make the system fit for complex parts.
+
+| Operation | What it does | Main risk and decision |
+|---|---|---|
+| **Counterbore** | a cylindrical seat for a fastener: `G82` with a dwell | a depth below the diameter is a warning; no `Q`, but `R` is required |
+| **Thread mill** | an internal or external thread with a mill, a spiral with the pitch | the pitch and the pass count come from `pitchMm` and `D`; an external thread checks that the tool is not thinner than the groove |
+| **Engraving** | a single-line text along a contour | the font is built in as a single-line one (no external files), height and slant; a character outside the set is an error "character not supported" |
+| **Pocket with an island** | going around an island inside a pocket | an allowance on the island; a check that the island fits between the walls; the full geometric raster-with-trim comes as a separate step |
+| **Rest machining** | cutting what the previous operation left | needs a height map or an area comparison: the MVP takes the **geometric remainder of the previous pockets** in the document, no simulation; without data it warns instead of staying silent |
+| **DXF import** | a contour from a drawing file | a reader for a limited set (`LINE`, `LWPOLYLINE`, `ARC`, `CIRCLE`) into a polyline; the file is **not kept** in the panel, only the resulting contour |
+
+The estimates are as in §9: Q4 6-8 weeks, Q5 8-12, but after the two passes (7.3 and 7.4) the range is refined
+by fact: one MVP-level operation with its form, output, `.qprog` and checks takes one pass of 4-6 tasks.
+
 ## 8. Checks and safety
 
 * Generation is disabled on `ESTOP`, while busy and with an invalid tool table; the form checks `isBusy(s)`.

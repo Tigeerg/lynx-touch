@@ -27,6 +27,7 @@ import { checkTap } from './validate-tap'
 import { checkCustom } from './validate-custom'
 import { checkCounterbore } from './validate-counterbore'
 import { probeValidation } from './probe'
+import { checkPathKind } from './validate-paths'
 
 /** The shape rules of the kind of the operation: face, pocket, circle pocket, drilling, contour, slot, chamfer. */
 export function checkGeometry(
@@ -56,6 +57,10 @@ export function checkGeometry(
     case 'thread':
       // One module for both: the fastener seat and the body of a mill against a thread profile.
       return checkCounterbore(program, op, out)
+    case 'engrave':
+    case 'pocket-island':
+      // The text of an engraving and the island of a pocket live in `validate-paths.ts`.
+      return checkPathKind(op, out)
     case 'custom':
       return checkCustom(op, out)
     case 'probe':

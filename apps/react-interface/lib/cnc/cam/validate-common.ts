@@ -174,10 +174,15 @@ function checkDepth(program: QuickProgram, op: Operation, out: Problem[]): void 
 function checkStep(op: Operation, out: Problem[]): void {
   // A drill and a tap descend in one cycle and never split the hole; a zero step is their normal
   // value. A negative step is a mistake of any kind. A custom block has no step: its lines are its
-  // own program, and a probe measures without a pass to split.
-  if (op.kind === 'custom' || op.kind === 'probe') return
+  // own program, a probe measures without a pass to split, and an engraving is cut at one plane (the
+  // depth of the label), so its step is zero. A pocket with an island splits the raster like a pocket.
+  if (op.kind === 'custom' || op.kind === 'probe' || op.kind === 'engrave') return
   if (
-    (op.kind === 'drill' || op.kind === 'tap' || op.kind === 'counterbore' || op.kind === 'thread') &&
+    (op.kind === 'drill' ||
+      op.kind === 'tap' ||
+      op.kind === 'counterbore' ||
+      op.kind === 'thread' ||
+      op.kind === 'pocket-island') &&
     op.stepDownMm >= 0
   )
     return

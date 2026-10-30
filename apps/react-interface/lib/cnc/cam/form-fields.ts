@@ -16,7 +16,8 @@ import type { Operation, OperationKind, QuickProgram } from './ops'
 import { stockTop } from './ops'
 import { newOperation } from './defaults'
 import type { Problem } from './validate'
-import { fieldsOfShape, valuesOfShape } from './form-fields-kinds'
+import { fieldsOfShape } from './form-fields-kinds'
+import { valuesOfShape } from './form-values'
 
 /** The form of an operation: the kind, the typed values, and the result of the last edit. */
 export interface CamForm {

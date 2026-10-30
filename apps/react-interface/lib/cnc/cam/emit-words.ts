@@ -51,6 +51,8 @@ const FAMILY: Record<Operation['kind'], string> = {
   counterbore: 'DRILL',
   tap: 'TAP',
   thread: 'FLAT',
+  engrave: 'FLAT',
+  'pocket-island': 'FLAT',
   custom: 'CODE',
   probe: 'PROBE',
 }

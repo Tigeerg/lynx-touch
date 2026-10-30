@@ -33,7 +33,7 @@ export type {
   SlotOperation,
   TapOperation,
 } from './ops-kinds'
-export type { ThreadOperation } from './ops-kinds-q5'
+export type { EngraveOperation, IslandPocketOperation, ThreadOperation } from './ops-kinds-q5'
 
 import type {
   ChamferOperation,
@@ -54,7 +54,7 @@ import type {
   SlotOperation,
   TapOperation,
 } from './ops-kinds'
-import type { ThreadOperation } from './ops-kinds-q5'
+import type { EngraveOperation, IslandPocketOperation, ThreadOperation } from './ops-kinds-q5'
 
 /** A point in machine coordinates, mm; `z` is the tool tip (the trajectory centre). */
 export interface Point3 {
@@ -117,6 +117,8 @@ export type OperationKind =
   | 'tap'
   | 'counterbore'
   | 'thread'
+  | 'engrave'
+  | 'pocket-island'
   | 'custom'
   | 'probe'
 
@@ -146,6 +148,8 @@ export type Operation =
   | TapOperation
   | CounterboreOperation
   | ThreadOperation
+  | EngraveOperation
+  | IslandPocketOperation
   | CustomOperation
   | ProbeOperation
 

@@ -166,6 +166,29 @@ export function numberFields(op: Operation): NumberField[] {
         field(op.threadAllowanceMm, 'geometry', 'threadAllowanceMm', 'припуск'),
         field(op.stepOverPct, 'stepOver', 'stepOverPct', 'шаг проходов'),
       ]
+    case 'engrave':
+      // The text is a string, not a number: the check of the set names it (`validate-engrave.ts`).
+      return [
+        ...common,
+        field(op.x, 'geometry', 'x', 'X надписи'),
+        field(op.y, 'geometry', 'y', 'Y надписи'),
+        field(op.heightMm, 'heightMm', 'heightMm', 'высота надписи'),
+        field(op.angleDeg, 'geometry', 'angleDeg', 'наклон надписи'),
+      ]
+    case 'pocket-island':
+      return [
+        ...common,
+        field(op.rect.x, 'geometry', 'rect.x', 'X кармана'),
+        field(op.rect.y, 'geometry', 'rect.y', 'Y кармана'),
+        field(op.rect.w, 'rect', 'rect.w', 'ширина кармана'),
+        field(op.rect.h, 'rect', 'rect.h', 'высота кармана'),
+        field(op.island.x, 'island', 'island.x', 'X острова'),
+        field(op.island.y, 'island', 'island.y', 'Y острова'),
+        field(op.island.w, 'island', 'island.w', 'ширина острова'),
+        field(op.island.h, 'island', 'island.h', 'высота острова'),
+        field(op.islandAllowanceMm, 'islandAllowance', 'islandAllowanceMm', 'припуск на остров'),
+        field(op.stepOverPct, 'stepOver', 'stepOverPct', 'шаг растра'),
+      ]
     case 'custom':
       // The lines are text, not numbers: the empty list is the only rule (`validate-custom.ts`) and
       // the viewer parser reads the words (`viewer-check.ts`).

@@ -65,6 +65,8 @@ function turnRule(op: Operation): TurnRule {
     case 'face':
       return { rule: 'refused', reason: 'Плоскость не поворачивается: слой снимается по всей заготовке.' }
     case 'pocket':
+    case 'pocket-island':
+      // A pocket with an island has two rectangles: only a quarter turn keeps both of them boxes.
       return { rule: 'quarter' }
     case 'circle-pocket':
     case 'drill':
@@ -80,6 +82,9 @@ function turnRule(op: Operation): TurnRule {
       return { rule: 'points' }
     case 'custom':
       return { rule: 'refused', reason: 'Custom G Code не копируется: его строки — готовый код, а не геометрия.' }
+    case 'engrave':
+      // A text moves as one point and turns by its own angle: the form's turn is added to it.
+      return { rule: 'points' }
     case 'probe':
       // A probe point is a measurement of the part, not a cut: moving it documents another touch.
       return { rule: 'points' }
@@ -121,6 +126,17 @@ export function cloneOperation(
       const shiftedRect = { ...op.rect, x: op.rect.x + dx, y: op.rect.y + dy }
       return { ...op, id, rect: angleDeg === 0 ? shiftedRect : turnedRect(shiftedRect, angleDeg, cx, cy) }
     }
+    case 'pocket-island': {
+      if (angleDeg !== 0 && !isQuarterTurn(angleDeg)) return null
+      const rect = { ...op.rect, x: op.rect.x + dx, y: op.rect.y + dy }
+      const island = { ...op.island, x: op.island.x + dx, y: op.island.y + dy }
+      return {
+        ...op,
+        id,
+        rect: angleDeg === 0 ? rect : turnedRect(rect, angleDeg, cx, cy),
+        island: angleDeg === 0 ? island : turnedRect(island, angleDeg, cx, cy),
+      }
+    }
     case 'circle-pocket':
       return { ...op, id, circle: { ...op.circle, ...place({ ...op.circle, z: 0 }) } }
     case 'drill':
@@ -136,6 +152,10 @@ export function cloneOperation(
     case 'thread':
       // A thread turns by its centre: the pitch and the depth stay the thread's own.
       return { ...op, id, hole: { ...op.hole, ...place({ ...op.hole, z: 0 }) } }
+    case 'engrave': {
+      const origin = place({ x: op.x, y: op.y, z: 0 })
+      return { ...op, id, x: origin.x, y: origin.y, angleDeg: op.angleDeg + angleDeg }
+    }
     case 'probe':
       return { ...op, id, points: op.points.map(place) }
   }
@@ -193,7 +213,7 @@ export function rotatedCopies(
   if (turn.copies + 1 > MAX_COPIES) return { ok: false, reason: `Слишком много копий: больше ${String(MAX_COPIES)}` }
   const refused = copyRefusal(op)
   if (refused !== null) return { ok: false, reason: refused }
-  if (op.kind === 'pocket' && !isQuarterTurn(turn.angleDeg)) {
+  if ((op.kind === 'pocket' || op.kind === 'pocket-island') && !isQuarterTurn(turn.angleDeg)) {
     return { ok: false, reason: 'Поворот кармана — только кратно 90 градусам.' }
   }
   const copies: Operation[] = [op]

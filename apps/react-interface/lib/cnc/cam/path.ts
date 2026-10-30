@@ -24,6 +24,8 @@ import { drillCycleMinutes, planDrill } from './path-drill'
 import { planTap, tapCycleMinutes } from './path-tap'
 import { planCounterbore } from './path-counterbore'
 import { planThread } from './path-thread'
+import { planEngrave } from './path-engrave'
+import { planIslandPocket } from './path-pocket-island'
 import { counterboreMinutes } from './bores'
 import { validate } from './validate'
 
@@ -106,6 +108,12 @@ const planOperation = (program: QuickProgram, operation: Operation, out: PathBui
     case 'thread':
       // The helix is a path: its arcs are charged move by move in `estimateSeconds`.
       planThread(program, operation, out)
+      return 0
+    case 'engrave':
+      planEngrave(program, operation, out)
+      return 0
+    case 'pocket-island':
+      planIslandPocket(program, operation, out)
       return 0
     case 'custom':
       // The lines are the program: no move is planned and the viewer parser is their only check.

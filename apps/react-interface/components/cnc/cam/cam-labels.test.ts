@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { newOperation, newProgram } from '@/lib/cnc/cam/defaults'
+import { fieldFor } from './cam-fields'
 import { valuesOf } from '@/lib/cnc/cam/form'
 import type { OperationKind } from '@/lib/cnc/cam/ops'
 import { formatMm, headerText, KIND_LABEL, keySize, kindWarnings, toolText, warningText } from './cam-labels'
@@ -20,6 +21,8 @@ const KINDS: OperationKind[] = [
   'slot',
   'chamfer',
   'tap',
+  'engrave',
+  'pocket-island',
   'custom',
   'probe',
 ]
@@ -35,6 +38,8 @@ describe('слова оверлея', () => {
       'Паз',
       'Фаска',
       'Метчик',
+      'Гравировка',
+      'Карман с островом',
       'Custom G Code',
       'Блок щупа',
     ])
@@ -47,6 +52,19 @@ describe('слова оверлея', () => {
     expect(keySize(slot)).toContain('шир.')
     const probe = newOperation('probe', { id: '', topZ: 0 })
     expect(keySize(probe)).toContain('мм')
+  })
+
+  it('карточка новых видов читает текст и два прямоугольника', () => {
+    const engrave = newOperation('engrave', { id: '', topZ: 0 })
+    expect(keySize(engrave)).toBe('«ТЕКСТ» 5 мм')
+    const island = newOperation('pocket-island', { id: '', topZ: 0 })
+    expect(keySize(island)).toBe('60×40 · остров 20×20')
+  })
+
+  it('ошибка гравировки находит поле текста, ошибка острова — поле острова', () => {
+    expect(fieldFor({ field: 'text', reason: 'Символ «@» не поддержан.' })).toBe('text')
+    expect(fieldFor({ field: 'heightMm', reason: 'Высота надписи должна быть больше нуля.' })).toBe('heightMm')
+    expect(fieldFor({ field: 'island', reason: 'Остров не помещается: зазор меньше фрезы.' })).toBe('island')
   })
 
   it('предупреждения не блокируют запись и не подменяют ошибку', () => {

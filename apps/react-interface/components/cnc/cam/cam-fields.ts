@@ -132,6 +132,25 @@ const GEOMETRY: Record<OperationKind, FieldSpec[]> = {
     { key: 'startDeg', label: 'Начало', unit: '°', hint: 'Круг: угол первого отверстия' },
     { key: 'arcDeg', label: 'Дуга', unit: '°', hint: 'Круг: сектор расстановки' },
   ],
+  engrave: [
+    { key: 'text', label: 'Текст', unit: '', hint: 'Заглавные латиница и кириллица, цифры, пробел' },
+    { key: 'x', label: 'Начало X', unit: 'мм', hint: 'Центр надписи по X' },
+    { key: 'y', label: 'Базовая линия Y', unit: 'мм', hint: 'Низ букв по Y' },
+    { key: 'heightMm', label: 'Высота', unit: 'мм', hint: 'Высота заглавных букв' },
+    { key: 'angleDeg', label: 'Наклон', unit: '°', hint: 'Поворот надписи вокруг начала' },
+  ],
+  'pocket-island': [
+    { key: 'rect.x', label: 'Карман X', unit: 'мм', hint: 'Левый край кармана' },
+    { key: 'rect.y', label: 'Карман Y', unit: 'мм', hint: 'Нижний край кармана' },
+    { key: 'rect.w', label: 'Карман ширина', unit: 'мм', hint: 'Размер кармана по X' },
+    { key: 'rect.h', label: 'Карман высота', unit: 'мм', hint: 'Размер кармана по Y' },
+    { key: 'island.x', label: 'Остров X', unit: 'мм', hint: 'Левый край острова' },
+    { key: 'island.y', label: 'Остров Y', unit: 'мм', hint: 'Нижний край острова' },
+    { key: 'island.w', label: 'Остров ширина', unit: 'мм', hint: 'Размер острова по X' },
+    { key: 'island.h', label: 'Остров высота', unit: 'мм', hint: 'Размер острова по Y' },
+    { key: 'islandAllowanceMm', label: 'Припуск на остров', unit: 'мм', hint: 'След на стенках острова' },
+    { key: 'stepOverPct', label: 'Шаг растра', unit: '%', hint: 'Доля диаметра фрезы, 10..100 %' },
+  ],
   custom: [
     { key: 'gcode', label: 'Строки G-кода', unit: '', hint: 'По строке на строку; блок проверяет только вьювер' },
   ],
@@ -210,7 +229,7 @@ export const CHOICES: Record<string, readonly string[]> = {
  * keeps its own lines. A contour and a probe hold their points as one list typed by hand, so they
  * get the same box: a single line of twenty vertices is unreadable on 1024x600.
  */
-export const MULTILINE: readonly string[] = ['gcode', 'points']
+export const MULTILINE: readonly string[] = ['gcode', 'points', 'text']
 
 /** The list of lines of a multi-line field, as `CustomOperation.gcode` holds it. */
 export { linesOf } from '@/lib/cnc/cam/form-lines'
@@ -271,6 +290,10 @@ const HINTS: [RegExp, string][] = [
   [/Шаг вывода стружки/, 'peckMm'],
   [/Плоскость обработки/, 'z'],
   [/радиус .* мм не больше нуля/, 'circle.r'],
+  // An engraving names its character and its height; an island pocket its clearance.
+  [/Символ|Пустой текст/, 'text'],
+  [/Высота (надписи|меньше)/, 'heightMm'],
+  [/Остров|зазор меньше фрезы/, 'island'],
 ]
 
 /** The input a reason talks about; the check's own field when no wording is more specific. */

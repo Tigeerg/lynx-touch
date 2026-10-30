@@ -22,6 +22,8 @@ export const KIND_WORDS: Record<OperationKind, string> = {
   tap: 'tap',
   counterbore: 'counterbore',
   thread: 'thread',
+  engrave: 'engrave',
+  'pocket-island': 'pocket-island',
   custom: 'custom',
   probe: 'probe',
 }

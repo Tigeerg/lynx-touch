@@ -12,6 +12,7 @@ import { parseInteger, restAfter, unquoteText } from './serialize-words'
 import { arity, num, onOff } from './read-op-words'
 import { DRILL_KEYS, readClassicShapeKey, readCounterboreR, readDrillR, TAP_LAYOUT_KEYS } from './read-op-classic'
 import { COUNTERBORE_KEYS, readNewShapeKey } from './read-op-shapes'
+import { readPathShapeKey } from './read-op-path'
 import { QprogError } from './qprog-error'
 
 export { DRILL_KEYS } from './read-op-classic'
@@ -34,6 +35,8 @@ export function opHead(text: string, line: number): OpHead {
   if (text === 'tap') return { kind: 'tap', drill: null }
   if (text === 'counterbore') return { kind: 'counterbore', drill: null }
   if (text === 'thread') return { kind: 'thread', drill: null }
+  if (text === 'engrave') return { kind: 'engrave', drill: null }
+  if (text === 'pocket-island') return { kind: 'pocket-island', drill: null }
   if (text === 'custom') return { kind: 'custom', drill: null }
   if (text === 'probe') return { kind: 'probe', drill: null }
   throw new QprogError(line, `неизвестный вид операции '${text}'.`)
@@ -51,6 +54,8 @@ export const SHAPE_KEYS: Record<Operation['kind'], string[]> = {
   tap: ['pattern', 'pitch'],
   counterbore: ['pattern', 'seat', 'seatDepth', 'dwell'],
   thread: ['hole', 'pitch', 'internal', 'threadDepth', 'allowance', 'stepOver'],
+  engrave: ['text', 'x', 'y', 'height', 'angle'],
+  'pocket-island': ['rect', 'island', 'islandAllowance', 'stepOver'],
   custom: [],
   probe: ['points', 'range', 'touch', 'axis'],
 }
@@ -167,6 +172,7 @@ export function readOpValue(
     readCounterboreR(op, words, key, where)
     return
   }
+  if (readPathShapeKey(op, sub, words, key, where, line)) return
   if (!readNewShapeKey(op, sub, words, key, where)) readClassicShapeKey(op, sub, words, key, where)
 }
 

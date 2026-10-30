@@ -63,6 +63,24 @@ function threadLines(op: Extract<Operation, { kind: 'thread' }>): string {
   )
 }
 
+/** The lines of an engraving: the text as the rest of the line, then the frame of the string. */
+function engraveLines(op: Extract<Operation, { kind: 'engrave' }>): string {
+  return (
+    `op.text ${quoteText(op.text)}\n` +
+    `op.x ${num(op.x)}\nop.y ${num(op.y)}\nop.height ${num(op.heightMm)}\nop.angle ${num(op.angleDeg)}\n`
+  )
+}
+
+/** The lines of an island pocket: the pocket, the island, the allowance and the step of the raster. */
+function islandLines(op: Extract<Operation, { kind: 'pocket-island' }>): string {
+  const rect = (r: { x: number; y: number; w: number; h: number }): string =>
+    `${num(r.x)} ${num(r.y)} ${num(r.w)} ${num(r.h)}`
+  return (
+    `op.rect ${rect(op.rect)}\nop.island ${rect(op.island)}\n` +
+    `op.islandAllowance ${num(op.islandAllowanceMm)}\nop.stepOver ${num(op.stepOverPct)}\n`
+  )
+}
+
 /**
  * The lines of a custom block: one `op.gcode <text>` per program line, the text quoted exactly as
  * `op.notes` and `op.name` are. An empty line is the bare key, so the list keeps its blanks.
@@ -146,6 +164,10 @@ function shapeLines(op: Operation): string {
       return counterboreLines(op)
     case 'thread':
       return threadLines(op)
+    case 'engrave':
+      return engraveLines(op)
+    case 'pocket-island':
+      return islandLines(op)
     case 'custom':
       return gcodeLines(op.gcode)
     case 'probe':

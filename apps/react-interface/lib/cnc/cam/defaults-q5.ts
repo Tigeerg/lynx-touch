@@ -1,4 +1,5 @@
-// The defaults of the Q5 kinds (PLAN-QUICKPROG 7.6): a fastener seat and a thread mill.
+// The defaults of the Q5 kinds (PLAN-QUICKPROG 7.6): a fastener seat, a thread mill, an engraving
+// and a pocket with an island.
 //
 // A counterbore opens on the drilling frame with a hole and a seat of the M6 head: the hole is the
 // tool of the form, the seat is wider than it and the seat depth starts shallow. A thread mill opens
@@ -7,7 +8,14 @@
 //
 // The constants live here, so `defaults.ts` imports them back for the export list and the two long
 // arms of the switch stay out of the switch of the older kinds.
-import type { CounterboreOperation, Material, ThreadOperation, ToolRef } from './ops'
+import type {
+  CounterboreOperation,
+  EngraveOperation,
+  IslandPocketOperation,
+  Material,
+  ThreadOperation,
+  ToolRef,
+} from './ops'
 import type { NewOperation } from './operation-init'
 import { common } from './defaults-common'
 
@@ -66,6 +74,42 @@ export function newThread(init: NewOperation, tool: ToolRef, material: Material)
     internal: true,
     threadDepthMm: fields.depthMm,
     threadAllowanceMm: DEFAULT_THREAD_ALLOWANCE_MM,
+    stepOverPct: THREAD_STEP_OVER_PCT,
+  }
+}
+
+/** The height of a new engraving, mm: a readable label of the console size. */
+export const DEFAULT_ENGRAVE_HEIGHT_MM = 5
+
+/** The allowance of a new island pocket on the island, mm: the rough pass leaves a tenth. */
+export const DEFAULT_ISLAND_ALLOWANCE_MM = 0.1
+
+/**
+ * A new engraving: the string `ТЕКСТ` over the operation point, 5 mm high and level. The text is a
+ * placeholder the operator replaces; every character of it is in the built-in set.
+ */
+export function newEngrave(init: NewOperation, tool: ToolRef, material: Material): EngraveOperation {
+  const fields = { ...common(init, tool, material, null), stepDownMm: 0 }
+  return {
+    ...fields,
+    kind: 'engrave',
+    text: 'ТЕКСТ',
+    x: 0,
+    y: 0,
+    heightMm: DEFAULT_ENGRAVE_HEIGHT_MM,
+    angleDeg: 0,
+  }
+}
+
+/** A new island pocket: the 60 x 40 pocket of the console and a 20 x 20 island in its centre. */
+export function newIslandPocket(init: NewOperation, tool: ToolRef, material: Material): IslandPocketOperation {
+  const fields = common(init, tool, material, null)
+  return {
+    ...fields,
+    kind: 'pocket-island',
+    rect: { x: -30, y: -20, w: 60, h: 40 },
+    island: { x: -10, y: -10, w: 20, h: 20 },
+    islandAllowanceMm: DEFAULT_ISLAND_ALLOWANCE_MM,
     stepOverPct: THREAD_STEP_OVER_PCT,
   }
 }

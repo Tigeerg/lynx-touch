@@ -8,6 +8,7 @@ import { probeWarnings } from '@/lib/cnc/cam/probe'
 import { slotWarnings } from '@/lib/cnc/cam/validate-slot'
 import { tapWarnings } from '@/lib/cnc/cam/validate-tap'
 import { counterboreWarnings } from '@/lib/cnc/cam/validate-counterbore'
+import { pathWarnings } from '@/lib/cnc/cam/validate-paths'
 
 /** The kind names of the picker and of an operation card; P1 requires the word, not the icon. */
 export const KIND_LABEL: Record<OperationKind, string> = {
@@ -21,6 +22,8 @@ export const KIND_LABEL: Record<OperationKind, string> = {
   tap: 'Метчик',
   counterbore: 'Цековка',
   thread: 'Резьбовая фреза',
+  engrave: 'Гравировка',
+  'pocket-island': 'Карман с островом',
   custom: 'Custom G Code',
   probe: 'Блок щупа',
 }
@@ -61,6 +64,10 @@ export function keySize(op: Operation): string {
       const side = op.internal ? 'внутр.' : 'наруж.'
       return `Ø${formatMm(op.hole.r * 2)} · шаг ${formatMm(op.pitchMm)} · ${side}`
     }
+    case 'engrave':
+      return `«${op.text}» ${formatMm(op.heightMm)} мм`
+    case 'pocket-island':
+      return `${formatMm(op.rect.w)}×${formatMm(op.rect.h)} · остров ${formatMm(op.island.w)}×${formatMm(op.island.h)}`
     case 'custom':
       return `${String(op.gcode.length)} стр. · проверьте вручную`
     case 'probe': {
@@ -103,6 +110,9 @@ export function kindWarnings(op: Operation): string[] {
       return slotWarnings(op).map((w) => w.reason)
     case 'probe':
       return probeWarnings(op).map((w) => w.reason)
+    case 'engrave':
+    case 'pocket-island':
+      return pathWarnings(op).map((w) => w.reason)
     default:
       return []
   }

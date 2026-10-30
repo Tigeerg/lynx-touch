@@ -1,119 +1,21 @@
 // The fields of one operation of a kind, as the form holds them: strings, as the input fields do
 // (PLAN-QUICKPROG, 6 and 7.4).
 //
-// The mechanics (the `num`/`kept`/`int`/`str`/`on` readers, the common fields and the two switches
-// that call this module) live in `form-fields.ts`. Here are the shape switches, one per direction:
-// the values of the kind, and the kind with the typed fields written onto it. The narrow switch is
-// what makes a forgotten kind a compile error. Shape fields are named the same in the document and
-// the form (`rect.x`, `circle.r`); a contour has one text field, `X Y; X Y; ...`.
+// The mechanics (the `num`/`kept`/`int`/`str`/`on` readers and the common fields) live in
+// `form-fields.ts`; the other direction, the values of the kind, is `form-values.ts`. Here is the
+// switch values -> operation. The narrow switch is what makes a forgotten kind a compile error.
+// Shape fields are named the same in the document and the form (`rect.x`, `circle.r`).
 
 import type { DrillPattern, Operation } from './ops'
 import type { CommonFields } from './form-fields'
 import { kept, int, str, on } from './form-fields'
-import { pointsOf, pointsText } from './contour-points'
-import { customWithText, linesText } from './form-lines'
-import { probeAxis, probePointsOf, probePointsText } from './probe-points'
-import { counterboreFields, counterboreValues, threadFields, threadValues } from './form-fields-q5'
+import { pointsOf } from './contour-points'
+import { customWithText } from './form-lines'
+import { probeAxis, probePointsOf } from './probe-points'
+import { counterboreFields, threadFields } from './form-fields-q5'
+import { engraveFields, islandFields } from './form-fields-q5a'
 
 /** The shape values of the kind; the narrow switch is what makes a forgotten kind a compile error. */
-export function valuesOfShape(op: Operation): Record<string, string> {
-  switch (op.kind) {
-    case 'face':
-      return { z: String(op.z), stepOverPct: String(op.stepOverPct) }
-    case 'pocket':
-      return {
-        'rect.x': String(op.rect.x),
-        'rect.y': String(op.rect.y),
-        'rect.w': String(op.rect.w),
-        'rect.h': String(op.rect.h),
-        cornerRadiusMm: String(op.cornerRadiusMm),
-        finishAllowanceMm: String(op.finishAllowanceMm),
-        stepOverPct: String(op.stepOverPct),
-      }
-    case 'circle-pocket':
-      return {
-        'circle.x': String(op.circle.x),
-        'circle.y': String(op.circle.y),
-        'circle.r': String(op.circle.r),
-        finishAllowanceMm: String(op.finishAllowanceMm),
-        stepOverPct: String(op.stepOverPct),
-      }
-    case 'contour':
-      return {
-        points: pointsText(op.points),
-        closed: op.closed ? 'on' : 'off',
-        allowanceMm: String(op.allowanceMm),
-        side: op.side,
-      }
-    case 'slot':
-      return {
-        'from.x': String(op.from.x),
-        'from.y': String(op.from.y),
-        'to.x': String(op.to.x),
-        'to.y': String(op.to.y),
-        widthMm: String(op.widthMm),
-        stepOverPct: String(op.stepOverPct),
-      }
-    case 'chamfer':
-      return {
-        'from.x': String(op.from.x),
-        'from.y': String(op.from.y),
-        'to.x': String(op.to.x),
-        'to.y': String(op.to.y),
-        chamferMm: String(op.chamferMm),
-      }
-    case 'tap':
-      return {
-        pattern: op.pattern,
-        pitchMm: String(op.pitchMm),
-        'hole.x': String(op.hole.x),
-        'hole.y': String(op.hole.y),
-        'hole.r': String(op.hole.r),
-        x0: String(op.x0),
-        y0: String(op.y0),
-        cols: String(op.cols),
-        rows: String(op.rows),
-        dx: String(op.dx),
-        dy: String(op.dy),
-        count: String(op.count),
-        startDeg: String(op.startDeg),
-        arcDeg: String(op.arcDeg),
-      }
-    case 'counterbore':
-      return counterboreValues(op)
-    case 'thread':
-      return threadValues(op)
-    case 'custom':
-      return { gcode: linesText(op.gcode) }
-    case 'probe':
-      return {
-        points: probePointsText(op.points),
-        rangeMm: String(op.rangeMm),
-        touchFeedMmMin: String(op.touchFeedMmMin),
-        axis: op.axis,
-      }
-    case 'drill':
-      return {
-        pattern: op.pattern,
-        body: op.body,
-        peckMm: String(op.peckMm),
-        'hole.x': String(op.hole.x),
-        'hole.y': String(op.hole.y),
-        'hole.r': String(op.hole.r),
-        x0: String(op.x0),
-        y0: String(op.y0),
-        cols: String(op.cols),
-        rows: String(op.rows),
-        dx: String(op.dx),
-        dy: String(op.dy),
-        count: String(op.count),
-        startDeg: String(op.startDeg),
-        arcDeg: String(op.arcDeg),
-        fullTurn: op.fullTurn ? 'on' : 'off',
-      }
-  }
-}
-
 /**
  * The typed fields of the kind written over the common fields of the operation; the narrow switch
  * covers every kind. `common` carries the kind too, so each arm swaps it for its own literal and
@@ -208,6 +110,10 @@ export function fieldsOfShape(op: Operation, v: Record<string, string>, common: 
       return counterboreFields(op, v, common)
     case 'thread':
       return threadFields(op, v, common)
+    case 'engrave':
+      return engraveFields(op, v, common)
+    case 'pocket-island':
+      return islandFields(op, v, common)
     case 'custom': {
       // The text of the field is split back into the lines of the block; an absent field keeps the
       // document lines, so a form that never touched the text does not wipe the block.

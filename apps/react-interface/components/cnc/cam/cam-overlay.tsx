@@ -5,7 +5,8 @@
 // No sixth tab: the overlay sits over the screen (as `help-overlay.tsx` does), the softkey «Быстрая
 // УП», F4 and Esc close it (`keys-route.ts`). The panel variant shows three columns — list, form,
 // preview; the touch variant shows one of them at a time, chosen by the segments of the header,
-// because 864 px of portrait width cannot hold three readable columns.
+// because 864 px of portrait width cannot hold three readable columns. The columns themselves and
+// the DXF dialog live in `cam-overlay-body.tsx`, so this file is the frame and the header.
 //
 // The header carries what the operator checks before a save: the program, the work offset, the
 // smoothing tolerance and the stock. A refusal of the save is a line in the header, not a modal on
@@ -17,13 +18,11 @@ import type { CamState } from '@/lib/cnc/cam/cam'
 import type { MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { useUiMode } from '../ui-mode-context'
-import { CamForm } from './cam-form'
+import { CamColumns } from './cam-overlay-body'
 import { headerText } from './cam-labels'
-import { CamPreview } from './cam-preview'
-import { OperationList } from './operation-list'
-import { OperationPicker } from './operation-picker'
 
-type Column = 'list' | 'form' | 'preview'
+/** The column the touch variant shows; the panel draws all three. */
+export type Column = 'list' | 'form' | 'preview'
 
 /**
  * The line under the header, in the order the operator needs it: a save waiting for the second
@@ -70,23 +69,6 @@ function CamOverlayBody({ cam, state, dispatch }: { cam: CamState; state: Machin
   // confirmation is measured by the second press against this stamp.
   const save = () => dispatch({ type: 'CAM_SAVE', at: Date.now() })
   const busy = state.run === 'RUN' || state.run === 'HOLD'
-
-  const list = <OperationList program={cam.program} editing={cam.editing} dispatch={dispatch} />
-  const form =
-    cam.form === null ? (
-      <section aria-label="Форма операции" className="flex min-h-0 flex-1 flex-col justify-center">
-        <OperationPicker dispatch={dispatch} />
-      </section>
-    ) : (
-      <CamForm
-        form={cam.form}
-        editing={cam.editing !== null}
-        problem={cam.error}
-        pending={cam.pending === true}
-        dispatch={dispatch}
-      />
-    )
-  const preview = <CamPreview preview={cam.preview} />
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-foreground/30 p-1.5">
@@ -177,19 +159,7 @@ function CamOverlayBody({ cam, state, dispatch }: { cam: CamState; state: Machin
           )}
         </header>
 
-        {touch ? (
-          <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-1.5">
-            {column === 'list' && list}
-            {column === 'form' && form}
-            {column === 'preview' && preview}
-          </div>
-        ) : (
-          <div className="grid min-h-0 flex-1 grid-cols-[28%_40%_32%] gap-1.5 overflow-hidden p-1.5">
-            {list}
-            {form}
-            {preview}
-          </div>
-        )}
+        <CamColumns cam={cam} touch={touch} column={column} dispatch={dispatch} />
       </section>
     </div>
   )

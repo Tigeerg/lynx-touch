@@ -13,6 +13,7 @@ import { useEffect, useRef } from 'react'
 import { CircleCheck, TriangleAlert } from 'lucide-react'
 import type { Action } from '@/lib/cnc/machine'
 import type { CamForm } from '@/lib/cnc/cam/form'
+import type { QuickProgram } from '@/lib/cnc/cam/ops'
 import { needsPreview, previewTimer, waitsForPreview } from '@/lib/cnc/cam/cam-debounce'
 import { cn } from '@/lib/utils'
 import { useUiMode } from '../ui-mode-context'
@@ -26,12 +27,15 @@ const TABS: CamTab[] = ['geometry', 'tool', 'modes']
 
 export function CamForm({
   form,
+  program,
   editing,
   problem,
   pending,
   dispatch,
 }: {
   form: CamForm
+  /** The document: the `source` field of a rest offers its pocket operations. */
+  program: QuickProgram
   editing: boolean
   problem: { field: string; reason: string } | null
   /** The preview of this form is older than the typed text: a timer will recompute it. */
@@ -93,6 +97,7 @@ export function CamForm({
               error={errors[field.key]}
               touch={touch}
               active={active === field.key}
+              operations={program.operations}
               onFocus={() => setActive(field.key)}
               onChange={(value) => {
                 dispatch({ type: 'CAM_PARAM', field: field.key, value })

@@ -21,11 +21,14 @@ import {
   kindRows,
   MULTILINE,
   patternFields,
+  SOURCE_FIELD,
 } from './cam-fields'
+import { pickedSources, SOURCE_KINDS, sourceOptions, toggleSource } from './source-choice'
+import { sourceIndexes } from '@/lib/cnc/cam/form-fields-q5'
 
 const KINDS: OperationKind[] = ['face', 'pocket', 'circle-pocket', 'drill']
 const Q4: OperationKind[] = ['contour', 'slot', 'chamfer', 'tap', 'custom', 'probe']
-const Q5: OperationKind[] = ['counterbore', 'thread', 'rest']
+const Q5: OperationKind[] = ['counterbore', 'thread', 'engrave', 'pocket-island', 'rest']
 
 const noLabelShort = (text: string) => text.trim().length >= 3
 
@@ -122,6 +125,61 @@ describe('поля новых видов (PLAN-QUICKPROG, 7.6)', () => {
       expect(keys, kind).toContain('points'.replace('points', kind === 'custom' ? 'gcode' : 'points'))
       expect(MULTILINE, kind).toContain(kind === 'custom' ? 'gcode' : 'points')
     }
+  })
+
+  it('виды Q5 показывают свои поля: цековка, резьба, гравировка, остров, остаток', () => {
+    const keys = (kind: OperationKind) => allFields(kind).map((f) => f.key)
+    expect(keys('counterbore')).toEqual(expect.arrayContaining(['seatDiameterMm', 'seatDepthMm', 'dwellSec']))
+    expect(keys('thread')).toEqual(
+      expect.arrayContaining(['pitchMm', 'internal', 'threadDepthMm', 'threadAllowanceMm', 'stepOverPct']),
+    )
+    expect(keys('engrave')).toEqual(expect.arrayContaining(['text', 'x', 'y', 'heightMm', 'angleDeg']))
+    expect(keys('pocket-island')).toEqual(
+      expect.arrayContaining(['island.x', 'island.y', 'island.w', 'island.h', 'islandAllowanceMm']),
+    )
+    expect(keys('rest')).toEqual(expect.arrayContaining(['source', 'allowanceMm', 'stepOverPct']))
+    // The text of an engraving is typed, not picked; the thread side is a choice.
+    expect(MULTILINE).toContain('text')
+    expect(CHOICES.internal).toEqual(['on', 'off'])
+  })
+
+  it('«Исходные операции» остатка — выбор из списка, а не многострочное поле', () => {
+    expect(MULTILINE).not.toContain(SOURCE_FIELD)
+    expect(SOURCE_FIELD).toBe('source')
+    // The sources come from the document: three pockets and a slot are offered, a face is not.
+    const program = {
+      ...newProgram(),
+      operations: [
+        newOperation('face', { id: '', topZ: 0 }),
+        newOperation('pocket', { id: '', topZ: 0 }),
+        newOperation('pocket-island', { id: '', topZ: 0 }),
+        newOperation('circle-pocket', { id: '', topZ: 0 }),
+        newOperation('slot', { id: '', topZ: 0 }),
+        newOperation('drill', { id: '', topZ: 0 }),
+      ],
+    }
+    expect(sourceOptions(program.operations).map((o) => [o.index, o.number, o.kind])).toEqual([
+      [1, 2, 'pocket'],
+      [2, 3, 'pocket-island'],
+      [3, 4, 'circle-pocket'],
+      [4, 5, 'slot'],
+    ])
+    expect(SOURCE_KINDS).toEqual(['pocket', 'pocket-island', 'circle-pocket', 'slot'])
+  })
+
+  it('выбор источников остатка пишет текст «0 2», который читает форма', () => {
+    // The pick builds the field text; the reader of the form (`sourceIndexes`) is the one contract:
+    // a toggle on and off gives back the text the document round-trips through.
+    const first = toggleSource('', 0)
+    expect(first).toBe('0')
+    const both = toggleSource(first, 2)
+    expect(both).toBe('0\n2')
+    expect(sourceIndexes({ source: both }, 'source', [])).toEqual([0, 2])
+    expect(toggleSource(both, 0)).toBe('2')
+    expect(sourceIndexes({ source: toggleSource(both, 0) }, 'source', [])).toEqual([2])
+    expect(pickedSources('2 0 2')).toEqual([2, 0])
+    // A document text with spaces still reads as a pick, so an old `.qprog` opens with its rows on.
+    expect(pickedSources('0 2')).toEqual([0, 2])
   })
 
   it('«Полный круг» сверла — выбор Да/Нет, а не пустая строка', () => {

@@ -152,7 +152,7 @@ const GEOMETRY: Record<OperationKind, FieldSpec[]> = {
     { key: 'stepOverPct', label: 'Шаг растра', unit: '%', hint: 'Доля диаметра фрезы, 10..100 %' },
   ],
   rest: [
-    { key: 'source', label: 'Исходные операции', unit: '', hint: 'Номера операций через пробел: чей остаток снимаем' },
+    { key: 'source', label: 'Исходные операции', unit: '', hint: 'Отметьте карманы, чей остаток снимаем' },
     { key: 'rect.x', label: 'Область X', unit: 'мм', hint: 'Левый край области; 0 и 0 — вся заготовка' },
     { key: 'rect.y', label: 'Область Y', unit: 'мм', hint: 'Нижний край области; 0 и 0 — вся заготовка' },
     { key: 'rect.w', label: 'Область ширина', unit: 'мм', hint: 'Размер области по X; 0 — вся заготовка' },
@@ -238,7 +238,14 @@ export const CHOICES: Record<string, readonly string[]> = {
  * keeps its own lines. A contour and a probe hold their points as one list typed by hand, so they
  * get the same box: a single line of twenty vertices is unreadable on 1024x600.
  */
-export const MULTILINE: readonly string[] = ['gcode', 'points', 'text', 'source']
+export const MULTILINE: readonly string[] = ['gcode', 'points', 'text']
+
+/**
+ * The inputs drawn as a pick of the document's operations: a rest names the pockets it cuts the
+ * rest of. The field still carries the text `0 2` (the format of `sourceIndexes`), so the choice
+ * and the `.qprog` speak the same language; the rows are `sourceOptions` in `source-choice.ts`.
+ */
+export const SOURCE_FIELD = 'source'
 
 /** The list of lines of a multi-line field, as `CustomOperation.gcode` holds it. */
 export { linesOf } from '@/lib/cnc/cam/form-lines'

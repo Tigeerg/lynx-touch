@@ -1,8 +1,12 @@
 // One row of the operation form (PLAN-QUICKPROG, 7.4, C5 and 7.6): the caption with its unit, the
-// input, and the reason of a failed check under the number it talks about. Three shapes of input:
-// a list (`CHOICES`), a multi-line box (`MULTILINE`: a block of code, a list of points), a number.
+// input, and the reason of a failed check under the number it talks about. Four shapes of input:
+// the sources of a rest (`source`, a list of operations), a list (`CHOICES`), a multi-line box
+// (`MULTILINE`: a block of code, a list of points) and a number.
 import { cn } from '@/lib/utils'
+import type { Operation } from '@/lib/cnc/cam/ops'
+import { KIND_LABEL } from './cam-labels'
 import { CHOICE_LABEL, CHOICES, MULTILINE } from './cam-fields'
+import { pickedSources, sourceOptions, toggleSource } from './source-choice'
 
 export function FieldRow({
   field,
@@ -10,6 +14,7 @@ export function FieldRow({
   error,
   touch,
   active,
+  operations,
   onFocus,
   onChange,
 }: {
@@ -18,19 +23,31 @@ export function FieldRow({
   error?: string
   touch: boolean
   active: boolean
+  /** The document, so `source` offers the operations a rest can take its pockets from. */
+  operations: Operation[]
   onFocus: () => void
   onChange: (value: string) => void
 }) {
   const choice = CHOICES[field.key]
+  const sources = field.key === 'source' ? sourceOptions(operations) : null
   return (
-    <label className={cn('flex flex-col gap-0.5 rounded-sm px-1 py-0.5', active && 'bg-accent/60')}>
+    <div className={cn('flex flex-col gap-0.5 rounded-sm px-1 py-0.5', active && 'bg-accent/60')}>
       <span className="flex items-baseline justify-between gap-1">
         <span className="text-[10px] font-semibold text-muted-foreground">
           {field.label}
           {field.unit && <span className="ml-1 font-normal">· {field.unit}</span>}
         </span>
       </span>
-      {choice ? (
+      {sources !== null ? (
+        <SourceList
+          options={sources}
+          value={value}
+          touch={touch}
+          onFocus={onFocus}
+          onChange={onChange}
+          label={field.label}
+        />
+      ) : choice ? (
         <select
           value={value}
           tabIndex={-1}
@@ -71,7 +88,63 @@ export function FieldRow({
       ) : (
         <span className="text-[10px] leading-tight text-muted-foreground">{field.hint}</span>
       )}
-    </label>
+    </div>
+  )
+}
+
+/**
+ * The sources of a rest: one row per pocket operation of the document. The press toggles the
+ * index of the row and sends `CAM_PARAM` with the text `0 2`, the format the `.qprog` carries;
+ * the dialog holds no list of its own. A document without a pocket names the empty list, so the
+ * operator sees why there is nothing to pick.
+ */
+function SourceList({
+  options,
+  value,
+  touch,
+  label,
+  onFocus,
+  onChange,
+}: {
+  options: ReturnType<typeof sourceOptions>
+  value: string
+  touch: boolean
+  label: string
+  onFocus: () => void
+  onChange: (value: string) => void
+}) {
+  const picked = pickedSources(value)
+  if (options.length === 0) {
+    return (
+      <p className="rounded-sm border border-dashed px-1.5 py-1 text-[10px] leading-tight text-muted-foreground">
+        В программе нет карманов: остаток пойдёт по всей площади.
+      </p>
+    )
+  }
+  return (
+    <div role="group" aria-label={label} className="grid grid-cols-2 gap-1">
+      {options.map((option) => {
+        const on = picked.includes(option.index)
+        return (
+          <button
+            key={option.index}
+            type="button"
+            tabIndex={-1}
+            aria-pressed={on}
+            onFocus={onFocus}
+            onClick={() => onChange(toggleSource(value, option.index))}
+            className={cn(
+              'flex min-w-0 items-center gap-1 rounded-sm border px-1 text-left text-[10px] font-semibold transition-colors hover:bg-accent',
+              touch ? 'min-h-11' : 'min-h-7',
+              on ? 'border-primary bg-primary/10' : 'border-border bg-background',
+            )}
+          >
+            <span className="shrink-0 font-mono tabular-nums text-muted-foreground">{option.number}.</span>
+            <span className="min-w-0 truncate">{KIND_LABEL[option.kind]}</span>
+          </button>
+        )
+      })}
+    </div>
   )
 }
 

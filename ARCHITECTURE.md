@@ -69,7 +69,9 @@
   `ladder-rung.ts` (построение цепи: свободный адрес, новая цепь, копия) — листья графа, на них опираются
   форма, схемы и редьюсер; `ladder/types.ts` (типы ПЛК); быстрое программирование — `cam/` (типы `ops.ts`,
   режимы `feeds.ts`, проверки `validate*.ts`, планировщики `path*.ts`, вывод УП `emit*.ts`, `.qprog`
-  `serialize*.ts`, подсистема `cam.ts`, эталоны демо в `etl/`; `types.ts` берёт `CamState` из `cam/types.ts`);
+  `serialize*.ts`, подсистема `cam.ts`, эталоны демо в `etl/`, правила парсера вьювера
+  `viewer-check.ts`, коллизия `collision.ts`, запись `cam-save.ts`, копии `copy-ops.ts`, остаток
+  `rest-areas.ts`, чтение DXF `dxf-*.ts`; `types.ts` берёт `CamState` из `cam/types.ts`);
   `types.ts` держит
   `MachineState` и реэкспортирует типы ПЛК как прежняя точка входа; `ladder-scan.ts` — скан ПЛК, `nav.ts`,
   `cycle.ts` — фасад над каталогом `cycle/` (`cycle-exec.ts` — исполнение кадра, `cycle-actions.ts` —

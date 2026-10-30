@@ -73,7 +73,9 @@ Layers, top to bottom:
   copy) — leaves of the graph that the form, the schemes and the reducer stand on; `ladder/types.ts`
   (PLC types); quick programming — `cam/` (types `ops.ts`, feeds `feeds.ts`, checks `validate*.ts`, planners
   `path*.ts`, the NC output `emit*.ts`, `.qprog` `serialize*.ts`, the subsystem `cam.ts`, the demo references in
-  `etl/`; `types.ts` takes `CamState` from `cam/types.ts`); `types.ts` keeps `MachineState` and re-exports the
+  `etl/`, the viewer parser rules `viewer-check.ts`, the collision `collision.ts`, the write
+  `cam-save.ts`, the copies `copy-ops.ts`, the remainder `rest-areas.ts`, the DXF reader `dxf-*.ts`;
+  `types.ts` takes `CamState` from `cam/types.ts`); `types.ts` keeps `MachineState` and re-exports the
   PLC types as the former entry point),
   `ladder-scan.ts` is the PLC scan,
   `nav.ts`, `cycle.ts` — a facade over the `cycle/` directory (`cycle-exec.ts` is the block execution,

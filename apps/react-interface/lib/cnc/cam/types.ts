@@ -60,3 +60,6 @@ export type CamAction =
   // `cols x rows` with its own step, or `copies` turns of `angleDeg` around `(cx, cy)`.
   | { type: 'CAM_ARRAY'; index: number; cols: number; rows: number; dx: number; dy: number }
   | { type: 'CAM_ROTATE'; index: number; angleDeg: number; cx: number; cy: number; copies: number }
+  // The picked contour of a DXF file (PLAN-QUICKPROG, 7.6, «Импорт DXF»): the text is read once and
+  // dropped, the document keeps the `contour` operation. The number is zero-based.
+  | { type: 'CAM_DXF'; text: string; contour: number }

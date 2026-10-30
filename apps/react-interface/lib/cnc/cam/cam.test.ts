@@ -312,3 +312,47 @@ describe('the machine parameters travel with the document', () => {
     expect(validate({ ...s.cam!.program, operations: [tap()] }).ok).toBe(false)
   })
 })
+
+describe('CAM_DXF: контур из файла DXF', () => {
+  // The file is read once and dropped: the state keeps the `contour` operation, not the text.
+  const dxf = (...entities: string[]): string =>
+    ['0', 'SECTION', '2', 'ENTITIES', ...entities, '0', 'ENDSEC', '0', 'EOF'].join('\n')
+  const entity = (type: string, ...pairs: (string | number)[]): string => ['0', type, ...pairs.map(String)].join('\n')
+  const square = entity('LWPOLYLINE', 90, 4, 70, 1, 10, -10, 20, -10, 10, 10, 20, -10, 10, 10, 20, 10, 10, -10, 20, 10)
+
+  it('кладёт контур в документ и говорит число точек', () => {
+    const s = run(opened(), { type: 'CAM_DXF', text: dxf(square), contour: 0 })
+
+    expect(camOf(s).program.operations).toHaveLength(1)
+    const op = camOf(s).program.operations[0]
+    expect(op.kind).toBe('contour')
+    expect(op.kind === 'contour' && op.closed).toBe(true)
+    expect(op.kind === 'contour' && op.points).toHaveLength(4)
+    expect(s.message?.text).toBe('Контур из DXF добавлен: 4 точек')
+    expect(camOf(s).preview?.length ?? 0).toBeGreaterThan(0)
+  })
+
+  it('битый текст — предупреждение и документ не меняется', () => {
+    const before = opened()
+    const s = run(before, { type: 'CAM_DXF', text: 'не DXF', contour: 0 })
+
+    expect(camOf(s).program.operations).toEqual([])
+    expect(camOf(s).program).toEqual(camOf(before).program)
+    expect(s.message?.level).toBe('warn')
+  })
+
+  it('номер контура вне списка — предупреждение, документ не меняется', () => {
+    const s = run(opened(), { type: 'CAM_DXF', text: dxf(square), contour: 3 })
+
+    expect(camOf(s).program.operations).toEqual([])
+    expect(s.message?.level).toBe('warn')
+    expect(s.message?.text).toContain('контура')
+  })
+
+  it('оверлей закрыт — действие ничего не делает и говорит причину', () => {
+    const s = run(initialState, { type: 'CAM_DXF', text: dxf(square), contour: 0 })
+
+    expect(s.cam).toBeNull()
+    expect(s.message?.level).toBe('warn')
+  })
+})

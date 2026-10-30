@@ -22,6 +22,7 @@ import { newProgram } from './defaults'
 import type { Operation } from './ops'
 import { buildProgram } from './path'
 import { emitOf, saveCam } from './cam-save'
+import { dxfResult } from './dxf-result'
 import type { Result } from '../subsystem'
 import type { MachineState } from '../types'
 import type { CamForm } from './form'
@@ -45,6 +46,7 @@ const CAM_TYPES = new Set<string>([
   'CAM_SAVE',
   'CAM_ARRAY',
   'CAM_ROTATE',
+  'CAM_DXF',
 ])
 
 export const isCamAction = (a: { type: string }): a is CamAction => CAM_TYPES.has(a.type)
@@ -217,6 +219,9 @@ export function camReducer(s: MachineState, a: CamAction): Result {
       if (op === undefined) return { s, msg: 'Операции с таким номером нет', level: 'warn' }
       return copied(s, s.cam, a.index, rotatedCopies(op, a))
     }
+
+    case 'CAM_DXF':
+      return s.cam === null ? closed(s) : dxfResult(s, s.cam, a.text, a.contour)
   }
 }
 

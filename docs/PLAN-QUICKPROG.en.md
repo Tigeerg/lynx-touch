@@ -303,6 +303,57 @@ and is visible in the summary; a drill takes its row from the table with the sou
 the eyes: every element is a separate `quickprog_check` case, and the round trip through the viewer parser must
 not break on `G53`/`G43`/`M1`/`G64`.
 
+## 7.4 Moving the pipeline into the panel (P1, first slice)
+
+The demo proved the pipeline and brought it to machine readiness in C++. The panel is React/TypeScript, so the
+logic moves **by contract, not by copy**: the same types, the same rules, the same checks for every operation,
+the same `.qprog` format.
+
+**What moves and where (`apps/react-interface/lib/cnc/cam/`, no JSX, no DOM):**
+
+| Panel module | What it takes from the demo | Difference |
+|---|---|---|
+| `ops.ts` | `QuickProgram`, `Operation`, `CamPath`, `CamMove`, geometry types (`Point3`, `Rect`, `Circle`) | `Operation` is a discriminated union (`kind`), as `QuickOperation` in §6: the form and the reducer are checked by the type, not by a field |
+| `feeds.ts` | the mill and drill tables, the formulas, the source line | the numbers are **not duplicated from C++**, they live here; `calc.ts` stays the calculator, `feeds.ts` stands on its formulas. The demo and the panel must print the same feed line — a test compares them, not the eyes |
+| `validate.ts` | the rules of §8 as `{ field, reason }` | the reason shows at the form field, not in one line at the bottom |
+| `path.ts` | the planners: facing, pockets, drilling | returns a `CamPath` (moves), not NC lines |
+| `emit.ts` | the header, the `UI_*` tags, `G43`, `G53`, `M1`, `G64`, the finale | the output is an array of lines for `setLines`, not a file |
+| `serialize.ts` | `.qprog` schema 1 | read by the demo file and back: one format |
+| `cam.ts` | the subsystem: `CAM_*` actions | lives **outside** `MachineState`, as `CamForm` in §6; reads `isBusy(s)` |
+
+**Putting it into the panel (decisions):**
+
+1. **Screen.** No new panel tab: at 1024x600 there are five tabs, a sixth would break the softkeys and the touch
+   grid. The quick programming screen is an **overlay on the Program screen**, opened by the softkey `F4`
+   (Quick program), closed by `F4`/`ESC`. The overlay has three columns: the operation list on the left, the
+   operation form in the centre, the 2D preview on the right (it takes `buildToolpath` from `toolpath.ts` over
+   the generated lines — one source of geometry).
+2. **State.** `CamState` is a separate branch of `MachineState` (`cam: CamState | null`), not a second reducer:
+   the actions `CAM_OPEN`, `CAM_CLOSE`, `CAM_OP` (kind), `CAM_PARAM` (a field), `CAM_ACCEPT` (add an operation),
+   `CAM_CANCEL`, `CAM_PREVIEW`, `CAM_SAVE` go through the subsystem registry as the others do. `CamForm` (the
+   field strings, the cursor, the error) is part of `CamState`.
+3. **Writing.** `CAM_SAVE` is the only write point and goes through `files.ts` (`setLines`), so the operator gets
+   the program in the panel file list and can open it in the editor right away. No new file API.
+4. **Safety.** `CAM_SAVE` is refused under `ESTOP` and during a run (`isBusy(s)`), as `CAM_WRITE` in §8.
+5. **Keys.** `F1..F3`, `F5..F8` stay with the panel operations in the overlay; the overlay uses `F4` (close),
+   `ESC`, arrows/`Enter` over the fields and the digit input. Touch works by tap (`P2`/`P3`), the panel variant
+   (`P1`) by keys only; this is checked on the three configurations.
+
+**Order of the move (each slice is a commit with its checks):**
+
+| Slice | What |
+|---|---|
+| C1 | types, feeds and checks (`ops`, `feeds`, `validate`) + tests, the feed parity with the demo |
+| C2 | planners and the NC output (`path`, `emit`) + tests against the demo reference `.ngc` |
+| C3 | `.qprog` (`serialize`) and mutual readability of a demo and a panel file |
+| C4 | the `cam.ts` subsystem in the action registry + tests for `isBusy`, `CAM_SAVE` through `setLines`, cancel |
+| C5 | the overlay on the Program screen: list, form, preview, `F4`/`ESC`, touch |
+
+**Acceptance of the first P1 slice.** On the 1024x600 panel the operator creates a program of three operations
+(facing, pocket, drilling), sees the warnings at the fields, saves the program and gets it in the file list; the
+resulting `.ngc` matches the demo geometry for the same parameters; the panel and touch variants pass a manual
+check (a screenshot per `panel-ui`). The viewer reads the saved program (`gcodeviewer --smoke`).
+
 ## 8. Checks and safety
 
 * Generation is disabled on `ESTOP`, while busy and with an invalid tool table; the form checks `isBusy(s)`.

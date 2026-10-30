@@ -354,6 +354,26 @@ the same `.qprog` format.
 resulting `.ngc` matches the demo geometry for the same parameters; the panel and touch variants pass a manual
 check (a screenshot per `panel-ui`). The viewer reads the saved program (`gcodeviewer --smoke`).
 
+## 7.5 Q3: the viewer check, collisions, file replacement, debounce
+
+The fourth pass closes what the plan (§5 p.9-10, §8, §10, §11) requires before a real run.
+
+| What | Decision | Where |
+|---|---|---|
+| **The viewer does not check the saved program** | the `viewer.geometry` check: a program of several operations is emitted, its reference is kept under `apps/react-interface/testdata/viewer/`, and a test compares it with the viewer parser (`gv::parseGcode`, `seg_count > 0`, the stage count, `UI_OP` labels, `UI_TOOL`); the live `gcodeviewer --smoke` run is a manual acceptance step | `lib/cnc/cam/viewer-check*` + a test |
+| **Collision is named but not defined** | the panel gets **its own simple check** without the viewer: every path point keeps the tool disc (radius `D/2`) inside the stock box plus a tolerance; a point beyond the stock in plan is a warning, a cut below the stock bottom an error; the check says its name and the report marks real-part geometry `UNVERIFIED` | `lib/cnc/cam/collision.ts` |
+| **The save is not blocked by the check** | `CAM_SAVE` asks `checkProgram`; errors block the write with a field and a reason, warnings show in the overlay header and go into the program as `(QUICKPROG WARNING: ...)` | `cam.ts`, `emit*.ts` |
+| **The file is replaced silently** | `CAM_SAVE` asks for confirmation on a name match: the first press sets `pendingSave`, the second within five seconds writes and keeps the old content as `<name>.bak` in the panel file list | `cam.ts`, `files.ts` |
+| **Preview debounce** | a field edit rebuilds the preview 150 ms after the last edit; the field keeps the typed text at once, the preview is deferred; `CamState` gets `previewAt` and `pending`. In tests the time is injected, not measured | `cam.ts` |
+| **`.qprog` on disk** | `CAM_SAVE` writes two files: `.ngc` and `.qprog` (the model) with the same name, so the program can be opened; the `.qprog` text is `serializeProgram` | `cam.ts` |
+| **Three configurations** | `cam-softkey`/`keys-route` tests for P1 (keys), P2 (keys and touch), P3 (touch): P1 has no touch path, P2 and P3 reach every overlay action | tests |
+
+**Acceptance of Q3.** A program with an error (a tool wider than the pocket) is not saved; a program with a
+warning (a point beyond the stock in plan) is saved and carries the warning in the program; replacing a file
+takes two presses and keeps a `.bak`; a field edit rebuilds the preview at most once per 150 ms; the save gives
+both `.ngc` and `.qprog`; the saved program parses in the viewer (segments, stages), and the live
+`gcodeviewer --smoke` run is a manual acceptance step.
+
 ## 8. Checks and safety
 
 * Generation is disabled on `ESTOP`, while busy and with an invalid tool table; the form checks `isBusy(s)`.

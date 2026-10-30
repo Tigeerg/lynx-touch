@@ -115,10 +115,37 @@ void checkHelpSaveQprog() {
     }
 }
 
+// `--demo` takes the post-processor words of the whole program (`--h`,
+// `--g64`, `--stop`/`--no-stop`) and nothing of one operation: `--material`
+// belongs to `--op`, so the help says it out loud under the shared keys and the
+// operator does not look for the key in the `--op` sections alone.
+void checkHelpPostKeys() {
+    const std::string help = qpcli::kHelp;
+    const std::size_t at = help.find("Ключи постпроцессора");
+    check(at != std::string::npos, "help.post_section",
+          "the help must carry the section of the post-processor keys");
+    if (at == std::string::npos) { return; }
+    const std::size_t next = help.find("Ключи --op", at + 1);
+    const std::string block = help.substr(at, next == std::string::npos ? std::string::npos
+                                                                      : next - at);
+    check(block.find("--material") != std::string::npos, "help.demo_no_material",
+          "the shared keys must say that --material belongs to --op, not to --demo");
+
+    // The words the section promises for `--demo` really work there.
+    const Mode withH = runMode({"--h", "5", "--demo", "/tmp/opencode/help-demo-h.ngc"});
+    check(withH.code == qp::kExitOk, "help.demo_h_code",
+          "--h with --demo must return 0, got " + std::to_string(withH.code));
+    const Mode material =
+        runMode({"--demo", "--material", "steel", "/tmp/opencode/help-demo-m.ngc"});
+    check(material.code == qp::kExitBadArgs, "help.demo_material_refused",
+          "--material with --demo must be a usage error, got " + std::to_string(material.code));
+}
+
 } // namespace help_checks
 
 void runHelpChecks() {
     help_checks::checkHelpAnywhere();
     help_checks::checkVersionAnywhere();
     help_checks::checkHelpSaveQprog();
+    help_checks::checkHelpPostKeys();
 }

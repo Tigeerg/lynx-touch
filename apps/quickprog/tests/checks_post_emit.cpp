@@ -115,6 +115,40 @@ void checkStopBetweenOps() {
     check(count(quiet, "M1\n") == 0, "post.m1_off", "stopAfterOp off must remove every M1");
 }
 
+// The tail of an operation with the coolant on is M9 then M5: the coolant stops
+// before the spindle, and the next operation opens its tag only after both.
+// The three operations share one tool, so no M6 splits a tail: the coolant of
+// every operation is switched on by the header and off by the same tail, and
+// the id tags show which operation the words belong to.
+void checkCoolantBeforeSpindleStop() {
+    qp::Program program = faceProgram();
+    qp::Operation second = faceOp();
+    second.id = "Второй проход";
+    second.depthMm = 1.0;
+    program.operations.push_back(second);
+    qp::Operation third = second;
+    third.id = "Третий проход";
+    program.operations.push_back(third);
+    const std::string gcode = qp::emitProgram(program, qp::planPath(program));
+
+    const std::string firstTag = "(UI_OP: " + program.operations[0].id + ")";
+    for (const std::string& next : {"(UI_OP: " + second.id + ")", "(UI_OP: " + third.id + ")"}) {
+        const std::size_t begin = gcode.find(firstTag);
+        const std::size_t end = gcode.find(next);
+        if (begin == std::string::npos || end == std::string::npos || end <= begin) {
+            check(false, "post.m9_before_m5." + next,
+                  "the block of an operation must stand between two UI_OP tags");
+            continue;
+        }
+        const std::string block = gcode.substr(begin, end - begin);
+        const std::size_t m9 = block.rfind(" M9\n");
+        const std::size_t m5 = block.rfind(" M5\n");
+        check(m9 != std::string::npos && m5 != std::string::npos && m9 < m5,
+              "post.m9_before_m5." + next,
+              "the coolant of the operation must stop before its spindle: " + block);
+    }
+}
+
 } // namespace post_checks
 
 // Runs the G43 and the M1 cases.
@@ -122,4 +156,5 @@ void runPostEmitChecks() {
     post_checks::checkG43Default();
     post_checks::checkG43Explicit();
     post_checks::checkStopBetweenOps();
+    post_checks::checkCoolantBeforeSpindleStop();
 }

@@ -122,6 +122,12 @@ describe('экран «Программа»: поиск, симуляция, з�
   it('раскладка «Программа»: без дублей физических тумблеров, с поиском/симуляцией/видом', () => {
     const keys = getSoftkeys({ ...initialState, workplace: 'SETUP', screen: 'prog' })
 
+    // PLAN-QUICKPROG 7.4 adds a ninth action to this screen: the quick program opens an overlay
+    // from here, so its key belongs to the bar. The bar has eight slots (SOFTKEY_SLOTS), so the key
+    // takes the eighth place and the view switch yields it while the overlay is closed for the new
+    // key and takes it back while the overlay is open, so the close key never slides the bar. No
+    // operator action is dropped: the editor, the search, the run, the renumber, the rewind and
+    // the start-from-cursor all keep their keys.
     expect(keys.map((k) => k?.action?.type)).toEqual([
       'FILE_DIALOG',
       'EDIT_MODE',
@@ -130,7 +136,7 @@ describe('экран «Программа»: поиск, симуляция, з�
       'PROG_RENUMBER',
       'PROG_REWIND',
       'PROG_TO_CURSOR',
-      'TOOLPATH_TOGGLE',
+      'CAM_OPEN',
     ])
     expect(keys.some((k) => k?.action?.type === 'TOGGLE')).toBe(false)
   })

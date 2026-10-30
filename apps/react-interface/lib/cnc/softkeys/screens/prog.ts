@@ -15,6 +15,7 @@ import {
   Search,
   SkipBack,
   SquarePen,
+  Wand2,
   X,
 } from 'lucide-react'
 import { TOOLPATH_PARAM } from '../../service-data'
@@ -52,12 +53,13 @@ export const progScreen = (s: MachineState, busy: boolean): (Softkey | null)[] =
     },
     { label: 'Перенумерация', icon: ListOrdered, action: { type: 'PROG_RENUMBER' }, disabled: busy },
     { label: 'В начало УП', icon: SkipBack, action: { type: 'PROG_REWIND' }, disabled: busy },
-    { label: 'Старт с кадра', icon: ArrowRightToLine, action: { type: 'PROG_TO_CURSOR' }, disabled: busy },
-    {
-      label: s.params[TOOLPATH_PARAM] === 1 ? 'Экран: текст' : 'Экран: графика',
-      icon: Eye,
-      action: { type: 'TOOLPATH_TOGGLE' },
-      active: s.params[TOOLPATH_PARAM] === 1,
-    },
+    { label: 'С кадра', icon: ArrowRightToLine, action: { type: 'PROG_TO_CURSOR' }, disabled: busy },
+    // The quick program opens as an overlay of this screen (PLAN-QUICKPROG, 7.4): no sixth tab. The
+    // bar is eight slots, so the new key takes the eighth place, and while the overlay is open the
+    // same place closes it: the close key never slides the bar. The view switch takes that place
+    // back only when the overlay is closed, so the operator loses nothing by opening the form.
+    s.cam
+      ? { label: 'Закрыть', icon: X, action: { type: 'CAM_CLOSE' }, active: true }
+      : { label: 'Быстрая УП', icon: Wand2, action: { type: 'CAM_OPEN' }, disabled: busy },
   ])
 }

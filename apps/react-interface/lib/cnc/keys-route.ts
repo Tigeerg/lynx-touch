@@ -1,7 +1,8 @@
 // The console key routing: one routing point for keydown. The emergency stop comes first, then
-// the modal help, F1..F8 (softkeys), text fields, the MDI line and finally the ordinary key map,
-// which stays in keys.ts (keyToAction) together with the structural key data. The hook only
-// supplies DOM facts (typing) and dispatches the result.
+// the quick-program overlay, the modal help, F1..F8 (softkeys), then the windows that own the
+// keyboard (the ordinary key map in keys.ts holds their keys), then text fields and the MDI line,
+// and finally the ordinary key map, which stays in keys.ts (keyToAction) together with the
+// structural key data. The hook only supplies DOM facts (typing) and dispatches the result.
 import { isBusy } from './guards'
 import { getSoftkeys } from './softkeys'
 import { keyToAction, type KeyLike, type KeyRoute } from './keys'
@@ -102,6 +103,14 @@ export function routeKey(state: MachineState, e: KeyLike, typing = false): KeyRo
     return { action: { type: 'ESTOP' }, prevent: true }
   }
 
+  // The quick program is an overlay of its screen (PLAN-QUICKPROG, 7.4): Esc closes it before the
+  // ordinary RESET, and a focused input does not swallow that key. Everything else falls through:
+  // F1..F8 stay the softkeys (the CAM slot closes it), and the modal guard below takes V and the
+  // digits away from the screen map.
+  if (state.cam && e.code === 'Escape') {
+    return { action: { type: 'CAM_CLOSE' }, prevent: true }
+  }
+
   if (state.help) {
     if (closesHelp(e)) return { action: { type: 'HELP', open: false }, prevent: true }
     return { action: null, prevent: /^F[1-8]$/.test(e.code) }
@@ -120,14 +129,28 @@ export function routeKey(state: MachineState, e: KeyLike, typing = false): KeyRo
   // A field or the ladder form owns the keyboard; only the emergency stop above gets through.
   if (typing || state.editor || state.ladder.form) return null
 
-  // A dialog has its own keys; the MDI line must not swallow them while it is on top.
-  const modal = state.fileDialog || state.toolDialog || state.toolMeasure.open || state.calc || state.search.open
-  if (!modal && mdiOpen(state)) {
+  // A window has its own keys: file and tool dialogs, the tool measure, the calculator and the
+  // search are mapped in keyToAction. They are routed before the MDI line, so a dialog does not
+  // lose its keys to it, and before the screen map: V and the digits below belong to the screen
+  // and are not reached while a window is on top.
+  const dialog = state.fileDialog || state.toolDialog || state.toolMeasure.open || state.calc || state.search.open
+  if (dialog) {
+    const action = keyToAction(state, e)
+    return action ? { action, prevent: true } : null
+  }
+
+  if (mdiOpen(state)) {
     const route = mdiRoute(state, e)
     if (route) return route
   }
 
-  if (e.code === 'KeyV' && !state.fileDialog && (state.screen === 'pos' || state.screen === 'prog')) {
+  // The quick program is an overlay of the screen, and the key reaches the form as a digit or a
+  // letter (C5: the arrows, Enter and the digit input work in the overlay), so the screen map is
+  // not reached: V does not switch the view and the digits do not switch the screens. Windows
+  // were routed above, so this guard may look at `cam` alone.
+  if (state.cam) return null
+
+  if (e.code === 'KeyV' && (state.screen === 'pos' || state.screen === 'prog')) {
     return { action: { type: 'PATH_VIEW_CYCLE' }, prevent: true }
   }
 

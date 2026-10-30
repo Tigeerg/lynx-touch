@@ -1,0 +1,97 @@
+// The form fields and the way a reason reaches its input (PLAN-QUICKPROG, 7.4, C5).
+//
+// The overlay is a React tree, and the project has no DOM renderer, so the contract the operator
+// reads is checked on the pure helpers: the inputs of every kind carry a form key, a shorthand and
+// a hint, and a problem of the shape check lands next to the number it talks about, not under the
+// first input of the block.
+import { describe, expect, it } from 'vitest'
+
+import { newOperation, newProgram } from '@/lib/cnc/cam/defaults'
+import { newForm } from '@/lib/cnc/cam/form'
+import { valuesOf } from '@/lib/cnc/cam/form'
+import type { OperationKind } from '@/lib/cnc/cam/ops'
+import { validate } from '@/lib/cnc/cam/validate'
+import { allFields, CHOICE_LABEL, CHOICES, errorsByField, fieldFor, fieldGroups, patternFields } from './cam-fields'
+
+const KINDS: OperationKind[] = ['face', 'pocket', 'circle-pocket', 'drill']
+
+const noLabelShort = (text: string) => text.trim().length >= 3
+
+describe('поля формы', () => {
+  it('каждое поле любого вида имеет подпись, единицу и подсказку', () => {
+    for (const kind of KINDS) {
+      for (const field of allFields(kind)) {
+        expect(field.key, kind).toMatch(/^[a-zA-Z]+(\.[a-zA-Z]+)?$/)
+        expect(noLabelShort(field.label), `${kind}:${field.key}`).toBe(true)
+        expect(field.unit.length, `${kind}:${field.key}`).toBeGreaterThanOrEqual(0)
+        expect(noLabelShort(field.hint), `${kind}:${field.key}`).toBe(true)
+      }
+    }
+  })
+
+  it('ключ поля есть в значениях формы: подпись не расходится с CAM_PARAM', () => {
+    for (const kind of KINDS) {
+      const values = valuesOf(newOperation(kind, { id: '', topZ: 0 }))
+      for (const field of allFields(kind)) {
+        expect(values, `${kind}:${field.key}`).toHaveProperty(field.key)
+      }
+    }
+  })
+
+  it('вкладки «Геометрия», «Инструмент», «Режимы» показывают свои поля', () => {
+    for (const tab of ['geometry', 'tool', 'modes'] as const) {
+      const keys = fieldGroups('pocket', tab).flatMap((g) => g.fields.map((f) => f.key))
+      expect(keys.length).toBeGreaterThan(0)
+    }
+    const modes = fieldGroups('pocket', 'modes').flatMap((g) => g.fields.map((f) => f.key))
+    expect(modes).toEqual(['cutting.spindleRpm', 'cutting.feedMmMin', 'cutting.plungeFeedMmMin'])
+  })
+
+  it('новое сверло по умолчанию показывает поля одной схемы', () => {
+    const form = newForm('drill', newProgram())
+    expect(patternFields(form.values.pattern)).toEqual(['hole.x', 'hole.y', 'hole.r'])
+    expect(patternFields('grid')).toContain('rows')
+  })
+
+  it('у выбора подпись из общего словаря', () => {
+    for (const values of Object.values(CHOICES)) {
+      for (const value of values) expect(CHOICE_LABEL[value], value).toBeTruthy()
+    }
+  })
+})
+
+describe('ошибка рядом с полем', () => {
+  it('причина о радиусе угла попадает в поле радиуса, а не в общую «геометрию»', () => {
+    expect(fieldFor({ field: 'geometry', reason: 'Радиус угла 500 мм больше половины короткой стороны' })).toBe(
+      'cornerRadiusMm',
+    )
+    expect(fieldFor({ field: 'geometry', reason: 'Припуск -1 мм отрицательный' })).toBe('finishAllowanceMm')
+    expect(fieldFor({ field: 'stepOver', reason: 'Шаг 5 % меньше 10 % диаметра' })).toBe('stepOverPct')
+    expect(fieldFor({ field: 'peck', reason: 'Шаг вывода стружки Q20 мм больше глубины' })).toBe('peckMm')
+  })
+
+  it('поле, которое назвал сам проверщик, остаётся своим', () => {
+    expect(fieldFor({ field: 'depthMm', reason: 'Глубина обработки должна быть больше нуля.' })).toBe('depthMm')
+    expect(fieldFor({ field: 'cutting.feedMmMin', reason: 'Рабочая подача должна быть больше нуля.' })).toBe(
+      'cutting.feedMmMin',
+    )
+  })
+
+  it('одно поле — одна строка: повторы не двоятся', () => {
+    const byField = errorsByField([
+      { field: 'depthMm', reason: 'первая' },
+      { field: 'depthMm', reason: 'вторая' },
+    ])
+    expect(byField).toEqual({ depthMm: 'первая' })
+  })
+
+  it('проблемы реальной формы раскладываются по полям', () => {
+    const face = newOperation('face', { id: '', topZ: 0 })
+    const broken = { ...face, depthMm: -2 }
+    const checked = validate({ ...newProgram(), operations: [broken] })
+    expect(checked.ok).toBe(false)
+    if (checked.ok) return
+    const byField = errorsByField(checked.bad)
+    expect(byField.depthMm).toContain('Глубина')
+  })
+})

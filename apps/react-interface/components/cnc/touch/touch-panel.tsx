@@ -5,6 +5,7 @@ import { softkeyAction } from '@/lib/cnc/softkeys'
 import { FhdStage } from '../fhd-stage'
 import { FileDialog } from '../file-dialog'
 import { CalcOverlay } from '../calc-overlay'
+import { CamOverlay } from '../cam/cam-overlay'
 import { ToolMeasureDialog } from '../tool-measure-dialog'
 import { ToolCallDialog } from '../tool-call-dialog'
 import { HelpOverlay } from '../help-overlay'
@@ -128,6 +129,7 @@ export function TouchPanel({ machine }: { machine: ReturnType<typeof useCncMachi
         {state.toolDialog && <ToolCallDialog state={state} dispatch={dispatch} />}
         {state.calc && <CalcOverlay dispatch={dispatch} />}
         {state.toolMeasure.open && <ToolMeasureDialog state={state} dispatch={dispatch} />}
+        {state.cam && <CamOverlay state={state} dispatch={dispatch} />}
         {state.help && <HelpOverlay onClose={() => dispatch({ type: 'HELP', open: false })} />}
         <SplashScreen />
       </div>

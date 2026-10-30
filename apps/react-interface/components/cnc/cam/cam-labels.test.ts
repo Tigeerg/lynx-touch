@@ -1,0 +1,50 @@
+// The words and the numbers the overlay reads (PLAN-QUICKPROG, 7.4, C5).
+//
+// The project has no DOM renderer (`@testing-library/react` is not a dependency and the task keeps
+// it that way), so what is checked here is the contract the markup prints: the kinds are named,
+// a card carries the tool, the size and the depth, and the header carries the offset, the
+// tolerance and the stock. The layout itself is checked by a screenshot, not by a test.
+import { describe, expect, it } from 'vitest'
+
+import { newOperation, newProgram } from '@/lib/cnc/cam/defaults'
+import { valuesOf } from '@/lib/cnc/cam/form'
+import type { OperationKind } from '@/lib/cnc/cam/ops'
+import { formatMm, headerText, KIND_LABEL, keySize, toolText } from './cam-labels'
+
+const KINDS: OperationKind[] = ['face', 'pocket', 'circle-pocket', 'drill']
+
+describe('слова оверлея', () => {
+  it('у каждого вида операции есть русское название из записки', () => {
+    expect(KINDS.map((k) => KIND_LABEL[k])).toEqual(['Плоскость', 'Карман', 'Круглый карман', 'Отверстия'])
+  })
+
+  it('карточка читает инструмент и ключевой размер', () => {
+    const pocket = newOperation('pocket', { id: '', topZ: 0 })
+    expect(toolText(pocket)).toBe('T01 ф10')
+    expect(keySize(pocket)).toBe('60×40')
+    const circle = newOperation('circle-pocket', { id: '', topZ: 0 })
+    expect(keySize(circle)).toBe('Ø20')
+    const drill = newOperation('drill', { id: '', topZ: 0 })
+    expect(keySize(drill)).toBe('Ø10 ×1')
+  })
+
+  it('шапка показывает смещение, допуск G64 и заготовку без хвостовых нулей', () => {
+    const head = headerText(newProgram())
+    expect(head.wcs).toBe('G54')
+    expect(head.g64).toBe('G64 P0.01 Q0.01')
+    expect(head.stock).toBe('100×80×20 · Z 0')
+  })
+
+  it('миллиметры печатаются без лишних нулей', () => {
+    expect(formatMm(10)).toBe('10')
+    expect(formatMm(2.5)).toBe('2.5')
+    expect(formatMm(0.1 + 0.2)).toBe('0.3')
+  })
+
+  it('каждая форма открывается с полями, которые рисует форма операции', () => {
+    for (const kind of KINDS) {
+      const values = valuesOf(newOperation(kind, { id: '', topZ: 0 }))
+      expect(values.depthMm, kind).toBeTypeOf('string')
+    }
+  })
+})

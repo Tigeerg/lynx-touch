@@ -15,6 +15,7 @@ const PANEL_MIN_W = 1840
 const KEY_STACK_H = 800
 import { FileDialog } from './file-dialog'
 import { CalcOverlay } from './calc-overlay'
+import { CamOverlay } from './cam/cam-overlay'
 import { ToolMeasureDialog } from './tool-measure-dialog'
 import { ToolCallDialog } from './tool-call-dialog'
 import { HardwareKeyboard } from './hardware/hardware-keyboard'
@@ -126,6 +127,7 @@ export function CncPanel({ machine }: { machine: ReturnType<typeof useCncMachine
       {state.toolDialog && <ToolCallDialog state={state} dispatch={dispatch} />}
       {state.calc && <CalcOverlay dispatch={dispatch} />}
       {state.toolMeasure.open && <ToolMeasureDialog state={state} dispatch={dispatch} />}
+      {state.cam && <CamOverlay state={state} dispatch={dispatch} />}
       {state.help && <HelpOverlay onClose={() => dispatch({ type: 'HELP', open: false })} />}
       <SplashScreen />
     </div>

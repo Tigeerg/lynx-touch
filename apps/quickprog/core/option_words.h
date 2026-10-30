@@ -10,8 +10,6 @@
 #include <string>
 #include <vector>
 
-#include "core/feeds.h"
-
 namespace qp {
 
 // A full-token number with a decimal point; false for "abc", "1x" and "1,5".
@@ -28,8 +26,5 @@ bool parseStock(const std::string& text, double& x, double& y, double& z);
 
 // "60x40": width and height of a rectangle.
 bool parseSize(const std::string& text, double& w, double& h);
-
-// "aluminium" or "steel".
-bool parseMaterial(const std::string& text, Material& out);
 
 } // namespace qp

@@ -55,7 +55,8 @@ void checkRegimeLine() {
     check(contains(line, "таблица: алюминий, ф10"), "summary.regime_source",
           "the regime line must name the source of the numbers, got '" + line + "'");
 
-    // The drill has its own source line: a rule of thumb, not a table row.
+    // The drill has its own source line: the drill table row with the material
+    // of the drill, not the mill row.
     qp::Operation drill;
     drill.tool.number = 5;
     drill.tool.diameterMm = 6.0;
@@ -69,7 +70,7 @@ void checkRegimeLine() {
     hole.hole = qp::Circle{0.0, 0.0, 3.0};
     drill.geometry = hole;
     const std::string drillLine = qp::regimeSummary(drill, drillTable.source);
-    check(contains(drillLine, "сверло") && contains(drillLine, "об/мин"),
+    check(contains(drillLine, "таблица: сверло HSS") && contains(drillLine, "об/мин"),
           "summary.regime_drill", "a drill must print its own source line, got '" + drillLine + "'");
 }
 

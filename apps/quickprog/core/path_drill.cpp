@@ -84,8 +84,31 @@ std::vector<Point3> ringPoints(const DrillCircleOp& ring, std::vector<std::strin
 
 } // namespace
 
+namespace {
+
+// The drilling parameters of whichever of the three drill kinds the operation
+// holds: the material of the drill body lives there (ops.h). A non-drill has
+// none, and its caller never asks for it.
+const DrillParams* drillParams(const Operation& operation) {
+    if (const auto* hole = std::get_if<DrillHoleOp>(&operation.geometry)) { return &hole->params; }
+    if (const auto* grid = std::get_if<DrillGridOp>(&operation.geometry)) { return &grid->params; }
+    if (const auto* ring = std::get_if<DrillCircleOp>(&operation.geometry)) { return &ring->params; }
+    return nullptr;
+}
+
+} // namespace
+
 Feeds drillFeeds(const Operation& operation) {
-    return feedsFor(Material::Aluminium, operation.tool.diameterMm, ToolKind::Drill);
+    // The stock material and the drill body material are both in the
+    // operation: the row of the table follows the document, not a constant.
+    const DrillParams* params = drillParams(operation);
+    const DrillBody body = params == nullptr ? DrillBody::Hss : params->kind;
+    return feedsForDrill(operation.material, operation.tool.diameterMm, body);
+}
+
+Feeds tableRowFor(const Operation& operation) {
+    if (isDrill(operation.geometry)) { return drillFeeds(operation); }
+    return feedsFor(operation.material, operation.tool.diameterMm, ToolKind::Flat);
 }
 
 double drillFeed(const Operation& operation) {

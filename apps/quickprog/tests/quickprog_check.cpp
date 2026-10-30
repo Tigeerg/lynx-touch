@@ -34,6 +34,8 @@ int main() {
     runDrillLayoutChecks();
     runDrillCycleChecks();
     runDrillRulesChecks();
+    runDrillKindChecks();
+    runMaterialChecks();
     runSummaryChecks();
     runSummaryRulesChecks();
     runCoolantChecks();

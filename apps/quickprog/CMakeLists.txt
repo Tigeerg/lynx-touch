@@ -147,6 +147,8 @@ add_executable(quickprog_check
     tests/checks_drill_layout.cpp
     tests/checks_drill_cycle.cpp
     tests/checks_drill_rules.cpp
+    tests/checks_drill_kind.cpp
+    tests/checks_material.cpp
     tests/checks_summary.cpp
     tests/checks_summary_rules.cpp
     tests/checks_qprog.cpp

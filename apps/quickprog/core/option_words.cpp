@@ -55,16 +55,4 @@ bool parseSize(const std::string& text, double& w, double& h) {
     return parseDouble(text.substr(0, at), w) && parseDouble(text.substr(at + 1), h);
 }
 
-bool parseMaterial(const std::string& text, Material& out) {
-    if (text == "aluminium") {
-        out = Material::Aluminium;
-        return true;
-    }
-    if (text == "steel") {
-        out = Material::Steel;
-        return true;
-    }
-    return false;
-}
-
 } // namespace qp

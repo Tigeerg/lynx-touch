@@ -24,10 +24,29 @@
 #include <variant>
 #include <vector>
 
+#include "core/feeds.h"
 #include "core/path_drill.h"
 #include "core/serialize_internal.h"
 
 namespace qp {
+namespace {
+
+// The material of the drill body on the file. HSS is the model default, so a
+// document that never named it writes nothing: the older readers and the diff
+// stay clean, and the reader of this build fills the default.
+std::string drillLine(DrillBody kind) {
+    if (kind == DrillBody::Hss) { return std::string(); }
+    return std::string("op.drill carbide\n");
+}
+
+// The stock material on the file, for the same reason: aluminium is the default
+// of an older file, so only steel is written out.
+std::string materialLine(Material material) {
+    if (material == Material::Aluminium) { return std::string(); }
+    return std::string("op.material steel\n");
+}
+
+} // namespace
 
 std::string serialize(const Program& program) {
     std::string out;
@@ -56,6 +75,7 @@ std::string serialize(const Program& program) {
         out += "op.enabled " + std::string(op.enabled ? "on" : "off") + "\n";
         out += "op.tool " + std::to_string(op.tool.number) + " " +
                number(op.tool.diameterMm) + "\n";
+        out += materialLine(op.material);
         // The H row of G43. A zero is the model default ("the tool number"), so
         // a document that never named it writes nothing: the older readers and
         // the diff stay clean, and the reader of this build fills the default.
@@ -95,12 +115,14 @@ std::string serialize(const Program& program) {
                    number(hole->hole.r) + "\n";
             out += "op.peck " + number(hole->params.peckMm) + "\n";
             if (hole->params.hasR) { out += "op.r " + number(hole->params.rMm) + "\n"; }
+            out += drillLine(hole->params.kind);
         } else if (const auto* grid = std::get_if<DrillGridOp>(&op.geometry)) {
             out += "op.grid " + number(grid->x0) + " " + number(grid->y0) + " " +
                    std::to_string(grid->cols) + " " + std::to_string(grid->rows) + " " +
                    number(grid->dx) + " " + number(grid->dy) + "\n";
             out += "op.peck " + number(grid->params.peckMm) + "\n";
             if (grid->params.hasR) { out += "op.r " + number(grid->params.rMm) + "\n"; }
+            out += drillLine(grid->params.kind);
         } else {
             const auto& ring = std::get<DrillCircleOp>(op.geometry);
             out += "op.circle " + number(ring.circle.x) + " " + number(ring.circle.y) + " " +
@@ -111,6 +133,7 @@ std::string serialize(const Program& program) {
             out += "op.fullTurn " + std::string(ring.fullTurn ? "on" : "off") + "\n";
             out += "op.peck " + number(ring.params.peckMm) + "\n";
             if (ring.params.hasR) { out += "op.r " + number(ring.params.rMm) + "\n"; }
+            out += drillLine(ring.params.kind);
         }
     }
     return out;

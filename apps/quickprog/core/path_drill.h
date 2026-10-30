@@ -59,11 +59,17 @@ bool isDrill(const OperationGeometry& geometry);
 std::vector<Point3> drillHoles(const Operation& operation);
 
 
-// Cutting data of a drill from the operation: the material of the document is
-// not modelled yet, so the table row "aluminium" is the one the form and the
-// check use (the same default `validate` applies). The source line travels to
-// the console summary, so the operator sees where the numbers came from.
+// Cutting data of a drill from the operation: the stock material of the
+// document (`Operation::material`) and the material of the drill body
+// (`DrillParams::kind`) select the row. The source line travels to the console
+// summary and the checks, so the operator sees where the numbers came from.
 Feeds drillFeeds(const Operation& operation);
+
+// The cutting-data row one operation is rated by: `drillFeeds` for a drill, the
+// flat mill row of the operation material otherwise. The summary, the feed
+// check and the cases read this one function, so the three cannot disagree on
+// the source.
+Feeds tableRowFor(const Operation& operation);
 
 // The cycle feed of a drill. A drill has one feed: the plunge and the working
 // feed are the same number, and the model must not keep two different ones.

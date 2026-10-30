@@ -49,6 +49,8 @@ bool parseDrillArgs(const std::vector<std::string>& args, std::size_t first, Dri
             out.rGiven = true;
         } else if (key == "--peck") {
             if (!takeValue(args, i, value) || !parseDouble(value, out.peck)) { return false; }
+        } else if (key == "--drill-kind") {
+            if (!takeValue(args, i, value) || !parseDrillKind(value, out.kind)) { return false; }
         } else if (key == "--pattern") {
             if (!takeValue(args, i, value) || !parseDrillPattern(value, out.pattern)) {
                 return false;

@@ -122,9 +122,7 @@ std::string operationSummary(const Program& program, const Path& planned, std::s
     // The regime line of every kind: the numbers of the operation and the
     // source they came from, so the operator can tell a table row from a typed
     // number before a run.
-    const Feeds table = isDrill(op.geometry)
-                            ? drillFeeds(op)
-                            : feedsFor(Material::Aluminium, op.tool.diameterMm, ToolKind::Flat);
+    const Feeds table = tableRowFor(op);
     out += regimeSummary(op, table.source) + "\n";
     return out;
 }

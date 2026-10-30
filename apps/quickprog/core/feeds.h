@@ -9,6 +9,12 @@
 // so the demo and the panel print the same values. The number of flutes is a
 // property of the tool kind, as in the React defaults (three for a flat end
 // mill); the demo does not invent a per-diameter flute count.
+//
+// The drill has no row in calc.ts, which describes a flat end mill only. It is
+// a second table of its own shape (Vc and the feed per revolution `f = k * D`,
+// per material and per drill body material) in `core/feeds.cpp`; it uses the
+// same `round(1000 * Vc / (pi * D))` for the speed, so the panel and the drill
+// stay comparable.
 #pragma once
 
 #include <string>
@@ -17,11 +23,18 @@
 
 namespace qp {
 
-enum class Material { Aluminium, Steel };
-
 // Flat end mill, drill, and a "tool kind not in the table" case that gets the
 // conservative values of the table plus an explicit warning source.
 enum class ToolKind { Flat, Drill, Unknown };
+
+// Russian name of the drill material, as the source line writes it ("HSS",
+// "карбид"). The enums themselves (Material, DrillBody) live in ops.h: the
+// operation carries them in the document, and this header already includes
+// ops.h.
+std::string bodyName(DrillBody kind);
+
+// The console and the .qprog word of the drill material: "hss" or "carbide".
+bool parseDrillKind(const std::string& text, DrillBody& out);
 
 struct Feeds {
     double rpm = 0.0;
@@ -37,10 +50,21 @@ struct Feeds {
 
 // Cutting data for the material, the tool diameter and the tool kind. A
 // non-positive diameter gives zeros and an empty source: the caller validates
-// the diameter first and must not plan a pass from a zero.
+// the diameter first and must not plan a pass from a zero. A drill is always
+// drilled with the HSS row here: a caller that knows the material of the drill
+// body calls `feedsForDrill`.
 Feeds feedsFor(Material material, double diameterMm, ToolKind kind);
+
+// Cutting data of a drill of the given body material: the drill row of the
+// table, `f = k * D` mm/rev and `n = 1000 * Vc / (pi * D)`. The same
+// non-positive diameter rule as `feedsFor`.
+Feeds feedsForDrill(Material material, double diameterMm, DrillBody kind);
 
 // Russian name of the material, as the panel writes it.
 std::string materialName(Material material);
+
+// The console and the .qprog word of the material: "aluminium" or "steel".
+// False for anything else; the caller names the key and the two words.
+bool parseMaterial(const std::string& text, Material& out);
 
 } // namespace qp

@@ -29,6 +29,8 @@ struct DrillArgs {
     double r = 0.0;
     // An explicit peck, mm; zero means "the planner decides (G83 when deep)".
     double peck = 0.0;
+    // The material of the drill body: `--drill-kind hss|carbide`, HSS default.
+    DrillBody kind = DrillBody::Hss;
     DrillPattern pattern = DrillPattern::Hole;
 
     // Hole: the centre. Grid: the first point and the counts and steps.

@@ -5,6 +5,7 @@
 // takes and where the value goes. Split out of the reader so neither file
 // carries the whole schema: a new key is one branch here and one line in
 // `serialize.cpp`.
+#include "core/feeds.h"
 #include "core/serialize_internal.h"
 #include "core/path_drill.h"
 #include "core/qprog_reader.h"
@@ -47,6 +48,12 @@ auto fail = [&error](const std::string& message) {
     } else if (sub == "coolant") {
         if (!parseCoolant(words[1], op.coolant)) {
             return fail(where + "op.coolant ждёт off, mist или flood.");
+        }
+    } else if (sub == "material") {
+        // The stock material: the same two words as the console. A missing
+        // line is the model default, aluminium.
+        if (!parseMaterial(words[1], op.material)) {
+            return fail(where + "op.material ждёт aluminium или steel.");
         }
     } else if (sub == "tool") {
         if (!parseQprogInt(words[1], op.tool.number) ||
@@ -164,6 +171,20 @@ auto fail = [&error](const std::string& message) {
             return fail(where + "op.fullTurn ждёт 'on' или 'off'.");
         }
         std::get<DrillCircleOp>(op.geometry).fullTurn = words[1] == "on";
+    } else if (sub == "drill") {
+        // The material of the drill body: the same two words as the console. A
+        // missing line is the model default, HSS.
+        DrillParams* params = nullptr;
+        if (std::holds_alternative<DrillHoleOp>(op.geometry)) {
+            params = &std::get<DrillHoleOp>(op.geometry).params;
+        } else if (std::holds_alternative<DrillGridOp>(op.geometry)) {
+            params = &std::get<DrillGridOp>(op.geometry).params;
+        } else {
+            params = &std::get<DrillCircleOp>(op.geometry).params;
+        }
+        if (!parseDrillKind(words[1], params->kind)) {
+            return fail(where + "op.drill ждёт hss или carbide.");
+        }
     } else if (sub == "peck" || sub == "r") {
         DrillParams* params = nullptr;
         if (std::holds_alternative<DrillHoleOp>(op.geometry)) {

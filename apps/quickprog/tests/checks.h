@@ -25,6 +25,8 @@ void runCircleRuleChecks();
 void runDrillLayoutChecks();
 void runDrillCycleChecks();
 void runDrillRulesChecks();
+void runDrillKindChecks();
+void runMaterialChecks();
 void runSummaryChecks();
 void runSummaryRulesChecks();
 

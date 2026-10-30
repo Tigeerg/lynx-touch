@@ -32,6 +32,7 @@ qp::Program faceProgram(const qp::FaceArgs& args) {
     op.id = "Плоскость";
     op.tool.number = args.tool;
     op.tool.diameterMm = args.diameter;
+    op.material = args.material;
     op.topZ = args.topZ;
     op.depthMm = args.depth;
     op.stepDownMm = args.stepDown;
@@ -59,6 +60,7 @@ qp::Program pocketProgram(const qp::PocketArgs& args) {
     op.id = "Карман";
     op.tool.number = args.tool;
     op.tool.diameterMm = args.diameter;
+    op.material = args.material;
     op.topZ = args.topZ;
     op.depthMm = args.depth;
     op.stepDownMm = args.stepDown;
@@ -87,6 +89,7 @@ qp::Program circlePocketProgram(const qp::CirclePocketArgs& args) {
     op.id = "Круглый карман";
     op.tool.number = args.tool;
     op.tool.diameterMm = args.diameter;
+    op.material = args.material;
     op.topZ = args.topZ;
     op.depthMm = args.depth;
     op.stepDownMm = args.stepDown;
@@ -114,12 +117,13 @@ qp::Program drillProgram(const qp::DrillArgs& args) {
     op.id = "Отверстия";
     op.tool.number = args.tool;
     op.tool.diameterMm = args.diameter;
+    op.material = args.material;
     op.topZ = args.topZ;
     op.depthMm = args.depth;
     // A drilling cycle has no axial pass to split: the step stays zero and the
     // check treats a zero step of a drill as "not used".
     op.stepDownMm = 0.0;
-    const qp::DrillParams params{args.peck, args.r, args.rGiven};
+    const qp::DrillParams params{args.peck, args.r, args.rGiven, args.kind};
     if (args.pattern == qp::DrillPattern::Grid) {
         qp::DrillGridOp grid;
         grid.x0 = args.x;
@@ -146,7 +150,7 @@ qp::Program drillProgram(const qp::DrillArgs& args) {
         op.geometry = hole;
     }
 
-    const qp::Feeds table = qp::feedsFor(args.material, args.diameter, qp::ToolKind::Drill);
+    const qp::Feeds table = qp::feedsForDrill(args.material, args.diameter, args.kind);
     op.cutting.spindleRpm = args.rpm > 0.0 ? args.rpm : table.rpm;
     op.cutting.feedMmMin = args.feed > 0.0 ? args.feed : table.feedMmMin;
     // A drill has one feed: the plunge is the working feed of the cycle, and

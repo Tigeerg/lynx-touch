@@ -48,6 +48,12 @@ bool opKeyKnown(const OperationGeometry& geometry, const std::string& sub) {
     // G43 is optional for every kind: a file of the previous build has no
     // `op.h` and is read with "H = the tool number".
     if (sub == "r") { return isDrill(geometry); }
+    // The material of the drill body is optional for a drill: a file of the
+    // previous build has no `op.drill` and is read as HSS.
+    if (sub == "drill") { return isDrill(geometry); }
+    // The stock material is optional for every kind: a file of the previous
+    // build has no `op.material` and is read as aluminium.
+    if (sub == "material") { return true; }
     return sub == "h";
 }
 

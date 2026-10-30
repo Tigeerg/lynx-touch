@@ -42,19 +42,20 @@ void checkFeeds() {
     check(steel.rpm == 2865.0, "feeds.rpm_steel_d10", "Vc 90 on D10 must be 2865 rpm");
     check(steel.feedMmMin == 258.0, "feeds.feed_steel_d10", "fz 0.03 x 3 x 2865 must be 258 mm/min");
 
-    // A drill is rated per revolution, not per tooth: the `rule of thumb` row
-    // is f = 0.02 * D mm/rev and Vc 25 m/min on an HSS drill (feeds.cpp), so
-    // 0.02 * 10 = 0.2 mm/rev at round(1000 * 25 / (pi * 10)) = 796 rpm gives
-    // 0.2 * 796 = 159.2 -> 159 mm/min. The previous numbers (fz 0.03 on two
-    // flutes, Vc 150) were not a drill rule at all and are replaced here.
+    // A drill is rated per revolution, not per tooth: the HSS row of the drill
+    // table is Vc 40 m/min and f = 0.02 * D mm/rev (feeds.cpp), so 0.02 * 10 =
+    // 0.2 mm/rev at round(1000 * 40 / (pi * 10)) = 1273 rpm gives
+    // 0.2 * 1273 = 254.6 -> 255 mm/min. The row is no longer a rule of thumb:
+    // the source line names the table, the drill material and the diameter.
     const qp::Feeds drill = qp::feedsFor(qp::Material::Aluminium, 10.0, qp::ToolKind::Drill);
-    check(drill.rpm == 796.0, "feeds.drill_rpm_d10",
-          "Vc 25 on D10 must be 796 rpm, got " + std::to_string(drill.rpm));
-    check(drill.feedMmMin == 159.0, "feeds.drill_alu_d10",
-          "a drill takes f = 0.02 * D = 0.2 mm/rev at 796 rpm, 159 mm/min, got " +
+    check(drill.rpm == 1273.0, "feeds.drill_rpm_d10",
+          "Vc 40 on D10 must be 1273 rpm, got " + std::to_string(drill.rpm));
+    check(drill.feedMmMin == 255.0, "feeds.drill_alu_d10",
+          "an HSS drill takes f = 0.02 * D = 0.2 mm/rev at 1273 rpm, 255 mm/min, got " +
               std::to_string(drill.feedMmMin));
-    check(drill.source.find("правило большого пальца") != std::string::npos,
-          "feeds.drill_rule_of_thumb", "the drill source must say it is a rule of thumb");
+    check(drill.source == "таблица: сверло HSS, алюминий, ф10", "feeds.drill_source",
+          "the drill source must be the table row with the drill material, got '" + drill.source +
+              "'");
 
     const qp::Feeds none = qp::feedsFor(qp::Material::Aluminium, 0.0, qp::ToolKind::Flat);
     check(none.rpm == 0.0 && none.feedMmMin == 0.0, "feeds.zero_diameter", "a zero diameter gives zeros");

@@ -54,6 +54,13 @@ struct Cutting {
 
 enum class Coolant { Off, Mist, Flood };
 
+// The material of the stock: the axis of the cutting-data table of feeds.cpp.
+// It is a field of the operation, not of the console, because the summary and
+// the checks read the row of the document: a saved .qprog keeps the row it was
+// planned by. The table has exactly these two rows; the default is aluminium,
+// the row every older .qprog and the demo were planned by.
+enum class Material { Aluminium, Steel };
+
 // Face milling of the stock top: strips across the stock at `stepOverPct` of
 // the tool diameter. `z` is the plane to cut, which is not always stock max.z:
 // the operator may take a light pass.
@@ -83,17 +90,27 @@ struct CirclePocketOp {
     double stepOverPct = 70.0;
 };
 
+// The material of the drill body: HSS (high-speed steel) or carbide. It is a
+// field of the drilling operation, not of ToolRef, because ToolRef is shared by
+// the milling kinds and carries only what the G43 table needs (number,
+// diameter, H); the drill material changes the cutting-data row only and has no
+// mill counterpart. The default is HSS: the number an older .qprog without the
+// field gets, and the conservative row of the table.
+enum class DrillBody { Hss, Carbide };
+
 // Drilling parameters shared by the three kinds. `peckMm` > 0 selects the
 // pecking cycle G83 with that Q, zero leaves the choice to the planner (G83
 // over three diameters, G81 otherwise). `rMm` is the R plane of the cycle, and
 // `hasR` says whether the document set it: a zero is not "R at the top" but
 // "the default", the same way a zero step is not a step. The default is one
 // millimetre above the material top, below safe Z. Both fields are part of the
-// document, so the .qprog file and the console can write them.
+// document, so the .qprog file and the console can write them. `kind` is the
+// material of the drill body and selects its row of the cutting-data table.
 struct DrillParams {
     double peckMm = 0.0;
     double rMm = 0.0;
     bool hasR = false;
+    DrillBody kind = DrillBody::Hss;
 };
 
 // A single hole at the centre of `hole`. The radius of `hole` is the drill
@@ -137,6 +154,9 @@ struct Operation {
     ToolRef tool;
     Cutting cutting;
     Coolant coolant = Coolant::Flood;
+    // The row of the cutting-data table this operation is rated by, for a mill
+    // and for a drill alike.
+    Material material = Material::Aluminium;
 
     // `topZ` is the top of the material for this operation, `depthMm` the depth
     // below it (positive), `stepDownMm` the maximum axial cut per pass.

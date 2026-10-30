@@ -27,19 +27,8 @@ void add(std::vector<Check>& out, const std::string& field, const std::string& r
 
 namespace {
 
-// The material of the demo document is not in the model yet: the table row
-// "aluminium" is the one the form offers by default, so the limits are checked
-// against it. A material field is the next slice.
-constexpr Material kDefaultMaterial = Material::Aluminium;
-
-ToolKind toolKind(const OperationGeometry& geometry) {
-    if (std::holds_alternative<FaceOp>(geometry) || std::holds_alternative<RectPocketOp>(geometry) ||
-        std::holds_alternative<CirclePocketOp>(geometry)) {
-        return ToolKind::Flat;
-    }
-    return ToolKind::Drill;
-}
-
+// The top and the bottom of the stock: the depth rules compare the pass with
+// these two, whatever material the operation is rated by (`tableRowFor`).
 double stockTop(const StockBox& stock) {
     return std::fmax(stock.min.z, stock.max.z);
 }
@@ -74,7 +63,7 @@ void checkTool(const Operation& op, std::vector<Check>& out) {
 
 void checkCutting(const Operation& op, std::vector<Check>& out) {
     const MachineLimits& limits = machineLimits();
-    const Feeds table = feedsFor(kDefaultMaterial, op.tool.diameterMm, toolKind(op.geometry));
+    const Feeds table = tableRowFor(op);
     if (op.cutting.spindleRpm <= 0.0) {
         add(out, "cutting.spindleRpm", "Обороты шпинделя должны быть больше нуля.");
     } else if (op.cutting.spindleRpm > limits.maxRpm) {

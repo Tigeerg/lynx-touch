@@ -8,6 +8,7 @@ import { cuttingFor } from './feeds'
 import type { NewOperation } from './operation-init'
 import type {
   CirclePocketOperation,
+  ContourOperation,
   DrillOperation,
   FaceOperation,
   Operation,
@@ -86,6 +87,7 @@ export function newOperation(kind: 'face', init: NewOperation): FaceOperation
 export function newOperation(kind: 'pocket', init: NewOperation): RectPocketOperation
 export function newOperation(kind: 'circle-pocket', init: NewOperation): CirclePocketOperation
 export function newOperation(kind: 'drill', init: NewOperation): DrillOperation
+export function newOperation(kind: 'contour', init: NewOperation): ContourOperation
 export function newOperation(kind: Operation['kind'], init: NewOperation): Operation
 export function newOperation(kind: Operation['kind'], init: NewOperation): Operation {
   const tool = init.tool ?? DEFAULT_TOOL
@@ -109,6 +111,23 @@ export function newOperation(kind: Operation['kind'], init: NewOperation): Opera
     case 'circle-pocket': {
       const fields = common(init, tool, material, null)
       return { ...fields, kind, circle: { x: 0, y: 0, r: 10 }, finishAllowanceMm: 0, stepOverPct: STEP_OVER_PCT }
+    }
+    case 'contour': {
+      const fields = common(init, tool, material, null)
+      // A 40 x 40 square against the walk: the console default an operator starts from and edits.
+      return {
+        ...fields,
+        kind,
+        points: [
+          { x: -20, y: -20, z: init.topZ },
+          { x: 20, y: -20, z: init.topZ },
+          { x: 20, y: 20, z: init.topZ },
+          { x: -20, y: 20, z: init.topZ },
+        ],
+        closed: true,
+        allowanceMm: 0,
+        side: 'material',
+      }
     }
     case 'drill': {
       const body = init.body ?? 'hss'

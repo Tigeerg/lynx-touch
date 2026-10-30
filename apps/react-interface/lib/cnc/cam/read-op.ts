@@ -2,7 +2,9 @@
 // `serialize_read_op.cpp` and `qprog_operation.cpp`.
 //
 // This module owns the table of kinds and the arity of one `op.*` key: a new key is one branch here
-// and one line in `serialize-write.ts`. The line loop is in `read-program.ts`.
+// and one line in `serialize-write.ts`. The line loop is in `read-program.ts`. A contour is the one
+// kind whose shape is a list: `op.points` takes pairs `x y` to the end of the line, the rest of the
+// keys keep their fixed arity.
 import type { Operation, QuickProgram } from './ops'
 import { COMMON_KEYS } from './read-header'
 import { parseInteger, parseNumber, parseOnOff, restAfter, unquoteText } from './serialize-words'
@@ -20,6 +22,7 @@ export function opHead(text: string, line: number): OpHead {
   if (text === 'face') return { kind: 'face', drill: null }
   if (text === 'pocket') return { kind: 'pocket', drill: null }
   if (text === 'circle') return { kind: 'circle-pocket', drill: null }
+  if (text === 'contour') return { kind: 'contour', drill: null }
   throw new QprogError(line, `неизвестный вид операции '${text}'.`)
 }
 
@@ -29,6 +32,7 @@ export const SHAPE_KEYS: Record<Operation['kind'], string[]> = {
   pocket: ['rect', 'cornerRadius', 'finishAllowance', 'stepOver'],
   'circle-pocket': ['circle', 'finishAllowance', 'stepOver'],
   drill: [],
+  contour: ['points', 'closed', 'allowance', 'side'],
 }
 
 /** The shape keys of a drilling layout; the layout is chosen by the `op` word. */
@@ -60,6 +64,18 @@ const onOff = (words: string[], key: string, where: string): boolean => {
   const value = words.length === 2 ? parseOnOff(words[1]) : null
   if (value === null) throw new QprogError(0, `${where}${key} ждёт 'on' или 'off'.`)
   return value
+}
+
+/** The profile of a contour: pairs of `x y` on one line, at least one pair and an even count. */
+function contourPoints(words: string[], where: string): { x: number; y: number; z: number }[] {
+  if (words.length < 2 || words.length % 2 !== 0) {
+    throw new QprogError(0, `${where}op.points ждёт пары 'x y', а получило ${String(words.length)} знач.`)
+  }
+  const points: { x: number; y: number; z: number }[] = []
+  for (let i = 0; i + 1 < words.length; i += 2) {
+    points.push({ x: num(words, i, 'points', where), y: num(words, i + 1, 'points', where), z: 0 })
+  }
+  return points
 }
 
 /** The drill, whose common fields the board shares: every branch writes into it. */
@@ -140,7 +156,19 @@ function millShape(op: Operation, sub: string, words: string[], key: string, whe
   } else if (sub === 'finishAllowance' && (op.kind === 'pocket' || op.kind === 'circle-pocket')) {
     arity(words, 1, key, where)
     op.finishAllowanceMm = num(words, 1, key, where)
-  } else if (sub === 'stepOver' && op.kind !== 'drill') {
+  } else if (sub === 'points' && op.kind === 'contour') {
+    op.points = contourPoints(words.slice(1), where)
+  } else if (sub === 'closed' && op.kind === 'contour') {
+    arity(words, 1, key, where)
+    op.closed = onOff(words, key, where)
+  } else if (sub === 'allowance' && op.kind === 'contour') {
+    arity(words, 1, key, where)
+    op.allowanceMm = num(words, 1, key, where)
+  } else if (sub === 'side' && op.kind === 'contour') {
+    arity(words, 1, key, where)
+    if (words[1] !== 'material' && words[1] !== 'air') throw new QprogError(0, `${where}op.side ждёт material или air.`)
+    op.side = words[1]
+  } else if (sub === 'stepOver' && (op.kind === 'face' || op.kind === 'pocket' || op.kind === 'circle-pocket')) {
     // The face keeps its own step; both pockets carry theirs (PLAN-QUICKPROG, 7.3).
     arity(words, 1, key, where)
     op.stepOverPct = num(words, 1, key, where)

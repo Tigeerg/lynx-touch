@@ -61,7 +61,7 @@ export type Coolant = 'off' | 'mist' | 'flood'
 
 export type Wcs = 'G54' | 'G55' | 'G56' | 'G57' | 'G58' | 'G59'
 
-export type OperationKind = 'face' | 'pocket' | 'circle-pocket' | 'drill'
+export type OperationKind = 'face' | 'pocket' | 'circle-pocket' | 'drill' | 'contour'
 
 /** The fields every kind shares: the tool, the modes, the stock frame and the notes. */
 export interface OperationBase {
@@ -139,8 +139,8 @@ export type DrillGeometry = DrillHoleGeometry | DrillGridGeometry | DrillRingGeo
 export type DrillPattern = DrillGeometry['pattern']
 
 /**
- * Drilling: one kind, three hole layouts. `peckMm` above zero selects G83 with that Q, zero leaves
- * the cycle to the planner. `body` is the drill material and selects the row of the table.
+ * Drilling: one kind, three layouts. `peckMm` above zero selects G83 with that Q, zero leaves the
+ * cycle to the planner; `body` is the drill material and selects the row of the table.
  */
 export interface DrillOperation extends OperationBase {
   kind: 'drill'
@@ -168,7 +168,22 @@ export interface DrillOperation extends OperationBase {
   fullTurn: boolean
 }
 
-export type Operation = FaceOperation | RectPocketOperation | CirclePocketOperation | DrillOperation
+/** Contour along a polyline in XY (PLAN-QUICKPROG, 7.6): the centre walks `D/2 + allowanceMm` off the
+ * profile, on the material side or outside; a closed contour returns to its first point, an open one
+ * leads in and out. The `z` of a point is unused.
+ */
+export interface ContourOperation extends OperationBase {
+  kind: 'contour'
+  /** The profile vertices in XY, in the order of the walk; `closed` adds the last segment. */
+  points: Point3[]
+  closed: boolean
+  /** Stock left on the profile beyond the mill radius, mm; zero cuts to size. */
+  allowanceMm: number
+  /** `material` keeps the mill inside the profile, `air` keeps it outside. */
+  side: 'material' | 'air'
+}
+
+export type Operation = FaceOperation | RectPocketOperation | CirclePocketOperation | DrillOperation | ContourOperation
 
 /** The saved document (`.qprog` schema 1). It is loaded into the machine only by a command. */
 export interface QuickProgram {

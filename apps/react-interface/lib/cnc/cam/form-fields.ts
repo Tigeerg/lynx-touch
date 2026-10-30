@@ -6,15 +6,15 @@
 //   operation -> values   `valuesOf`, so CAM_EDIT opens the form with the numbers of the document
 //   values -> operation   `applyFields`, fields grouped by meaning
 //
-// A new form starts from `defaults.ts`; the shape fields are named the same in the document and in
-// the form (`rect.x`, `circle.r`, ...). The reducers `formOperation` and `formProblems` live in
-// `form-operation.ts`; `form.ts` is the facade of both modules.
+// A new form starts from `defaults.ts`; shape fields are named the same in the document and the
+// form (`rect.x`, `circle.r`). A contour has one text field for its points, `X Y; X Y; ...`.
 import type { DrillBody, Material } from './feeds'
 import { cuttingFor } from './feeds'
 import type { DrillPattern, Operation, OperationKind, QuickProgram } from './ops'
 import { stockTop } from './ops'
 import { newOperation } from './defaults'
 import type { Problem } from './validate'
+import { pointsOf, pointsText } from './contour-points'
 
 /** The form of an operation: the kind, the typed values, and the result of the last edit. */
 export interface CamForm {
@@ -68,7 +68,7 @@ const cuttingOf = (values: Record<string, string>, material: Material, diameterM
   }
 }
 
-/** The typed values of a new operation of `kind` over the top `topZ`, as a form would hold them. */
+/** The typed values of a new operation of `kind` over the top `topZ`; `newForm` starts from them. */
 export const formValues = (kind: OperationKind, topZ: number): Record<string, string> =>
   valuesOf(newOperation(kind, { id: '', topZ }))
 
@@ -87,6 +87,9 @@ const baseValues = (op: Operation): Record<string, string> => ({
   'tool.hNumber': String(op.tool.hNumber),
   material: op.material,
   coolant: op.coolant,
+  'cutting.spindleRpm': String(op.cutting.spindleRpm),
+  'cutting.feedMmMin': String(op.cutting.feedMmMin),
+  'cutting.plungeFeedMmMin': String(op.cutting.plungeFeedMmMin),
   topZ: String(op.topZ),
   depthMm: String(op.depthMm),
   stepDownMm: String(op.stepDownMm),
@@ -98,18 +101,16 @@ const baseValues = (op: Operation): Record<string, string> => ({
  * switch is what makes a forgotten kind a compile error.
  */
 export function valuesOf(op: Operation): Record<string, string> {
-  const values: Record<string, string> = {
-    ...baseValues(op),
-    'cutting.spindleRpm': String(op.cutting.spindleRpm),
-    'cutting.feedMmMin': String(op.cutting.feedMmMin),
-    'cutting.plungeFeedMmMin': String(op.cutting.plungeFeedMmMin),
-  }
+  return { ...baseValues(op), ...valuesOfShape(op) }
+}
+
+/** The shape fields of the kind, by the narrow switch over `kind`. */
+function valuesOfShape(op: Operation): Record<string, string> {
   switch (op.kind) {
     case 'face':
-      return { ...values, z: String(op.z), stepOverPct: String(op.stepOverPct) }
+      return { z: String(op.z), stepOverPct: String(op.stepOverPct) }
     case 'pocket':
       return {
-        ...values,
         'rect.x': String(op.rect.x),
         'rect.y': String(op.rect.y),
         'rect.w': String(op.rect.w),
@@ -120,16 +121,21 @@ export function valuesOf(op: Operation): Record<string, string> {
       }
     case 'circle-pocket':
       return {
-        ...values,
         'circle.x': String(op.circle.x),
         'circle.y': String(op.circle.y),
         'circle.r': String(op.circle.r),
         finishAllowanceMm: String(op.finishAllowanceMm),
         stepOverPct: String(op.stepOverPct),
       }
+    case 'contour':
+      return {
+        points: pointsText(op.points),
+        closed: op.closed ? 'on' : 'off',
+        allowanceMm: String(op.allowanceMm),
+        side: op.side,
+      }
     case 'drill':
       return {
-        ...values,
         pattern: op.pattern,
         body: op.body,
         peckMm: String(op.peckMm),
@@ -150,10 +156,7 @@ export function valuesOf(op: Operation): Record<string, string> {
   }
 }
 
-/**
- * The common fields of an operation from the typed values: the tool, the cutting data (the table
- * is the fallback of an empty field, as the console does), the frame and the notes.
- */
+/** The common fields from the typed values: the tool, the rates (the table fills an empty field), the frame. */
 function applyCommon<T extends Operation>(op: T, values: Record<string, string>): T {
   const number = int(values, 'tool.number', op.tool.number)
   const diameterMm = kept(values, 'tool.diameterMm', op.tool.diameterMm)
@@ -205,6 +208,16 @@ export function applyFields(op: Operation, v: Record<string, string>): Operation
         },
         finishAllowanceMm: kept(v, 'finishAllowanceMm', op.finishAllowanceMm),
         stepOverPct: kept(v, 'stepOverPct', op.stepOverPct),
+      }
+    case 'contour':
+      return {
+        ...applyCommon(op, v),
+        // A list that is not a profile keeps the document vertices: the form names the field, as it
+        // does for a number that is not one, and the operation stays plannable.
+        points: pointsOf(v, 'points', op.points, kept(v, 'topZ', op.topZ)) ?? op.points,
+        closed: on(v, 'closed', op.closed),
+        allowanceMm: kept(v, 'allowanceMm', op.allowanceMm),
+        side: str(v, 'side', op.side) === 'air' ? 'air' : 'material',
       }
     case 'drill': {
       const body = str(v, 'body', op.body) as DrillBody

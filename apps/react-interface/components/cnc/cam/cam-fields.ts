@@ -54,6 +54,12 @@ const GEOMETRY: Record<OperationKind, FieldSpec[]> = {
     { key: 'finishAllowanceMm', label: 'Припуск', unit: 'мм', hint: 'След по стенкам' },
     { key: 'stepOverPct', label: 'Шаг растра', unit: '%', hint: 'Доля диаметра фрезы, 10..100 %' },
   ],
+  contour: [
+    { key: 'points', label: 'Точки', unit: '', hint: 'Профиль парами «X Y» через точку с запятой' },
+    { key: 'closed', label: 'Замкнутый', unit: '', hint: 'Обход возвращается к первой точке' },
+    { key: 'allowanceMm', label: 'Припуск', unit: 'мм', hint: 'След по профилю сверх радиуса фрезы' },
+    { key: 'side', label: 'Сторона', unit: '', hint: 'В материал или наружу' },
+  ],
   drill: [
     { key: 'pattern', label: 'Схема', unit: '', hint: 'Отверстие, сетка или по кругу' },
     { key: 'body', label: 'Тело сверла', unit: '', hint: 'Материал сверла задаёт таблицу режимов' },
@@ -116,6 +122,8 @@ export const CHOICES: Record<string, readonly string[]> = {
   body: ['hss', 'carbide'] as const satisfies readonly DrillBody[],
   coolant: ['off', 'mist', 'flood'] as const,
   pattern: ['hole', 'grid', 'circle'] as const,
+  closed: ['on', 'off'] as const,
+  side: ['material', 'air'] as const,
 }
 
 /** What the operator reads in a choice: the same words the console of the demo prints. */
@@ -130,6 +138,9 @@ export const CHOICE_LABEL: Record<string, string> = {
   hole: 'Отверстие',
   grid: 'Сетка',
   circle: 'По кругу',
+  on: 'Да',
+  material: 'В материал',
+  air: 'Наружу',
 }
 
 /** The fields of a kind that only one hole layout uses: the form hides the rest of the layouts. */

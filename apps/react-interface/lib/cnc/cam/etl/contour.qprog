@@ -1,0 +1,23 @@
+schema 1
+name "CONTOUR"
+units mm
+wcs G54
+stock -50 -40 -20 50 40 0
+safeZ 5
+g64P 0.01
+g64Q 0.01
+stopAfterOp on
+op contour "Контур"
+op.enabled on
+op.tool 1 8
+op.spindle 5968
+op.feed 1074
+op.plunge 269
+op.coolant flood
+op.topZ 0
+op.depth 2
+op.stepDown 2
+op.points -20 -20 20 -20 20 20 -20 20
+op.closed on
+op.allowance 0
+op.side material

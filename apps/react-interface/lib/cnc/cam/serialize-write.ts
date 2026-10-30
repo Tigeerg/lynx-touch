@@ -66,6 +66,13 @@ function shapeLines(op: Operation): string {
         `op.circle ${num(op.circle.x)} ${num(op.circle.y)} ${num(op.circle.r)}\n` +
         `op.finishAllowance ${num(op.finishAllowanceMm)}\nop.stepOver ${num(op.stepOverPct)}\n`
       )
+    case 'contour':
+      // One line of pairs, the same one-line-per-list style as `op.rect`; the reader takes the rest
+      // of the line, so the list has no fixed arity and a point is `x y`.
+      return (
+        `op.points ${op.points.map((point) => `${num(point.x)} ${num(point.y)}`).join(' ')}\n` +
+        `op.closed ${onOff(op.closed)}\nop.allowance ${num(op.allowanceMm)}\nop.side ${op.side}\n`
+      )
     case 'drill':
       return drillLines(op)
   }

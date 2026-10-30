@@ -16,6 +16,7 @@ export const KIND_WORDS: Record<OperationKind, string> = {
   pocket: 'pocket',
   'circle-pocket': 'circle',
   drill: 'drill',
+  contour: 'contour',
 }
 
 /** The three geometry words of a drilling operation: one hole, a grid, a ring. */

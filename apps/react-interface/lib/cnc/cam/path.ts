@@ -17,6 +17,7 @@ import { moveLength, PathBuilder } from './path-builder'
 import { planFace } from './path-face'
 import { planRectPocket } from './path-pocket'
 import { planCirclePocket } from './path-circle-pocket'
+import { planContour } from './path-contour'
 import { drillCycleMinutes, planDrill } from './path-drill'
 import { validate } from './validate'
 
@@ -79,6 +80,9 @@ const planOperation = (program: QuickProgram, operation: Operation, out: PathBui
       const plan = planDrill(program, operation, out)
       return drillCycleMinutes(operation, plan.points.length)
     }
+    case 'contour':
+      planContour(program, operation, out)
+      return 0
   }
 }
 

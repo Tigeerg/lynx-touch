@@ -79,6 +79,10 @@ export function numberFields(op: Operation): NumberField[] {
         field(op.finishAllowanceMm, 'geometry', 'finishAllowanceMm', 'припуск'),
         field(op.stepOverPct, 'stepOver', 'stepOverPct', 'шаг растра'),
       ]
+    case 'contour':
+      // The points are checked by the form (`pointsOf` in `form-fields.ts`): a point that is not
+      // two numbers is named there, before an operation with `NaN` vertices exists.
+      return [...common, field(op.allowanceMm, 'points', 'allowanceMm', 'припуск')]
     case 'drill':
       return [
         ...common,

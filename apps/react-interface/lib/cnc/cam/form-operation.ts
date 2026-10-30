@@ -7,6 +7,7 @@
 import { newOperation } from './defaults'
 import type { CamForm } from './form-fields'
 import { applyFields, kept, num, str } from './form-fields'
+import { profileOf } from './contour-points'
 import type { Operation, OperationKind, QuickProgram } from './ops'
 import type { Problem } from './validate'
 import { numberFields, validate } from './validate'
@@ -44,8 +45,23 @@ export function formProblems(program: QuickProgram, values: Record<string, strin
   if (typed.length > 0) {
     return typed.map((item) => ({ field: item.form, reason: `Поле «${item.label}» не число: введите число.` }))
   }
+  const badPoint = pointProblem(op, values)
+  if (badPoint !== null) return [badPoint]
   const checked = validate({ ...program, operations: [{ ...fixed, enabled: true }] })
   return checked.ok ? [] : checked.bad
+}
+
+/**
+ * The first pair of the points field that is not two numbers, by its number in the list. The field
+ * holds a list, not one number, so `numberFields` skips it and the text is read here.
+ */
+function pointProblem(op: Operation, values: Record<string, string>): Problem | null {
+  if (op.kind !== 'contour') return null
+  const text = values.points
+  if (text === undefined || text.trim() === '') return null
+  const pairs = profileOf(text, op.topZ)
+  const at = pairs.findIndex((point) => point === null)
+  return at < 0 ? null : { field: 'points', reason: `Точка ${at + 1} задана не двумя числами X и Y.` }
 }
 
 /**

@@ -11,6 +11,7 @@ export const KIND_LABEL: Record<OperationKind, string> = {
   pocket: 'Карман',
   'circle-pocket': 'Круглый карман',
   drill: 'Отверстия',
+  contour: 'Контур',
 }
 
 /** A tool as the operator reads it in the table: `T01 ф10`. */
@@ -29,6 +30,8 @@ export function keySize(op: Operation): string {
       return `${formatMm(op.rect.w)}×${formatMm(op.rect.h)}`
     case 'circle-pocket':
       return `Ø${formatMm(op.circle.r * 2)}`
+    case 'contour':
+      return `${String(op.points.length)} тч · ${op.closed ? 'замкнут' : 'открыт'}`
     case 'drill': {
       const diameter = `Ø${formatMm(op.hole.r * 2)}`
       const count = op.pattern === 'grid' ? op.cols * op.rows : op.pattern === 'circle' ? op.count : 1

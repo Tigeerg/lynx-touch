@@ -7,6 +7,7 @@
 // `ops.ts` re-exports this module and not the other way), no value of the logic.
 import type { DrillBody } from './feeds'
 import type { Circle, OperationBase, Point3, Rect } from './ops'
+export type { ThreadOperation } from './ops-kinds-q5'
 
 /** Face milling of the stock top: strips across the stock at `stepOverPct` of the diameter. */
 export interface FaceOperation extends OperationBase {
@@ -172,6 +173,35 @@ export interface TapOperation extends OperationBase {
 }
 
 /**
+ * Counterboring (`counterbore`, PLAN-QUICKPROG 7.6): a seat under a fastener head. The layout is
+ * the drilling one (`drillGeometry`); `G82` dwells `dwellSec` at the bottom and cleans the floor.
+ */
+export interface CounterboreOperation extends OperationBase {
+  kind: 'counterbore'
+  pattern: DrillPattern
+  /** The hole: the centre and the drill radius. The ring uses `hole.x/y` as its centre. */
+  hole: Circle
+  x0: number
+  y0: number
+  cols: number
+  rows: number
+  dx: number
+  dy: number
+  count: number
+  startDeg: number
+  arcDeg: number
+  fullTurn: boolean
+  /** The diameter of the seat under the head, mm; at least the hole diameter. */
+  seatDiameterMm: number
+  /** The depth of the seat below the top, mm; deeper than the seat is wide is still a seat. */
+  seatDepthMm: number
+  /** The dwell of G82 at the seat bottom, seconds (the `P` word). */
+  dwellSec: number
+  rMm: number
+  hasR: boolean
+}
+
+/**
  * A free G-code block (`custom`, PLAN-QUICKPROG 7.6): the lines the operator typed, emitted as they
  * are after the tags of the operation. It has no geometry, so the shape checks skip it; the viewer
  * parser is the only check, and its errors keep the file from being emitted. The tool is optional:
@@ -187,20 +217,17 @@ export interface CustomOperation extends OperationBase {
 export type ProbeAxis = 'X' | 'Y' | 'Z'
 
 /**
- * A probe block (`probe`, PLAN-QUICKPROG 7.6): the touch measurements between the cutting
- * operations. The tool is the probe of the tool table, so the common fields carry it as for any
- * other kind. A measurement is a `G38.2` along `axis` to the coordinate of the point, at the touch
- * feed, then a retreat of `rangeMm`; `depthMm` and `stepDownMm` are not read by it, the coordinate
- * of the point is where the probe expects the surface. The sharing of the point coordinates
- * between the axes is the console's rule: the point is the machine position the probe moves to.
+ * A probe block (`probe`, PLAN-QUICKPROG 7.6): the touches between the cuts. A touch is a `G38.2`
+ * along `axis` to the point at the touch feed, then a retreat of `rangeMm`; the point is where the
+ * surface is expected. The tool is the probe of the table, carried by the common fields.
  */
 export interface ProbeOperation extends OperationBase {
   kind: 'probe'
   /** The touch points, machine coordinates; one `G38.2` per point. */
   points: Point3[]
-  /** The retreat after every touch, mm, and the most the probe may travel to find the surface. */
+  /** The retreat after every touch, mm, and the travel of the search for the surface. */
   rangeMm: number
-  /** The probing feed of `G38.2`, mm/min; above the working feed it is a warning. */
+  /** The probing feed of `G38.2`, mm/min; above the working feed it warns. */
   touchFeedMmMin: number
   /** The axe of the touch: `Z` for a top, `X`/`Y` for a side. */
   axis: ProbeAxis

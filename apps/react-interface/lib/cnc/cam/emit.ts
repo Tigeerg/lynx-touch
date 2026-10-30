@@ -21,10 +21,12 @@ import type { Operation, Point3, QuickProgram } from './ops'
 import { operationUuid, type ProgramPath } from './path'
 import { drillPlan } from './path-drill'
 import { tapPlan } from './path-tap'
+import { counterborePlan } from './path-counterbore'
 import type { Block, EmitState } from './emit-state'
 import { freshState, preambleBlocks, trailerBlocks } from './emit-state'
 import { footerBlocks, headerBlocks } from './emit-frame'
 import { cycleBlocks, moveBlocks, tapCycleBlocks } from './emit-moves'
+import { counterboreBlocks } from './emit-counterbore'
 import { commentSafe, coord, effectiveH, numberedBlock, SEQUENCE_STEP } from './emit-words'
 import type { Issue } from './collision'
 import { viewerIssues } from './viewer-check'
@@ -121,6 +123,14 @@ const operationBlocks = (
     // trailer parks it at safe Z after the last retreat.
     for (const line of probeLines(operation)) blocks.push({ text: line })
     parked = park
+  } else if (operation.kind === 'counterbore') {
+    // G82 with the dwell at every seat floor; the centres come from the same layout the planner drew.
+    const plan = counterborePlan(program, operation)
+    if (plan.points.length > 0) {
+      blocks.push({ text: `G0 Z${coord(plan.cycle.rZ)}` })
+      blocks.push(...counterboreBlocks(plan.points, plan.cycle, state))
+    }
+    parked = { ...park, z: plan.cycle.rZ }
   } else if (operation.kind === 'tap') {
     // The tapping cycle is written by the machine, the holes come from the same layout the planner drew.
     const plan = tapPlan(program, operation)

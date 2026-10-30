@@ -11,16 +11,16 @@
 //
 // `g64P`/`g64Q` of a non-positive tolerance are written as a bare key: that is the console's "use
 // the default" and `validate` refuses the value on a run, so the file says what was typed.
-import type { DrillOperation, Material, Operation, QuickProgram, TapOperation } from './ops'
+import type { CounterboreOperation, DrillOperation, Material, Operation, QuickProgram, TapOperation } from './ops'
 import { qprogNumber as num, KIND_WORDS, onOff, quoteText } from './serialize-words'
 
 /** The drill word of a kind on the `op` line: the ring is `drill-circle`, the default. */
 const drillWord = (op: DrillOperation): string =>
   op.pattern === 'grid' ? 'drill-grid' : op.pattern === 'circle' ? 'drill-circle' : 'drill'
 
-/** The layout lines of a tap: one `op.pattern` word, then the same keys a drill layout writes. */
-function tapLines(op: TapOperation): string {
-  const out = `op.pattern ${op.pattern}\nop.pitch ${num(op.pitchMm)}\n`
+/** The layout lines of a tap or a counterbore: `op.pattern`, then the same keys a drill layout writes. */
+function layoutLines(op: TapOperation | CounterboreOperation): string {
+  const out = `op.pattern ${op.pattern}\n`
   switch (op.pattern) {
     case 'hole':
       return out + `op.hole ${num(op.hole.x)} ${num(op.hole.y)} ${num(op.hole.r)}\n`
@@ -38,6 +38,29 @@ function tapLines(op: TapOperation): string {
         `op.fullTurn ${onOff(op.fullTurn)}\n`
       )
   }
+}
+
+/** The lines of a tap: its pitch, then the layout. */
+function tapLines(op: TapOperation): string {
+  return `op.pitch ${num(op.pitchMm)}\n` + layoutLines(op)
+}
+
+/** The lines of a counterbore: the seat, its depth, the dwell, then the drilling layout. */
+function counterboreLines(op: CounterboreOperation): string {
+  const head = `op.seat ${num(op.seatDiameterMm)}\nop.seatDepth ${num(op.seatDepthMm)}\nop.dwell ${num(op.dwellSec)}\n`
+  const fixed = op.hasR ? head + `op.r ${num(op.rMm)}\n` : head
+  // The layout after the seat keeps the drilling keys in one place (`layoutLines`).
+  return fixed + layoutLines(op)
+}
+
+/** The lines of a thread mill: the pitch, the side, the depth and the finish step. */
+function threadLines(op: Extract<Operation, { kind: 'thread' }>): string {
+  return (
+    `op.hole ${num(op.hole.x)} ${num(op.hole.y)} ${num(op.hole.r)}\n` +
+    `op.pitch ${num(op.pitchMm)}\nop.internal ${onOff(op.internal)}\n` +
+    `op.threadDepth ${num(op.threadDepthMm)}\nop.allowance ${num(op.threadAllowanceMm)}\n` +
+    `op.stepOver ${num(op.stepOverPct)}\n`
+  )
 }
 
 /**
@@ -119,6 +142,10 @@ function shapeLines(op: Operation): string {
       return drillLines(op)
     case 'tap':
       return tapLines(op)
+    case 'counterbore':
+      return counterboreLines(op)
+    case 'thread':
+      return threadLines(op)
     case 'custom':
       return gcodeLines(op.gcode)
     case 'probe':
@@ -140,7 +167,7 @@ function commonLines(op: Operation): string {
   // A drill, a tap and a probe have one feed: their plunge line repeats the working feed, so a hand
   // edit of one number cannot leave a stale second one behind. The probe's own touch feed travels
   // in `op.touch`, and the working feed is the one the form compares it against.
-  const oneFeed = op.kind === 'drill' || op.kind === 'tap' || op.kind === 'probe'
+  const oneFeed = op.kind === 'drill' || op.kind === 'tap' || op.kind === 'counterbore' || op.kind === 'probe'
   const plunge = oneFeed ? op.cutting.feedMmMin : op.cutting.plungeFeedMmMin
   // `op.h` is written only when the H row differs from the tool number: the demo writer leaves it
   // out for the common case (row = tool, or zero meaning the same), so its files round-trip.

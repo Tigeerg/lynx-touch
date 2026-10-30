@@ -9,6 +9,7 @@ import type { CamForm } from './form-fields'
 import { applyFields, kept, num, str } from './form-fields'
 import { profileOf } from './contour-points'
 import { probeProfileOf } from './probe-points'
+import { counterboreWarnings } from './validate-counterbore'
 import type { Operation, OperationKind, QuickProgram } from './ops'
 import type { Problem } from './validate'
 import { numberFields, validate } from './validate'
@@ -49,8 +50,11 @@ export function formProblems(program: QuickProgram, values: Record<string, strin
   }
   const badPoint = pointProblem(op, values)
   if (badPoint !== null) return [badPoint]
+  // A counterbore finer than its own diameter blocks nothing: its reason is a warning of the form
+  // and comes with the blocking problems, so one list answers both questions without a second run.
   const checked = validate({ ...program, operations: [{ ...fixed, enabled: true }] })
-  return checked.ok ? [] : checked.bad
+  const warnings = fixed.kind === 'counterbore' ? counterboreWarnings(fixed) : []
+  return checked.ok ? warnings : [...checked.bad, ...warnings]
 }
 
 /**

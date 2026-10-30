@@ -7,6 +7,7 @@ import type { Operation, OperationKind, QuickProgram } from '@/lib/cnc/cam/ops'
 import { probeWarnings } from '@/lib/cnc/cam/probe'
 import { slotWarnings } from '@/lib/cnc/cam/validate-slot'
 import { tapWarnings } from '@/lib/cnc/cam/validate-tap'
+import { counterboreWarnings } from '@/lib/cnc/cam/validate-counterbore'
 
 /** The kind names of the picker and of an operation card; P1 requires the word, not the icon. */
 export const KIND_LABEL: Record<OperationKind, string> = {
@@ -18,6 +19,8 @@ export const KIND_LABEL: Record<OperationKind, string> = {
   slot: 'Паз',
   chamfer: 'Фаска',
   tap: 'Метчик',
+  counterbore: 'Цековка',
+  thread: 'Резьбовая фреза',
   custom: 'Custom G Code',
   probe: 'Блок щупа',
 }
@@ -48,6 +51,15 @@ export function keySize(op: Operation): string {
       const diameter = `Ø${formatMm(op.hole.r * 2)}`
       const count = op.pattern === 'grid' ? op.cols * op.rows : op.pattern === 'circle' ? op.count : 1
       return `${diameter} ×${String(count)} · шаг ${formatMm(op.pitchMm)}`
+    }
+    case 'counterbore': {
+      const diameter = `Ø${formatMm(op.hole.r * 2)}`
+      const count = op.pattern === 'grid' ? op.cols * op.rows : op.pattern === 'circle' ? op.count : 1
+      return `${diameter} ×${String(count)} · гнездо Ø${formatMm(op.seatDiameterMm)}`
+    }
+    case 'thread': {
+      const side = op.internal ? 'внутр.' : 'наруж.'
+      return `Ø${formatMm(op.hole.r * 2)} · шаг ${formatMm(op.pitchMm)} · ${side}`
     }
     case 'custom':
       return `${String(op.gcode.length)} стр. · проверьте вручную`
@@ -85,6 +97,8 @@ export function kindWarnings(op: Operation): string[] {
   switch (op.kind) {
     case 'tap':
       return tapWarnings(op).map((w) => w.reason)
+    case 'counterbore':
+      return counterboreWarnings(op).map((w) => w.reason)
     case 'slot':
       return slotWarnings(op).map((w) => w.reason)
     case 'probe':

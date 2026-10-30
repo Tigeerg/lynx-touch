@@ -242,6 +242,11 @@ describe('Q4 (PLAN-QUICKPROG, 7.6): новые плитки, диалоги ко
     // A slot is the measured exception: six shape fields plus the three frame ones are 9 rows of
     // 36 px = 324 px of the 439 px panel column, no scroll yet.
     expect(kindRows('slot', 'grid'), 'slot').toBe(9)
+    // A thread mill is the measured exception of Q5: eight shape fields plus the frame are 11 rows,
+    // so the touch form scrolls it. A counterbore is a seat over one hole and keeps a grid at ten.
+    expect(kindRows('counterbore', 'grid'), 'counterbore: grid').toBe(10)
+    expect(kindRows('counterbore', 'circle'), 'counterbore: circle').toBe(10)
+    expect(kindRows('thread', 'grid'), 'thread').toBe(11)
     // The layouts: the form hides the fields of the other layouts, so a ring shows 3 shared + 8
     // layout + 3 frame = 12 rows for the drill (432 px of 439) and a grid of holes 11; the touch
     // form scrolls them (44 px rows), the panel form just fits. Nine rows was the note's wish, not

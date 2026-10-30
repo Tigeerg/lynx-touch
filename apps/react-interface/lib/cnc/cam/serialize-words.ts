@@ -20,6 +20,8 @@ export const KIND_WORDS: Record<OperationKind, string> = {
   slot: 'slot',
   chamfer: 'chamfer',
   tap: 'tap',
+  counterbore: 'counterbore',
+  thread: 'thread',
   custom: 'custom',
   probe: 'probe',
 }

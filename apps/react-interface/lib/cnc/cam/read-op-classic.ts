@@ -116,13 +116,21 @@ export function readDrillR(op: Operation, words: string[], key: string, where: s
   drill.hasR = true
 }
 
-/** The layout keys a tap shares with a drill: the same words, the same fields (`ops-kinds.ts`). */
+/** The layout keys a tap and a counterbore share with a drill: the same words, the same fields. */
 export const TAP_LAYOUT_KEYS: readonly string[] = ['hole', 'grid', 'circle', 'count', 'start', 'arc', 'fullTurn']
+
+/** The `r` of a counterbore: the R plane of G82, required by its check, read as the drill's. */
+export function readCounterboreR(op: Operation, words: string[], key: string, where: string): void {
+  arity(words, 1, key, where)
+  const cb = op as Extract<Operation, { kind: 'counterbore' }>
+  cb.rMm = num(words, 1, key, where)
+  cb.hasR = true
+}
 
 /** Reads one shape key of a classic kind into `op`; a key of another kind is a failure. */
 export function readClassicShapeKey(op: Operation, sub: string, words: string[], key: string, where: string): void {
-  // A tap reuses the drilling layout keys: the same `hole`/`grid`/`circle` words write its fields.
-  if (op.kind === 'drill' || (op.kind === 'tap' && TAP_LAYOUT_KEYS.includes(sub))) {
+  // A tap and a counterbore reuse the drilling layout keys: the same `hole`/`grid`/`circle` words.
+  if (op.kind === 'drill' || ((op.kind === 'tap' || op.kind === 'counterbore') && TAP_LAYOUT_KEYS.includes(sub))) {
     drillShape(op, sub, words, key, where)
   } else millShape(op, sub, words, key, where)
 }

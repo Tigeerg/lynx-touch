@@ -3,7 +3,7 @@
 // A tap has no layout of its own: the grid and the ring are the drilling ones, so the tap is read as
 // a drill of the same layout and `drillHoles` lays it out, exactly as the drill and the check do. This module keeps that one bridge, so the planner, the checker and the emitter
 // cannot drift apart on the centres of a tapped grid.
-import type { DrillOperation, TapOperation } from './ops'
+import type { CounterboreOperation, DrillOperation, TapOperation } from './ops'
 import type { HoleLayout } from './drill-holes'
 import { drillHoles } from './drill-holes'
 
@@ -44,3 +44,6 @@ const geometryOf = (
 
 /** The tapped centres, or the layout errors in Russian; an error gives no points. */
 export const tapHoles = (op: TapOperation): HoleLayout => drillHoles(tapAsDrill(op))
+
+/** The seat centres of a counterbore: the same bridge, the same drilling layout. */
+export const counterboreHoles = (op: CounterboreOperation): HoleLayout => drillHoles(op)

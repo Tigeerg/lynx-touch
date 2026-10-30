@@ -25,6 +25,7 @@ import { checkContour } from './validate-contour'
 import { checkChamfer, checkSlot } from './validate-slot'
 import { checkTap } from './validate-tap'
 import { checkCustom } from './validate-custom'
+import { checkCounterbore } from './validate-counterbore'
 import { probeValidation } from './probe'
 
 /** The shape rules of the kind of the operation: face, pocket, circle pocket, drilling, contour, slot, chamfer. */
@@ -51,6 +52,10 @@ export function checkGeometry(
       return checkChamfer(op, out)
     case 'tap':
       return checkTap(program, op, out)
+    case 'counterbore':
+    case 'thread':
+      // One module for both: the fastener seat and the body of a mill against a thread profile.
+      return checkCounterbore(program, op, out)
     case 'custom':
       return checkCustom(op, out)
     case 'probe':

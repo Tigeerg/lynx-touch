@@ -9,7 +9,7 @@
 import type { DrillGeometry, Operation, TapOperation } from './ops'
 import { arity, num, onOff } from './read-op-words'
 import { QprogError } from './qprog-error'
-import { readClassicShapeKey, TAP_LAYOUT_KEYS } from './read-op-classic'
+import { readClassicShapeKey, readCounterboreR, TAP_LAYOUT_KEYS } from './read-op-classic'
 
 /** The profile of a contour: pairs of `x y` on one line, at least one pair and an even count. */
 function contourPoints(words: string[], where: string): { x: number; y: number; z: number }[] {
@@ -112,12 +112,23 @@ export function readNewShapeKey(op: Operation, sub: string, words: string[], key
     op.widthMm = num(words, 1, key, where)
   } else if (sub === 'pattern' && op.kind === 'tap') {
     tapLayout(op, sub, words, key, where)
-  } else if (sub === 'pitch' && op.kind === 'tap') {
+  } else if (sub === 'pattern' && op.kind === 'counterbore') {
+    arity(words, 1, key, where)
+    const pattern = words[1] === undefined ? undefined : TAP_WORDS[words[1]]
+    if (pattern === undefined) throw new QprogError(0, `${where}op.pattern ждёт hole, grid или circle.`)
+    op.pattern = pattern
+  } else if (sub === 'pitch' && (op.kind === 'tap' || op.kind === 'thread')) {
     arity(words, 1, key, where)
     op.pitchMm = num(words, 1, key, where)
+  } else if (op.kind === 'thread') {
+    return threadKey(op, sub, words, key, where)
   } else if (sub === 'chamfer' && op.kind === 'chamfer') {
     arity(words, 1, key, where)
     op.chamferMm = num(words, 1, key, where)
+  } else if (op.kind === 'counterbore' && COUNTERBORE_KEYS.includes(sub)) {
+    readCounterboreKey(op, sub, words, key, where)
+  } else if (op.kind === 'counterbore' && TAP_LAYOUT_KEYS.includes(sub)) {
+    readClassicShapeKey(op, sub, words, key, where)
   } else if (op.kind === 'tap' && TAP_LAYOUT_KEYS.includes(sub)) {
     // The layout keys of a tap are the drilling ones: the classic reader writes the same fields.
     readClassicShapeKey(op, sub, words, key, where)
@@ -125,6 +136,58 @@ export function readNewShapeKey(op: Operation, sub: string, words: string[], key
     return false
   }
   return true
+}
+
+/** The shape keys of a counterbore beyond the drilling layout: the seat, its depth and the dwell. */
+export const COUNTERBORE_KEYS: readonly string[] = ['seat', 'seatDepth', 'dwell']
+
+/** A counterbore key: `seat`, `seatDepth`, `dwell` (the `r` is read by `read-op.ts`). */
+function readCounterboreKey(
+  op: Extract<Operation, { kind: 'counterbore' }>,
+  sub: string,
+  words: string[],
+  key: string,
+  where: string,
+): void {
+  arity(words, 1, key, where)
+  const value = num(words, 1, key, where)
+  if (sub === 'seat') op.seatDiameterMm = value
+  else if (sub === 'seatDepth') op.seatDepthMm = value
+  else op.dwellSec = value
+}
+
+/** A thread key: `hole`, `internal`, `threadDepth`, `allowance`, `stepOver` (the pitch above). */
+function threadKey(
+  op: Extract<Operation, { kind: 'thread' }>,
+  sub: string,
+  words: string[],
+  key: string,
+  where: string,
+): boolean {
+  switch (sub) {
+    case 'hole':
+      arity(words, 3, key, where)
+      op.hole = { x: num(words, 1, key, where), y: num(words, 2, key, where), r: num(words, 3, key, where) }
+      return true
+    case 'internal':
+      arity(words, 1, key, where)
+      op.internal = onOff(words, key, where)
+      return true
+    case 'threadDepth':
+      arity(words, 1, key, where)
+      op.threadDepthMm = num(words, 1, key, where)
+      return true
+    case 'allowance':
+      arity(words, 1, key, where)
+      op.threadAllowanceMm = num(words, 1, key, where)
+      return true
+    case 'stepOver':
+      arity(words, 1, key, where)
+      op.stepOverPct = num(words, 1, key, where)
+      return true
+    default:
+      return false
+  }
 }
 
 /** A probe key: `points`, `range`, `touch`, `axis` (PLAN-QUICKPROG, 7.6). */

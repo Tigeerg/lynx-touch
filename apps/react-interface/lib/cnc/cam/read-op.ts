@@ -10,8 +10,8 @@ import type { Operation, QuickProgram } from './ops'
 import { COMMON_KEYS } from './read-header'
 import { parseInteger, restAfter, unquoteText } from './serialize-words'
 import { arity, num, onOff } from './read-op-words'
-import { DRILL_KEYS, readClassicShapeKey, readDrillR, TAP_LAYOUT_KEYS } from './read-op-classic'
-import { readNewShapeKey } from './read-op-shapes'
+import { DRILL_KEYS, readClassicShapeKey, readCounterboreR, readDrillR, TAP_LAYOUT_KEYS } from './read-op-classic'
+import { COUNTERBORE_KEYS, readNewShapeKey } from './read-op-shapes'
 import { QprogError } from './qprog-error'
 
 export { DRILL_KEYS } from './read-op-classic'
@@ -32,6 +32,8 @@ export function opHead(text: string, line: number): OpHead {
   if (text === 'slot') return { kind: 'slot', drill: null }
   if (text === 'chamfer') return { kind: 'chamfer', drill: null }
   if (text === 'tap') return { kind: 'tap', drill: null }
+  if (text === 'counterbore') return { kind: 'counterbore', drill: null }
+  if (text === 'thread') return { kind: 'thread', drill: null }
   if (text === 'custom') return { kind: 'custom', drill: null }
   if (text === 'probe') return { kind: 'probe', drill: null }
   throw new QprogError(line, `неизвестный вид операции '${text}'.`)
@@ -47,6 +49,8 @@ export const SHAPE_KEYS: Record<Operation['kind'], string[]> = {
   slot: ['from', 'to', 'width', 'stepOver'],
   chamfer: ['from', 'to', 'chamfer'],
   tap: ['pattern', 'pitch'],
+  counterbore: ['pattern', 'seat', 'seatDepth', 'dwell'],
+  thread: ['hole', 'pitch', 'internal', 'threadDepth', 'allowance', 'stepOver'],
   custom: [],
   probe: ['points', 'range', 'touch', 'axis'],
 }
@@ -92,7 +96,7 @@ function commonValue(op: Operation, sub: string, line: string, words: string[], 
     arity(words, 1, key, where)
     const value = num(words, 1, key, where)
     // A drill has one feed: the plunge follows the working feed whatever the file says.
-    const oneFeed = op.kind === 'drill' || op.kind === 'tap' || op.kind === 'probe'
+    const oneFeed = op.kind === 'drill' || op.kind === 'tap' || op.kind === 'counterbore' || op.kind === 'probe'
     const plunge = oneFeed ? op.cutting.feedMmMin : op.cutting.plungeFeedMmMin
     op.cutting =
       sub === 'feed'
@@ -131,12 +135,13 @@ const keyKnown = (head: OpHead, sub: string): boolean =>
   (head.kind === 'custom' && sub === 'gcode') ||
   (head.kind === 'drill'
     ? DRILL_KEYS[head.drill as string]
-    : head.kind === 'tap'
-      ? [...SHAPE_KEYS.tap, ...TAP_LAYOUT_KEYS]
+    : head.kind === 'tap' || head.kind === 'counterbore'
+      ? [...SHAPE_KEYS[head.kind], ...TAP_LAYOUT_KEYS]
       : SHAPE_KEYS[head.kind]
   ).includes(sub) ||
   ['h', 'material'].includes(sub) ||
-  (head.kind === 'drill' && ['drill', 'r'].includes(sub))
+  (head.kind === 'drill' && ['drill', 'r'].includes(sub)) ||
+  (head.kind === 'counterbore' && ['r', ...COUNTERBORE_KEYS].includes(sub))
 
 /**
  * Reads the value of `op.<sub>` into `op`. `where` already carries `строка N: `; a failure is a
@@ -156,6 +161,10 @@ export function readOpValue(
   if (head.kind === 'drill') {
     if (sub === 'r') readDrillR(op, words, key, where)
     else readClassicShapeKey(op, sub, words, key, where)
+    return
+  }
+  if (head.kind === 'counterbore' && sub === 'r') {
+    readCounterboreR(op, words, key, where)
     return
   }
   if (!readNewShapeKey(op, sub, words, key, where)) readClassicShapeKey(op, sub, words, key, where)

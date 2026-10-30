@@ -68,11 +68,13 @@ function turnRule(op: Operation): TurnRule {
       return { rule: 'quarter' }
     case 'circle-pocket':
     case 'drill':
+    case 'counterbore':
       return { rule: 'shift' }
     case 'contour':
     case 'slot':
     case 'chamfer':
     case 'tap':
+    case 'thread':
       // A tap turns by its hole centres: the pitch is the feed per turn of the spindle, and a turn
       // of the layout around the part origin does not change it.
       return { rule: 'points' }
@@ -122,6 +124,7 @@ export function cloneOperation(
     case 'circle-pocket':
       return { ...op, id, circle: { ...op.circle, ...place({ ...op.circle, z: 0 }) } }
     case 'drill':
+    case 'counterbore':
       return { ...op, id, hole: { ...op.hole, ...place({ ...op.hole, z: 0 }) }, ...placedLayout(op, place) }
     case 'tap':
       return { ...op, id, hole: { ...op.hole, ...place({ ...op.hole, z: 0 }) }, ...placedLayout(op, place) }
@@ -130,13 +133,16 @@ export function cloneOperation(
     case 'slot':
     case 'chamfer':
       return { ...op, id, from: place(op.from), to: place(op.to) }
+    case 'thread':
+      // A thread turns by its centre: the pitch and the depth stay the thread's own.
+      return { ...op, id, hole: { ...op.hole, ...place({ ...op.hole, z: 0 }) } }
     case 'probe':
       return { ...op, id, points: op.points.map(place) }
   }
 }
 
 /** The grid origin of a drilling or tapping layout, moved; the steps and the counts stay. */ const placedLayout = (
-  op: Extract<Operation, { kind: 'drill' | 'tap' }>,
+  op: Extract<Operation, { kind: 'drill' | 'tap' | 'counterbore' }>,
   place: (point: Point3) => Point3,
 ): { x0: number; y0: number } => {
   const origin = place({ x: op.x0, y: op.y0, z: 0 })

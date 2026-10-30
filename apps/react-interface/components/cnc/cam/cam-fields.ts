@@ -91,6 +91,33 @@ const GEOMETRY: Record<OperationKind, FieldSpec[]> = {
     { key: 'fullTurn', label: 'Полный круг', unit: '', hint: 'Круг: последнее отверстие на первом' },
     { key: 'peckMm', label: 'Шаг вывода стружки', unit: 'мм', hint: 'G83; 0 — сверлить за один проход' },
   ],
+  counterbore: [
+    { key: 'pattern', label: 'Схема', unit: '', hint: 'Отверстие, сетка или по кругу' },
+    { key: 'seatDiameterMm', label: 'Диаметр цековки', unit: 'мм', hint: 'Гнездо под головку, не уже отверстия' },
+    { key: 'seatDepthMm', label: 'Глубина цековки', unit: 'мм', hint: 'Гнездо под головку ниже верха' },
+    { key: 'dwellSec', label: 'Выдержка', unit: 'с', hint: 'Пауза G82 на дне, чистит дно гнезда' },
+    { key: 'hole.x', label: 'Центр X', unit: 'мм', hint: 'Центр отверстия или круга отверстий' },
+    { key: 'hole.y', label: 'Центр Y', unit: 'мм', hint: 'Центр отверстия или круга отверстий' },
+    { key: 'hole.r', label: 'Радиус', unit: 'мм', hint: 'Радиус отверстия и круга' },
+    { key: 'cols', label: 'Столбцов', unit: 'шт', hint: 'Сетка: отверстий по X' },
+    { key: 'rows', label: 'Рядов', unit: 'шт', hint: 'Сетка: отверстий по Y' },
+    { key: 'dx', label: 'Шаг по X', unit: 'мм', hint: 'Сетка: расстояние между отверстиями' },
+    { key: 'dy', label: 'Шаг по Y', unit: 'мм', hint: 'Сетка: расстояние между рядами' },
+    { key: 'count', label: 'Отверстий', unit: 'шт', hint: 'Круг: сколько отверстий' },
+    { key: 'startDeg', label: 'Начало', unit: '°', hint: 'Круг: угол первого отверстия' },
+    { key: 'arcDeg', label: 'Дуга', unit: '°', hint: 'Круг: сектор расстановки' },
+    { key: 'fullTurn', label: 'Полный круг', unit: '', hint: 'Круг: последнее отверстие на первом' },
+  ],
+  thread: [
+    { key: 'hole.x', label: 'Центр X', unit: 'мм', hint: 'Центр резьбы' },
+    { key: 'hole.y', label: 'Центр Y', unit: 'мм', hint: 'Центр резьбы' },
+    { key: 'hole.r', label: 'Радиус резьбы', unit: 'мм', hint: 'Гребень внутренней, фланец наружной' },
+    { key: 'pitchMm', label: 'Шаг резьбы', unit: 'мм', hint: 'Подъём спирали за оборот' },
+    { key: 'internal', label: 'Внутренняя', unit: '', hint: 'Да — гайка, нет — наружная резьба' },
+    { key: 'threadDepthMm', label: 'Длина резьбы', unit: 'мм', hint: 'Витков = длина / шаг' },
+    { key: 'threadAllowanceMm', label: 'Припуск', unit: 'мм', hint: 'След на резьбе под чистовой проход' },
+    { key: 'stepOverPct', label: 'Шаг проходов', unit: '%', hint: 'Доля диаметра между проходами по радиусу' },
+  ],
   tap: [
     { key: 'pattern', label: 'Схема', unit: '', hint: 'Отверстие, сетка или по кругу' },
     { key: 'pitchMm', label: 'Шаг резьбы', unit: 'мм', hint: 'Подача за один оборот; G84 режет по шагу' },
@@ -122,6 +149,12 @@ const FRAME: FieldSpec[] = [
   { key: 'depthMm', label: 'Глубина', unit: 'мм', hint: 'Сколько снять ниже верха' },
   { key: 'stepDownMm', label: 'Шаг по Z', unit: 'мм', hint: 'Наибольший съём за один проход' },
 ]
+
+/** The seat layout of a counterbore: the hole it is cut on, one row of the form. */
+const holeFields = ['hole.x', 'hole.y', 'hole.r']
+
+/** The shape fields of a counterbore beyond the hole: the seat, its depth and the dwell. */
+const frameOfCounterbore = ['pattern', 'seatDiameterMm', 'seatDepthMm', 'dwellSec']
 
 /** The shape fields only one hole layout uses: the form shows them by `patternFields`. */
 const LAYOUT_HIDDEN = new Set(['cols', 'rows', 'dx', 'dy', 'count', 'startDeg', 'arcDeg', 'fullTurn'])
@@ -168,6 +201,7 @@ export const CHOICES: Record<string, readonly string[]> = {
   fullTurn: ['on', 'off'] as const,
   side: ['material', 'air'] as const,
   axis: ['X', 'Y', 'Z'] as const,
+  internal: ['on', 'off'] as const,
 }
 
 /**
@@ -194,6 +228,7 @@ export const CHOICE_LABEL: Record<string, string> = {
   grid: 'Сетка',
   circle: 'По кругу',
   on: 'Да',
+  internal: 'Да',
   material: 'В материал',
   air: 'Наружу',
   X: 'Ось X',
@@ -216,9 +251,13 @@ export const patternFields = (pattern: string): string[] =>
  * as a number for the budget.
  */
 export const kindRows = (kind: OperationKind, pattern: string): number => {
-  if (kind !== 'drill' && kind !== 'tap') return GEOMETRY[kind].length + FRAME.length
-  const shared = kind === 'drill' ? ['pattern', 'body'] : ['pattern']
-  return [...shared, ...patternFields(pattern)].length + FRAME.length
+  if (kind !== 'drill' && kind !== 'tap' && kind !== 'counterbore') return GEOMETRY[kind].length + FRAME.length
+  if (kind === 'drill') return [...['pattern', 'body'], ...patternFields(pattern)].length + FRAME.length
+  // A tap shows the layout of the pattern and adds its pitch; a counterbore shows the seat, its
+  // depth and the dwell over the hole it sits on.
+  const shared = kind === 'tap' ? ['pattern'] : frameOfCounterbore
+  const layout = kind === 'tap' ? patternFields(pattern) : holeFields
+  return [...shared, ...layout].length + FRAME.length
 }
 
 /** The address of one problem: the field of the check, or the field of the reason's words. */

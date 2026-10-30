@@ -18,14 +18,23 @@ const AXIS_EPS = 1e-12
 /** A cosine or sine of a multiple of pi that belongs on an axis is put on it exactly. */
 const onAxis = (value: number): number => (Math.abs(value) < AXIS_EPS ? 0 : value)
 
-/** The hole centres of the layout, or the reasons the layout cannot be laid out. */
-export function drillHoles(op: DrillOperation): HoleLayout {
+/** The fields a layout reads: the drilling geometry name and the hole radius of a ring. */
+export type HoleOp = Pick<
+  DrillOperation,
+  'pattern' | 'hole' | 'x0' | 'y0' | 'cols' | 'rows' | 'dx' | 'dy' | 'count' | 'startDeg' | 'arcDeg' | 'fullTurn'
+>
+
+/**
+ * The hole centres of the layout, or the reasons the layout cannot be laid out. A tap and a
+ * counterbore lay out their holes by the same function: their layout fields are the drilling ones.
+ */
+export function drillHoles(op: HoleOp): HoleLayout {
   if (op.pattern === 'grid') return gridHoles(op)
   if (op.pattern === 'circle') return ringHoles(op)
   return { points: [{ x: op.hole.x, y: op.hole.y }], errors: [] }
 }
 
-function gridHoles(op: DrillOperation): HoleLayout {
+function gridHoles(op: HoleOp): HoleLayout {
   if (op.cols <= 0 || op.rows <= 0) {
     return {
       points: [],
@@ -39,7 +48,7 @@ function gridHoles(op: DrillOperation): HoleLayout {
   return { points, errors: [] }
 }
 
-function ringHoles(op: DrillOperation): HoleLayout {
+function ringHoles(op: HoleOp): HoleLayout {
   if (op.count <= 0) {
     return { points: [], errors: [`Круг отверстий: число отверстий должно быть больше нуля, а задано ${op.count}.`] }
   }

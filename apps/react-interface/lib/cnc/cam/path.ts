@@ -22,6 +22,9 @@ import { planSlot } from './path-slot'
 import { planChamfer } from './path-chamfer'
 import { drillCycleMinutes, planDrill } from './path-drill'
 import { planTap, tapCycleMinutes } from './path-tap'
+import { planCounterbore } from './path-counterbore'
+import { planThread } from './path-thread'
+import { counterboreMinutes } from './bores'
 import { validate } from './validate'
 
 export { moveLength } from './path-builder'
@@ -96,6 +99,14 @@ const planOperation = (program: QuickProgram, operation: Operation, out: PathBui
       const plan = planTap(program, operation, out)
       return tapCycleMinutes(operation, plan.points.length)
     }
+    case 'counterbore':
+      // A cycle is the machine's: the seats are charged to `cycleMinutes` (`bores.ts`).
+      planCounterbore(program, operation, out)
+      return counterboreMinutes(program, operation)
+    case 'thread':
+      // The helix is a path: its arcs are charged move by move in `estimateSeconds`.
+      planThread(program, operation, out)
+      return 0
     case 'custom':
       // The lines are the program: no move is planned and the viewer parser is their only check.
       return 0

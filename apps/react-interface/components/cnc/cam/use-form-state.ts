@@ -25,10 +25,13 @@ export function useFormState(form: CamForm) {
   const errors = errorsByField(form.error ? [form.error] : [])
   // The operation the operator is building, as the rules see it. Its warnings go under the problem
   // line and only once the operation plans: a form that fails the save shows the problem, not a
-  // warning on top of it. The check runs on its own document, so it does not read the list.
+  // warning on top of it. The check runs on its own document, so it does not read the list. Some
+  // warnings travel with the errors (`formProblems`), the form shows them next to the problem.
   const live = formOperation(form, null)
-  const kindWarnings =
-    formProblems({ ...newProgram(), operations: [] }, form.values, live).length === 0 ? kindWarningsOf(live) : []
+  const problems = formProblems({ ...newProgram(), operations: [] }, form.values, live)
+  const warnings = kindWarningsOf(live)
+  const blocking = problems.filter((item) => !warnings.includes(item.reason))
+  const kindWarnings = blocking.length === 0 ? warnings : []
   const groups = fieldGroups(form.op, tab)
   const keysOfTab = groups.flatMap((g) => g.fields.map((f) => f.key))
   const others = groups.flatMap((g) => g.fields).filter((f) => errors[f.key] && !keysOfTab.includes(f.key))

@@ -18,6 +18,7 @@ export type {
   ChamferOperation,
   CirclePocketOperation,
   ContourOperation,
+  CounterboreOperation,
   CustomOperation,
   DrillGeometry,
   DrillGridGeometry,
@@ -32,11 +33,13 @@ export type {
   SlotOperation,
   TapOperation,
 } from './ops-kinds'
+export type { ThreadOperation } from './ops-kinds-q5'
 
 import type {
   ChamferOperation,
   CirclePocketOperation,
   ContourOperation,
+  CounterboreOperation,
   CustomOperation,
   DrillGeometry,
   DrillGridGeometry,
@@ -51,6 +54,7 @@ import type {
   SlotOperation,
   TapOperation,
 } from './ops-kinds'
+import type { ThreadOperation } from './ops-kinds-q5'
 
 /** A point in machine coordinates, mm; `z` is the tool tip (the trajectory centre). */
 export interface Point3 {
@@ -103,7 +107,18 @@ export type Coolant = 'off' | 'mist' | 'flood'
 export type Wcs = 'G54' | 'G55' | 'G56' | 'G57' | 'G58' | 'G59'
 
 export type OperationKind =
-  'face' | 'pocket' | 'circle-pocket' | 'drill' | 'contour' | 'slot' | 'chamfer' | 'tap' | 'custom' | 'probe'
+  | 'face'
+  | 'pocket'
+  | 'circle-pocket'
+  | 'drill'
+  | 'contour'
+  | 'slot'
+  | 'chamfer'
+  | 'tap'
+  | 'counterbore'
+  | 'thread'
+  | 'custom'
+  | 'probe'
 
 /** The fields every kind shares: the tool, the modes, the stock frame and the notes. */
 export interface OperationBase {
@@ -129,6 +144,8 @@ export type Operation =
   | SlotOperation
   | ChamferOperation
   | TapOperation
+  | CounterboreOperation
+  | ThreadOperation
   | CustomOperation
   | ProbeOperation
 
@@ -158,8 +175,8 @@ export interface QuickProgram {
 /** The program fields a shape rule reads: the stock, which every kind checks against. */
 export type ProgramShape = Pick<QuickProgram, 'stock'>
 
-/** The shape of one hole layout, taken out of a drill operation. */
-export const drillGeometry = (op: DrillOperation): DrillGeometry => {
+/** The shape of one hole layout, taken out of a drill operation (a tap and a counterbore share it). */
+export const drillGeometry = (op: Pick<DrillOperation, DrillGeometryKeys>): DrillGeometry => {
   switch (op.pattern) {
     case 'hole':
       return { pattern: 'hole', hole: op.hole }
@@ -178,6 +195,10 @@ export const drillGeometry = (op: DrillOperation): DrillGeometry => {
       }
   }
 }
+
+/** The drilling fields a layout reads: the pattern, the hole and its grid or ring. */
+type DrillGeometryKeys =
+  'pattern' | 'hole' | 'x0' | 'y0' | 'cols' | 'rows' | 'dx' | 'dy' | 'count' | 'startDeg' | 'arcDeg' | 'fullTurn'
 
 /** The top of the stock whatever the order of the corners. */
 export const stockTop = (stock: StockBox): number => Math.max(stock.min.z, stock.max.z)

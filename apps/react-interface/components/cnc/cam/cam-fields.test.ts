@@ -25,12 +25,13 @@ import {
 
 const KINDS: OperationKind[] = ['face', 'pocket', 'circle-pocket', 'drill']
 const Q4: OperationKind[] = ['contour', 'slot', 'chamfer', 'tap', 'custom', 'probe']
+const Q5: OperationKind[] = ['counterbore', 'thread']
 
 const noLabelShort = (text: string) => text.trim().length >= 3
 
 describe('поля формы', () => {
   it('каждое поле любого вида имеет подпись, единицу и подсказку', () => {
-    for (const kind of [...KINDS, ...Q4]) {
+    for (const kind of [...KINDS, ...Q4, ...Q5]) {
       for (const field of allFields(kind)) {
         expect(field.key, kind).toMatch(/^[a-zA-Z]+(\.[a-zA-Z]+)?$/)
         expect(noLabelShort(field.label), `${kind}:${field.key}`).toBe(true)
@@ -41,7 +42,7 @@ describe('поля формы', () => {
   })
 
   it('ключ поля есть в значениях формы: подпись не расходится с CAM_PARAM', () => {
-    for (const kind of [...KINDS, ...Q4]) {
+    for (const kind of [...KINDS, ...Q4, ...Q5]) {
       const values = valuesOf(newOperation(kind, { id: '', topZ: 0 }))
       for (const field of allFields(kind)) {
         expect(values, `${kind}:${field.key}`).toHaveProperty(field.key)
@@ -136,7 +137,13 @@ describe('поля новых видов (PLAN-QUICKPROG, 7.6)', () => {
     for (const kind of ['contour', 'slot', 'chamfer', 'custom', 'probe'] as const) {
       expect(kindRows(kind, 'grid'), `${kind}: строк`).toBeLessThanOrEqual(9)
     }
+    // A counterbore carries its seat, its depth and the dwell on every layout: ten rows of 36 px is
+    // 360 px of the 439 px column, so the panel form fits and the touch form scrolls nothing here.
+    expect(kindRows('counterbore', 'grid'), 'counterbore: сетка').toBe(10)
     expect(kindRows('tap', 'grid'), 'tap: сетка').toBe(10)
     expect(kindRows('tap', 'circle'), 'tap: круг').toBe(11)
+    // A thread mill is the measured exception of Q5: eight shape fields plus the frame are 11 rows
+    // of 36 px = 396 px of the 439 px column; the touch form scrolls it.
+    expect(kindRows('thread', 'grid'), 'thread: строк').toBe(11)
   })
 })

@@ -140,7 +140,7 @@ function checkCutting(op: Operation, out: Problem[]): void {
   }
   // A drill has one feed by construction: a difference there is the normalisation of the model,
   // not a mistake of the operator, so the plunge rule is a mill rule only.
-  if (op.kind === 'drill') return
+  if (op.kind === 'drill' || op.kind === 'counterbore') return
   const plunge = op.cutting.plungeFeedMmMin
   if (plunge <= 0) {
     add(out, 'cutting.plungeFeedMmMin', 'Подача врезания должна быть больше нуля.')
@@ -176,7 +176,11 @@ function checkStep(op: Operation, out: Problem[]): void {
   // value. A negative step is a mistake of any kind. A custom block has no step: its lines are its
   // own program, and a probe measures without a pass to split.
   if (op.kind === 'custom' || op.kind === 'probe') return
-  if ((op.kind === 'drill' || op.kind === 'tap') && op.stepDownMm >= 0) return
+  if (
+    (op.kind === 'drill' || op.kind === 'tap' || op.kind === 'counterbore' || op.kind === 'thread') &&
+    op.stepDownMm >= 0
+  )
+    return
   if (!(op.stepDownMm > 0)) {
     add(out, 'stepDownMm', 'Шаг врезания должен быть больше нуля: иначе проходов не будет.')
   } else if (op.stepDownMm > op.depthMm && op.depthMm > 0) {

@@ -13,6 +13,7 @@ import { kept, int, str, on } from './form-fields'
 import { pointsOf, pointsText } from './contour-points'
 import { customWithText, linesText } from './form-lines'
 import { probeAxis, probePointsOf, probePointsText } from './probe-points'
+import { counterboreFields, counterboreValues, threadFields, threadValues } from './form-fields-q5'
 
 /** The shape values of the kind; the narrow switch is what makes a forgotten kind a compile error. */
 export function valuesOfShape(op: Operation): Record<string, string> {
@@ -78,6 +79,10 @@ export function valuesOfShape(op: Operation): Record<string, string> {
         startDeg: String(op.startDeg),
         arcDeg: String(op.arcDeg),
       }
+    case 'counterbore':
+      return counterboreValues(op)
+    case 'thread':
+      return threadValues(op)
     case 'custom':
       return { gcode: linesText(op.gcode) }
     case 'probe':
@@ -199,6 +204,10 @@ export function fieldsOfShape(op: Operation, v: Record<string, string>, common: 
         arcDeg: kept(v, 'arcDeg', op.arcDeg),
         fullTurn: on(v, 'fullTurn', op.fullTurn),
       }
+    case 'counterbore':
+      return counterboreFields(op, v, common)
+    case 'thread':
+      return threadFields(op, v, common)
     case 'custom': {
       // The text of the field is split back into the lines of the block; an absent field keeps the
       // document lines, so a form that never touched the text does not wipe the block.

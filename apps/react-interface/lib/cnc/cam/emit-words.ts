@@ -48,7 +48,9 @@ const FAMILY: Record<Operation['kind'], string> = {
   slot: 'FLAT',
   chamfer: 'FLAT',
   drill: 'DRILL',
+  counterbore: 'DRILL',
   tap: 'TAP',
+  thread: 'FLAT',
   custom: 'CODE',
   probe: 'PROBE',
 }

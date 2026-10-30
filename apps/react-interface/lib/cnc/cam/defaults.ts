@@ -7,12 +7,15 @@ import type { DrillBody, Material } from './feeds'
 import { cuttingFor } from './feeds'
 import type { NewOperation } from './operation-init'
 import { newProbe } from './defaults-probe'
+import { newCounterbore, newThread } from './defaults-q5'
 import { common } from './defaults-common'
+export { DEFAULT_DWELL_SEC, DEFAULT_SEAT_DEPTH_MM, DEFAULT_SEAT_DIAMETER_MM } from './defaults-q5'
 export { DEFAULT_PROBE_RANGE_MM, TOUCH_FEED_MM_MIN } from './probe-defaults'
 import type {
   ChamferOperation,
   CirclePocketOperation,
   ContourOperation,
+  CounterboreOperation,
   CustomOperation,
   DrillOperation,
   FaceOperation,
@@ -23,6 +26,7 @@ import type {
   SlotOperation,
   StockBox,
   TapOperation,
+  ThreadOperation,
   ToolRef,
 } from './ops'
 import { stockTop } from './ops'
@@ -61,6 +65,9 @@ export const DEFAULT_CHAMFER_MM = 1
  * and edits. A hole of the default tool is too small for M8, but the form says so, not the default.
  */
 export const DEFAULT_TAP_PITCH_MM = 1.25
+
+/** The thread of a new thread mill: the M8 coarse pitch of `DEFAULT_TAP_PITCH_MM`, internal. */
+export const DEFAULT_THREAD_PITCH_MM = DEFAULT_TAP_PITCH_MM
 
 /** A new program: schema 1, G54, G64 0.01, the M1 stop on and the safe Z 5 mm above the stock. */
 export const newProgram = (stock: StockBox = DEFAULT_STOCK, name = 'QUICK'): QuickProgram => ({
@@ -102,6 +109,8 @@ export function newOperation(kind: 'contour', init: NewOperation): ContourOperat
 export function newOperation(kind: 'slot', init: NewOperation): SlotOperation
 export function newOperation(kind: 'chamfer', init: NewOperation): ChamferOperation
 export function newOperation(kind: 'tap', init: NewOperation): TapOperation
+export function newOperation(kind: 'counterbore', init: NewOperation): CounterboreOperation
+export function newOperation(kind: 'thread', init: NewOperation): ThreadOperation
 export function newOperation(kind: 'custom', init: NewOperation): CustomOperation
 export function newOperation(kind: 'probe', init: NewOperation): ProbeOperation
 export function newOperation(kind: Operation['kind'], init: NewOperation): Operation
@@ -109,6 +118,10 @@ export function newOperation(kind: Operation['kind'], init: NewOperation): Opera
   const tool = init.tool ?? DEFAULT_TOOL
   const material = init.material ?? DEFAULT_MATERIAL
   if (kind === 'probe') return newProbe(init, tool, material)
+  // The Q5 kinds have their own module: a seat of a fastener and the helix of a thread are long
+  // defaults of their own, and `defaults.ts` stays the switch of the older ones.
+  if (kind === 'counterbore') return newCounterbore(init, tool, material)
+  if (kind === 'thread') return newThread(init, tool, material)
   switch (kind) {
     case 'face': {
       const fields = common(init, tool, material, null)

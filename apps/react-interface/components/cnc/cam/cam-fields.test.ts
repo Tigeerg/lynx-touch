@@ -11,15 +11,26 @@ import { newForm } from '@/lib/cnc/cam/form'
 import { valuesOf } from '@/lib/cnc/cam/form'
 import type { OperationKind } from '@/lib/cnc/cam/ops'
 import { validate } from '@/lib/cnc/cam/validate'
-import { allFields, CHOICE_LABEL, CHOICES, errorsByField, fieldFor, fieldGroups, patternFields } from './cam-fields'
+import {
+  allFields,
+  CHOICE_LABEL,
+  CHOICES,
+  errorsByField,
+  fieldFor,
+  fieldGroups,
+  kindRows,
+  MULTILINE,
+  patternFields,
+} from './cam-fields'
 
 const KINDS: OperationKind[] = ['face', 'pocket', 'circle-pocket', 'drill']
+const Q4: OperationKind[] = ['contour', 'slot', 'chamfer', 'tap', 'custom', 'probe']
 
 const noLabelShort = (text: string) => text.trim().length >= 3
 
 describe('поля формы', () => {
   it('каждое поле любого вида имеет подпись, единицу и подсказку', () => {
-    for (const kind of KINDS) {
+    for (const kind of [...KINDS, ...Q4]) {
       for (const field of allFields(kind)) {
         expect(field.key, kind).toMatch(/^[a-zA-Z]+(\.[a-zA-Z]+)?$/)
         expect(noLabelShort(field.label), `${kind}:${field.key}`).toBe(true)
@@ -30,7 +41,7 @@ describe('поля формы', () => {
   })
 
   it('ключ поля есть в значениях формы: подпись не расходится с CAM_PARAM', () => {
-    for (const kind of KINDS) {
+    for (const kind of [...KINDS, ...Q4]) {
       const values = valuesOf(newOperation(kind, { id: '', topZ: 0 }))
       for (const field of allFields(kind)) {
         expect(values, `${kind}:${field.key}`).toHaveProperty(field.key)
@@ -93,5 +104,39 @@ describe('ошибка рядом с полем', () => {
     if (checked.ok) return
     const byField = errorsByField(checked.bad)
     expect(byField.depthMm).toContain('Глубина')
+  })
+})
+
+describe('поля новых видов (PLAN-QUICKPROG, 7.6)', () => {
+  it('выборы контура, паза и щупа нарисованы списком, а не числом', () => {
+    for (const key of ['closed', 'side', 'axis', 'pattern']) {
+      expect(CHOICES[key], key).toBeDefined()
+      for (const value of CHOICES[key]) expect(CHOICE_LABEL[value], `${key}:${value}`).toBeTruthy()
+    }
+  })
+
+  it('точки контура и щупа и блок G-кода — многострочное поле', () => {
+    for (const kind of ['contour', 'probe', 'custom'] as const) {
+      const keys = allFields(kind).map((f) => f.key)
+      expect(keys, kind).toContain('points'.replace('points', kind === 'custom' ? 'gcode' : 'points'))
+      expect(MULTILINE, kind).toContain(kind === 'custom' ? 'gcode' : 'points')
+    }
+  })
+
+  it('«Полный круг» сверла — выбор Да/Нет, а не пустая строка', () => {
+    expect(allFields('drill').map((f) => f.key)).toContain('fullTurn')
+    expect(CHOICES.fullTurn).toEqual(['on', 'off'])
+    expect(CHOICE_LABEL.off).toBe('Нет')
+  })
+
+  it('форма нового вида не растёт: схема метчика скрывает чужие поля', () => {
+    // The note asks for six to eight visible rows; a slot (six shape fields plus three frame ones)
+    // is the measured exception, nine rows of 36 px = 324 px of the 439 px panel column. A tap has
+    // three layouts in one table, and the form shows one of them (`kindRows`), as it does for a drill.
+    for (const kind of ['contour', 'slot', 'chamfer', 'custom', 'probe'] as const) {
+      expect(kindRows(kind, 'grid'), `${kind}: строк`).toBeLessThanOrEqual(9)
+    }
+    expect(kindRows('tap', 'grid'), 'tap: сетка').toBe(10)
+    expect(kindRows('tap', 'circle'), 'tap: круг').toBe(11)
   })
 })

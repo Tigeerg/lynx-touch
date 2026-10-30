@@ -88,6 +88,7 @@ const GEOMETRY: Record<OperationKind, FieldSpec[]> = {
     { key: 'count', label: 'Отверстий', unit: 'шт', hint: 'Круг: сколько отверстий' },
     { key: 'startDeg', label: 'Начало', unit: '°', hint: 'Круг: угол первого отверстия' },
     { key: 'arcDeg', label: 'Дуга', unit: '°', hint: 'Круг: сектор расстановки' },
+    { key: 'fullTurn', label: 'Полный круг', unit: '', hint: 'Круг: последнее отверстие на первом' },
     { key: 'peckMm', label: 'Шаг вывода стружки', unit: 'мм', hint: 'G83; 0 — сверлить за один проход' },
   ],
   tap: [
@@ -121,6 +122,9 @@ const FRAME: FieldSpec[] = [
   { key: 'depthMm', label: 'Глубина', unit: 'мм', hint: 'Сколько снять ниже верха' },
   { key: 'stepDownMm', label: 'Шаг по Z', unit: 'мм', hint: 'Наибольший съём за один проход' },
 ]
+
+/** The shape fields only one hole layout uses: the form shows them by `patternFields`. */
+const LAYOUT_HIDDEN = new Set(['cols', 'rows', 'dx', 'dy', 'count', 'startDeg', 'arcDeg', 'fullTurn'])
 
 const TOOL: FieldSpec[] = [
   { key: 'tool.number', label: 'Номер инструмента', unit: '', hint: 'Строка таблицы инструмента' },
@@ -161,6 +165,7 @@ export const CHOICES: Record<string, readonly string[]> = {
   coolant: ['off', 'mist', 'flood'] as const,
   pattern: ['hole', 'grid', 'circle'] as const,
   closed: ['on', 'off'] as const,
+  fullTurn: ['on', 'off'] as const,
   side: ['material', 'air'] as const,
   axis: ['X', 'Y', 'Z'] as const,
 }
@@ -168,9 +173,10 @@ export const CHOICES: Record<string, readonly string[]> = {
 /**
  * The inputs the form draws as a multi-line text: one line of text per list element. The form renders
  * them with a textarea and splits the text back on the line breaks (`linesOf`), so the typed program
- * keeps its own lines.
+ * keeps its own lines. A contour and a probe hold their points as one list typed by hand, so they
+ * get the same box: a single line of twenty vertices is unreadable on 1024x600.
  */
-export const MULTILINE: readonly string[] = ['gcode']
+export const MULTILINE: readonly string[] = ['gcode', 'points']
 
 /** The list of lines of a multi-line field, as `CustomOperation.gcode` holds it. */
 export { linesOf } from '@/lib/cnc/cam/form-lines'
@@ -181,7 +187,7 @@ export const CHOICE_LABEL: Record<string, string> = {
   steel: 'Сталь',
   hss: 'HSS',
   carbide: 'Твёрдый сплав',
-  off: 'Выкл',
+  off: 'Нет',
   mist: 'Туман',
   flood: 'Поток',
   hole: 'Отверстие',
@@ -200,8 +206,20 @@ export const patternFields = (pattern: string): string[] =>
   pattern === 'grid'
     ? ['hole.x', 'hole.y', 'cols', 'rows', 'dx', 'dy']
     : pattern === 'circle'
-      ? ['hole.x', 'hole.y', 'hole.r', 'count', 'startDeg', 'arcDeg']
+      ? ['hole.x', 'hole.y', 'hole.r', 'count', 'startDeg', 'arcDeg', 'fullTurn']
       : ['hole.x', 'hole.y', 'hole.r']
+
+/**
+ * The rows «Геометрия» really shows for a kind: the shape fields, plus the fields every layout
+ * shares (`pattern`, a drill's body) and the frame of the pass. A hole kind hides the other layouts
+ * (`patternFields`); the form's own rule is `isHidden` in `cam-form.tsx`, and this is the same rule
+ * as a number for the budget.
+ */
+export const kindRows = (kind: OperationKind, pattern: string): number => {
+  if (kind !== 'drill' && kind !== 'tap') return GEOMETRY[kind].length + FRAME.length
+  const shared = kind === 'drill' ? ['pattern', 'body'] : ['pattern']
+  return [...shared, ...patternFields(pattern)].length + FRAME.length
+}
 
 /** The address of one problem: the field of the check, or the field of the reason's words. */
 const HINTS: [RegExp, string][] = [
@@ -223,6 +241,10 @@ export const fieldFor = (problem: { field: string; reason: string }): string => 
   }
   return problem.field
 }
+
+/** The inputs of a kind drawn as a choice (`CHOICES`) on its «Геометрия» tab, in form order. */
+export const choiceFields = (kind: OperationKind): string[] =>
+  GEOMETRY[kind].filter((f) => CHOICES[f.key] !== undefined).map((f) => f.key)
 
 /** The first reason per input: one input gets one line under it, the rest stay in the message. */
 export const errorsByField = (problems: { field: string; reason: string }[]): Record<string, string> => {

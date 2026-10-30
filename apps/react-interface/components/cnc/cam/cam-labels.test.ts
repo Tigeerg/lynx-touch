@@ -9,13 +9,54 @@ import { describe, expect, it } from 'vitest'
 import { newOperation, newProgram } from '@/lib/cnc/cam/defaults'
 import { valuesOf } from '@/lib/cnc/cam/form'
 import type { OperationKind } from '@/lib/cnc/cam/ops'
-import { formatMm, headerText, KIND_LABEL, keySize, toolText } from './cam-labels'
+import { formatMm, headerText, KIND_LABEL, keySize, kindWarnings, toolText, warningText } from './cam-labels'
 
-const KINDS: OperationKind[] = ['face', 'pocket', 'circle-pocket', 'drill']
+const KINDS: OperationKind[] = [
+  'face',
+  'pocket',
+  'circle-pocket',
+  'drill',
+  'contour',
+  'slot',
+  'chamfer',
+  'tap',
+  'custom',
+  'probe',
+]
 
 describe('слова оверлея', () => {
   it('у каждого вида операции есть русское название из записки', () => {
-    expect(KINDS.map((k) => KIND_LABEL[k])).toEqual(['Плоскость', 'Карман', 'Круглый карман', 'Отверстия'])
+    expect(KINDS.map((k) => KIND_LABEL[k])).toEqual([
+      'Плоскость',
+      'Карман',
+      'Круглый карман',
+      'Отверстия',
+      'Контур',
+      'Паз',
+      'Фаска',
+      'Метчик',
+      'Custom G Code',
+      'Блок щупа',
+    ])
+  })
+
+  it('карточка нового вида читает его ключевой размер', () => {
+    const contour = newOperation('contour', { id: '', topZ: 0 })
+    expect(keySize(contour)).toContain('замкнут')
+    const slot = newOperation('slot', { id: '', topZ: 0 })
+    expect(keySize(slot)).toContain('шир.')
+    const probe = newOperation('probe', { id: '', topZ: 0 })
+    expect(keySize(probe)).toContain('мм')
+  })
+
+  it('предупреждения не блокируют запись и не подменяют ошибку', () => {
+    const slot = newOperation('slot', { id: '', topZ: 0 })
+    expect(kindWarnings(slot)).toEqual([])
+    const wide = { ...slot, widthMm: slot.tool.diameterMm * 3 } as typeof slot
+    expect(kindWarnings(wide)[0]).toContain('двух диаметров')
+    const face = newOperation('face', { id: '', topZ: 0 })
+    expect(kindWarnings(face)).toEqual([])
+    expect(warningText(['a', 'b'])).toBe('Проверьте: a b')
   })
 
   it('карточка читает инструмент и ключевой размер', () => {

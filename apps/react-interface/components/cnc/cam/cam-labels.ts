@@ -4,6 +4,9 @@
 // overlay and its tests read the same words, and a second copy of a caption has no place to hide.
 // The form field tables stay in `cam-fields.ts`.
 import type { Operation, OperationKind, QuickProgram } from '@/lib/cnc/cam/ops'
+import { probeWarnings } from '@/lib/cnc/cam/probe'
+import { slotWarnings } from '@/lib/cnc/cam/validate-slot'
+import { tapWarnings } from '@/lib/cnc/cam/validate-tap'
 
 /** The kind names of the picker and of an operation card; P1 requires the word, not the icon. */
 export const KIND_LABEL: Record<OperationKind, string> = {
@@ -71,3 +74,25 @@ export function headerText(program: QuickProgram): { wcs: string; g64: string; s
     stock: `${size(min.x, max.x)}×${size(min.y, max.y)}×${size(min.z, max.z)} · Z ${formatMm(topZ)}`,
   }
 }
+
+/**
+ * The warnings of a kind that do not block the save (PLAN-QUICKPROG, 7.6): a slot wider than two
+ * diameters, a pitch off the standard series, a probe touching faster than it cuts. The card shows
+ * the count as a sign, the reason stays in the module that owns the rule; a tap without rigid
+ * tapping is an error of the save and never lands here.
+ */
+export function kindWarnings(op: Operation): string[] {
+  switch (op.kind) {
+    case 'tap':
+      return tapWarnings(op).map((w) => w.reason)
+    case 'slot':
+      return slotWarnings(op).map((w) => w.reason)
+    case 'probe':
+      return probeWarnings(op).map((w) => w.reason)
+    default:
+      return []
+  }
+}
+
+/** The word on a warning sign: one line in the card, the reasons on hover. */
+export const warningText = (reasons: string[]): string => `Проверьте: ${reasons.join(' ')}`

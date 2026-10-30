@@ -10,7 +10,7 @@ import { Delete } from 'lucide-react'
 import type { Dispatch } from 'react'
 import type { CamAction } from '@/lib/cnc/cam/cam'
 import { cn } from '@/lib/utils'
-import { CHOICES } from './cam-fields'
+import { CHOICES, MULTILINE } from './cam-fields'
 
 // `-` is the sign of a number as the parser reads it (`Number('-2')`); the minus glyph is not.
 const KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', '.', '0', '-']
@@ -28,8 +28,8 @@ export function Keypad({
   value: string | null
   dispatch: Dispatch<CamAction>
 }) {
-  // A choice field is picked from its list; the pad would only type into a value the list rejects.
-  if (field === null || value === null || CHOICES[field] !== undefined) {
+  // A choice is a list and a block of text is typed on the keyboard: the pad edits numbers only.
+  if (field === null || value === null || CHOICES[field] !== undefined || MULTILINE.includes(field)) {
     return (
       <p className="shrink-0 rounded-md border border-dashed px-2 py-1.5 text-[10px] text-muted-foreground">
         Коснитесь числа в форме — под ней появится цифровой блок

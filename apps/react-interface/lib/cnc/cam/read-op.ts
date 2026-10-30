@@ -1,14 +1,20 @@
 // One operation of a `.qprog` file (PLAN-QUICKPROG, 6, 7.4), C3, the port of
 // `serialize_read_op.cpp` and `qprog_operation.cpp`.
 //
-// This module owns the table of kinds and the arity of one `op.*` key: a new key is one branch here
-// and one line in `serialize-write.ts`. The line loop is in `read-program.ts`. A contour is the one
-// kind whose shape is a list: `op.points` takes pairs `x y` to the end of the line, the rest of the
-// keys keep their fixed arity.
+// This module owns the table of kinds and the common keys of an `op.*` key: a new common key is one
+// branch here and one line in `serialize-write.ts`. The line loop is in `read-program.ts`; the shape
+// keys of the classic kinds (drill, face, pocket, circle-pocket) are in `read-op-classic.ts`, of the
+// new ones (contour, slot, chamfer) in `read-op-shapes.ts`, and the small lexer they share in
+// `read-op-words.ts`. This file is the facade: it re-exports the tables the reader loop needs.
 import type { Operation, QuickProgram } from './ops'
 import { COMMON_KEYS } from './read-header'
-import { parseInteger, parseNumber, parseOnOff, restAfter, unquoteText } from './serialize-words'
+import { parseInteger, restAfter, unquoteText } from './serialize-words'
+import { arity, num, onOff } from './read-op-words'
+import { DRILL_KEYS, readClassicShapeKey, readDrillR } from './read-op-classic'
+import { readNewShapeKey } from './read-op-shapes'
 import { QprogError } from './qprog-error'
+
+export { DRILL_KEYS } from './read-op-classic'
 
 /** The kind word of an `op` line: the kind of the union and, for a drill, its layout word. */
 export interface OpHead {
@@ -37,163 +43,6 @@ export const SHAPE_KEYS: Record<Operation['kind'], string[]> = {
   contour: ['points', 'closed', 'allowance', 'side'],
   slot: ['from', 'to', 'width', 'stepOver'],
   chamfer: ['from', 'to', 'chamfer'],
-}
-
-/** The shape keys of a drilling layout; the layout is chosen by the `op` word. */
-export const DRILL_KEYS: Record<string, string[]> = {
-  drill: ['hole', 'peck'],
-  'drill-grid': ['grid', 'peck'],
-  'drill-circle': ['circle', 'count', 'start', 'arc', 'fullTurn', 'peck'],
-}
-
-/** One numeric value: the field of `words[index]`, or a failure that names the key. */
-const num = (words: string[], index: number, key: string, where: string): number => {
-  const value = words[index] === undefined ? null : parseNumber(words[index])
-  if (value === null) throw new QprogError(0, `${where}${key} ждёт число.`)
-  return value
-}
-
-/** The exact arity of a key: `count` values, not more and not fewer. */
-const arity = (words: string[], count: number, key: string, where: string): void => {
-  if (words.length !== count + 1) {
-    throw new QprogError(
-      0,
-      `${where}поле '${key}' ждёт ${String(count)} знач., а получило ${String(words.length - 1)}.`,
-    )
-  }
-}
-
-/** The `on`/`off` value of `words[1]`, or a failure that names the key. */
-const onOff = (words: string[], key: string, where: string): boolean => {
-  const value = words.length === 2 ? parseOnOff(words[1]) : null
-  if (value === null) throw new QprogError(0, `${where}${key} ждёт 'on' или 'off'.`)
-  return value
-}
-
-/** The profile of a contour: pairs of `x y` on one line, at least one pair and an even count. */
-function contourPoints(words: string[], where: string): { x: number; y: number; z: number }[] {
-  if (words.length < 2 || words.length % 2 !== 0) {
-    throw new QprogError(0, `${where}op.points ждёт пары 'x y', а получило ${String(words.length)} знач.`)
-  }
-  const points: { x: number; y: number; z: number }[] = []
-  for (let i = 0; i + 1 < words.length; i += 2) {
-    points.push({ x: num(words, i, 'points', where), y: num(words, i + 1, 'points', where), z: 0 })
-  }
-  return points
-}
-
-/** The drill, whose common fields the board shares: every branch writes into it. */
-const asDrill = (op: Operation): Extract<Operation, { kind: 'drill' }> => op as Extract<Operation, { kind: 'drill' }>
-
-/** The `circle` key of a circle pocket and of a ring: the same three numbers, another field. */
-const writeCircle = (op: Operation, sub: string, words: string[], key: string, where: string): void => {
-  arity(words, 3, key, where)
-  const x = num(words, 1, key, where)
-  const y = num(words, 2, key, where)
-  const r = num(words, 3, key, where)
-  if (sub === 'hole') {
-    asDrill(op).hole = { x, y, r }
-  } else if (op.kind === 'circle-pocket') {
-    op.circle = { x, y, r }
-  } else {
-    asDrill(op).hole = { x, y, r }
-  }
-}
-
-/** The geometry keys of a drilling layout: `hole`, `grid`, `circle`, `count`, `start`, `arc`. */
-function drillShape(op: Operation, sub: string, words: string[], key: string, where: string): void {
-  const drill = asDrill(op)
-  if (sub === 'hole' || sub === 'circle') {
-    writeCircle(op, sub, words, key, where)
-  } else if (sub === 'grid') {
-    arity(words, 6, key, where)
-    const cols = words[3] === undefined ? null : parseInteger(words[3])
-    const rows = words[4] === undefined ? null : parseInteger(words[4])
-    if (cols === null || rows === null) throw new QprogError(0, `${where}op.grid ждёт целые cols и rows.`)
-    drill.x0 = num(words, 1, key, where)
-    drill.y0 = num(words, 2, key, where)
-    drill.cols = cols
-    drill.rows = rows
-    drill.dx = num(words, 5, key, where)
-    drill.dy = num(words, 6, key, where)
-  } else if (sub === 'count') {
-    arity(words, 1, key, where)
-    const value = words[1] === undefined ? null : parseInteger(words[1])
-    if (value === null) throw new QprogError(0, `${where}op.count ждёт целое.`)
-    drill.count = value
-  } else if (sub === 'start' || sub === 'arc') {
-    arity(words, 1, key, where)
-    const value = num(words, 1, key, where)
-    if (sub === 'start') drill.startDeg = value
-    else drill.arcDeg = value
-  } else if (sub === 'fullTurn') {
-    arity(words, 1, key, where)
-    drill.fullTurn = onOff(words, key, where)
-  } else if (sub === 'peck' || sub === 'r') {
-    arity(words, 1, key, where)
-    const value = num(words, 1, key, where)
-    if (sub === 'peck') drill.peckMm = value
-    else {
-      drill.rMm = value
-      drill.hasR = true
-    }
-  }
-}
-
-/** The geometry keys of a milling kind: `z`, `rect`, `circle`, `cornerRadius`, the allowance. */
-function millShape(op: Operation, sub: string, words: string[], key: string, where: string): void {
-  if (sub === 'circle') {
-    writeCircle(op, sub, words, key, where)
-  } else if (sub === 'z' && op.kind === 'face') {
-    arity(words, 1, key, where)
-    op.z = num(words, 1, key, where)
-  } else if (sub === 'rect' && op.kind === 'pocket') {
-    arity(words, 4, key, where)
-    const x = num(words, 1, key, where)
-    const y = num(words, 2, key, where)
-    const w = num(words, 3, key, where)
-    const h = num(words, 4, key, where)
-    op.rect = { x, y, w, h }
-  } else if (sub === 'cornerRadius' && op.kind === 'pocket') {
-    arity(words, 1, key, where)
-    op.cornerRadiusMm = num(words, 1, key, where)
-  } else if (sub === 'finishAllowance' && (op.kind === 'pocket' || op.kind === 'circle-pocket')) {
-    arity(words, 1, key, where)
-    op.finishAllowanceMm = num(words, 1, key, where)
-  } else if (sub === 'points' && op.kind === 'contour') {
-    op.points = contourPoints(words.slice(1), where)
-  } else if (sub === 'closed' && op.kind === 'contour') {
-    arity(words, 1, key, where)
-    op.closed = onOff(words, key, where)
-  } else if (sub === 'allowance' && op.kind === 'contour') {
-    arity(words, 1, key, where)
-    op.allowanceMm = num(words, 1, key, where)
-  } else if (sub === 'side' && op.kind === 'contour') {
-    arity(words, 1, key, where)
-    if (words[1] !== 'material' && words[1] !== 'air') throw new QprogError(0, `${where}op.side ждёт material или air.`)
-    op.side = words[1]
-  } else if (
-    sub === 'stepOver' &&
-    (op.kind === 'face' || op.kind === 'pocket' || op.kind === 'circle-pocket' || op.kind === 'slot')
-  ) {
-    // The face keeps its own step, both pockets and the slot carry theirs (PLAN-QUICKPROG, 7.3, 7.6).
-    arity(words, 1, key, where)
-    op.stepOverPct = num(words, 1, key, where)
-  } else if ((sub === 'from' || sub === 'to') && (op.kind === 'slot' || op.kind === 'chamfer')) {
-    // The point of a slot or a chamfer is `x y z`; the plane of the cut is the operation's top.
-    arity(words, 3, key, where)
-    const point = { x: num(words, 1, key, where), y: num(words, 2, key, where), z: num(words, 3, key, where) }
-    if (sub === 'from') op.from = point
-    else op.to = point
-  } else if (sub === 'width' && op.kind === 'slot') {
-    arity(words, 1, key, where)
-    op.widthMm = num(words, 1, key, where)
-  } else if (sub === 'chamfer' && op.kind === 'chamfer') {
-    arity(words, 1, key, where)
-    op.chamferMm = num(words, 1, key, where)
-  } else {
-    throw new QprogError(0, `${where}неизвестное поле '${key}' для операции этого вида.`)
-  }
 }
 
 /** The common keys every kind writes. */
@@ -254,7 +103,7 @@ function commonValue(op: Operation, sub: string, line: string, words: string[], 
     arity(words, 1, key, where)
     const value = words[1]
     if (value !== 'hss' && value !== 'carbide') throw new QprogError(0, `${where}op.drill ждёт hss или carbide.`)
-    asDrill(op).body = value
+    ;(op as Extract<Operation, { kind: 'drill' }>).body = value
   } else {
     return false
   }
@@ -283,8 +132,12 @@ export function readOpValue(
   const sub = key.slice(3)
   if (!keyKnown(head, sub)) throw new QprogError(0, `${where}неизвестное поле '${key}' для операции этого вида.`)
   if (commonValue(op, sub, line, words, key, where)) return
-  if (head.kind === 'drill') drillShape(op, sub, words, key, where)
-  else millShape(op, sub, words, key, where)
+  if (head.kind === 'drill') {
+    if (sub === 'r') readDrillR(op, words, key, where)
+    else readClassicShapeKey(op, sub, words, key, where)
+    return
+  }
+  if (!readNewShapeKey(op, sub, words, key, where)) readClassicShapeKey(op, sub, words, key, where)
 }
 
 export type { QuickProgram }

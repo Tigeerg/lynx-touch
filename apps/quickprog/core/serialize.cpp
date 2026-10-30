@@ -39,6 +39,16 @@ std::string serialize(const Program& program) {
            number(program.stock.min.z) + " " + number(program.stock.max.x) + " " +
            number(program.stock.max.y) + " " + number(program.stock.max.z) + "\n";
     out += "safeZ " + number(program.safeZ) + "\n";
+    // The post-processor fields of PLAN-QUICKPROG, 7.3. They are written out
+    // like every other default, so a file of this build always carries them;
+    // an older file without them is read with the same defaults (the reader
+    // treats both as optional).
+    // A non-positive tolerance is written as the bare key: the document keeps
+    // the operator's "use the default" (the console `--g64` without numbers) and
+    // `validate` refuses the value on a run, so the file says what was typed.
+    out += program.g64P > 0.0 ? "g64P " + number(program.g64P) + "\n" : std::string("g64P\n");
+    out += program.g64Q > 0.0 ? "g64Q " + number(program.g64Q) + "\n" : std::string("g64Q\n");
+    out += "stopAfterOp " + std::string(program.stopAfterOp ? "on" : "off") + "\n";
     for (const Operation& op : program.operations) {
         out += "op " + std::string(kindName(op.geometry));
         if (!op.id.empty()) { out += " " + quoteText(op.id); }
@@ -46,6 +56,10 @@ std::string serialize(const Program& program) {
         out += "op.enabled " + std::string(op.enabled ? "on" : "off") + "\n";
         out += "op.tool " + std::to_string(op.tool.number) + " " +
                number(op.tool.diameterMm) + "\n";
+        // The H row of G43. A zero is the model default ("the tool number"), so
+        // a document that never named it writes nothing: the older readers and
+        // the diff stay clean, and the reader of this build fills the default.
+        if (op.tool.hNumber != 0) { out += "op.h " + std::to_string(op.tool.hNumber) + "\n"; }
         out += "op.spindle " + number(op.cutting.spindleRpm) + "\n";
         out += "op.feed " + number(op.cutting.feedMmMin) + "\n";
         // A drill has one feed: its plunge line repeats the working feed, so a
@@ -70,10 +84,12 @@ std::string serialize(const Program& program) {
                    number(r.h) + "\n";
             out += "op.cornerRadius " + number(pocket->cornerRadiusMm) + "\n";
             out += "op.finishAllowance " + number(pocket->finishAllowanceMm) + "\n";
+            out += "op.stepOver " + number(pocket->stepOverPct) + "\n";
         } else if (const auto* circle = std::get_if<CirclePocketOp>(&op.geometry)) {
             out += "op.circle " + number(circle->circle.x) + " " + number(circle->circle.y) + " " +
                    number(circle->circle.r) + "\n";
             out += "op.finishAllowance " + number(circle->finishAllowanceMm) + "\n";
+            out += "op.stepOver " + number(circle->stepOverPct) + "\n";
         } else if (const auto* hole = std::get_if<DrillHoleOp>(&op.geometry)) {
             out += "op.hole " + number(hole->hole.x) + " " + number(hole->hole.y) + " " +
                    number(hole->hole.r) + "\n";

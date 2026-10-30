@@ -88,10 +88,11 @@ void checkToolChangeRule() {
           "two tools in one file need two tool changes");
     check(count(gcode2, " M3\n") == 2, "toolchange.new_tool_spindle",
           "two operations need two spindle starts");
-    // The park comes before the change, in the same block, so M6 never finds
-    // the tool inside the material.
-    check(contains(gcode2, " G0 Z5.000 T7 M6\n"), "toolchange.park_before_change",
-          "the change block must park at safe Z before M6");
+    // The park comes before the change (PLAN-QUICKPROG, 7.3): a block of its
+    // own at the machine home, so M6 never finds the tool inside the material.
+    const std::size_t park = gcode2.rfind("G53 G0 Z0\n", gcode2.find("T7 M6"));
+    check(park != std::string::npos && park < gcode2.find("T7 M6"), "toolchange.park_before_change",
+          "the change must be parked at the machine home before M6");
 }
 
 } // namespace emit_checks

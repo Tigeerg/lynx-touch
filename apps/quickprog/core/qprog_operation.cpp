@@ -53,6 +53,12 @@ auto fail = [&error](const std::string& message) {
             !parseQprogNumber(words[2], op.tool.diameterMm)) {
             return fail(where + "op.tool ждёт номер и диаметр: '" + line + "'.");
         }
+    } else if (sub == "h") {
+        // The H row of G43: a zero is the model default ("the tool number"),
+        // so the field is correct only as an explicit row.
+        if (!parseQprogInt(words[1], op.tool.hNumber)) {
+            return fail(where + "op.h ждёт целый номер коррекции.");
+        }
     } else if (sub == "spindle") {
         if (!parseQprogNumber(words[1], op.cutting.spindleRpm)) {
             return fail(where + "op.spindle ждёт число.");
@@ -80,7 +86,18 @@ auto fail = [&error](const std::string& message) {
             return fail(where + "op.stepDown ждёт число.");
         }
     } else if (sub == "stepOver") {
-        if (!parseQprogNumber(words[1], std::get<FaceOp>(op.geometry).stepOverPct)) {
+        // The face keeps its own step field; both pocket kinds carry theirs
+        // (PLAN-QUICKPROG, 7.3). The kind decides where the number goes, the
+        // key is the same word in all three.
+        double* target = nullptr;
+        if (std::holds_alternative<FaceOp>(op.geometry)) {
+            target = &std::get<FaceOp>(op.geometry).stepOverPct;
+        } else if (std::holds_alternative<RectPocketOp>(op.geometry)) {
+            target = &std::get<RectPocketOp>(op.geometry).stepOverPct;
+        } else {
+            target = &std::get<CirclePocketOp>(op.geometry).stepOverPct;
+        }
+        if (!parseQprogNumber(words[1], *target)) {
             return fail(where + "op.stepOver ждёт число.");
         }
     } else if (sub == "z") {

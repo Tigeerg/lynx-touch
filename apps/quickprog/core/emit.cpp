@@ -7,18 +7,27 @@
 //
 //   (UI_OP: <name>)                        operation marker
 //   (UI_STAGE: <path uuid>/op<n>)          stable block identifier
+//   M1                                     stop before a new operation, when on
+//   (UI_OP: <name>)                        operation marker
+//   (UI_STAGE: <path uuid>/op<n>)          stable block identifier
 //   (UI_TOOL: T=.. TYPE=.. D=..)           tool geometry, before the change
-//   G0 Z<safe> T.. M6                      change, only when the tool differs
+//   G53 G0 Z0                              machine park, before a change and
+//                                          at the start of the program
+//   T.. M6                                 change, only when the tool differs
+//   G43 Z<safe> H<n>                       length compensation of the tool
 //   S.. M3 / M8                            spindle and coolant, when they differ
 //   G0 / G1 X.. Y.. Z.. F..                moves of the operation
 //   M9 / M5 / G0 Z<safe>                   end of the operation (M9 when on)
 //
-// One rule decides the preamble of every operation - the tool change and the
-// spindle - and it lives in `emitOperationStart` alone (PLAN-QUICKPROG, 7.1): a
-// second tool change repeats T/M6, the same tool keeps its T but starts a new
-// spindle speed when it differs. M8 is written only when the coolant was off;
-// M9 turns it off at the end of an operation that asked for it, so no coolant
-// word is printed for an operation with the coolant switched off.
+// One rule decides the preamble of every operation - the park, the tool change,
+// G43 and the spindle - and it lives in `emitOperationStart` alone
+// (PLAN-QUICKPROG, 7.1, 7.3): the first operation and every new tool park at
+// the machine home with G53 G0 Z0, then T/M6, then G43; the same tool keeps its
+// tool and H, starts a new spindle speed when it differs, and still gets G43
+// when only the H row changed. M8 is written only when the coolant was off; M9
+// turns it off at the end of an operation that asked for it, so no coolant word
+// is printed for an operation with the coolant switched off. M1 marks the start
+// of every operation after the first, before its UI_OP tag.
 //
 // Blocks are numbered N10, N15, N20, ... across the whole file: the step of
 // the reference file, so a block keeps a readable number in the editor.
@@ -52,17 +61,29 @@ void tag(std::string& out, const std::string& body) {
 
 // The preamble of one operation, the single place of the tool-change rule:
 //
-//   * the tool differs from the one the machine holds -> park at safe Z, then
-//     T.. M6;
-//   * the tool is the same -> no T/M6 at all: the machine already holds it;
+//   * the program start or the tool differs from the one the machine holds ->
+//     park at the machine home (G53 G0 Z0), then T.. M6;
+//   * the tool is the same -> no park and no T/M6: the machine holds it;
+//   * the H row or the tool changed -> G43 Z<safe> H<n>; G43 is always printed
+//     after a change and never printed twice in a row for one H;
 //   * the spindle was off or its speed differs -> S.. M3;
 //   * the coolant is on and was off -> M8.
 //
-// The order is the one of the reference post: UI_TOOL, park, change, spindle,
-// coolant. The park before the change is mandatory: M6 releases the tool, and
-// a tool inside the material is a crash whatever the machine's own retract does.
+// The order is the one of the reference post: M1, UI_OP, UI_TOOL, park, change,
+// G43, spindle, coolant. The park before the change is mandatory: M6 releases
+// the tool, and a tool inside the material is a crash whatever the machine's
+// own retract does. The park is a machine move (G53), not a move to the part's
+// safe Z: the stand leaves the working zone whatever offset is active.
 void emitOperationStart(std::string& out, const Program& program, const Operation& operation,
                         int& sequence, const std::string& uuid, EmitState& state) {
+    // M1 stands before the UI_OP of every operation after the first: the
+    // operator sees the pause on the border of two operations, not inside one
+    // (PLAN-QUICKPROG, 7.3). The disabled operations have no span and no block.
+    if (state.operationsStarted > 0 && program.stopAfterOp) {
+        line(out, numberedBlock(sequence, "M1"));
+        sequence += kSequenceStep;
+    }
+    ++state.operationsStarted;
     tag(out, "UI_OP: " + commentSafe(operation.id.empty() ? std::string("Операция") : operation.id));
     // The viewer takes the label after "UI_OP:" and splits stages there; the
     // stable identifier travels in its own tag, so a stale preview can be told
@@ -70,11 +91,26 @@ void emitOperationStart(std::string& out, const Program& program, const Operatio
     tag(out, "UI_STAGE: " + uuid);
     tag(out, "UI_TOOL: T=" + std::to_string(operation.tool.number) + " TYPE=" +
                  toolType(operation.geometry) + " D=" + num(operation.tool.diameterMm));
-    if (state.tool != operation.tool.number) {
-        line(out, numberedBlock(sequence, "G0 Z" + coord(program.safeZ) + " T" +
-                                               std::to_string(operation.tool.number) + " M6"));
+    const int h = operation.tool.effectiveH();
+    const bool toolChanged = state.tool != operation.tool.number;
+    if (state.tool == 0 || toolChanged) {
+        // The machine home first (N20 G53 G0 Z0. of the reference file): the
+        // tool leaves the working zone before M6 releases it.
+        line(out, numberedBlock(sequence, "G53 G0 Z0"));
+        sequence += kSequenceStep;
+        line(out, numberedBlock(sequence, "T" + std::to_string(operation.tool.number) + " M6"));
         sequence += kSequenceStep;
         state.tool = operation.tool.number;
+    }
+    // G43 after every change and after a change of the H row alone: another
+    // row is another length offset, even for the same tool. The tool body
+    // starts out at safe Z above the stock; the length table of the stand
+    // turns the word into the real offset.
+    if (toolChanged || state.hNumber != h) {
+        line(out, numberedBlock(sequence, "G43 Z" + coord(program.safeZ) + " H" +
+                                               std::to_string(h)));
+        sequence += kSequenceStep;
+        state.hNumber = h;
     }
     // M5 of the previous operation stopped the spindle: a speed of zero in the
     // state means "has to start" even when the number is the same.

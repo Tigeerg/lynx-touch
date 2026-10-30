@@ -13,6 +13,7 @@
 #include "core/serialize.h"
 
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "core/qprog_reader.h"
@@ -41,27 +42,34 @@ ParseOutcome parseProgram(const std::string& text) {
     };
 
     // Appends the finished operation: the common keys must all be there (the
-    // notes line is optional) and the kind-specific keys must be exactly the
-    // ones of the kind.
+    // notes line is optional) and the kind keys must be exactly the ones of
+    // the kind. The list is read by index, so no loop walks a container the
+    // lambda can change.
     auto closeOp = [&](int lineNo) -> bool {
         if (!inOp) { return true; }
-        auto requireKey = [&](const std::string& key) -> bool {
-            for (const std::string& s : opSeen) {
-                if (s == "op." + key) { return true; }
+        std::vector<std::string> required = commonKeys();
+        const std::vector<std::string> kindKeys = keysOf(op.geometry);
+        required.insert(required.end(), kindKeys.begin(), kindKeys.end());
+        for (std::size_t i = 0; i < required.size(); ++i) {
+            // The notes line of an operation is optional. The raster step of a
+            // pocket is optional too: a document of the previous build has no
+            // `op.stepOver` for it and is read with the model default
+            // (PLAN-QUICKPROG, 7.3). Everything else is required.
+            if (required[i] == "notes") { continue; }
+            const bool pocketStep = required[i] == "stepOver" &&
+                                    (std::holds_alternative<RectPocketOp>(op.geometry) ||
+                                     std::holds_alternative<CirclePocketOp>(op.geometry));
+            if (pocketStep) { continue; }
+            const std::string want = "op." + required[i];
+            bool found = false;
+            for (std::size_t j = 0; j < opSeen.size(); ++j) {
+                if (opSeen[j] == want) { found = true; }
             }
+            if (found) { continue; }
             out.ok = false;
             out.error = "строка " + std::to_string(lineNo) + ": в операции '" + op.id +
-                        "' нет обязательного поля 'op." + key + "'.";
+                        "' нет обязательного поля '" + want + "'.";
             return false;
-        };
-        for (const std::string& key : commonKeys()) {
-            if (key == "notes") { continue; }
-            if (!requireKey(key)) { return false; }
-        }
-        for (const std::string& key : keysOf(op.geometry)) {
-            // The shape key of a drill or a circle is required as well; the
-            // rect and the grid carry their shape in one key each.
-            if (!requireKey(key)) { return false; }
         }
         program.operations.push_back(op);
         return true;
@@ -146,7 +154,6 @@ ParseOutcome parseProgram(const std::string& text) {
                 fail(where + "поле '" + key + "' идёт до первой операции.");
                 return out;
             }
-            opSeen.push_back(key);
             const std::string sub = key.substr(3);
             if (!opKeyKnown(op.geometry, sub)) {
                 fail(where + "неизвестное поле '" + key + "' для операции этого вида.");
@@ -156,6 +163,7 @@ ParseOutcome parseProgram(const std::string& text) {
                 out.ok = false;
                 return out;
             }
+            opSeen.push_back(key);
             continue;
         }
 

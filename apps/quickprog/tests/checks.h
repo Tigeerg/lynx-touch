@@ -28,6 +28,14 @@ void runDrillRulesChecks();
 void runSummaryChecks();
 void runSummaryRulesChecks();
 
+// ---- the post processor of PLAN-QUICKPROG, 7.3 ---------------------------
+
+void runPostEmitChecks();
+void runPostParkingChecks();
+void runPostHeadChecks();
+void runPostQprogChecks();
+void runPostCliChecks();
+
 // ---- the .qprog round-trip and the console -------------------------------
 
 void runQprogChecks();
@@ -38,6 +46,7 @@ void runOpRoundTripChecks();
 // through gv::parseGcode and gv::parseUi*.
 namespace roundtrip_checks {
 void runRoundtripChecks();
+void runPostChecks();
 void runMixedChecks();
 void runTagChecks();
 } // namespace roundtrip_checks

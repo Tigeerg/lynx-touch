@@ -36,6 +36,7 @@ std::vector<Check> validate(const Program& program) {
         valdetail::checkPeck(op, out);
     }
     valdetail::checkSafeZ(program, out);
+    valdetail::checkProgramPost(program, out);
     return out;
 }
 

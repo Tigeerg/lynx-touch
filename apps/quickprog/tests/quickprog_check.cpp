@@ -38,9 +38,17 @@ int main() {
     runSummaryRulesChecks();
     runCoolantChecks();
     roundtrip_checks::runRoundtripChecks();
+    roundtrip_checks::runPostChecks();
     roundtrip_checks::runMixedChecks();
     roundtrip_checks::runTagChecks();
     runOpRoundTripChecks();
+    // The post processor of PLAN-QUICKPROG, 7.3: after the documents of every
+    // kind, because the summary and the .qprog cases read them.
+    runPostEmitChecks();
+    runPostParkingChecks();
+    runPostHeadChecks();
+    runPostQprogChecks();
+    runPostCliChecks();
     if (qpcheck::failures() != 0) {
         std::printf("%d case(s) failed\n", qpcheck::failures());
         return 1;

@@ -15,11 +15,10 @@
 // Not in this slice: `cornerRadiusMm` is not cut as an arc or a rounded corner
 // - the corners stay sharp and the planner says so with a warning.
 //
-// The step across is the default of the demo, a constant of this header, not a
-// field of `RectPocketOp`: the document keeps the shape and the cutting data,
-// and the strategy parameter travels with the strategy until the form grows a
-// field for it. Moving it into the model is a later slice, not a silent
-// default of the reader.
+// The step across is the field `stepOverPct` of `RectPocketOp` (PLAN-QUICKPROG,
+// 7.3): the operator picks it in the document and the console, and the planner
+// reads it from the operation. `kDefaultPocketStepOverPct` is only the default
+// the model and the nodes of the form start from.
 #pragma once
 
 #include <string>
@@ -30,9 +29,10 @@
 
 namespace qp {
 
-// The step across the raster, % of the diameter. It is not a field of the
-// document; the same number the face uses is the coarse default of the demo.
-constexpr double kPocketStepOverPct = 70.0;
+// The default step across the raster, % of the diameter: the value of a new
+// pocket operation. The planner never reads this constant - it reads the field
+// of the operation - so a document that carries a step plans by that step.
+constexpr double kDefaultPocketStepOverPct = 70.0;
 
 // Numbers of the pocket layout for the console summary and the checks: the
 // planner's own, not recomputed by the caller. A layout that cannot be planned

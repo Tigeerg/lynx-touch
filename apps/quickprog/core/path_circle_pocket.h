@@ -5,8 +5,8 @@
 // allowance`: the tool body of the outer turn touches the wall minus the
 // allowance and never crosses it. The turns are spread evenly over the centre
 // line radius, so the real step between two neighbouring turns never exceeds
-// the nominal one `D * kPocketStepOverPct / 100` - the same percentage the
-// rectangular pocket uses (the document has no field of its own yet):
+// the nominal one `D * stepOverPct / 100` - the same field of the operation the
+// rectangular pocket reads (PLAN-QUICKPROG, 7.3):
 //
 //   turns = ceil(radius / nominal - eps)
 //   step  = radius / turns

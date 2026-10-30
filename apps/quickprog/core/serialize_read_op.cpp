@@ -44,8 +44,11 @@ bool opKeyKnown(const OperationGeometry& geometry, const std::string& sub) {
         if (k == sub) { return true; }
     }
     // The R plane of a drill is optional: a file without it means "the default
-    // R", the same as the document of a form that never set it.
-    return sub == "r" && isDrill(geometry);
+    // R", the same as the document of a form that never set it. The H row of
+    // G43 is optional for every kind: a file of the previous build has no
+    // `op.h` and is read with "H = the tool number".
+    if (sub == "r") { return isDrill(geometry); }
+    return sub == "h";
 }
 
 } // namespace qp

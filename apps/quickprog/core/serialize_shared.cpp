@@ -130,13 +130,17 @@ const char* kindName(const OperationGeometry& geometry) {
 
 // Which `op.*` keys a kind takes, without the shape keys that are checked
 // separately below. The table is the single place both the writer and the
-// reader read.
+// reader read. `stepOver` of a pocket is in the table: the writer writes it and
+// the reader knows it, so the round-trip of a pocket keeps the step
+// (PLAN-QUICKPROG, 7.3). The face has had the same key since the first slice.
 std::vector<std::string> keysOf(const OperationGeometry& geometry) {
     if (std::holds_alternative<FaceOp>(geometry)) { return {"z", "stepOver"}; }
     if (std::holds_alternative<RectPocketOp>(geometry)) {
-        return {"rect", "cornerRadius", "finishAllowance"};
+        return {"rect", "cornerRadius", "finishAllowance", "stepOver"};
     }
-    if (std::holds_alternative<CirclePocketOp>(geometry)) { return {"circle", "finishAllowance"}; }
+    if (std::holds_alternative<CirclePocketOp>(geometry)) {
+        return {"circle", "finishAllowance", "stepOver"};
+    }
     if (std::holds_alternative<DrillHoleOp>(geometry)) { return {"hole", "peck"}; }
     if (std::holds_alternative<DrillGridOp>(geometry)) { return {"grid", "peck"}; }
     return {"circle", "count", "start", "arc", "fullTurn", "peck"};

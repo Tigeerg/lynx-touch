@@ -28,9 +28,18 @@ struct StockBox {
 
 // Tool number in the machine table; the diameter is repeated in the operation
 // because the document must stay readable and checkable without the table.
+// `hNumber` is the row of the length compensation table the G43 line names
+// (PLAN-QUICKPROG, 7.3). A zero means "the tool number": the common case of a
+// stand whose table rows follow the tool numbers, and the value an older
+// .qprog without the field gets. The emitter never writes H0: a negative
+// number is refused by `validate`, a zero is replaced by the tool number.
 struct ToolRef {
     int number = 0;
     double diameterMm = 0.0;
+    int hNumber = 0;
+
+    // The row of G43 for this tool: the explicit number, else the tool number.
+    int effectiveH() const { return hNumber > 0 ? hNumber : number; }
 };
 
 // Cutting data of one operation. `feedMmMin` is the XY feed, `plungeFeedMmMin`
@@ -56,17 +65,22 @@ struct FaceOp {
 // Rectangular pocket. `cornerRadiusMm` is the radius of the contour corners,
 // which the raster does not cut (the corner keeps the tool radius). The
 // `finishAllowanceMm` is the stock left on the walls only: the floor is cut to
-// the final depth in the same pass, no allowance is left on it.
+// the final depth in the same pass, no allowance is left on it. `stepOverPct`
+// is the raster step across, % of the tool diameter: a field of the operation
+// (PLAN-QUICKPROG, 7.3), not a constant of the planner.
 struct RectPocketOp {
     Rect rect;
     double cornerRadiusMm = 0.0;
     double finishAllowanceMm = 0.0;
+    double stepOverPct = 70.0;
 };
 
-// Round pocket; the allowance is the wall stock, as for the rectangle.
+// Round pocket; the allowance is the wall stock, as for the rectangle, and
+// `stepOverPct` is the radial step of the spiral, % of the diameter.
 struct CirclePocketOp {
     Circle circle;
     double finishAllowanceMm = 0.0;
+    double stepOverPct = 70.0;
 };
 
 // Drilling parameters shared by the three kinds. `peckMm` > 0 selects the
@@ -153,6 +167,16 @@ struct Program {
     // Height the tool retreats to between passes and at the end; must be above
     // the stock top (PLAN-QUICKPROG, 8).
     double safeZ = 0.0;
+    // The path tolerance of G64 P.. Q..: P is the corner rounding, Q the
+    // following error, both in mm (PLAN-QUICKPROG, 7.3). The reference post
+    // writes P0.01 Q0.01; the emitter refuses a value that is not a positive
+    // fraction of a millimetre.
+    double g64P = 0.01;
+    double g64Q = 0.01;
+    // An M1 stop before every operation after the first: the operator looks at
+    // the channel and clears the chips (PLAN-QUICKPROG, 7.3). On by default;
+    // off removes every M1 and keeps the block numbers of the rest.
+    bool stopAfterOp = true;
     std::vector<Operation> operations;
 };
 

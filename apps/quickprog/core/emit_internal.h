@@ -46,6 +46,12 @@ struct EmitState {
     // Spindle speed the machine runs at after the last operation; 0 - stopped.
     double spindleRpm = 0.0;
     bool coolantOn = false;
+    // The H row the machine was given by G43; 0 - none yet. A change of the row
+    // prints G43 again for the same tool (PLAN-QUICKPROG, 7.3).
+    int hNumber = 0;
+    // Operations already started: the M1 stop belongs to every one after the
+    // first.
+    int operationsStarted = 0;
 };
 
 // Parameters of one canned drilling cycle as the emitter writes it: the first

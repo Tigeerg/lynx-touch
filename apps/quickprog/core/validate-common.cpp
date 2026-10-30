@@ -54,6 +54,13 @@ void checkTool(const Operation& op, std::vector<Check>& out) {
     if (op.tool.number <= 0) {
         add(out, "tool.number", "Инструмент не выбран: укажите номер в таблице инструмента.");
     }
+    // The H row of G43 is a row of the stand's length table: a negative number
+    // does not exist, and a zero is the model default ("the tool number") and
+    // is written as the tool number (PLAN-QUICKPROG, 7.3).
+    if (op.tool.hNumber < 0) {
+        add(out, "tool.hNumber", "Номер коррекции H " + std::to_string(op.tool.hNumber) +
+                                     " отрицательный: в таблице коррекций нет такого номера.");
+    }
     const MachineLimits& limits = machineLimits();
     if (op.tool.diameterMm <= 0.0) {
         add(out, "tool.diameterMm", "Диаметр инструмента должен быть больше нуля.");
@@ -127,6 +134,30 @@ void checkStep(const Operation& op, std::vector<Check>& out) {
         add(out, "stepDownMm", "Шаг врезания " + fmt(op.stepDownMm) + " мм больше глубины " +
                                    fmt(op.depthMm) + " мм: проход будет один, но проверьте задание.");
     }
+}
+
+namespace {
+
+// A G64 word: the field name ("g64P") and the letter the operator reads.
+void checkTolerance(std::vector<Check>& out, const char* field, double value) {
+    const std::string letter(1, field[3]);
+    if (!(value > 0.0)) {
+        add(out, field, "Допуск G64 " + letter + " = " + fmt(value) +
+                            " мм: допуск должен быть больше нуля.");
+    } else if (value > 1.0 + 1e-9) {
+        add(out, field, "Допуск G64 " + letter + " = " + fmt(value) +
+                            " мм больше 1 мм: сглаживание уведёт фрезу от контура.");
+    }
+}
+
+} // namespace
+
+void checkProgramPost(const Program& program, std::vector<Check>& out) {
+    // Both G64 numbers are a path tolerance in millimetres: positive and not
+    // over a millimetre, else the control either cuts every corner or reads the
+    // word as a mistake (PLAN-QUICKPROG, 7.3).
+    checkTolerance(out, "g64P", program.g64P);
+    checkTolerance(out, "g64Q", program.g64Q);
 }
 
 void checkSafeZ(const Program& program, std::vector<Check>& out) {

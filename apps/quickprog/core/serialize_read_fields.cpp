@@ -61,6 +61,22 @@ bool readHeaderKey(Program& program, HeaderSeen& seen, const std::string& key,
             return fail(where + "safeZ ждёт число.");
         }
         seen.safeZ = true;
+    } else if (key == "g64P" || key == "g64Q") {
+        // Optional: a document of the previous build has no tolerance field and
+        // is read with the default (PLAN-QUICKPROG, 7.3). An empty value is the
+        // same absence, so `--g64` with no numbers saves a file a later build
+        // can still read. The field is named as the operator sees it, with the
+        // letter of the G64 word.
+        double& target = key == "g64P" ? program.g64P : program.g64Q;
+        if (words.size() == 1) { return true; }
+        if (words.size() != 2 || !parseQprogNumber(words[1], target)) {
+            return fail(where + key + " ждёт число.");
+        }
+    } else if (key == "stopAfterOp") {
+        if (words.size() != 2 || (words[1] != "on" && words[1] != "off")) {
+            return fail(where + "stopAfterOp ждёт 'on' или 'off'.");
+        }
+        program.stopAfterOp = words[1] == "on";
     } else {
         return fail(where + "неизвестное поле '" + key + "'.");
     }

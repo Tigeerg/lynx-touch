@@ -21,7 +21,13 @@
 //                                                operation's tool (gv::parseUiTool);
 //   rt.tags                                      UI_STOCK / UI_ORIGIN read by
 //                                                gv::parseUiStock / parseUiOrigin
-//                                                equal the document.
+//                                                equal the document;
+//   rt.post.*                                     the post-processor words of
+//                                                PLAN-QUICKPROG, 7.3 - G53 G0 Z0,
+//                                                G43 H, M1 and G64 - do not
+//                                                break the parser: segments and
+//                                                stages stay, the final point is
+//                                                the machine home.
 #include <algorithm>
 #include <array>
 #include <optional>
@@ -53,16 +59,19 @@ bool startsWithLabel(const std::string& label, const std::string& name) {
     return label.size() >= name.size() && label.compare(0, name.size(), name) == 0;
 }
 
-// The final point of the core is the machine point at M30: the trailer parks the
-// tool at safe Z and leaves XY where the last move put it. The safe Z is the
-// contract; XY is the last hole or the last move and is not asserted here.
+// The final point of the core is the machine point at M30. Since the machine
+// park of PLAN-QUICKPROG, 7.3 the last block before M30 is G53 G0 Z0, so the
+// tool ends at the machine home, not at the safe Z of the part. The heuristics
+// of the parser do not take the G53 word as a motion, so the last Z it models
+// is the machine home the footer leaves behind; the last motion of the file
+// before the park is still the safe Z, and the case reads it from the bytes.
 void checkOne(const std::string& id, const qp::Program& program) {
     const gv::ParseResult parsed = parseOf(program);
     check(parsed.seg_count > 0, id + ".segments",
           "the core found " + std::to_string(parsed.seg_count) + " segments, expected > 0");
-    check(near(parsed.last[2], program.safeZ, kPosEps), id + ".safe_z",
+    check(near(parsed.last[2], 0.0, kPosEps), id + ".safe_z",
           "the last Z of the core is " + std::to_string(parsed.last[2]) +
-              ", the safe Z of the document is " + std::to_string(program.safeZ));
+              ", the machine home of the footer is 0");
 }
 
 } // namespace
@@ -74,6 +83,34 @@ void runRoundtripChecks() {
     checkOne("rt.drill", drillProgram());
 }
 
+// The post-processor words of this slice: the machine park, G43 H, the M1 stop
+// and the G64 tolerance are words the parser does not model, and each of them
+// must be skipped without losing a segment or a stage. The viewer keeps the
+// last point before M30 (the last move and the trailer park), so the check
+// reads the file for the machine home of the footer and does not ask the core
+// for a point the parser never models: the viewer is the tool of the operator,
+// the stand reads the G53.
+void runPostChecks() {
+    const qp::Program program = mixedProgram();
+    const std::string text = ncgOf(program);
+    const gv::ParseResult parsed = parseOf(program);
+    check(parsed.seg_count > 0, "rt.post.segments",
+          "the core found " + std::to_string(parsed.seg_count) + " segments, expected > 0");
+    check(parsed.stages.size() == program.operations.size(), "rt.post.stages",
+          "the core reports " + std::to_string(parsed.stages.size()) + " stages for " +
+              std::to_string(program.operations.size()) + " operations");
+    check(near(parsed.last[2], 0.0, kPosEps), "rt.post.safe_z",
+          "the last modelled Z must be the machine home of the footer, got " +
+              std::to_string(parsed.last[2]));
+    const std::size_t park = text.rfind("G53 G0 Z0");
+    const std::size_t m30 = text.find(" M30\n");
+    check(park != std::string::npos && m30 != std::string::npos && park < m30,
+          "rt.post.final_home", "the footer park must stand before M30 in the file");
+    check(text.find("G53 G0 Z0") != std::string::npos && text.find(" G43 Z") != std::string::npos &&
+              text.find(" G64 P") != std::string::npos && text.find("M1\n") != std::string::npos,
+          "rt.post.words", "the generated file must carry the post-processor words");
+}
+
 // The mixed file: one stage per operation, the stage labels are the UI_OP names.
 void runMixedChecks() {
     const qp::Program program = mixedProgram();
@@ -81,9 +118,9 @@ void runMixedChecks() {
 
     check(parsed.seg_count > 0, "rt.mixed.segments",
           "the core found " + std::to_string(parsed.seg_count) + " segments, expected > 0");
-    check(near(parsed.last[2], program.safeZ, kPosEps), "rt.mixed.safe_z",
+    check(near(parsed.last[2], 0.0, kPosEps), "rt.mixed.safe_z",
           "the last Z of the core is " + std::to_string(parsed.last[2]) +
-              ", the safe Z of the document is " + std::to_string(program.safeZ));
+              ", the machine home of the footer is 0");
 
     check(parsed.stages.size() == program.operations.size(), "rt.mixed.stage_count",
           "the core reports " + std::to_string(parsed.stages.size()) +

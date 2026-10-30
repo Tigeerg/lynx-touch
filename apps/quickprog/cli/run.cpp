@@ -109,6 +109,10 @@ int finish(const qp::Program& program, const std::string& output, const std::str
     out << format2("Заготовка: X %.1f..%.1f,", stock.min.x, stock.max.x)
         << format2(" Y %.1f..%.1f,", stock.min.y, stock.max.y)
         << format2(" Z %.1f..%.1f мм\n", stock.min.z, stock.max.z);
+    // The program lines of the post processor: the work offset, the G64
+    // tolerance and the M1 stop, which the operator cannot read from one
+    // operation (PLAN-QUICKPROG, 7.3).
+    out << qp::programSummary(program);
     for (std::size_t i = 0; i < planned.operations.size(); ++i) {
         const std::size_t first = planned.operations[i].first;
         const std::size_t last =

@@ -25,8 +25,10 @@ void add(std::vector<Check>& out, const std::string& field, const std::string& r
 
 // ---- validate-common.cpp --------------------------------------------------
 
-// Tool number and diameter of the operation against the machine table.
+// Tool number, diameter and the H row of G43 of the operation.
 void checkTool(const Operation& op, std::vector<Check>& out);
+// The G64 tolerance of the program and the M1 flag (PLAN-QUICKPROG, 7.3).
+void checkProgramPost(const Program& program, std::vector<Check>& out);
 // Spindle speed, working and plunge feed against the machine and the table.
 void checkCutting(const Operation& op, std::vector<Check>& out);
 // The pass depth against the stock height.

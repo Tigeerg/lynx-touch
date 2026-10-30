@@ -16,6 +16,21 @@ namespace qp {
 namespace valdetail {
 namespace {
 
+// The step across of a pocket: the bands of the raster (or the turns of the
+// spiral) have to overlap. Under 10 % the tool rubs in the already cut band,
+// over 100 % the step is wider than the tool and a strip stays uncut
+// (PLAN-QUICKPROG, 7.3). The field is `op.stepOver`, the same word for both
+// pocket kinds.
+void checkPocketStepOver(double stepOverPct, std::vector<Check>& out) {
+    if (stepOverPct < 10.0 - 1e-9) {
+        add(out, "stepOver", "Шаг " + fmt(stepOverPct) +
+                                 " % меньше 10 % диаметра: фреза будет тереть уже срезанное.");
+    } else if (stepOverPct > 100.0 + 1e-9) {
+        add(out, "stepOver", "Шаг " + fmt(stepOverPct) +
+                                 " % больше 100 % диаметра: между проходами останутся дыры.");
+    }
+}
+
 // Face: the tool has to fit the stock width in Y (the strip direction) and the
 // stock has to be non-empty. A pocket would check its own rectangle; the face
 // keeps the stock as the shape.
@@ -68,6 +83,7 @@ void checkPocketGeometry(const Operation& op, std::vector<Check>& out) {
                                  " мм не может быть отрицательным.");
         return;
     }
+    checkPocketStepOver(pocket.stepOverPct, out);
     const double shortSide = std::fmin(rect.w, rect.h);
     if (pocket.cornerRadiusMm > shortSide / 2.0 + 1e-9) {
         add(out, "geometry", "Радиус угла " + fmt(pocket.cornerRadiusMm) +
@@ -103,6 +119,7 @@ void checkCirclePocketGeometry(const Operation& op, std::vector<Check>& out) {
                                  " мм отрицательный: траектория выйдет за контур кармана.");
         return;
     }
+    checkPocketStepOver(pocket.stepOverPct, out);
     const double diam = op.tool.diameterMm;
     const double inset = diam / 2.0 + pocket.finishAllowanceMm;
     if (inset + 1e-9 >= pocket.circle.r) {

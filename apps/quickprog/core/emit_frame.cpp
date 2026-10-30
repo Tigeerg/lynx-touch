@@ -70,6 +70,11 @@ void emitHeader(std::string& out, const Program& program, int& sequence) {
     }
     out += numberedBlock(sequence, validWcs(program.wcs) ? program.wcs : std::string("G54")) + "\n";
     sequence += kSequenceStep;
+    // The path tolerance of the reference post (N180 G64 P0.01 Q0.01): after
+    // the work offset, before the first motion. The document is validated
+    // before emitting, so both numbers are positive and within the millimetre.
+    out += numberedBlock(sequence, "G64 P" + coord(program.g64P) + " Q" + coord(program.g64Q)) + "\n";
+    sequence += kSequenceStep;
     // Park above the stock before the first tool change: the tool stays out of
     // the material whatever Z the previous program left.
     out += numberedBlock(sequence, "G0 Z" + coord(program.safeZ)) + "\n";
@@ -77,6 +82,11 @@ void emitHeader(std::string& out, const Program& program, int& sequence) {
 }
 
 void emitFooter(std::string& out, int& sequence) {
+    // The machine home before M30 (N145 G53 Z0. of the reference file): the
+    // table comes out of the working zone, so the operator unloads the part
+    // with no tool over it. The M30 block follows the park directly.
+    out += numberedBlock(sequence, "G53 G0 Z0") + "\n";
+    sequence += kSequenceStep;
     out += numberedBlock(sequence, "M30") + "\n";
     out += "%\n";
 }

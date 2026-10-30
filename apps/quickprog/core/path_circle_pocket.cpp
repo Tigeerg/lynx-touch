@@ -3,7 +3,7 @@
 // The centre line: the pocket circle shrunk by `inset = D/2 + finish
 // allowance`. The turns are spread evenly over its radius, `turns = ceil(radius
 // / nominal)` with the nominal step of the rectangular pocket, so the real
-// radial step never exceeds `D * kPocketStepOverPct / 100` and the outermost
+// radial step never exceeds `D * stepOverPct / 100` and the outermost
 // turn puts the tool body exactly the allowance away from the wall. The
 // allowance is the wall stock only: the floor is cut to the final depth.
 //
@@ -77,7 +77,7 @@ Layout makeLayout(const Program&, const Operation& operation) {
     if (out.radius <= kEps) { return out; }
     out.fits = true;
     const double nominal =
-        std::fmin(operation.tool.diameterMm * kPocketStepOverPct / 100.0, out.radius);
+        std::fmin(operation.tool.diameterMm * pocket.stepOverPct / 100.0, out.radius);
     out.turns = static_cast<int>(std::ceil(out.radius / nominal - kEps));
     out.step = out.radius / static_cast<double>(out.turns);
 
@@ -172,7 +172,7 @@ std::vector<std::string> circleWarnings(const Program& program, const Operation&
         out.push_back("Припуск " + fmt(pocket.finishAllowanceMm) +
                       " мм отрицательный: траектория выйдет за контур кармана.");
     }
-    if (kPocketStepOverPct >= 100.0) {
+    if (pocket.stepOverPct >= 100.0 - kEps) {
         out.push_back("Шаг спирали равен диаметру: соседние витки только касаются.");
     }
     // Not blocking: a pocket of one diameter still has a centre line of a

@@ -41,6 +41,7 @@ add_library(quickprog_core STATIC
     core/emit_moves.cpp
     core/face_options.cpp
     core/option_words.cpp
+    core/post_options.cpp
     core/circle_pocket_options.cpp
     core/drill_options.cpp
     core/pocket_options.cpp
@@ -111,6 +112,7 @@ add_library(quickprog_cli STATIC
     cli/demo_program.cpp
     cli/help.cpp
     cli/operation_program.cpp
+    cli/post_words.cpp
     cli/run.cpp
 )
 target_include_directories(quickprog_cli PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -151,6 +153,11 @@ add_executable(quickprog_check
     tests/checks_help.cpp
     tests/checks_op_roundtrip.cpp
     tests/checks_roundtrip.cpp
+    tests/checks_post_emit.cpp
+    tests/checks_post_parking.cpp
+    tests/checks_post_head.cpp
+    tests/checks_post_qprog.cpp
+    tests/checks_post_cli.cpp
     tests/roundtrip_fixtures.h
 )
 target_link_libraries(quickprog_check PRIVATE quickprog_core quickprog_cli gvcore_quickprog)

@@ -15,10 +15,16 @@
 namespace qp {
 
 // Summary of one operation of `planned`: the title line, the shape numbers of
-// its kind, the move and cutting length, and the regime line with the source
-// of the cutting data. `first`/`last` delimit the moves of the operation in the
-// path. The returned text ends with a newline.
+// its kind, the move and cutting length, the H row of its G43 and the regime
+// line with the source of the cutting data. `first`/`last` delimit the moves of
+// the operation in the path. The returned text ends with a newline.
 std::string operationSummary(const Program& program, const Path& planned, std::size_t index,
                              std::size_t first, std::size_t last);
+
+// The lines of the program that do not belong to one operation: the stock, the
+// work offset, the G64 tolerance and the M1 stop (PLAN-QUICKPROG, 7.3). The
+// console prints them after the stock line, before the operations. The
+// returned text ends with a newline.
+std::string programSummary(const Program& program);
 
 } // namespace qp

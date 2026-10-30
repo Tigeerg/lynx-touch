@@ -90,7 +90,7 @@ Layout makeLayout(const Program&, const Operation& operation) {
     out.fits = true;
     // Rows `ceil(innerAcross / nominal) + 1`, so the real step never exceeds
     // the nominal one and the first and the last row stand on the boundary.
-    const double nominal = std::fmin(operation.tool.diameterMm * kPocketStepOverPct / 100.0,
+    const double nominal = std::fmin(operation.tool.diameterMm * pocket.stepOverPct / 100.0,
                                      innerAcross);
     out.rows = nominal <= kEps
                    ? 1
@@ -168,7 +168,7 @@ std::vector<std::string> pocketWarnings(const Program&, const Operation& operati
         out.push_back("Припуск " + fmt(pocket.finishAllowanceMm) +
                       " мм отрицательный: траектория выйдет за контур кармана.");
     }
-    if (kPocketStepOverPct >= 100.0) {
+    if (pocket.stepOverPct >= 100.0 - kEps) {
         out.push_back("Шаг растра равен диаметру: соседние проходы только касаются.");
     }
     // A warning only: `validate` owns the blocking "tool does not fit" rule,

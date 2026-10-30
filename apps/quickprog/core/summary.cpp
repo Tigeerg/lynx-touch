@@ -44,6 +44,17 @@ double cutLengthOf(const Path& planned, std::size_t first, std::size_t last) {
 
 } // namespace
 
+std::string programSummary(const Program& program) {
+    std::string out;
+    char buf[256];
+    std::snprintf(buf, sizeof(buf), "Смещение: %s\n", program.wcs.c_str());
+    out += buf;
+    std::snprintf(buf, sizeof(buf), "G64 P%.3f Q%.3f\n", program.g64P, program.g64Q);
+    out += buf;
+    out += std::string("Остановка между операциями: ") + (program.stopAfterOp ? "да" : "нет") + "\n";
+    return out;
+}
+
 std::string operationSummary(const Program& program, const Path& planned, std::size_t index,
                              std::size_t first, std::size_t last) {
     std::string out;
@@ -54,6 +65,10 @@ std::string operationSummary(const Program& program, const Path& planned, std::s
     std::snprintf(buf, sizeof(buf), "Операция %zu/%zu: %s, T%d ф%.1f мм\n", index + 1,
                   program.operations.size(), opName(op, index).c_str(), op.tool.number,
                   op.tool.diameterMm);
+    out += buf;
+    // The G43 row of the tool: the number the length table is addressed by, so
+    // the operator can compare the file with the stand before a run.
+    std::snprintf(buf, sizeof(buf), "  коррекция H%d\n", op.tool.effectiveH());
     out += buf;
     if (std::holds_alternative<FaceOp>(op.geometry)) {
         const FaceStats stats = faceStats(program, op);

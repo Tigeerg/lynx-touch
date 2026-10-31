@@ -170,12 +170,19 @@ const thread = (): Operation => ({
   stepOverPct: 70,
 })
 
-/** The word `ДЕТАЛЬ` cut on the top at the back of the part, 5 mm high, 0.5 mm deep. */
+/**
+ * The word `ДЕТАЛЬ` cut on the top, in the free strip at the front of the part between the square
+ * pocket (its band ends at Y -20) and the chamfer (its edge is Y -35): centred on X 0, the strokes
+ * of the string take X -10..8.5 and Y -33.05..-28.05, so the box is clear of the slot, of both
+ * pockets and of the island, and no letter of the demo drops into a groove (the technician's note
+ * of `CHECKLIST.md`). The label is in the gap by its own strokes; the cut of every stroke starts
+ * and ends on that stroke, so the box is the cut.
+ */
 const engrave = (): Operation => ({
   ...op('engrave', 'Гравировка', { number: 11, diameterMm: 3 }, 0.5, 0),
   text: 'ДЕТАЛЬ',
   x: 0,
-  y: 30,
+  y: -33.05,
   heightMm: 5,
   angleDeg: 0,
 })

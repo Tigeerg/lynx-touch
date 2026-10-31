@@ -156,7 +156,7 @@ op.depth 0.5
 op.stepDown 0
 op.text "ДЕТАЛЬ"
 op.x 0
-op.y 30
+op.y -33.05
 op.height 5
 op.angle 0
 op pocket-island "Карман с островом"

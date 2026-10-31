@@ -19,6 +19,7 @@ import { checkProgram } from './collision'
 import { emitProgram } from './emit'
 import { GOLDEN_NAME, goldenProgram } from './golden-doc'
 import { buildProgram, type ProgramPath } from './path'
+import { slotLayout } from './path-slot'
 import { cutLengthMm } from './path-stats'
 import { parseProgram } from './serialize'
 import { RIGID_TAPPING_PARAM } from './validate-tap'
@@ -26,6 +27,7 @@ import { validate } from './validate'
 import { viewerIssues, type Issue } from './viewer-check'
 import { countsOf, GOLDEN_COUNTS, written } from './golden-chain'
 import type { QuickProgram } from './ops'
+import { engraveLayout } from './path-engrave'
 
 const dir = fileURLToPath(new URL('../../../testdata/quickprog-golden/', import.meta.url))
 const readText = (name: string): string => readFileSync(`${dir}${name}`, 'utf8')
@@ -86,6 +88,93 @@ describe('the golden document', () => {
     // The file has no machine parameters: they are the machine, not the part. The test compares the
     // fields the writer prints, so a field the file does not carry is not a difference of the pair.
     expect(readGolden().operations.map(written)).toEqual(doc.operations.map(written))
+  })
+
+  it('keeps the engraving off the slot and the pockets, by the geometry of the document', () => {
+    // The technician's note of `CHECKLIST.md`: a label over a keyway drops its letters into the cut.
+    // The rectangles are taken from the document and its own planners, not from the text of the
+    // file: the engraving from `engraveLayout` (the box of its strokes, which is exactly what the
+    // planner cuts, since every stroke starts and ends on itself), the slot from `slotLayout` grown
+    // by half its width (the strips are inside the walls, so the ends plus half the width are the
+    // corners of the keyway), the pockets and the island as the document states them.
+    const program = readGolden()
+    const engrave = program.operations.find((operation) => operation.kind === 'engrave')
+    if (engrave?.kind !== 'engrave') throw new Error('the golden document has no engraving')
+
+    interface Rect {
+      xMin: number
+      xMax: number
+      yMin: number
+      yMax: number
+    }
+    const overlap = (a: Rect, b: Rect): boolean =>
+      a.xMin < b.xMax && b.xMin < a.xMax && a.yMin < b.yMax && b.yMin < a.yMax
+
+    const strokes = engraveLayout(engrave).strokes.flat()
+    const label: Rect = {
+      xMin: Math.min(...strokes.map((point) => point.x)),
+      xMax: Math.max(...strokes.map((point) => point.x)),
+      yMin: Math.min(...strokes.map((point) => point.y)),
+      yMax: Math.max(...strokes.map((point) => point.y)),
+    }
+
+    const zones: { name: string; rect: Rect }[] = []
+    for (const operation of program.operations) {
+      if (!operation.enabled) continue
+      if (operation.kind === 'slot') {
+        // The strips are the mill centres; the walls are half a diameter across the axis, so the
+        // ends of the walk grow by the mill radius along the walk and by the half width across it.
+        const layout = slotLayout(operation)
+        const ends = layout.strips.flatMap((strip) => [strip.from, strip.to])
+        if (ends.length === 0) continue
+        const radius = operation.tool.diameterMm / 2
+        const halfWidth = operation.widthMm / 2
+        zones.push({
+          name: operation.kind,
+          rect: {
+            xMin: Math.min(...ends.map((point) => point.x)) - radius,
+            xMax: Math.max(...ends.map((point) => point.x)) + radius,
+            yMin: Math.min(...ends.map((point) => point.y)) - halfWidth,
+            yMax: Math.max(...ends.map((point) => point.y)) + halfWidth,
+          },
+        })
+      }
+      if (operation.kind === 'pocket' || operation.kind === 'rest') {
+        const { x, y, w, h } = operation.rect
+        zones.push({ name: operation.kind, rect: { xMin: x, xMax: x + w, yMin: y, yMax: y + h } })
+      }
+      if (operation.kind === 'pocket-island') {
+        const { x, y, w, h } = operation.rect
+        const island = operation.island
+        zones.push({ name: operation.kind, rect: { xMin: x, xMax: x + w, yMin: y, yMax: y + h } })
+        zones.push({
+          name: `${operation.kind} island`,
+          rect: { xMin: island.x, xMax: island.x + island.w, yMin: island.y, yMax: island.y + island.h },
+        })
+      }
+      if (operation.kind === 'circle-pocket') {
+        const { x, y, r } = operation.circle
+        zones.push({ name: operation.kind, rect: { xMin: x - r, xMax: x + r, yMin: y - r, yMax: y + r } })
+      }
+    }
+
+    expect(zones.length).toBeGreaterThanOrEqual(5)
+    for (const zone of zones) {
+      expect(overlap(label, zone.rect), `надпись «${engrave.text}» заходит на ${zone.name}`).toBe(false)
+    }
+    // The cut of the label itself: the planner's moves of the engraving sit on its strokes, so
+    // every rapid, plunge and turn of the label stays in the box the test just placed in the free
+    // strip. It is the planned path of the same document, not a second formula of the layout.
+    const plan = planned(program)
+    const opIndex = program.operations.indexOf(engrave)
+    const engraveMoves = plan.moves.filter((move) => move.operation === opIndex)
+    expect(engraveMoves.length).toBeGreaterThan(0)
+    for (const move of engraveMoves) {
+      expect(move.to.x).toBeGreaterThanOrEqual(label.xMin - 1e-9)
+      expect(move.to.x).toBeLessThanOrEqual(label.xMax + 1e-9)
+      expect(move.to.y).toBeGreaterThanOrEqual(label.yMin - 1e-9)
+      expect(move.to.y).toBeLessThanOrEqual(label.yMax + 1e-9)
+    }
   })
 })
 

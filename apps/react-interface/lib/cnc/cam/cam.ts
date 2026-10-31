@@ -20,6 +20,7 @@ import { arrayCopies, rotatedCopies, type CopyResult } from './copy-ops'
 import { newProgram } from './defaults'
 import type { Operation } from './ops'
 import { saveCam } from './cam-save'
+import { insertCam } from './cam-insert'
 import { openSaved } from './cam-open'
 import { amend, type Amending } from './cam-edit'
 import { listRun, shownForm } from './cam-form-run'
@@ -46,6 +47,7 @@ const CAM_TYPES = new Set<string>([
   'CAM_TOGGLE',
   'CAM_MOVE',
   'CAM_SAVE',
+  'CAM_INSERT',
   'CAM_OPEN_SAVED',
   'CAM_ARRAY',
   'CAM_ROTATE',
@@ -90,6 +92,9 @@ export function camReducer(s: MachineState, a: CamAction): Result {
 
     case 'CAM_SAVE':
       return overlay(s, (cam) => saveCam(s, cam, a.at))
+
+    case 'CAM_INSERT':
+      return overlay(s, (cam) => insertCam(s, cam, a.at))
 
     case 'CAM_OPEN_SAVED':
       return overlay(s, (cam) => openSaved(s, cam))

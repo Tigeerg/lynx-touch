@@ -70,6 +70,9 @@ export type CamAction =
   | { type: 'CAM_TOGGLE'; index: number }
   | { type: 'CAM_MOVE'; index: number; up: boolean }
   | { type: 'CAM_SAVE'; at?: number }
+  // The quick program is inserted into the open file instead of being saved as a new one: the
+  // modal preamble and the operations go before the final M30, the file keeps its stock and end.
+  | { type: 'CAM_INSERT'; at?: number }
   // The saved program in the editor (PLAN-QUICKPROG, 5 step 11): the overlay closes and the file
   // the last save wrote becomes the active one, through the editor's own `FILE_OPEN`.
   | { type: 'CAM_OPEN_SAVED' }

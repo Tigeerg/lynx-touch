@@ -12,7 +12,7 @@
 // smoothing tolerance and the stock. A refusal of the save is a line in the header, not a modal on
 // top of the form: the number that is wrong stays visible.
 import { useState, type Dispatch } from 'react'
-import { ExternalLink, Save, TriangleAlert, X } from 'lucide-react'
+import { ExternalLink, FilePlus2, Save, TriangleAlert, X } from 'lucide-react'
 import type { Action } from '@/lib/cnc/machine'
 import type { CamState } from '@/lib/cnc/cam/cam'
 import type { MachineState } from '@/lib/cnc/types'
@@ -136,6 +136,26 @@ function CamOverlayBody({ cam, state, dispatch }: { cam: CamState; state: Machin
                   <ExternalLink className="size-4" aria-hidden="true" />В редактор
                 </button>
               )}
+              <button
+                type="button"
+                tabIndex={-1}
+                disabled={busy || state.files[state.activeFile] === undefined}
+                onClick={() => dispatch({ type: 'CAM_INSERT', at: Date.now() })}
+                title={
+                  state.files[state.activeFile] === undefined
+                    ? 'Сначала откройте программу'
+                    : busy
+                      ? 'Остановите программу перед вставкой'
+                      : `Добавить код в открытую УП ${state.files[state.activeFile].name}`
+                }
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md border-2 bg-card px-2.5 text-xs font-bold transition-colors hover:bg-accent disabled:opacity-40',
+                  touch ? 'min-h-11' : 'min-h-8',
+                )}
+              >
+                <FilePlus2 className="size-4" aria-hidden="true" />
+                Вставить
+              </button>
               <button
                 type="button"
                 tabIndex={-1}

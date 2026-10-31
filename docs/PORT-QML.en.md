@@ -6,7 +6,12 @@ code and its run; this file holds the intent, anchors in both trees and acceptan
 
 This edition was merged on 31.10.2026: the inventory and anchors come from the previous edition,
 the order of work, acceptance and decisions come from the lead. State at the day of the edition:
-React `0.23.0` (product `0.33.1`), Qt `0.5.8`.
+React `0.24.0` (product `0.34.0`), Qt `0.5.8`.
+
+**Roles fixed (01.11.2026).** The real controller runs **Qt — it is the product**. React was a demo
+stage: after the start and CAM-insert fixes it is **frozen** — no new features are developed there.
+React stays the reference for texts, behaviour and tests; a defect found during the port is fixed in
+React and moved to Qt at once.
 
 The port exists and is not empty: `main.qml` is 3558 lines, `preview.qml` is a hand-maintained copy
 of the same panel (3567 lines; edited together with `main.qml` until wave A), `assets/` and `fonts/`
@@ -85,6 +90,10 @@ has already diverged (tab count, slot count, sets, locking, side column).
 9. **The panel is 1024×600 and a word must fit the slot.** A softkey label word is at most
    `SOFTKEY_LABEL_MAX = 14` characters; it is part of the check, not taste. Other labels (tabs,
    header) are checked by the same probe.
+10. **Operation without a touchscreen is an equal mode.** Every screen, dialog and action is
+   reachable from the physical keys and the keyboard: `F1`..`F8`, arrows, `Tab`, `Enter`, `Esc`,
+   digits, the jog pad and the handwheel. Touch is an additional way, never the only one; mouse and
+   hover are optional. This is checked by a "keyboard only" scenario on every screen, not by eye.
 
 ## 3. React -> Qt map (where the executor looks)
 
@@ -133,6 +142,10 @@ Pre.: none.
    `xfail`; the mechanism must exist.)
 5. **Guard.** A step in `tools/check.ps1`: rebuild `panel-data.js` and compare with the committed
    copy; a divergence is a `FAIL` naming the field. Versions and `CHANGELOG.md` in the same commit.
+6. **The product entry point.** The panel does not start on the controller through `qmlscene`: it
+   needs a proper launch (QtVCP/QML loader or an own exe without a console) with the `MockBackend`
+   and `CNC.Edges` paths. `qmlscene` stays a debugging tool. The Qt port version is bumped in the
+   same commit.
 
 Checks: `pnpm test`, `pnpm guard`, `preview.qml` run.
 Acceptance: changing a label in `data.ts` without rebuilding the manifest goes red; no
@@ -256,7 +269,7 @@ the same runtime the panel runs in.
 
 ### Wave G. Quick program (CAM) — separate work (8-12 days)
 
-Pre.: the panel after waves A-E.
+Pre.: wave A (the C++ core can run in parallel with B/C/D).
 
 **What already exists.** CAM is implemented in React in TypeScript: `lib/cnc/cam/` (141 files, 15
 operation kinds, planner, emitter, `.qprog`, tests) and `components/cnc/cam/` (25 files, overlay).
@@ -271,19 +284,55 @@ program edit mode, and the same slot closes the overlay; a softkey test holds th
 operator either edits the open file or creates a new one and opens the quick program from the
 editor.
 
-1. Choose the carrier: (a) grow the C++ `apps/quickprog` core to 15 kinds and expose it to QML
-   (preferred, matches the "C++ core" rule); (b) build the TypeScript code once into a
-   QML-compatible JS module (faster, but carries QML limits and duplicates types). The dispatcher
-   decides before the wave starts.
-2. Port the types and the `.qprog` document, then the kind planners, then the emitter; every kind
-   is covered by a reference test (quick programming already has a React golden set).
-3. `CamOverlay.qml`: operation list, forms, preview, save with `.bak`, program check.
-4. Open it from the TEST screen, as in React; in touch mode with a separate button. The React
+1. **The carrier is the C++ core (decided, §7).** Grow `apps/quickprog` to 15 kinds: types and the
+   `.qprog` document, then the kind planners, then the emitter. QML gets the core as a library with
+   a thin wrapper (type/facade), not a copy of the algorithms. The TypeScript implementation stays
+   the reference for comparing the output, not a second carrier.
+2. **Order of kinds.** First compare the four already ported kinds (face, pocket, circle pocket,
+   drill) with React byte for byte, then add the rest one by one: contour, slot, chamfer, tap,
+   counterbore, thread mill, engraving, pocket with island, rest, probe, custom G-code. Every kind
+   is covered by a reference test.
+3. **`CamOverlay.qml`:** operation list, forms, preview, save with `.bak`, insert into the open
+   program, program check.
+4. **Opening** — from the TEST screen, as in React; in touch mode with a separate button. The React
    editor entry is already restored (`0.33.2`); Qt gets it in this wave.
+5. **Parallel work.** The C++ core can run alongside waves B/C/D: it does not depend on the QML
+   frame. It is the long pole (8-12 days), so it starts right after wave A.
 
 Checks: C++ `quickprog_check`, new kind tests, golden program comparison, `panel_probe`.
 Acceptance: all 15 kinds plan and emit the same program as React on the demo part.
 Risk: two sources of algorithms. Decision: one carrier (C++ or JS), the other is removed.
+
+### Wave H. Operation without a touchscreen: physical keys (2-3 days)
+
+Pre.: waves A-F; closes after them because it checks every screen at once.
+
+The goal is a panel fully driven by the physical console and the keyboard, without touches or a
+mouse.
+
+1. **A complete key map.** Every action on a screen has a key or a sequence: `F1`..`F8` are the
+   softkeys, arrows/`Tab` move focus and lists, `Enter` starts or confirms, `Esc` resets or closes,
+   digits select tabs and type, letters type MDI. The map is compared with `keys.ts` and the softkey
+   set: no action without a key, no key without a label.
+2. **Focus and selection.** A visible focus ring, a cursor in lists and tables, `PgUp`/`PgDn`, form
+   traversal with `Tab`/`Shift+Tab`, `Enter` confirms a field. Hints do not depend on hover; a
+   disabled key names its reason in the message line.
+3. **The panel layout.** The screen does not require touch zones: the touch deck and large touch
+   buttons are hidden or collapsed, their actions stay reachable from the console. 1024×600, labels
+   fit the slot.
+4. **Dialogs without gestures.** Every window (file, tool, calculator, search, measure, probe, CAM)
+   opens, navigates and closes from the keyboard. Dragging is optional: lists and fields have keys;
+   the MPG emulator works from the keyboard too (`+`/`-`, arrows).
+5. **The "keyboard only" scenario.** Walk the full operator path without touches or a mouse: start,
+   select a program, edit, CAM, save/insert, check, start with confirmation, stop, reset. For every
+   screen — a screenshot and the recorded keys.
+
+Checks: key routing tests (`keys.test.ts`), `panel_probe` (focus and keys), a `preview.qml` run
+without a mouse, screenshots in `img/`.
+Acceptance: no action requires a touch; the scenario is passed with the keyboard alone; every
+action shows its key; a disabled key explains its reason.
+Risk: touch gestures (swipe, drag) may remain the only way somewhere — the scenario finds them and
+a key is added.
 
 ## 5. Order and estimate
 
@@ -292,7 +341,13 @@ visible result appears in B. Then D (screens and viewer), E (wizards, themes, to
 for debugging on hardware). CAM (G) is a separate wave after visual parity.
 
 Rough estimate: A 2-3, B 3-4, C 3-4, D 4-6, E 6-8, F 3-4 days — **21-29 days** for one person to
-visual parity; G is another **8-12 days** separately.
+visual parity; H (operation without a touchscreen) is another **2-3 days** and closes after A-F;
+G (CAM) is **8-12 days** separately.
+
+**The first pass.** Start with **A (foundation)** and immediately **B (visible frame)**: after B the
+panel already looks like React and can be shown on the controller. In parallel, before B finishes,
+start the **C++ CAM core (G, steps 1-2)**: it is the long pole and does not depend on QML. C and F
+follow; D after C; E after D; H is the acceptance after A-F.
 
 ## 6. General risks
 
@@ -308,8 +363,8 @@ visual parity; G is another **8-12 days** separately.
   (`docs/PORT-CPP.md`, §11). Check in the same runtime the panel runs in.
 * **Live 3D only in a window.** Offscreen does not draw Quick3D; the RUN screen with the toolpath is
   accepted in a live window.
-* **CAM — a second carrier.** Keeping both TypeScript and C++/JS will diverge the algorithms; the
-  carrier is chosen before wave G.
+* **CAM — a second carrier.** TypeScript stays the reference, the product uses the C++ core; there
+  is no second implementation in the product, otherwise the algorithms diverge.
 
 ## 7. Dispatcher decisions (fixed 31.10.2026)
 
@@ -324,10 +379,19 @@ visual parity; G is another **8-12 days** separately.
 6. **MPG pendant emulator — needed, in a separate window** from the interface (wave F), with axis
    and multiplier selection and the same actions as the physical handwheel.
 7. **`preview.qml` — a wrapper**, the hand copy is deleted (wave A).
-8. **CAM (quick program) — a separate large wave** after visual parity (wave G), not in this wave;
-   choose the carrier (C++ core or JS build of the React code) before it starts.
+8. **CAM (quick program) — a separate wave** (G): the C++ core runs in parallel with B/C/D, the
+   overlay after the frame; the carrier is C++ (decision 11).
+9. **Operation without a touchscreen is mandatory** (wave H): every screen and dialog is driven by
+   physical keys and the keyboard; touch is an additional way.
+10. **Qt is the product, React is the reference.** The controller runs Qt; React is frozen after
+    stabilization (start, CAM insert) and serves as the reference for texts, behaviour and tests.
+    New features go to Qt only.
+11. **CAM uses the C++ core.** `apps/quickprog` grows to 15 kinds and is exposed to QML through a
+    wrapper; TypeScript stays the reference for comparing the output, no second implementation in
+    the product.
 
 ## 8. Out of scope
 
 The viewer port (separate plan — `docs/PORT-CPP.md`), changes to the React interface itself, test
-NC programs and the postprocessor. CAM is carried out as wave G and starts separately after A-E.
+NC programs and the postprocessor. CAM is wave G: its C++ core starts in parallel with B/C/D, the
+overlay after the frame.

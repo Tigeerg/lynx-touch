@@ -35,6 +35,8 @@ export const stampAction = (a: Action, now = Date.now()): Action => {
     case 'LADDER_COPY':
     case 'LADDER_SAVE':
     case 'ESTOP':
+    case 'CYCLE_START':
+    case 'CAM_INSERT':
       return a.at === undefined ? { ...a, at: now } : a
     default:
       return a

@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest'
 import { PROGRAM_NAME } from '../data'
 import { currentFile } from '../files'
 import { initialState, reducer, type Action } from '../machine'
+import { stampAction } from '../time'
 import type { MachineState } from '../types'
 import { START_CONFIRM_MS } from './cam-start'
 
@@ -97,5 +98,17 @@ describe('первый пуск сохранённой быстрой прогр
 
     const mdi = { ...initialState, workplace: 'SETUP' as const, mdi: { buffer: 'G0 X1', history: [], running: false } }
     expect(run(mdi, { type: 'CYCLE_START', at: 2_000 }).run).toBe('RUN')
+  })
+
+  it('два нажатия с пульта без готового штампа времени запускают программу', () => {
+    // The UI dispatches CYCLE_START without a timestamp: stampAction fills it in, and the second
+    // press within the window is the confirmation. Without the stamp the question never ends.
+    const first = reducer(saved(), stampAction({ type: 'CYCLE_START' }, 2_000))
+    expect(first.run).not.toBe('RUN')
+    expect(first.camStartConfirmed?.pendingStart).toBe(2_000)
+
+    const second = reducer(first, stampAction({ type: 'CYCLE_START' }, 3_000))
+    expect(second.run).toBe('RUN')
+    expect(second.camStartConfirmed).toBeNull()
   })
 })

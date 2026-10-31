@@ -37,4 +37,9 @@ describe('время приходит в экшене, а не берётся в
     expect(stampAction({ type: 'TICK', dt: 16 }, AT)).toEqual({ type: 'TICK', dt: 16 })
     expect(stampAction({ type: 'ESTOP', at: AT + 1 }, AT)).toEqual({ type: 'ESTOP', at: AT + 1 })
   })
+
+  it('нажатие Пуск получает время: по нему считается окно подтверждения новой программы', () => {
+    expect(stampAction({ type: 'CYCLE_START' }, AT)).toEqual({ type: 'CYCLE_START', at: AT })
+    expect(stampAction({ type: 'CYCLE_START', at: AT + 1 }, AT)).toEqual({ type: 'CYCLE_START', at: AT + 1 })
+  })
 })

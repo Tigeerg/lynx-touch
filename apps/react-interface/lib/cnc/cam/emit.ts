@@ -174,3 +174,37 @@ export function emitProgram(program: QuickProgram, path: ProgramPath, warnings: 
   lines.push('%')
   return lines
 }
+
+/**
+ * The lines of a quick program for insertion into an already open file: the modal preamble without
+ * the document tags, the operations, and no footer. The sequence numbers start at `startSequence`
+ * so the block continues the numbering of the file it lands in. The document-level tags
+ * (`MACHINE`, `UI_STOCK`, `UI_ORIGIN`) stay out: the open file keeps its own stock and origin.
+ */
+export function emitInsert(
+  program: QuickProgram,
+  path: ProgramPath,
+  warnings: Issue[] = [],
+  startSequence = FIRST_SEQUENCE,
+): string[] {
+  const state = freshState()
+  const blocks: Block[] = []
+  for (const block of headerBlocks(program)) {
+    // The tags and comments of the frame describe a whole file, not a block inserted into one.
+    if (block.text.startsWith('(')) continue
+    blocks.push(block)
+  }
+  const own = warnings.filter((item) => /^operations\[\d+\]$/.test(item.field))
+  path.operations.forEach((_, index) => blocks.push(...operationBlocks(program, path, index, state, own)))
+  let sequence = startSequence
+  const lines: string[] = []
+  for (const block of blocks) {
+    if (block.text.startsWith('(')) {
+      lines.push(block.text)
+      continue
+    }
+    lines.push(numberedBlock(sequence, block.text))
+    sequence += SEQUENCE_STEP
+  }
+  return lines
+}

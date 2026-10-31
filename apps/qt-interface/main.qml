@@ -20,6 +20,7 @@ Item {
 
     // Active screen (bind to logic in QtVCP). Values: pos, prog, ...
     property string activeScreen: "pos"
+    property string workplace: "RUN"
     onActiveScreenChanged: { if (activeScreen === "service") svcFocus = "nav"; }
     property string machineMode: "AUTO"
 
@@ -272,7 +273,7 @@ Item {
     function mutateAlarms(fn) { var d = []; for (var i = 0; i < alarmsData.length; i++) { var r = {}; for (var k in alarmsData[i]) r[k] = alarmsData[i][k]; d.push(fn(r, i)); } alarmsData = d; }
     function activeAlarmCount() { var n = 0; for (var i = 0; i < alarmsData.length; i++) if (alarmsData[i].active) n++; return n; }
     function clearAckedAlarms() { var d = []; for (var i = 0; i < alarmsData.length; i++) if (alarmsData[i].active) d.push(alarmsData[i]); alarmsData = d; if (cursorAlarm >= alarmsData.length) cursorAlarm = Math.max(0, alarmsData.length - 1); }
-    function padSoft(a) { var r = a.slice(); while (r.length < 7) r.push(null); return r.slice(0, 7); }
+    function padSoft(a) { var r = a.slice(); while (r.length < 8) r.push(null); return r.slice(0, 8); }
     function pressSoftkeyIndex(i) {
         var arr = softkeysFor(activeScreen);
         if (i >= 0 && i < arr.length) pressSoftkey(arr[i]);
@@ -966,7 +967,7 @@ Item {
             // ----- Tab 1: Position -----
             Rectangle {
                 id: tab0
-                property bool on: root.activeScreen === "pos"
+                property bool on: root.activeScreen === "pos" || root.activeScreen === "prog"
                 property bool locked: root.tabLocked("pos")
                 opacity: locked ? 0.4 : 1.0
                 Layout.fillWidth: true
@@ -999,14 +1000,15 @@ Item {
                         Text { anchors.centerIn: parent; text: "1"; color: tab0.on ? cPrimary : cForeground; font.bold: true; font.pixelSize: 10 }
                     }
                     Text { text: "\ue121"; color: tab0.on ? cPrimaryFg : cForeground; font.family: "lucide"; font.pixelSize: 16 }
-                    Text { text: "Позиция"; Layout.fillWidth: true; color: tab0.on ? cPrimaryFg : cForeground; font.bold: true; font.pixelSize: 12; font.strikeout: tab0.locked; elide: Text.ElideRight }
+                    Text { text: "Работа"; Layout.fillWidth: true; color: tab0.on ? cPrimaryFg : cForeground; font.bold: true; font.pixelSize: 12; font.strikeout: tab0.locked; elide: Text.ElideRight }
                 }
-                MouseArea { anchors.fill: parent; enabled: !tab0.locked; onClicked: root.activeScreen = "pos" }
+                MouseArea { anchors.fill: parent; enabled: !tab0.locked; onClicked: root.activeScreen = root.workplace === "SETUP" ? "pos" : "prog" }
             }
 
             // ----- Tab 2: Program -----
             Rectangle {
                 id: tab1
+                visible: false
                 property bool on: root.activeScreen === "prog"
                 property bool locked: root.tabLocked("prog")
                 opacity: locked ? 0.4 : 1.0
@@ -1078,7 +1080,7 @@ Item {
                         color: tab2.on ? cPrimaryFg : cCard
                         border.color: tab2.on ? cPrimaryFg : cBorderMuted
                         radius: 4
-                        Text { anchors.centerIn: parent; text: "3"; color: tab2.on ? cPrimary : cForeground; font.bold: true; font.pixelSize: 10 }
+                        Text { anchors.centerIn: parent; text: "2"; color: tab2.on ? cPrimary : cForeground; font.bold: true; font.pixelSize: 10 }
                     }
                     Text { text: "\ue0ac"; color: tab2.on ? cPrimaryFg : cForeground; font.family: "lucide"; font.pixelSize: 16 }
                     Text { text: "Смещения"; Layout.fillWidth: true; color: tab2.on ? cPrimaryFg : cForeground; font.bold: true; font.pixelSize: 12; font.strikeout: tab2.locked; elide: Text.ElideRight }
@@ -1119,7 +1121,7 @@ Item {
                         color: tab3.on ? cPrimaryFg : cCard
                         border.color: tab3.on ? cPrimaryFg : cBorderMuted
                         radius: 4
-                        Text { anchors.centerIn: parent; text: "4"; color: tab3.on ? cPrimary : cForeground; font.bold: true; font.pixelSize: 10 }
+                        Text { anchors.centerIn: parent; text: "3"; color: tab3.on ? cPrimary : cForeground; font.bold: true; font.pixelSize: 10 }
                     }
                     Text { text: "\ue1b1"; color: tab3.on ? cPrimaryFg : cForeground; font.family: "lucide"; font.pixelSize: 16 }
                     Text { text: "Инструмент"; Layout.fillWidth: true; color: tab3.on ? cPrimaryFg : cForeground; font.bold: true; font.pixelSize: 12; font.strikeout: tab3.locked; elide: Text.ElideRight }
@@ -1160,7 +1162,7 @@ Item {
                         color: tab4.on ? cPrimaryFg : cCard
                         border.color: tab4.on ? cPrimaryFg : cBorderMuted
                         radius: 4
-                        Text { anchors.centerIn: parent; text: "5"; color: tab4.on ? cPrimary : cForeground; font.bold: true; font.pixelSize: 10 }
+                        Text { anchors.centerIn: parent; text: "4"; color: tab4.on ? cPrimary : cForeground; font.bold: true; font.pixelSize: 10 }
                     }
                     Text { text: "\ue193"; color: tab4.on ? cPrimaryFg : cForeground; font.family: "lucide"; font.pixelSize: 16 }
                     Text { text: "Сообщения"; Layout.fillWidth: true; color: tab4.on ? cPrimaryFg : cForeground; font.bold: true; font.pixelSize: 12; font.strikeout: tab4.locked; elide: Text.ElideRight }
@@ -1209,7 +1211,7 @@ Item {
                         color: tab5.on ? cPrimaryFg : cCard
                         border.color: tab5.on ? cPrimaryFg : cBorderMuted
                         radius: 4
-                        Text { anchors.centerIn: parent; text: "6"; color: tab5.on ? cPrimary : cForeground; font.bold: true; font.pixelSize: 10 }
+                        Text { anchors.centerIn: parent; text: "5"; color: tab5.on ? cPrimary : cForeground; font.bold: true; font.pixelSize: 10 }
                     }
                     Text { text: "\ue154"; color: tab5.on ? cPrimaryFg : cForeground; font.family: "lucide"; font.pixelSize: 16 }
                     Text { text: "Сервис"; Layout.fillWidth: true; color: tab5.on ? cPrimaryFg : cForeground; font.bold: true; font.pixelSize: 12; font.strikeout: tab5.locked; elide: Text.ElideRight }
@@ -1219,6 +1221,7 @@ Item {
             // ----- Tab 7: 3D -----
             Rectangle {
                 id: tab6
+                visible: false
                 property bool on: root.activeScreen === "view"
                 Layout.fillWidth: true
                 Layout.fillHeight: true

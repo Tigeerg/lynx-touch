@@ -7,7 +7,16 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { SOFTKEY_LABEL } from './data'
 
-const qml = readFileSync(new URL('../../../qt-interface/main.qml', import.meta.url), 'utf8')
+const qmlDir = new URL('../../../qt-interface/', import.meta.url)
+
+/** Every QML file of the port: a label may move to a component, it must not leave the check. */
+const readQml = (dir: URL): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.isDirectory()) return readQml(new URL(`${entry.name}/`, dir))
+    return entry.name.endsWith('.qml') ? [readFileSync(new URL(entry.name, dir), 'utf8')] : []
+  })
+
+const qml = readQml(qmlDir).join('\n')
 
 /**
  * The softkey labels live in a facade plus its modules (softkeys.ts re-exports ./softkeys/*), so

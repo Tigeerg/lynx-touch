@@ -5,6 +5,21 @@
 
 Формат и правила — в [`VERSIONING.md`](VERSIONING.md). Термины — [`ROLES.md`](ROLES.md), раздел 9.
 
+## 0.35.1 - 2026-11-01
+
+### Изменено
+- **Фундамент Qt-порта (волна A).** `panel-data.js` собирается из таблиц React
+  (`lib/cnc/panel-data.ts`), тест сравнивает его с источником; `qt-parity.test.ts` читает все
+  `apps/qt-interface/**/*.qml`, а не только `main.qml`; добавлен offscreen-пробник
+  `apps/qt-interface/tests/tst_panel.qml` и `scripts/check-qt-panel.ps1`; сторож собирает
+  `lynx-panel.exe` и прогоняет пробник.
+
+### Проверки
+- Тесты Qt-панели — OK; `build-qt-interface.ps1` — OK; манифест совпадает с React; сторож OK.
+
+### Версии
+- продукт — `0.35.1` (PATCH: фундамент и проверки порта); `qt-interface` — `0.6.1`.
+
 ## 0.35.0 - 2026-11-01
 
 ### Добавлено

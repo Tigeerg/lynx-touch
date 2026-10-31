@@ -189,6 +189,24 @@ if ($cppReady) {
   Skipped 'сборка C++ и прогоны пробников: нет тулчейна (Qt6, OCCT, cmake, ninja, vcvars64)'
 }
 
+# 6b. The Qt panel itself: the standalone debug executable and its offscreen checks. They need the
+# built MockBackend module (the viewer build above), not a second toolchain check.
+if (Test-Path -LiteralPath 'build/qmlbackend/MockBackend/gvqmlbackend.dll') {
+  Run-Tool 'build-qt-interface.ps1 (панель Qt)' {
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-qt-interface.ps1
+  }
+  if (Test-Path -LiteralPath 'build/qt-interface/lynx-panel.exe') {
+    Ok 'панель Qt собрана (build/qt-interface/lynx-panel.exe)'
+  } else {
+    Bad 'панель Qt не собрана: нет build/qt-interface/lynx-panel.exe'
+  }
+  Run-Tool 'Qt-панель offscreen (qmltestrunner)' {
+    powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-qt-panel.ps1
+  }
+} else {
+  Skipped 'панель Qt: нет build/qmlbackend/MockBackend - соберите вьювер'
+}
+
 # 7. The C++ viewer entry point (build/viewer/gcodeviewer.exe): an offscreen run on the real NC
 #    program. Needs the built exe and Qt in PATH (the exe links against Qt6Core.dll); the entry
 #    point adds the plugin directory and the OCCT DLLs itself. Without the exe or Qt the step is

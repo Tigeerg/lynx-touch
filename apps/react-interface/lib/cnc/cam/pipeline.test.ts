@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest'
 import { ETL_CASES, parseSummary } from './etl-cases'
 import { buildProgram, estimateSeconds, operationUuid } from './path'
 import { emitProgram } from './emit'
+import { GENERATOR } from './emit-frame'
 import { moveWords, openModal } from './emit-moves'
 import { freshState } from './emit-state'
 import { faceLayout } from './path-face'
@@ -220,4 +221,16 @@ describe('safety properties of the reference programs', () => {
       expect(stops).toBe(stopAfter ? ops - 1 : 0)
     })
   }
+})
+
+describe('the saved file names its generator', () => {
+  // The plan (§11) wants a generated program to be told from a hand-edited one. The header carries
+  // the program and its version, and the version is the one the package declares, so a bump cannot
+  // leave the header lying.
+  it('writes the panel and its package version into the header', () => {
+    const pkg = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as {
+      version: string
+    }
+    expect(GENERATOR).toBe(`lynx-touch react-interface ${pkg.version}`)
+  })
 })

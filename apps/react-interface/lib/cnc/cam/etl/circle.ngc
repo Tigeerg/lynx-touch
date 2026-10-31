@@ -1,7 +1,7 @@
 %
 (MACHINE)
 (  MODEL: CIRCLE)
-(  GENERATOR: quickprog 0.2.0)
+(  GENERATOR: lynx-touch react-interface 0.22.0)
 (UI_ORIGIN: X0. Y0. Z0.)
 (UI_STOCK: XMIN=-50. XMAX=50. YMIN=-40. YMAX=40. ZMIN=-20. ZMAX=0.)
 N10 G21 G90 G94 G17 G40 G49 G80

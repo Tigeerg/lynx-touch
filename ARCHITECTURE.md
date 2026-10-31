@@ -58,7 +58,11 @@
   стадий). Оверлей быстрой УП — `cam/` (`cam-overlay.tsx` — каркас и две раскладки, `operation-picker.tsx` —
   плитки видов, `operation-list.tsx` — карточки операций, `cam-form.tsx` — форма с вкладками,
   `cam-preview.tsx` — 2D по тем же ходам, `cam-fields.ts` — подписи и группы полей, `cam-labels.ts` —
-  надписи карточек, `keypad.tsx` — цифровой блок сенсора). Наборы софт-кеев по экранам — `softkeys/screens/*.ts` под фасадом `softkey-screens.ts`. Сенсорный
+  надписи карточек, `keypad.tsx` — цифровой блок сенсора, `cam-overlay-body.tsx` — колонки и состояние
+  диалога DXF, `operation-card.tsx` — карточка с меню копий, `field-row.tsx` — строка поля и выбор
+  источников остатка, `use-form-state.ts` — таймер предпросмотра, `copy-dialogs.tsx`/`copy-dialog-form.tsx` —
+  массив и поворот, `source-choice.ts` — выбор исходных операций, `dxf-dialog.tsx`/`dxf-dialog-text.ts` —
+  импорт DXF). Наборы софт-кеев по экранам — `softkeys/screens/*.ts` под фасадом `softkey-screens.ts`. Сенсорный
   вариант — `components/cnc/touch/`; переключатель — `ui-mode.tsx`,
   контекст — `ui-mode-context.ts`.
 * `lib/cnc/` — **чистая логика станка, без JSX, React и DOM**: `machine.ts` (редьюсер, сводит подсистемы

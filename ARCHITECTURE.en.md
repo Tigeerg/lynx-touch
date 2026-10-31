@@ -61,7 +61,11 @@ Layers, top to bottom:
   stage words). The quick program overlay — `cam/` (`cam-overlay.tsx` — the frame and the two layouts,
   `operation-picker.tsx` — the kind tiles, `operation-list.tsx` — the operation cards, `cam-form.tsx` — the form
   with tabs, `cam-preview.tsx` — the 2D view over the same moves, `cam-fields.ts` — field captions and groups,
-  `cam-labels.ts` — card words, `keypad.tsx` — the touch digit pad). The per-screen softkey sets live in `softkeys/screens/*.ts` under the `softkey-screens.ts`
+  `cam-labels.ts` — card words, `keypad.tsx` — the touch digit pad, `cam-overlay-body.tsx` — the columns
+  and the DXF dialog state, `operation-card.tsx` — the card with the copy menu, `field-row.tsx` — the field
+  row and the rest source picker, `use-form-state.ts` — the preview timer,
+  `copy-dialogs.tsx`/`copy-dialog-form.tsx` — the array and the rotation, `source-choice.ts` — the source
+  operations, `dxf-dialog.tsx`/`dxf-dialog-text.ts` — the DXF import). The per-screen softkey sets live in `softkeys/screens/*.ts` under the `softkey-screens.ts`
   facade. Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
   `ui-mode-context.ts`.
 * `lib/cnc/` — **pure machine logic, no JSX, React, or DOM**: `machine.ts` (reducer that composes the

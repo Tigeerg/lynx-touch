@@ -51,6 +51,9 @@ int main() {
     runPostHeadChecks();
     runPostQprogChecks();
     runPostCliChecks();
+    // The kinds the panel writes and the demo does not plan, after the console
+    // cases: the same dispatcher, a file of every new kind.
+    qprog_kinds_checks::runQprogKindsChecks();
     // The demo may be built and run outside the repository: the version case
     // against projects.json then prints skip instead of a failure.
     version_checks::runVersionChecks();

@@ -40,6 +40,13 @@ void runPostHeadChecks();
 void runPostQprogChecks();
 void runPostCliChecks();
 
+// The kinds the panel writes and the demo does not plan (PLAN-QUICKPROG, 7.6):
+// every one of them reads, is skipped with a warning and does not stop the
+// planned operations from reaching the file.
+namespace qprog_kinds_checks {
+void runQprogKindsChecks();
+} // namespace qprog_kinds_checks
+
 // ---- the .qprog round-trip and the console -------------------------------
 
 void runQprogChecks();

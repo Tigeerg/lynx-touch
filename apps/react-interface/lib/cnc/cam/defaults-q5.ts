@@ -29,6 +29,13 @@ export const DEFAULT_DWELL_SEC = 0.2
 /** The seat depth of a new counterbore, mm: the M6 head is 6 mm, the form starts shallow. */
 export const DEFAULT_SEAT_DEPTH_MM = 6
 
+/**
+ * The R plane of a new counterbore above the material top, mm. The plane is required: the check
+ * refuses a seat without it, so the form opens on a valid request among the drill RISE_MM of the
+ * plan (`path-counterbore.ts`). The field R itself is not in the form yet.
+ */
+export const DEFAULT_COUNTERBORE_R_MM = 1
+
 /** The thread of a new thread mill: the M8 coarse pitch of a tap, internal. */
 export const DEFAULT_THREAD_PITCH_MM = 1.25
 
@@ -59,8 +66,8 @@ export function newCounterbore(init: NewOperation, tool: ToolRef, material: Mate
     seatDiameterMm: DEFAULT_SEAT_DIAMETER_MM,
     seatDepthMm: Math.min(DEFAULT_SEAT_DEPTH_MM, fields.depthMm),
     dwellSec: DEFAULT_DWELL_SEC,
-    rMm: 0,
-    hasR: false,
+    rMm: DEFAULT_COUNTERBORE_R_MM,
+    hasR: true,
   }
 }
 

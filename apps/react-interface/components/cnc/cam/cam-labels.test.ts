@@ -10,7 +10,16 @@ import { newOperation, newProgram } from '@/lib/cnc/cam/defaults'
 import { fieldFor } from './cam-fields'
 import { valuesOf } from '@/lib/cnc/cam/form'
 import type { OperationKind } from '@/lib/cnc/cam/ops'
-import { formatMm, headerText, KIND_LABEL, keySize, kindWarnings, toolText, warningText } from './cam-labels'
+import {
+  formatMm,
+  hasKindWarning,
+  headerText,
+  KIND_LABEL,
+  keySize,
+  kindWarnings,
+  toolText,
+  warningText,
+} from './cam-labels'
 
 const KINDS: OperationKind[] = [
   'face',
@@ -119,5 +128,21 @@ describe('слова оверлея', () => {
       const values = valuesOf(newOperation(kind, { id: '', topZ: 0 }))
       expect(values.depthMm, kind).toBeTypeOf('string')
     }
+  })
+})
+
+describe('значок предупреждений карточки', () => {
+  it('зависит от предупреждений вида, а не от константы', () => {
+    // The card draws the warning sign only when `hasKindWarning` is true: a face has no warning of
+    // its kind, a slot wider than two diameters has one. The predicate is the card's own condition,
+    // so a sign that is always painted (or never painted) fails here.
+    const face = newOperation('face', { id: 'Плоскость', topZ: 0 })
+    expect(hasKindWarning(face, newProgram())).toBe(false)
+    const slot = newOperation('slot', { id: 'Паз', topZ: 0 })
+    const wide = { ...slot, widthMm: slot.tool.diameterMm * 3 }
+    expect(hasKindWarning(wide, newProgram())).toBe(true)
+    // A rest warning needs the document: the same operation flips the sign with the program.
+    const rest = newOperation('rest', { id: 'Остаток', topZ: 0 })
+    expect(hasKindWarning(rest, { ...newProgram(), operations: [rest] })).toBe(true)
   })
 })

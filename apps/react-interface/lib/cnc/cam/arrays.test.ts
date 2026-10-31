@@ -60,6 +60,29 @@ describe('cloneOperation: копия по смещению', () => {
     expect([d.x0, d.y0]).toEqual([5, 5])
   })
 
+  it('копия rest переносит прямоугольник, но не список source', () => {
+    // A rest's `source` is the indexes of the operations it follows: they point into this document,
+    // and a copy appended after them would name the wrong entries. The footprint moves, the sources
+    // stay as they are (an empty list), so the copy is read as "the rest of the whole pocket".
+    const source: Operation = {
+      ...newOperation('rest', { id: 'Доработка', topZ: 0, depthMm: 3, stepDownMm: 1 }),
+      rect: { x: -10, y: -5, w: 20, h: 10 },
+      source: [0, 2],
+    }
+    const copy = cloneOperation(source, 30, -12, 0, 0, 0, 2)
+    if (copy === null || copy.kind !== 'rest') throw new Error('expected a rest copy')
+    expect(copy.rect).toEqual({ x: 20, y: -17, w: 20, h: 10 })
+    expect(copy.source).toEqual(source.kind === 'rest' ? source.source : [])
+    expect(copy.source).toEqual([0, 2])
+    const turned = cloneOperation(source, 0, 0, 90, 0, 0, 2)
+    if (turned === null || turned.kind !== 'rest') throw new Error('expected a rest copy')
+    expect(turned.rect.x).toBeCloseTo(-5, 9)
+    expect(turned.rect.y).toBeCloseTo(-10, 9)
+    expect(turned.rect.w).toBeCloseTo(10, 9)
+    expect(turned.rect.h).toBeCloseTo(20, 9)
+    expect(turned.source).toEqual([0, 2])
+  })
+
   it('не клонирует Custom G Code: поворот и сдвиг кода непонятен', () => {
     expect(cloneOperation(custom(), 10, 0, 0, 0, 0, 2)).toBeNull()
   })

@@ -17,6 +17,8 @@ import { PathBuilder } from './path-builder'
 import { planThread, threadLayout } from './path-thread'
 import { serializeProgram, parseProgram } from './serialize'
 import { validate } from './validate'
+import { formOperation, newForm, valuesOf } from './form'
+import type { CamForm } from './form-fields'
 
 const stock = { min: { x: -50, y: -40, z: -20 }, max: { x: 50, y: 40, z: 0 } }
 
@@ -47,6 +49,27 @@ const reasons = (doc: QuickProgram): { field: string; reason: string }[] => {
   const checked = validate(doc)
   return checked.ok ? [] : checked.bad
 }
+
+describe('резьба: поле internal в форме', () => {
+  it('новая наружная резьба: internal в форме off, операция наружная', () => {
+    // The form of a new thread opens on the document default (internal); the operator clears the
+    // flag for an external thread, and the cleared box must reach the operation, not be spelled out
+    // again: the field is a switch, not a default the form forgets.
+    const base = newForm('thread', newProgram(stock, 'THREAD'))
+    expect(base.values.internal).toBe('on')
+    const external: CamForm = { ...base, values: { ...base.values, internal: 'off' } }
+    const op = formOperation(external, null)
+    expect(op.kind === 'thread' && op.internal).toBe(false)
+    expect(valuesOf(op).internal).toBe('off')
+  })
+
+  it('редактирование наружной резьбы сохраняет internal false', () => {
+    const out = internal({ internal: false, tool: { number: 1, diameterMm: 4, hNumber: 1 } })
+    const back = formOperation({ op: 'thread', values: valuesOf(out), error: null }, out)
+    expect(back.kind === 'thread' && back.internal).toBe(false)
+    expect(valuesOf(back).internal).toBe('off')
+  })
+})
 
 describe('резьбовая фреза: радиус спирали', () => {
   it('M8x1.25 внутренняя фрезой 6: радиус 4 - 3 = 1 мм, витков threadDepth / pitch', () => {

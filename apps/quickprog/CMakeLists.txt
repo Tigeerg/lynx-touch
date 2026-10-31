@@ -46,6 +46,9 @@ add_library(quickprog_core STATIC
     core/drill_options.cpp
     core/pocket_options.cpp
     core/qprog_operation.cpp
+    core/read-kind-common.cpp
+    core/read-kind-keys.cpp
+    core/read-kind-layout.cpp
     core/feeds.cpp
     core/path.cpp
     core/path_face.cpp
@@ -168,6 +171,7 @@ add_executable(quickprog_check
     tests/checks_post_head.cpp
     tests/checks_post_qprog.cpp
     tests/checks_post_cli.cpp
+    tests/checks_qprog_kinds.cpp
     tests/checks_version.cpp
     tests/checks_imports.cpp
     tests/import_graph.h

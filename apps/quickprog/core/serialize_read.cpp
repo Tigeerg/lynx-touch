@@ -22,6 +22,26 @@
 #include "core/serialize_read_op.h"
 
 namespace qp {
+namespace {
+
+// The layout keys a tap and a counterbore do not require: each writes the keys
+// of the pattern it names, so the words of the other two patterns stay absent.
+bool optionalLayoutKey(const std::string& key) {
+    return key == "hole" || key == "grid" || key == "circle" || key == "count" ||
+           key == "start" || key == "arc" || key == "fullTurn";
+}
+
+// True when the required key belongs to a drilling layout the operation does
+// not use: then the line is optional, and `read-kind-keys.cpp` fills the rest
+// of the layout from the pattern the file names.
+bool superfluousLayoutKey(const OperationGeometry& geometry, const std::string& key) {
+    if (!std::holds_alternative<TapOp>(geometry) && !std::holds_alternative<CounterboreOp>(geometry)) {
+        return false;
+    }
+    return optionalLayoutKey(key);
+}
+
+} // namespace
 
 ParseOutcome parseProgram(const std::string& text) {
     ParseOutcome out;
@@ -29,15 +49,21 @@ ParseOutcome parseProgram(const std::string& text) {
     HeaderSeen header;
     std::vector<std::string> seen;
     // The keys of the operation being read, with the `op.` prefix: the writer
-    // writes `op.enabled`, the reader checks the same spelling.
+    // writes `op.enabled`, the reader checks the same spelling. The count of
+    // the `op.gcode` lines is kept apart: a custom block repeats the key on
+    // purpose, so "seen" is not "once".
     std::vector<std::string> opSeen;
+    int gcodeLines = 0;
     Operation op;
     bool inOp = false;
 
-    // Fills the outcome and returns "stop"; the message is already in `out`.
-    auto fail = [&out](const std::string& message) {
+    int lineNo = 0;
+    // Fills the outcome and returns "stop". A writer may hand over an empty
+    // message: the caller names the line it was reading, so a refusal never
+    // reads as "broken file" without a reason.
+    auto fail = [&out, &lineNo](const std::string& message) {
         out.ok = false;
-        out.error = message;
+        out.error = message.empty() ? "строка " + std::to_string(lineNo) + ": не разобрана." : message;
         return false;
     };
 
@@ -45,7 +71,7 @@ ParseOutcome parseProgram(const std::string& text) {
     // notes line is optional) and the kind keys must be exactly the ones of
     // the kind. The list is read by index, so no loop walks a container the
     // lambda can change.
-    auto closeOp = [&](int lineNo) -> bool {
+    auto closeOp = [&](int atLine) -> bool {
         if (!inOp) { return true; }
         std::vector<std::string> required = commonKeys();
         const std::vector<std::string> kindKeys = keysOf(op.geometry);
@@ -56,6 +82,14 @@ ParseOutcome parseProgram(const std::string& text) {
             // `op.stepOver` for it and is read with the model default
             // (PLAN-QUICKPROG, 7.3). Everything else is required.
             if (required[i] == "notes") { continue; }
+            // A drill layout of a tap or a counterbore writes the keys of its
+            // own pattern only (`op.hole`, `op.grid` or `op.circle` with the
+            // ring words); the other layout keys are optional lines of the same
+            // kind, not a missing field.
+            if (superfluousLayoutKey(op.geometry, required[i])) { continue; }
+            // The peck of a tap is "the planner decides" when the file does not
+            // name it, as it is for a drill: a zero is the model default.
+            if (required[i] == "peck" && std::holds_alternative<TapOp>(op.geometry)) { continue; }
             const bool pocketStep = required[i] == "stepOver" &&
                                     (std::holds_alternative<RectPocketOp>(op.geometry) ||
                                      std::holds_alternative<CirclePocketOp>(op.geometry));
@@ -65,9 +99,18 @@ ParseOutcome parseProgram(const std::string& text) {
             for (std::size_t j = 0; j < opSeen.size(); ++j) {
                 if (opSeen[j] == want) { found = true; }
             }
+            // A custom block writes one `op.gcode` per line; its key is in the
+            // list once per line, and the block is required to write at least
+            // one line (the panel refuses an empty block before the save). A
+            // missing `op.source` of a rest is an empty list, the panel writes
+            // it as the bare key.
+            if (required[i] == "gcode") { found = gcodeLines > 0; }
+            if (required[i] == "source" && std::holds_alternative<RestOp>(op.geometry)) {
+                found = true;
+            }
             if (found) { continue; }
             out.ok = false;
-            out.error = "строка " + std::to_string(lineNo) + ": в операции '" + op.id +
+            out.error = "строка " + std::to_string(atLine) + ": в операции '" + op.id +
                         "' нет обязательного поля '" + want + "'.";
             return false;
         }
@@ -76,7 +119,6 @@ ParseOutcome parseProgram(const std::string& text) {
     };
 
     std::size_t at = 0;
-    int lineNo = 0;
     while (at <= text.size()) {
         const std::size_t end = text.find('\n', at);
         std::string line = text.substr(at, end == std::string::npos ? std::string::npos : end - at);
@@ -102,8 +144,11 @@ ParseOutcome parseProgram(const std::string& text) {
         // so it is not a duplicate; every other key is unique in its scope:
         // the header keys in the document, the op keys in the operation.
         if (!isOpHead) {
+            // A custom block writes one `op.gcode` per program line: the key
+            // repeats by design and its order is the order of the block.
+            const bool repeatedGcode = isOpKey && key == "op.gcode";
             for (const std::string& s : (isOpKey ? opSeen : seen)) {
-                if (s == key) {
+                if (!repeatedGcode && s == key) {
                     fail(where + "поле '" + key + "' повторяется.");
                     return out;
                 }
@@ -140,6 +185,7 @@ ParseOutcome parseProgram(const std::string& text) {
             }
             op = Operation();
             opSeen.clear();
+            gcodeLines = 0;
             if (!readOpHead(words[1], op.geometry, where, out.error)) {
                 out.ok = false;
                 return out;
@@ -163,6 +209,7 @@ ParseOutcome parseProgram(const std::string& text) {
                 out.ok = false;
                 return out;
             }
+            if (sub == "gcode") { ++gcodeLines; }
             opSeen.push_back(key);
             continue;
         }

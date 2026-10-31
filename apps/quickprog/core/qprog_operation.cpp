@@ -9,12 +9,26 @@
 #include "core/serialize_internal.h"
 #include "core/path_drill.h"
 #include "core/qprog_reader.h"
+#include "core/read-kind-keys.h"
 
 #include <string>
 #include <variant>
 #include <vector>
 
 namespace qp {
+namespace {
+
+// The keys every kind shares: they are read here for a planned kind and for a
+// kind the demo only reads, so the common arity is one table.
+bool isKindCommon(const std::string& sub) {
+    for (const std::string& k : commonKeys()) {
+        if (k == sub) { return true; }
+    }
+    // The optional stock material and the H row of G43 are common too.
+    return sub == "material" || sub == "h";
+}
+
+} // namespace
 
 bool readOpValue(Operation& op, const std::string& sub, const std::string& key,
              const std::string& line, const std::vector<std::string>& words,
@@ -35,6 +49,12 @@ auto fail = [&error](const std::string& message) {
     } else if (sub == "notes") {
         op.notes = words.size() > 1 ? unquoteText(restAfter(line, 1)) : std::string();
         return true;
+    }
+    // The keys of a kind the demo does not plan take their own lists and
+    // points (`read-kind-keys.cpp`): the length of `op.points` and the point of
+    // `op.from` are not one value, so the arity table above cannot judge them.
+    if (!isPlanned(op.geometry) && !isDrill(op.geometry) && !isKindCommon(sub)) {
+        return readKindKey(op, sub, key, line, words, where, error);
     }
     if (words.size() != want) {
         return fail(where + "поле '" + key + "' ждёт " + std::to_string(want - 1) +
@@ -186,17 +206,26 @@ auto fail = [&error](const std::string& message) {
             return fail(where + "op.drill ждёт hss или carbide.");
         }
     } else if (sub == "peck" || sub == "r") {
+        // A drill and a tap write their cycle here; a counterbore keeps its R
+        // in the kind part (`read-kind-keys.cpp`), where the seat lives too.
         DrillParams* params = nullptr;
         if (std::holds_alternative<DrillHoleOp>(op.geometry)) {
             params = &std::get<DrillHoleOp>(op.geometry).params;
         } else if (std::holds_alternative<DrillGridOp>(op.geometry)) {
             params = &std::get<DrillGridOp>(op.geometry).params;
-        } else {
+        } else if (std::holds_alternative<DrillCircleOp>(op.geometry)) {
             params = &std::get<DrillCircleOp>(op.geometry).params;
+        }
+        if (params == nullptr) {
+            // A tap and a counterbore keep their own cycle in the kind part;
+            // the key table of the kind has already accepted it.
+            return readKindKey(op, sub, key, line, words, where, error);
         }
         double* value = sub == "peck" ? &params->peckMm : &params->rMm;
         if (!parseQprogNumber(words[1], *value)) { return fail(where + key + " ждёт число."); }
         if (sub == "r") { params->hasR = true; }
+    } else if (!readKindKey(op, sub, key, line, words, where, error)) {
+        return false;
     }
     return true;
 }

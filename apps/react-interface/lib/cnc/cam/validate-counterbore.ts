@@ -71,7 +71,11 @@ export function checkCounterbore(program: ProgramShape, op: Operation, out: Prob
   if (!(cb.dwellSec >= 0)) {
     add(out, 'dwellSec', 'Выдержка цековки не может быть отрицательной.')
   }
-  if (cb.hasR && cb.rMm < cb.topZ - EPS) {
+  if (!cb.hasR) {
+    add(out, 'rMm', 'Задайте плоскость R цековки: без неё цикл возьмёт высоту по умолчанию.')
+    return
+  }
+  if (cb.rMm < cb.topZ - EPS) {
     add(out, 'rMm', `R ${fmt(cb.rMm)} мм ниже верха материала ${fmt(cb.topZ)} мм: быстрый ход войдёт в металл.`)
     return
   }

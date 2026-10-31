@@ -143,8 +143,151 @@ struct DrillCircleOp {
     DrillParams params;
 };
 
+// ---- the kinds the demo reads but does not plan (PLAN-QUICKPROG, 7.6) ------
+//
+// The panel writes every kind of the document into the same schema-1 file; the
+// demo reads the whole file (the round-trip is two-way) and plans only face,
+// pocket, circle-pocket and drill. The kinds below therefore carry their keys
+// and nothing else: no planner, no summary line, no emitter. They are data of
+// the reader, so a new key is one field here, one branch of the value reader
+// and one of the key table. A default equals the panel document default, so a
+// kind with a missing optional line reads as the form would open it.
+
+// A slot milled along a segment: the two end points and the width of the cut.
+struct SlotOp {
+    Point3 from;
+    Point3 to;
+    double widthMm = 0.0;
+    double stepOverPct = 70.0;
+};
+
+// A chamfer along a segment: the leg of the cut, mm.
+struct ChamferOp {
+    Point3 from;
+    Point3 to;
+    double chamferMm = 0.0;
+};
+
+// A closed or open profile: pairs `x y` at the operation's Z; `closed` joins
+// the last point to the first.
+struct ContourOp {
+    std::vector<Point3> points;
+    bool closed = false;
+    double allowanceMm = 0.0;
+    std::string side = "material";
+};
+
+// The cutting pattern shared by a tap and a counterbore: one hole, a grid or a
+// ring; the numbers are the drilling ones so the file keeps one spelling.
+enum class HolePattern { Hole, Grid, Circle };
+
+struct TapOp {
+    HolePattern pattern = HolePattern::Hole;
+    Circle hole;
+    double x0 = 0.0;
+    double y0 = 0.0;
+    int cols = 1;
+    int rows = 1;
+    double dx = 0.0;
+    double dy = 0.0;
+    int count = 1;
+    double startDeg = 0.0;
+    double arcDeg = 360.0;
+    bool fullTurn = true;
+    double pitchMm = 0.0;
+    double peckMm = 0.0;
+};
+
+// A counterbore: the drilling layout, the seat of the head and the dwell of
+// G82. `rMm` is the R plane of the cycle; `hasR` is the panel rule "the plane
+// was set" (the panel refuses a counterbore without it).
+struct CounterboreOp {
+    HolePattern pattern = HolePattern::Hole;
+    Circle hole;
+    double x0 = 0.0;
+    double y0 = 0.0;
+    int cols = 1;
+    int rows = 1;
+    double dx = 0.0;
+    double dy = 0.0;
+    int count = 1;
+    double startDeg = 0.0;
+    double arcDeg = 360.0;
+    bool fullTurn = true;
+    double seatDiameterMm = 0.0;
+    double seatDepthMm = 0.0;
+    double dwellSec = 0.2;
+    double rMm = 0.0;
+    bool hasR = false;
+};
+
+// A thread mill: the crest circle, the pitch, the side and the depth of the
+// thread; `stepOverPct` is the radial step of the finish turns.
+struct ThreadOp {
+    Circle hole;
+    double pitchMm = 0.0;
+    bool internal = true;
+    double threadDepthMm = 0.0;
+    double threadAllowanceMm = 0.0;
+    double stepOverPct = 70.0;
+};
+
+// An engraved string: the text and the frame of the string on the part.
+struct EngraveOp {
+    std::string text;
+    double x = 0.0;
+    double y = 0.0;
+    double heightMm = 0.0;
+    double angleDeg = 0.0;
+};
+
+// A pocket cut around an island: two rectangles and the stock left on the
+// island wall.
+struct IslandPocketOp {
+    Rect rect;
+    Rect island;
+    double islandAllowanceMm = 0.0;
+    double stepOverPct = 70.0;
+};
+
+// A rest-milling pass: the operations it follows (`source`, document indexes;
+// empty writes a bare `op.source` line) and the footprint of the pass.
+struct RestOp {
+    std::vector<int> source;
+    Rect rect;
+    double allowanceMm = 0.0;
+    double stepOverPct = 70.0;
+};
+
+// A custom block: the program lines as typed, one `op.gcode` line each. A bare
+// key is an empty line.
+struct CustomOp {
+    std::vector<std::string> gcode;
+};
+
+// A probe block: the touch points with all three coordinates (a touch along X
+// or Y names the surface side too), the search travel, the touch feed and the
+// axis of G38.2.
+enum class ProbeDirection { X, Y, Z };
+
+struct ProbeOp {
+    std::vector<Point3> points;
+    double rangeMm = 0.0;
+    double touchFeedMmMin = 0.0;
+    ProbeDirection axis = ProbeDirection::Z;
+};
+
 using OperationGeometry =
-    std::variant<FaceOp, RectPocketOp, CirclePocketOp, DrillHoleOp, DrillGridOp, DrillCircleOp>;
+    std::variant<FaceOp, RectPocketOp, CirclePocketOp, DrillHoleOp, DrillGridOp, DrillCircleOp, ContourOp,
+                 SlotOp, ChamferOp, TapOp, CounterboreOp, ThreadOp, EngraveOp, IslandPocketOp, RestOp,
+                 CustomOp, ProbeOp>;
+
+// True for the kinds the demo plans: face, pocket, circle-pocket and the three
+// drills. A false here means "read, named in the summary as skipped, never
+// planned and never emitted": the console prints the skip line instead of a
+// span, so the file the demo hears of is still readable (PLAN-QUICKPROG, 7.6).
+bool isPlanned(const OperationGeometry& geometry);
+
 
 // One operation of the program. `id` is stable across edits: the form and the
 // list address an operation by it, not by index.

@@ -10,7 +10,7 @@ import type { CamAction } from '@/lib/cnc/cam/cam'
 import type { Operation, QuickProgram } from '@/lib/cnc/cam/ops'
 import { formProblems, valuesOf } from '@/lib/cnc/cam/form'
 import { cn } from '@/lib/utils'
-import { KIND_LABEL, kindWarnings, formatMm, keySize, toolText, warningText } from './cam-labels'
+import { KIND_LABEL, formatMm, hasKindWarning, kindWarnings, keySize, toolText, warningText } from './cam-labels'
 import { COPY_MENU } from './cam-dialogs'
 import { smallButton } from './copy-dialogs'
 
@@ -37,6 +37,7 @@ export function OperationCard({
 }) {
   const problem = formProblems(program, valuesOf(op), op)[0]
   const warnings = kindWarnings(op, program)
+  const warning = hasKindWarning(op, program)
   const off = !op.enabled
   const [open, setOpen] = useState(false)
   const target = touch ? 'min-h-11 min-w-11' : 'h-6 px-1'
@@ -55,7 +56,7 @@ export function OperationCard({
           {index + 1}
         </span>
         <span className="min-w-0 flex-1 truncate text-xs font-bold">{KIND_LABEL[op.kind]}</span>
-        {warnings.length > 0 && (
+        {warning && (
           <span className="shrink-0 text-warning" title={warningText(warnings)} aria-label={warningText(warnings)}>
             <TriangleAlert className="size-3.5" aria-hidden="true" />
           </span>

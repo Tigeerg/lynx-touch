@@ -176,6 +176,13 @@ struct Planner {
     void operator()(const DrillGridOp&) { plan(); }
     void operator()(const DrillCircleOp&) { plan(); }
 
+    // The kinds the demo reads but does not plan (PLAN-QUICKPROG, 7.6): the
+    // console names them as skipped before the plan, so a valid document still
+    // reaches this visitor only with a kind the demo owns. An empty span keeps
+    // the operation count of the plan honest if one ever does.
+    template <typename T>
+    void operator()(const T&) {}
+
     // The three drilling kinds share one planner: the hole list differs, the
     // cycle does not.
     void plan() {

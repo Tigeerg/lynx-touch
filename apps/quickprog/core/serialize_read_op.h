@@ -14,9 +14,11 @@
 
 namespace qp {
 
-// Turns the kind word after `op` ("face", "pocket", "circle", "drill",
-// "drill-grid", "drill-circle") into the geometry of the operation. False and
-// a message in `error` for an unknown kind; `where` carries the line number.
+// Turns the kind word after `op` into the geometry of the operation: the four
+// kinds of the planner (face, pocket, circle, drill, drill-grid, drill-circle)
+// and the kinds the panel writes (contour, slot, chamfer, tap, counterbore,
+// thread, engrave, pocket-island, rest, custom, probe). False and a message in
+// `error` for a word the schema does not know; `where` carries the line.
 bool readOpHead(const std::string& kind, OperationGeometry& geometry, const std::string& where,
                 std::string& error);
 

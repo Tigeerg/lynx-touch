@@ -20,6 +20,7 @@
 #include "core/path_drill.h"
 #include "core/path_pocket.h"
 #include "core/serialize.h"
+#include "core/serialize_internal.h"
 #include "core/summary.h"
 #include "core/validate.h"
 
@@ -81,6 +82,26 @@ int saveProgram(const qp::Program& program, const std::string& path, std::ostrea
     return qp::kExitOk;
 }
 
+// The document the demo plans: every operation of a kind it owns. A file of the
+// panel may carry kinds the demo only reads (PLAN-QUICKPROG, 7.6), and a plan
+// of a kind the demo does not cut would be a second planner. The unsupported
+// kinds are left out of the plan and named on the screen; the supported ones
+// keep their order and their fields.
+qp::Program plannedDocument(const qp::Program& program, std::vector<std::string>& skipped) {
+    qp::Program planned = program;
+    planned.operations.clear();
+    for (std::size_t i = 0; i < program.operations.size(); ++i) {
+        const qp::Operation& op = program.operations[i];
+        if (qp::isPlanned(op.geometry)) {
+            planned.operations.push_back(op);
+            continue;
+        }
+        skipped.push_back("Операция " + std::to_string(i + 1) + ": вид " + qp::kindName(op.geometry) +
+                          " не поддерживается демо, пропущена");
+    }
+    return planned;
+}
+
 // A line of the summary that carries one or two numbers: the bytes of the
 // summary are the contract of the previous slices, so the console keeps the
 // `printf` spelling of the values instead of the default stream spelling.
@@ -92,8 +113,18 @@ std::string format2(const char* pattern, double a, double b) {
 
 } // namespace
 
-int finish(const qp::Program& program, const std::string& output, const std::string& savePath,
+int finish(const qp::Program& file, const std::string& output, const std::string& savePath,
            std::ostream& out, std::ostream& err) {
+    // The skip lines come first: the operator reads what the demo left out
+    // before the numbers of what it planned. A document with no supported kind
+    // is an error of the plan, not an empty file.
+    std::vector<std::string> skipped;
+    const qp::Program program = plannedDocument(file, skipped);
+    for (const std::string& line : skipped) { out << line << "\n"; }
+    if (program.operations.empty()) {
+        out << "Ни одной операции демо не поддерживает: программа не планируется.\n";
+        return qp::kExitFailed;
+    }
     const std::vector<qp::Check> problems = qp::validate(program);
     if (!problems.empty()) {
         printProblems(problems, out);

@@ -125,7 +125,27 @@ const char* kindName(const OperationGeometry& geometry) {
     if (std::holds_alternative<CirclePocketOp>(geometry)) { return "circle"; }
     if (std::holds_alternative<DrillHoleOp>(geometry)) { return "drill"; }
     if (std::holds_alternative<DrillGridOp>(geometry)) { return "drill-grid"; }
-    return "drill-circle";
+    if (std::holds_alternative<DrillCircleOp>(geometry)) { return "drill-circle"; }
+    if (std::holds_alternative<ContourOp>(geometry)) { return "contour"; }
+    if (std::holds_alternative<SlotOp>(geometry)) { return "slot"; }
+    if (std::holds_alternative<ChamferOp>(geometry)) { return "chamfer"; }
+    if (std::holds_alternative<TapOp>(geometry)) { return "tap"; }
+    if (std::holds_alternative<CounterboreOp>(geometry)) { return "counterbore"; }
+    if (std::holds_alternative<ThreadOp>(geometry)) { return "thread"; }
+    if (std::holds_alternative<EngraveOp>(geometry)) { return "engrave"; }
+    if (std::holds_alternative<IslandPocketOp>(geometry)) { return "pocket-island"; }
+    if (std::holds_alternative<RestOp>(geometry)) { return "rest"; }
+    if (std::holds_alternative<CustomOp>(geometry)) { return "custom"; }
+    return "probe";
+}
+
+bool isPlanned(const OperationGeometry& geometry) {
+    // The four kinds of the demo planner. The rest of the schema is read for
+    // the panel file, named as skipped and never planned: a planner of a kind
+    // the demo does not own would be a second implementation of the panel.
+    return std::holds_alternative<FaceOp>(geometry) || std::holds_alternative<RectPocketOp>(geometry) ||
+           std::holds_alternative<CirclePocketOp>(geometry) || std::holds_alternative<DrillHoleOp>(geometry) ||
+           std::holds_alternative<DrillGridOp>(geometry) || std::holds_alternative<DrillCircleOp>(geometry);
 }
 
 // Which `op.*` keys a kind takes, without the shape keys that are checked
@@ -133,6 +153,8 @@ const char* kindName(const OperationGeometry& geometry) {
 // reader read. `stepOver` of a pocket is in the table: the writer writes it and
 // the reader knows it, so the round-trip of a pocket keeps the step
 // (PLAN-QUICKPROG, 7.3). The face has had the same key since the first slice.
+// The kinds the demo does not plan list the keys of the panel writer
+// (`serialize-write.ts`), so a panel file of that kind is read whole.
 std::vector<std::string> keysOf(const OperationGeometry& geometry) {
     if (std::holds_alternative<FaceOp>(geometry)) { return {"z", "stepOver"}; }
     if (std::holds_alternative<RectPocketOp>(geometry)) {
@@ -143,7 +165,31 @@ std::vector<std::string> keysOf(const OperationGeometry& geometry) {
     }
     if (std::holds_alternative<DrillHoleOp>(geometry)) { return {"hole", "peck"}; }
     if (std::holds_alternative<DrillGridOp>(geometry)) { return {"grid", "peck"}; }
-    return {"circle", "count", "start", "arc", "fullTurn", "peck"};
+    if (std::holds_alternative<DrillCircleOp>(geometry)) {
+        return {"circle", "count", "start", "arc", "fullTurn", "peck"};
+    }
+    if (std::holds_alternative<ContourOp>(geometry)) { return {"points", "closed", "allowance", "side"}; }
+    if (std::holds_alternative<SlotOp>(geometry)) { return {"from", "to", "width", "stepOver"}; }
+    if (std::holds_alternative<ChamferOp>(geometry)) { return {"from", "to", "chamfer"}; }
+    // The drilling layout words a tap and a counterbore take; the ones of the
+    // pattern the file does not name are optional, so the whole set is a known
+    // key and only the present ones are required (`serialize_read.cpp`).
+    if (std::holds_alternative<TapOp>(geometry)) { return {"pattern", "pitch", "hole", "grid", "count",
+                                                          "start", "arc", "fullTurn", "peck"}; }
+    if (std::holds_alternative<CounterboreOp>(geometry)) {
+        return {"pattern", "seat", "seatDepth", "dwell", "hole", "grid", "count", "start", "arc",
+                "fullTurn", "r"};
+    }
+    if (std::holds_alternative<ThreadOp>(geometry)) {
+        return {"hole", "pitch", "internal", "threadDepth", "allowance", "stepOver"};
+    }
+    if (std::holds_alternative<EngraveOp>(geometry)) { return {"text", "x", "y", "height", "angle"}; }
+    if (std::holds_alternative<IslandPocketOp>(geometry)) {
+        return {"rect", "island", "islandAllowance", "stepOver"};
+    }
+    if (std::holds_alternative<RestOp>(geometry)) { return {"source", "rect", "allowance", "stepOver"}; }
+    if (std::holds_alternative<CustomOp>(geometry)) { return {"gcode"}; }
+    return {"points", "range", "touch", "axis"};
 }
 
 const std::vector<std::string>& commonKeys() {

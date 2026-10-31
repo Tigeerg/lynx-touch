@@ -10,13 +10,14 @@ import { initialState, reducer, type Action } from '../machine'
 import { currentFile } from '../files'
 import type { MachineState, ProgramFile } from '../types'
 import { newOperation, newProgram } from './defaults'
-import type { Operation } from './ops'
+import type { CustomOperation, Operation } from './ops'
 import { ETL_CASES } from './etl-cases'
 import { emitProgram } from './emit'
 import { buildProgram } from './path'
 import { parseProgram, serializeProgram } from './serialize'
 import type { CamState } from './cam'
 import { validate } from './validate'
+import { checkProgram } from './collision'
 
 const camOf = (s: MachineState): CamState => {
   if (s.cam === null) throw new Error('the overlay is closed')
@@ -77,6 +78,21 @@ const pocketDocument = (name: string, x: number, w: number, depthMm = 4, diamete
   }
 }
 
+/** A document of one custom block with a viewer error: an arc of I/J only, no end point. */
+const brokenCustom = (name: string): MachineState => {
+  const op: CustomOperation = {
+    ...(newOperation('custom', { id: 'Свой код', topZ: 0 }) as CustomOperation),
+    tool: { number: 1, diameterMm: 6, hNumber: 1 },
+    gcode: ['G0 X0 Y0', 'G3 I5 J0'],
+  }
+  const document = { ...newProgram(newProgram().stock, name), operations: [op] }
+  const opened = reducer(initialState, { type: 'CAM_OPEN' })
+  return {
+    ...opened,
+    cam: { program: document, form: null, editing: null, error: null, preview: null, saved: null, pendingSave: null },
+  }
+}
+
 describe('сохранение УП: проверка коллизии', () => {
   it('ошибка проверки не пишет файл и возвращает level: error', () => {
     // The save runs validate, the planner and the collision check in that order. A document that
@@ -93,6 +109,29 @@ describe('сохранение УП: проверка коллизии', () => {
     expect(s.message?.text).toContain('depthMm')
     expect(s.files.length).toBe(before)
     expect(s.files.some((f) => f.name.startsWith('DEEP'))).toBe(false)
+  })
+
+  it('ошибка checkProgram (вьювер) не пишет файл и возвращает level: error', () => {
+    // `validate` passes: the custom block has a tool and one line. The refusal comes from
+    // `checkProgram`, which reads the typed lines through the viewer rules: an arc of I/J only has
+    // no end point, so the viewer would draw nothing. The save must stop on that error, not on a
+    // missing operation or document rule; a check that always answered "no errors" would write the
+    // file here and fail the case.
+    const base = brokenCustom('BROKEN')
+    if (base.cam === null) throw new Error('the overlay is closed')
+    expect(validate(base.cam.program).ok).toBe(true)
+    const built = buildProgram(base.cam.program)
+    if (!built.ok) throw new Error(built.problems.join('; '))
+    const found = checkProgram(base.cam.program, built.path)
+    expect(found.errors.some((item) => item.reason.includes('Дуга G3 без конечной точки'))).toBe(true)
+    const before = base.files.length
+    const s = run(base, { type: 'CAM_SAVE', at: 1_000 })
+
+    expect(s.message?.level).toBe('error')
+    expect(s.message?.text).toContain('УП не сохранена')
+    expect(s.message?.text).toContain('Дуга G3 без конечной точки')
+    expect(s.files.length).toBe(before)
+    expect(s.files.some((f) => f.name.startsWith('BROKEN'))).toBe(false)
   })
 
   it('предупреждение не блокирует запись и попадает в УП строкой QUICKPROG WARNING', () => {

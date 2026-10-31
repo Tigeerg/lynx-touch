@@ -107,10 +107,21 @@ describe('цековка: правила', () => {
     expect(bad.some((item) => item.field === 'seatDepthMm')).toBe(true)
   })
 
-  it('R обязателен: R ниже верха — ошибка поля rMm', () => {
-    const doc = program([counterbore({ hasR: true, rMm: -2 })])
-    const bad = reasons(doc)
-    expect(bad.some((item) => item.field === 'rMm')).toBe(true)
+  it('R обязателен: без hasR — ошибка поля rMm, даже при правдоподобном rMm', () => {
+    // The plane is not optional: without it the cycle silently takes the default height. A number
+    // in `rMm` that was never committed (`hasR` false) is not a plane either.
+    const missing = reasons(program([counterbore({ hasR: false, rMm: 1 })]))
+    expect(missing.some((item) => item.field === 'rMm')).toBe(true)
+    expect(missing.find((item) => item.field === 'rMm')?.reason).toContain('плоскость R')
+    // The frame of the form sets the plane (the check refuses a counterbore without it), so the
+    // "no R" case is this one line of the file: the flag cleared, the number left as it was.
+    const fromForm = newOperation('counterbore', { id: 'Цековка', topZ: 0, depthMm: 6 }) as CounterboreOperation
+    expect(fromForm.hasR).toBe(true)
+  })
+
+  it('R ниже верха материала — ошибка поля rMm, заданное R выше верха допустимо', () => {
+    const low = reasons(program([counterbore({ hasR: true, rMm: -2 })]))
+    expect(low.some((item) => item.field === 'rMm')).toBe(true)
     const ok = reasons(program([counterbore({ hasR: true, rMm: 1 })]))
     expect(ok).toEqual([])
   })

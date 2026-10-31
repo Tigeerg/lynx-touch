@@ -157,6 +157,20 @@ describe('карман с островом: разрезка растра', () =
     expect(outside.ok ? [] : outside.bad.map((item) => item.field)).toContain('island')
   })
 
+  it('остров вне кармана: отрицательный зазор выбирается как наименьшая сторона', () => {
+    // An island outside the pocket is refused with the clearance wording: `gapOf` reads the narrowest
+    // of the four sides of the overlap, and an outside axis-aligned rectangle always has a negative
+    // one (its wall stands past the pocket wall), so the refusal names the negative gap, not the
+    // "outside the pocket" branch. The wide branch below it is unreachable for a consistent
+    // rectangle; the case keeps the behaviour pinned so a change of the rule shows here.
+    const doc = program([island({ island: { x: 40, y: -10, w: 20, h: 20 } })])
+    const checked = validate(doc)
+    expect(checked.ok).toBe(false)
+    const problem = checked.ok ? undefined : checked.bad.find((item) => item.field === 'island')
+    expect(problem?.reason).toContain('зазор меньше фрезы')
+    expect(problem?.reason).not.toContain('выходит за')
+  })
+
   it('программа печатает карман с островом, round-trip .qprog', () => {
     const doc = program([island({ islandAllowanceMm: 0.4, stepOverPct: 60 })])
     const planned = buildProgram(doc)

@@ -129,5 +129,12 @@ export function kindWarnings(op: Operation, program?: QuickProgram): string[] {
   }
 }
 
+/**
+ * True when the card shows the warning sign of the kind: a kind with a warning of its own, or a
+ * rest with the document that names its sources. The card draws the sign from this one predicate,
+ * so a sign that never appears (or always does) is a change here, not a hidden constant.
+ */
+export const hasKindWarning = (op: Operation, program: QuickProgram): boolean => kindWarnings(op, program).length > 0
+
 /** The word on a warning sign: one line in the card, the reasons on hover. */
 export const warningText = (reasons: string[]): string => `Проверьте: ${reasons.join(' ')}`

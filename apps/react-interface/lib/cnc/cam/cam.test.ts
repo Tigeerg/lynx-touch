@@ -332,6 +332,41 @@ describe('CAM_DXF: контур из файла DXF', () => {
     expect(camOf(s).preview?.length ?? 0).toBeGreaterThan(0)
   })
 
+  it('после CAM_DXF в состоянии нет текста файла: контур пришёл, DXF ушёл', () => {
+    // The text of the file is a read-once input: the reducer keeps the contour and drops the bytes,
+    // so a later save or a state dump cannot carry the whole DXF of the operator's drawing.
+    const marker = 'DXF-MARKER-6F1C'
+    const marked = entity(
+      'LWPOLYLINE',
+      90,
+      4,
+      70,
+      1,
+      10,
+      -10,
+      20,
+      -10,
+      10,
+      10,
+      20,
+      -10,
+      10,
+      10,
+      20,
+      10,
+      10,
+      -10,
+      20,
+      10,
+    )
+    const text = dxf(marked, entity('TEXT', 1, marker))
+    const s = run(opened(), { type: 'CAM_DXF', text, contour: 0 })
+
+    expect(camOf(s).program.operations).toHaveLength(1)
+    expect(JSON.stringify(s).includes(marker)).toBe(false)
+    expect(JSON.stringify(s).includes(text)).toBe(false)
+  })
+
   it('битый текст — предупреждение и документ не меняется', () => {
     const before = opened()
     const s = run(before, { type: 'CAM_DXF', text: 'не DXF', contour: 0 })

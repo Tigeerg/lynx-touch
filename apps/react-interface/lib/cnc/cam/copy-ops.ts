@@ -140,6 +140,9 @@ export function cloneOperation(
       }
     }
     case 'rest': {
+      // The `source` list is not copied: its indexes point into this document, and a copy appended
+      // after them would name the wrong entries. The footprint moves; the copy reads as "the rest
+      // of the whole pocket" (an empty list), and the operator sets the sources again if needed.
       if (angleDeg !== 0 && !isQuarterTurn(angleDeg)) return null
       const rect = { ...op.rect, x: op.rect.x + dx, y: op.rect.y + dy }
       return { ...op, id, rect: angleDeg === 0 ? rect : turnedRect(rect, angleDeg, cx, cy) }

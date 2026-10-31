@@ -20,6 +20,7 @@ import { fmt } from './feeds'
 import type { CamMove, CamPath } from './moves'
 import type { Operation, QuickProgram } from './ops'
 import { probeWarnings } from './probe'
+import { threadWarnings } from './path-thread'
 import { counterboreWarnings } from './validate-counterbore'
 import { tapWarnings } from './validate-tap'
 import { restWarnings } from './validate-rest'
@@ -143,6 +144,10 @@ export function checkProgram(program: QuickProgram, path: CamPath): CollisionRes
     // own warnings are, never a refused save.
     if (operation.kind === 'counterbore') {
       for (const item of counterboreWarnings(operation)) warnings.push({ field: fieldOf(index), reason: item.reason })
+    }
+    // A milled thread climbs whole turns: the tail of the length stays uncut, and the file says so.
+    if (operation.kind === 'thread') {
+      for (const item of threadWarnings(operation)) warnings.push({ field: fieldOf(index), reason: item.reason })
     }
     // A touch feed above the working feed is the same kind of finding: shown and written, never a block.
     if (operation.kind === 'probe') {

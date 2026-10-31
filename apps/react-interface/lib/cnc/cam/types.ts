@@ -56,8 +56,9 @@ export type CamAction =
   | { type: 'CAM_OP'; kind: OperationKind }
   | { type: 'CAM_PARAM'; field: string; value: string }
   // The work coordinate of the machine into a field of the form (PLAN-QUICKPROG, 5 step 2 and 6):
-  // the number the position display shows, written as typed text, as `CAM_PARAM` would.
-  | { type: 'CAM_DRO'; field: 'x' | 'y' | 'topZ'; axis: 'X' | 'Y' | 'Z' }
+  // the number the position display shows, written as typed text, as `CAM_PARAM` would. `field` is
+  // the exact form value (`rect.x`, `x0`, `topZ`), so the grid's `x0` never writes its `hole.x`.
+  | { type: 'CAM_DRO'; field: string }
   // The program, not the form (PLAN-QUICKPROG, 5 steps 1-2): the offset, the stock, the safe Z and
   // the name change in the header of the overlay and the check reads the whole document.
   | { type: 'CAM_PROGRAM'; field: string; value: string }

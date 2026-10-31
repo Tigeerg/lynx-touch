@@ -82,7 +82,7 @@ export const GOLDEN_COUNTS: KindCount[] = [
   { kind: 'chamfer', moves: 7, cuts: 5, lengthMm: 66 },
   { kind: 'tap', moves: 1, cuts: 0, lengthMm: 0 },
   { kind: 'counterbore', moves: 1, cuts: 0, lengthMm: 0 },
-  { kind: 'thread', moves: 34, cuts: 30, lengthMm: 127.9 },
+  { kind: 'thread', moves: 32, cuts: 28, lengthMm: 118.6 },
   { kind: 'engrave', moves: 71, cuts: 47, lengthMm: 90.1 },
   { kind: 'pocket-island', moves: 45, cuts: 31, lengthMm: 263.8 },
   // No source left behind the earlier pocket: the rest plans nothing and the check says so.

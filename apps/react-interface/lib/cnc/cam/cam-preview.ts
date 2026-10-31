@@ -49,3 +49,27 @@ export const shownPreview = (
     ? { preview: keep.preview, stats: keep.stats ?? null }
     : { preview: preview.lines, stats: preview.stats }
 }
+
+/**
+ * The one recompute of the overlay (PLAN-QUICKPROG, 5 step 9): the header's lines and numbers of
+ * the very program the screen shows. While the form is open that program is the document plus the
+ * form's operation; without it, the document alone. Every action that changes the plan — the accept,
+ * the list, the copies, the header of the document, the save — takes its preview and stats from
+ * here, so a header never describes another program than the one on the screen.
+ *
+ * `withoutForm` says the caller is about to close the form and the document itself is the program
+ * the operator will see (the accepting save): nothing of the form is added.
+ */
+export const recompute = (
+  cam: CamState,
+  program: QuickProgram = cam.program,
+  withoutForm = false,
+): { preview: string[] | null; stats: CamStats | null } => {
+  const shown = withoutForm ? { ...cam, program, form: null } : { ...cam, program }
+  if (shown.form === null) return shownPreview(program, cam)
+  const withForm = formDocument(shown)
+  const preview = withForm === null ? null : previewOfPath(withForm)
+  return preview === null
+    ? { preview: cam.preview ?? [], stats: cam.stats ?? null }
+    : { preview: preview.lines, stats: preview.stats }
+}

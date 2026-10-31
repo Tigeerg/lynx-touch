@@ -113,14 +113,19 @@ describe('the golden program passes the checks', () => {
     expect(issues.map((issue) => issue.code)).toEqual(VIEWER_WARNINGS)
   })
 
-  it('has no collision error; the two warnings are the drawn ones', () => {
+  it('has no collision error; the three warnings are the drawn ones', () => {
     const program = readGolden()
     const check = checkProgram(program, planned(program))
     expect(check.errors).toEqual([])
-    // Two named warnings and nothing else: the seat finer than its head, and the rest with no
-    // source left by the earlier pockets. Both are the document's own figures, not a fault.
+    // Three named warnings and nothing else: the seat finer than its head, the thread whose whole
+    // turns leave 0.5 mm uncut, and the rest with no source left by the earlier pockets. All are
+    // the document's own figures, not a fault (`threadWarnings`, `path-thread.ts`).
     expect(check.warnings).toEqual([
       { field: 'operations[8]', reason: 'Цековка мельче диаметра: проверьте крепёж' },
+      {
+        field: 'operations[9]',
+        reason: 'Резьба короче заданной на 0.5 мм: число витков целое, остаток не режется (6 витков по 1.25 мм).',
+      },
       { field: 'operations[12]', reason: 'Остатка нет: предыдущие операции уже сняли площадь' },
     ])
   })
@@ -130,17 +135,35 @@ describe('the golden program has known numbers', () => {
   const program = readGolden()
   const path = planned(program)
 
-  it('plans 291 moves and 2958.3 mm of cut', () => {
-    expect(path.moves.length).toBe(291)
-    expect(Number(cutLengthMm(path.moves).toFixed(1))).toBe(2958.3)
+  it('plans 289 moves and 2949.0 mm of cut', () => {
+    expect(path.moves.length).toBe(289)
+    expect(Number(cutLengthMm(path.moves).toFixed(1))).toBe(2949)
   })
 
-  it('emits 487 lines', () => {
-    expect(linesOf(readText('demo.ngc'))).toHaveLength(487)
+  it('emits 485 lines', () => {
+    expect(linesOf(readText('demo.ngc'))).toHaveLength(485)
   })
 
   it('gives every kind the moves and the cut length of the golden table', () => {
     expect(countsOf(program, path)).toEqual(GOLDEN_COUNTS)
+  })
+
+  it('never cuts below the bottom of its own pass, kind by kind', () => {
+    // The bottom a cut may reach: the depth of the frame, or the milled thread's own length, which
+    // is the whole of the pass (its pitch decides how far the helix actually goes).
+    const bottomOf = (operation: QuickProgram['operations'][number]): number =>
+      operation.topZ - (operation.kind === 'thread' ? operation.threadDepthMm : operation.depthMm)
+    const spans = path.operations
+    program.operations.forEach((operation, opIndex) => {
+      const span = spans.find((item) => item.opIndex === opIndex)
+      if (span === undefined) return
+      const next = spans.find((item) => item.first > span.first)?.first ?? path.moves.length
+      const bottom = bottomOf(operation)
+      for (const move of path.moves.slice(span.first, next)) {
+        if (move.kind !== 'cut') continue
+        expect(move.to.z, `${operation.kind}: Z ниже дна прохода`).toBeGreaterThanOrEqual(bottom - 1e-9)
+      }
+    })
   })
 
   it('leaves the three hand-check kinds empty on purpose', () => {
@@ -148,7 +171,7 @@ describe('the golden program has known numbers', () => {
       expect(item).toEqual({ ...item, moves: 0, cuts: 0, lengthMm: 0 })
     }
     // The custom block is not silent: its own lines are in the file, after the tags.
-    expect(linesOf(readText('demo.ngc'))).toContain('N2115 G1 Z5 F100')
+    expect(linesOf(readText('demo.ngc'))).toContain('N2105 G1 Z5 F100')
   })
 })
 

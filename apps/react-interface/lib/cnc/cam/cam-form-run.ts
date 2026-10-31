@@ -4,11 +4,11 @@
 //
 // The form keeps strings; the operation of the form is the one the check and the accept read. The
 // accept binds a refusal to the field the operator sees and leaves the document as it was. Every
-// recompute of the preview takes the lines AND the stats of the same plan (`shownPreview`), so the
-// header never describes another program than the one on the screen.
+// recompute of the preview takes the lines AND the stats of the same plan (`recompute`,
+// `cam-preview.ts`), so the header never describes another program than the one on the screen.
 import type { Result } from '../subsystem'
 import type { MachineState } from '../types'
-import { shownPreview } from './cam-preview'
+import { recompute } from './cam-preview'
 import type { CamForm } from './form'
 import { formOperation, formProblems, newForm, valuesOf } from './form'
 import type { Operation } from './ops'
@@ -38,15 +38,8 @@ export function shownForm(cam: CamState, kind: Operation['kind']): CamState {
   const form = newForm(kind, cam.program)
   const op = formOperation(form, null)
   const problem = formProblems(cam.program, form.values, op)[0] ?? null
-  const program = { ...cam.program, operations: [...cam.program.operations, op] }
-  return {
-    ...cam,
-    form: { ...form, error: problem },
-    editing: null,
-    error: problem,
-    ...shownPreview(program, cam),
-    pending: false,
-  }
+  const shown = { ...cam, form: { ...form, error: problem }, editing: null, error: problem }
+  return { ...shown, ...recompute(shown), pending: false }
 }
 
 /** The form of the overlay with the problem bound to the field the operator sees. */
@@ -75,7 +68,8 @@ const shifted = (cam: CamState, op: Operation): CamState => {
       ? [...cam.program.operations, op]
       : cam.program.operations.map((old, i) => (i === cam.editing ? op : old))
   const program = { ...cam.program, operations }
-  return { ...cam, program, form: null, editing: null, error: null, ...shownPreview(program, cam), pending: false }
+  const shown = { ...cam, program, form: null, editing: null, error: null }
+  return { ...shown, ...recompute(shown), pending: false }
 }
 
 /**
@@ -107,7 +101,9 @@ export function listRun(
   operations[a.index] = operations[to]
   operations[to] = moved
   const program = { ...cam.program, operations }
-  return { s: { ...s, cam: { ...cam, program, ...shownPreview(program, cam), pending: false } } }
+  return {
+    s: { ...s, cam: { ...cam, program, ...recompute(cam, program), pending: false } },
+  }
 }
 
 /** The document with one operation replaced, removed (`null`) or left as it was for a bad index. */
@@ -118,5 +114,5 @@ const setOperation = (cam: CamState, index: number, next: Operation | null): Cam
       ? cam.program.operations.filter((_, i) => i !== index)
       : cam.program.operations.map((op, i) => (i === index ? next : op))
   const program = { ...cam.program, operations }
-  return { ...cam, program, ...shownPreview(program, cam), error: null, pending: false }
+  return { ...cam, program, ...recompute(cam, program), error: null, pending: false }
 }

@@ -19,6 +19,7 @@ import { serializeProgram, parseProgram } from './serialize'
 import { validate } from './validate'
 import { formOperation, newForm, valuesOf } from './form'
 import type { CamForm } from './form-fields'
+import { pathWarnings } from './validate-paths'
 
 const stock = { min: { x: -50, y: -40, z: -20 }, max: { x: 50, y: 40, z: 0 } }
 
@@ -134,6 +135,49 @@ describe('резьбовая фреза: радиус спирали', () => {
     const outer = file(internal({ internal: false, hole: { x: 0, y: 0, r: 5 }, pitchMm: 1.5 }))
     expect(outer.some((line) => /\bG3\b/.test(line))).toBe(true)
     expect(outer.some((line) => /\bG2\b/.test(line))).toBe(false)
+  })
+})
+
+describe('резьбовая фреза: целые витки', () => {
+  it('M8x1.25, длина 10.3: 8 витков (10 мм), предупреждение об остатке 0.3 мм', () => {
+    // The helix climbs a whole pitch per turn: a part of a turn would cut below the bottom of the
+    // thread. The turns are floored, and the rest of the length is named, not cut.
+    const layout = threadLayout(internal({ threadDepthMm: 10.3 }))
+    expect(layout.turns).toBe(8)
+    const op = internal({ threadDepthMm: 10.3 })
+    const warnings = pathWarnings(op)
+    expect(warnings.map((item) => item.field)).toContain('threadDepthMm')
+    expect(warnings.some((item) => item.reason.includes('0.3 мм'))).toBe(true)
+    expect(warnings.some((item) => item.reason.includes('витков целое'))).toBe(true)
+  })
+
+  it('M8x1.25, длина 10: 8 витков и ни одного предупреждения', () => {
+    expect(threadLayout(internal({ threadDepthMm: 10 })).turns).toBe(8)
+    expect(pathWarnings(internal({ threadDepthMm: 10 }))).toEqual([])
+  })
+
+  it('самый низкий рез не ниже дна: -8 * 1.25 = -10, а не -10.3', () => {
+    const cuts = plan(internal({ threadDepthMm: 10.3 })).moves.filter((move) => move.kind === 'cut')
+    const lowest = Math.min(...cuts.map((move) => move.to.z))
+    expect(lowest).toBeCloseTo(-10, 9)
+    // The old `length / pitch` helix went to -8.125 on the demo's 8 mm thread: a tenth of a turn
+    // below the bottom. The floor puts it exactly on the bottom.
+    const demo = plan(internal({ threadDepthMm: 8 })).moves.filter((move) => move.kind === 'cut')
+    expect(Math.min(...demo.map((move) => move.to.z))).toBeCloseTo(-7.5, 9)
+  })
+
+  it('меньше одного витка — один виток, но не глубже заданной длины', () => {
+    // A turn is a pitch: a 0.8 mm thread on a 1.25 pitch cannot be cut by a whole turn without
+    // going below its bottom, so the mill does not fit and the operation plans nothing.
+    const layout = threadLayout(internal({ threadDepthMm: 0.8 }))
+    expect(layout.turns).toBe(1)
+    expect(layout.fits).toBe(false)
+    expect(plan(internal({ threadDepthMm: 0.8 })).moves.filter((move) => move.kind === 'cut')).toEqual([])
+  })
+
+  it('порог остатка — 2 % шага: 0.02 мм молчит, 0.03 мм предупреждает', () => {
+    expect(pathWarnings(internal({ threadDepthMm: 10.02 }))).toEqual([])
+    expect(pathWarnings(internal({ threadDepthMm: 10.03 })).some((item) => item.field === 'threadDepthMm')).toBe(true)
   })
 })
 

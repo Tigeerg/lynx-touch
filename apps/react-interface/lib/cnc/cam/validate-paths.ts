@@ -5,6 +5,7 @@
 import { engraveToolWarnings, checkEngrave } from './validate-engrave'
 import { checkIslandPocket, islandWarnings } from './validate-island'
 import type { EngraveOperation, IslandPocketOperation, Operation } from './ops'
+import { threadWarnings } from './path-thread'
 import { add } from './validate-common'
 import type { Problem } from './validate-common'
 
@@ -19,10 +20,12 @@ export function checkPathKind(op: Operation, out: Problem[]): void {
   }
 }
 
-/** The warnings of the two kinds: what the save keeps but the operator should read. */
+/** The warnings of the plan kinds: what the save keeps but the operator should read. */
 export function pathWarnings(op: Operation): Problem[] {
   if (op.kind === 'engrave') return [...engraveToolWarnings(op), ...engraveHeight(op)]
   if (op.kind === 'pocket-island') return islandWarnings(op)
+  // A milled thread climbs whole turns: the tail of the length stays uncut and is named here.
+  if (op.kind === 'thread') return threadWarnings(op)
   return []
 }
 

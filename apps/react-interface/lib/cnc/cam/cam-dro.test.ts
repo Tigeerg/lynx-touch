@@ -31,9 +31,9 @@ describe('CAM_DRO: координата станка в поле формы', ()
     const offset = s.offsets[s.activeOffset].values
     const after = run(
       s,
-      { type: 'CAM_DRO', field: 'x', axis: 'X' },
-      { type: 'CAM_DRO', field: 'y', axis: 'Y' },
-      { type: 'CAM_DRO', field: 'topZ', axis: 'Z' },
+      { type: 'CAM_DRO', field: 'x' },
+      { type: 'CAM_DRO', field: 'y' },
+      { type: 'CAM_DRO', field: 'topZ' },
     )
     const values = camOf(after).form?.values ?? {}
 
@@ -46,7 +46,7 @@ describe('CAM_DRO: координата станка в поле формы', ()
 
   it('без открытой формы — warn и сообщение, состояние не меняется', () => {
     const open = run(initialState, { type: 'CAM_OPEN' })
-    const after = run(open, { type: 'CAM_DRO', field: 'x', axis: 'X' })
+    const after = run(open, { type: 'CAM_DRO', field: 'x' })
 
     expect(after.message?.level).toBe('warn')
     expect(after.cam).toEqual(open.cam)
@@ -59,9 +59,28 @@ describe('CAM_DRO: координата станка в поле формы', ()
       { type: 'CAM_OPEN' },
       { type: 'CAM_OP', kind: 'face' },
     )
-    const after = run(s, { type: 'CAM_DRO', field: 'x', axis: 'X' })
+    const after = run(s, { type: 'CAM_DRO', field: 'x' })
 
     expect(after.message?.level).toBe('warn')
     expect(camOf(after).form).toEqual(camOf(s).form)
+  })
+
+  it('сетка: кнопка у x0 пишет x0, а hole.x остаётся', () => {
+    // The grid of a drill has two more centres (`x0`, `y0`) next to the hole's own `hole.x`. The
+    // exact name of the pressed field decides where the number lands; a suffix search would write
+    // the first `*.x` of the form and move the hole the operator did not touch.
+    const s = run(
+      { ...initialState, machine: { X: 10, Y: -20, Z: -30, A: 0 } },
+      { type: 'CAM_OPEN' },
+      { type: 'CAM_OP', kind: 'drill' },
+      { type: 'CAM_PARAM', field: 'pattern', value: 'grid' },
+    )
+    const before = camOf(s).form?.values ?? {}
+    const offset = s.offsets[s.activeOffset].values
+    const after = run(s, { type: 'CAM_DRO', field: 'x0' })
+    const values = camOf(after).form?.values ?? {}
+
+    expect(values.x0).toBe(String(Math.round((10 - offset.X) * 100) / 100))
+    expect(values['hole.x']).toBe(before['hole.x'])
   })
 })

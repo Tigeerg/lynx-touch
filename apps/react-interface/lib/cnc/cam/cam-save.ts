@@ -16,7 +16,7 @@ import { checkProgram, type CollisionResult } from './collision'
 import { emitProgram } from './emit'
 import type { QuickProgram } from './ops'
 import { buildProgram } from './path'
-import { statsOf } from './cam-stats'
+import { recompute } from './cam-preview'
 import { serializeProgram } from './serialize'
 import { validate } from './validate'
 import type { Result } from '../subsystem'
@@ -106,9 +106,9 @@ export const saveCam = (s: MachineState, cam: CamState, at: number | undefined):
     return { s, msg: `УП не сохранена: ${first.field}: ${first.reason}`, level: 'error' }
   }
   const found: { current: CollisionResult | null } = { current: null }
-  // The plan is built once: its lines are the file, its stats are what the header shows from now on.
-  const built = buildProgram(cam.program)
-  if (!built.ok) return { s, msg: `УП не сохранена: ${built.problems[0]}`, level: 'error' }
+  // The header afterwards describes the file the save writes: the document without the form
+  // (`recompute` with no form open), the same one plan for the lines and the numbers.
+  const shown = recompute(cam, cam.program, true)
   const lines = emitOf(cam.program, found)
   if (lines === null || found.current === null)
     return { s, msg: 'УП не сохранена: программа не строится', level: 'error' }
@@ -140,7 +140,16 @@ export const saveCam = (s: MachineState, cam: CamState, at: number | undefined):
     // The file is new to the operator: its first start asks for the confirmation (PLAN-QUICKPROG, 8).
     s: {
       ...written,
-      cam: { ...cam, saved: name, preview: lines, stats: statsOf(built.path), pending: false, pendingSave: null },
+      cam: {
+        ...cam,
+        form: null,
+        editing: null,
+        saved: name,
+        preview: shown.preview,
+        stats: shown.stats,
+        pending: false,
+        pendingSave: null,
+      },
       camStartConfirmed: { name, pendingStart: null },
     },
     msg: `УП записана в файл ${name} — ${String(lines.length)} строк${notes}, модель — в ${stem}.qprog${backup}`,

@@ -346,14 +346,13 @@ export const shapeProblem = (problems: { field: string; reason: string }[]): str
  * «Взять с DRO» for the centre and the top). The shape axes (`rect.x`, `hole.y`, the bare `x` of an
  * engraving) and `topZ` are positions the operator can find on the display; a width, a depth or a
  * list of points is a size and has no place there.
+ *
+ * The name itself is the answer, not its axis: a drill's grid has `hole.x` and `x0` in one form, and
+ * the button under `x0` has to write `x0`, not the first `*.x` of the form. The display axis is read
+ * from the name in the reducer (`axisOfField`, `cam-dro.ts`), so the two cannot disagree.
  */
-export function droFieldOf(kind: OperationKind, key: string): 'x' | 'y' | 'topZ' | null {
+export function droFieldOf(kind: OperationKind, key: string): 'exact' | null {
   if (!allFields(kind).some((field) => field.key === key)) return null
-  if (key === 'topZ') return 'topZ'
-  if (!key.endsWith('.x') && key !== 'x') return key.endsWith('.y') || key === 'y' ? 'y' : null
-  return 'x'
+  if (key === 'topZ' || key === 'x' || key === 'y' || key === 'x0' || key === 'y0') return 'exact'
+  return key.endsWith('.x') || key.endsWith('.y') ? 'exact' : null
 }
-
-/** The axis of the display a field reads: the X of a `*.x`, the Y of a `*.y`, the Z of the top. */
-export const axisOf = (key: string): 'X' | 'Y' | 'Z' =>
-  key === 'topZ' ? 'Z' : key.endsWith('.y') || key === 'y' ? 'Y' : 'X'

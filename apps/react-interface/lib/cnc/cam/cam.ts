@@ -14,7 +14,7 @@
 // `CAM_PREVIEW` from the UI timer recomputes it. The list and accept actions are not typing, so
 // they recompute straight away and clear the flag. A delayed timer never wins over a save: the
 // save reads the document, not the preview. Every recompute takes the lines AND the stats of the
-// plan from `shownPreview`, so the header describes the program the operator sees.
+// plan from `recompute`, so the header describes the program the operator sees.
 import { isBusy } from '../guards'
 import { arrayCopies, rotatedCopies, type CopyResult } from './copy-ops'
 import { newProgram } from './defaults'
@@ -23,7 +23,7 @@ import { saveCam } from './cam-save'
 import { openSaved } from './cam-open'
 import { amend, type Amending } from './cam-edit'
 import { listRun, shownForm } from './cam-form-run'
-import { shownPreview } from './cam-preview'
+import { recompute } from './cam-preview'
 import { dxfResult } from './dxf-result'
 import type { Result } from '../subsystem'
 import type { MachineState } from '../types'
@@ -144,7 +144,7 @@ const listed = (s: MachineState, cam: CamState, at: number, result: CopyResult):
   const operations = [...list.slice(0, at), ...result.operations, ...list.slice(at + 1)]
   const program = { ...cam.program, operations }
   return {
-    s: { ...s, cam: { ...cam, program, ...shownPreview(program, cam), error: null, pending: false } },
+    s: { ...s, cam: { ...cam, program, ...recompute(cam, program), error: null, pending: false } },
     msg: `Копий: ${String(result.operations.length - 1)}`,
   }
 }

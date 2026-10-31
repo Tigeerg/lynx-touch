@@ -2,18 +2,28 @@
 //
 // The mill centre turns on a circle of `thread radius -/+ D/2`: an internal thread keeps the outer
 // point of the mill on the crest (`r - D/2`), an external one keeps the inner point on the flank
-// (`r + D/2`). One turn climbs one pitch, so the turns are `threadDepth / pitch`. The first radial
-// pass stands `threadAllowanceMm` off the final circle, every next one a step closer (`stepOverPct`
-// of the diameter, as of a pocket), and the last pass is exactly the thread circle: the finish.
+// (`r + D/2`). One turn climbs exactly one pitch, so the helix can only end on a whole turn: the
+// turns are `floor(threadDepth / pitch)`, at least one. A part of a turn would carry the mill below
+// the bottom of the thread (a 8 mm thread of a 1.25 pitch ended at -8.125 instead of -7.5), and a
+// tap cannot climb a fraction either. The rest of the length stays uncut and is named by the
+// warning of `threadWarnings` when it is more than 2 % of the pitch.
+//
+// The first radial pass stands `threadAllowanceMm` off the final circle, every next one a step
+// closer (`stepOverPct` of the diameter, as of a pocket), and the last pass is exactly the thread
+// circle: the finish.
 //
 // A whole turn is two half arcs with an end point (the arc rule of 7.1): the viewer drops an arc
 // without axes, and an arc of pi is written with I/J only. An internal thread turns clockwise (G2,
 // the climb on the right of the walk), an external one counter-clockwise (G3).
 import type { Operation, QuickProgram, ThreadOperation } from './ops'
 import { PathBuilder } from './path-builder'
+import type { Problem } from './validate-common'
 
 const EPS = 1e-6
 const PI = Math.PI
+
+/** The share of a pitch whose remainder is not worth a warning: below it the thread is as asked. */
+const REST_SHARE = 0.02
 
 /** The helix of one thread: the circle radius, the turns, the climb and the radial passes. */
 export interface ThreadLayout {
@@ -25,10 +35,14 @@ export interface ThreadLayout {
   threadRadiusMm: number
   /** The circle of the mill centre, mm. */
   radiusMm: number
-  /** The turns of one pass: `threadDepth / pitch`. */
+  /** The whole turns of one pass: `floor(threadDepth / pitch)`, at least one. */
   turns: number
   /** The climb of the helix, mm per turn. */
   pitchMm: number
+  /** The depth the helix actually reaches below the top: `turns * pitch`, mm (not negative). */
+  cutDepthMm: number
+  /** The length the whole turns leave uncut, mm; it is not cut at all. */
+  restMm: number
   /** The radius of the mill centre on every radial pass; the last one is the finish. */
   passes: number[]
 }
@@ -51,7 +65,11 @@ export function threadRadius(operation: ThreadOperation): number {
 export function threadLayout(operation: ThreadOperation): ThreadLayout {
   const radiusMm = threadRadius(operation)
   const pitch = operation.pitchMm
-  const turns = pitch > EPS ? operation.threadDepthMm / pitch : 0
+  const ratio = pitch > EPS ? operation.threadDepthMm / pitch : 0
+  // Whole turns only, at least one: the helix climbs a pitch per turn and cannot stop halfway.
+  const turns = ratio > 0 ? Math.max(Math.floor(ratio + EPS), 1) : 0
+  const cutDepthMm = Math.max(turns * pitch, 0)
+  const restMm = turns > 0 ? Math.max(operation.threadDepthMm - cutDepthMm, 0) : 0
   const empty: ThreadLayout = {
     fits: false,
     cx: operation.hole.x,
@@ -60,9 +78,14 @@ export function threadLayout(operation: ThreadOperation): ThreadLayout {
     radiusMm,
     turns,
     pitchMm: pitch,
+    cutDepthMm,
+    restMm,
     passes: [],
   }
   if (radiusMm <= EPS || !(turns > 0)) return empty
+  // The helix must not go below the bottom of the thread: a length under one turn cannot be milled
+  // by a whole turn, and the planner cuts nothing rather than cut through the bottom.
+  if (cutDepthMm > operation.threadDepthMm + EPS) return empty
   const step = Math.max(operation.tool.diameterMm * (operation.stepOverPct / 100), EPS)
   const allowance = Math.max(operation.threadAllowanceMm, 0)
   // `passes` counts every radial pass, the finish included. One pass with no allowance is a single
@@ -99,7 +122,7 @@ function helixMoves(
   feedMmMin: number,
   out: PathBuilder,
 ): void {
-  const halves = Math.max(Math.round(layout.turns * 2), 2)
+  const halves = Math.max(layout.turns * 2, 2)
   const climb = layout.pitchMm / 2
   const sweep = cw ? -PI : PI
   let angle = PI / 2
@@ -134,8 +157,28 @@ export function planThread(program: QuickProgram, operation: Operation, out: Pat
     helixMoves(layout, radius, top, cw, op.cutting.feedMmMin, out)
     // The mill leaves the circle along the radius at the bottom of the helix, then rises in the
     // middle of the hole, so it never drags a full thread turn on the way out.
-    out.add('cut', { ...centre, z: top - layout.turns * layout.pitchMm }, op.cutting.feedMmMin)
+    out.add('cut', { ...centre, z: top - layout.cutDepthMm }, op.cutting.feedMmMin)
     out.add('cut', { ...centre, z: top }, op.cutting.plungeFeedMmMin)
   }
   return layout
+}
+
+/**
+ * The warnings of a thread mill that do not block the save: the whole turns leave the tail of the
+ * length uncut. Below 2 % of the pitch the remainder is as good as none; above it the operator has
+ * to know that the thread is shorter than the length asked for.
+ */
+export function threadWarnings(op: ThreadOperation): Problem[] {
+  if (!(op.pitchMm > EPS)) return []
+  const layout = threadLayout(op)
+  if (!(layout.turns > 0) || layout.restMm <= REST_SHARE * op.pitchMm + EPS) return []
+  const rest = Math.round(layout.restMm * 1000) / 1000
+  return [
+    {
+      field: 'threadDepthMm',
+      reason:
+        `Резьба короче заданной на ${String(rest)} мм: число витков целое, остаток не режется ` +
+        `(${String(layout.turns)} витков по ${String(op.pitchMm)} мм).`,
+    },
+  ]
 }

@@ -211,12 +211,12 @@ describe('«С DRO» у полей формы', () => {
   it('кнопка есть у центра и верха материала, но не у размеров и точек', () => {
     // The fields that take a displayed coordinate: the centre of the shape and the top of the
     // material. A width, a depth or a list of points is a size, not a position.
-    expect(droFieldOf('pocket', 'rect.x')).toBe('x')
-    expect(droFieldOf('pocket', 'rect.y')).toBe('y')
-    expect(droFieldOf('circle-pocket', 'circle.x')).toBe('x')
-    expect(droFieldOf('drill', 'hole.y')).toBe('y')
-    expect(droFieldOf('engrave', 'x')).toBe('x')
-    expect(droFieldOf('face', 'topZ')).toBe('topZ')
+    expect(droFieldOf('pocket', 'rect.x')).toBe('exact')
+    expect(droFieldOf('pocket', 'rect.y')).toBe('exact')
+    expect(droFieldOf('circle-pocket', 'circle.x')).toBe('exact')
+    expect(droFieldOf('drill', 'hole.y')).toBe('exact')
+    expect(droFieldOf('engrave', 'x')).toBe('exact')
+    expect(droFieldOf('face', 'topZ')).toBe('exact')
     expect(droFieldOf('pocket', 'rect.w')).toBeNull()
     expect(droFieldOf('pocket', 'depthMm')).toBeNull()
     expect(droFieldOf('contour', 'points')).toBeNull()

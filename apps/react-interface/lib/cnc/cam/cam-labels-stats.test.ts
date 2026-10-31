@@ -9,8 +9,8 @@ import { describe, expect, it } from 'vitest'
 import { initialState, reducer, type Action } from '../machine'
 import type { MachineState } from '../types'
 import { programStats } from './cam-stats'
-import { formOperation } from './form'
-import { DEFAULT_STOCK, newOperation, newProgram } from './defaults'
+import { formOperation, newForm } from './form'
+import { DEFAULT_STOCK, newOperation, newProgram, toolRef } from './defaults'
 import type { Operation, QuickProgram } from './ops'
 import { buildProgram } from './path'
 import { viewerIssues } from './viewer-check'
@@ -20,6 +20,12 @@ const run = (s: MachineState, ...actions: Action[]) => actions.reduce(reducer, s
 const FACE: Operation = {
   ...newOperation('face', { id: '', topZ: 0, depthMm: 1, stepDownMm: 1 }),
   tool: { number: 1, diameterMm: 12, hNumber: 1 },
+}
+
+/** A rectangular pocket of the demo stock: a kind the list can copy. */
+const POCKET: Operation = {
+  ...newOperation('pocket', { id: 'P', topZ: 0, depthMm: 4, stepDownMm: 2, tool: toolRef(2, 8) }),
+  rect: { x: -20, y: -10, w: 40, h: 20 },
 }
 
 /** The overlay with one face operation, opened over the demo stock, and its face form open. */
@@ -77,5 +83,72 @@ describe('сводка шапки: числа плана', () => {
 
     expect(s.cam?.stats?.moves).toBe(plan.path.moves.length)
     expect(s.cam?.preview).toEqual(s.files.find((file) => file.name === 'STAT-2.ngc')?.lines)
+  })
+})
+
+describe('сводка шапки при открытой форме', () => {
+  /** The moves of a plan built from `program`: the number the header prints for it. */
+  const movesOf = (program: QuickProgram): number => {
+    const plan = buildProgram(program)
+    return plan.ok ? plan.path.moves.length : 0
+  }
+
+  it('правка stock/wcs пересчитывает документ с открытой формой, а не без неё', () => {
+    // The form is open on a new pocket; the header edits the stock. The header must describe the
+    // program the screen shows — the document plus the form — not the document alone.
+    const s = run(
+      { ...open(), cam: { ...open().cam!, form: newForm('pocket', open().cam!.program) } },
+      { type: 'CAM_PARAM', field: 'rect.w', value: '30' },
+      { type: 'CAM_PARAM', field: 'rect.h', value: '20' },
+      { type: 'CAM_PREVIEW', at: 200 },
+    )
+    const edited = run(s, { type: 'CAM_PROGRAM', field: 'stock.max.x', value: '60' })
+    const cam = edited.cam!
+    // The form of the screen: the document after the header edit plus the operation it builds.
+    const withForm: QuickProgram = {
+      ...cam.program,
+      operations: [...cam.program.operations, formOperation(cam.form!, null)],
+    }
+    expect(movesOf(cam.program)).not.toBe(movesOf(withForm))
+    expect(cam.stats?.moves).toBe(movesOf(withForm))
+  })
+
+  it('после CAM_CANCEL сводка описывает документ без формы', () => {
+    const s = run(
+      { ...open(), cam: { ...open().cam!, form: newForm('pocket', open().cam!.program) } },
+      { type: 'CAM_PARAM', field: 'rect.w', value: '30' },
+      { type: 'CAM_PARAM', field: 'rect.h', value: '20' },
+      { type: 'CAM_PREVIEW', at: 200 },
+    )
+    const edited = run(s, { type: 'CAM_PROGRAM', field: 'stock.max.x', value: '60' })
+    const cancelled = run(edited, { type: 'CAM_CANCEL' })
+    const cam = cancelled.cam!
+
+    expect(cam.form).toBeNull()
+    // The document is the one the header left (plus its stock change): the cancelled form added
+    // nothing to it, and the header describes the document alone.
+    expect(cam.stats?.moves).toBe(movesOf(cam.program))
+  })
+
+  it('список операций при открытой форме тоже пересчитывает с формой', () => {
+    // The face has no copies of its own, so the list holds a pocket the form edits.
+    const base = open()
+    const program: QuickProgram = {
+      ...base.cam!.program,
+      operations: [POCKET],
+    }
+    const cam = run(
+      { ...base, cam: { ...base.cam!, program, form: newForm('pocket', program) } },
+      { type: 'CAM_PARAM', field: 'rect.w', value: '30' },
+      // A copy of the list entry: the list changes and the open form must stay in the plan.
+      { type: 'CAM_ARRAY', index: 0, cols: 2, rows: 1, dx: 30, dy: 0 },
+    ).cam!
+    expect(cam.program.operations).toHaveLength(2)
+    const withForm: QuickProgram = {
+      ...cam.program,
+      operations: [...cam.program.operations, formOperation(cam.form!, null)],
+    }
+    expect(movesOf(cam.program)).not.toBe(movesOf(withForm))
+    expect(cam.stats?.moves).toBe(movesOf(withForm))
   })
 })

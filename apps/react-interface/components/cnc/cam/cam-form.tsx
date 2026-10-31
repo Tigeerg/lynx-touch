@@ -17,7 +17,7 @@ import type { QuickProgram } from '@/lib/cnc/cam/ops'
 import { needsPreview, previewTimer, waitsForPreview } from '@/lib/cnc/cam/cam-debounce'
 import { cn } from '@/lib/utils'
 import { useUiMode } from '../ui-mode-context'
-import { axisOf, CAM_TAB_LABEL, droFieldOf, type CamTab } from './cam-fields'
+import { CAM_TAB_LABEL, droFieldOf, type CamTab } from './cam-fields'
 import { FieldRow } from './field-row'
 import { Keypad } from './keypad'
 import { KIND_LABEL } from './cam-labels'
@@ -100,9 +100,10 @@ export function CamForm({
               operations={program.operations}
               kind={form.op}
               onFocus={() => setActive(field.key)}
-              onDro={() =>
-                dispatch({ type: 'CAM_DRO', field: droFieldOf(form.op, field.key) ?? 'x', axis: axisOf(field.key) })
-              }
+              onDro={() => {
+                const key = droFieldOf(form.op, field.key)
+                if (key !== null) dispatch({ type: 'CAM_DRO', field: key })
+              }}
               onChange={(value) => {
                 dispatch({ type: 'CAM_PARAM', field: field.key, value })
                 if (needsPreview(form, formRef.current)) timer.current.arm(preview)

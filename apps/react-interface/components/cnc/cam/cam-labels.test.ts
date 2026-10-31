@@ -161,3 +161,17 @@ describe('строка оценки в шапке', () => {
     expect(programSummary({ moves: 1, lengthMm: 1, seconds: 59.6 })).toContain('01:00 мин')
   })
 })
+
+describe('the header line of the overlay', () => {
+  // The overlay prints this line from `cam.stats`; the state is covered by the reducer tests, but
+  // nothing used to check that the line itself appears with the numbers of the plan.
+  it('prints the moves, the length and the time of the plan', () => {
+    expect(programSummary({ moves: 289, lengthMm: 2948.9, seconds: 613 })).toBe(
+      'ходов 289 · длина 2948.9 мм · ≈ 10:13 мин',
+    )
+  })
+
+  it('says nothing before the first plan', () => {
+    expect(programSummary(null)).toBeNull()
+  })
+})

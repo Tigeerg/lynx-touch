@@ -48,6 +48,71 @@ const DEMO = process.env.QUICKPROG_BIN ?? '/tmp/opencode/qp-b/quickprog'
  * the file writes only `op.grid`), so the test asks the file for the field the writer prints: the
  * `pattern`, not the hole under it.
  */
+
+/** A rectangle in the work plane: the box the engraving must not touch. */
+interface Rect {
+  xMin: number
+  xMax: number
+  yMin: number
+  yMax: number
+}
+
+/**
+ * The rectangles the engraving must not touch: the slot grown by the tool radius, the pockets, the
+ * island and the round pocket. Taken from the document and its own planners, so a change of the
+ * document or of a planner moves the numbers with it.
+ */
+const forbiddenZones = (program: QuickProgram): { name: string; rect: Rect }[] => {
+  const zones: { name: string; rect: Rect }[] = []
+  for (const operation of program.operations) {
+    if (!operation.enabled) continue
+    if (operation.kind === 'slot') {
+      const layout = slotLayout(operation)
+      const ends = layout.strips.flatMap((strip) => [strip.from, strip.to])
+      if (ends.length === 0) continue
+      const radius = operation.tool.diameterMm / 2
+      zones.push({
+        name: 'slot',
+        rect: {
+          xMin: Math.min(...ends.map((point) => point.x)) - radius,
+          xMax: Math.max(...ends.map((point) => point.x)) + radius,
+          yMin: Math.min(...ends.map((point) => point.y)) - radius,
+          yMax: Math.max(...ends.map((point) => point.y)) + radius,
+        },
+      })
+    }
+    if (operation.kind === 'pocket' || operation.kind === 'rest') {
+      const { x, y, w, h } = operation.rect
+      zones.push({ name: operation.kind, rect: { xMin: x, xMax: x + w, yMin: y, yMax: y + h } })
+    }
+    if (operation.kind === 'pocket-island') {
+      const { x, y, w, h } = operation.rect
+      zones.push({ name: 'pocket-island', rect: { xMin: x, xMax: x + w, yMin: y, yMax: y + h } })
+      const island = operation.island
+      zones.push({
+        name: 'island',
+        rect: { xMin: island.x, xMax: island.x + island.w, yMin: island.y, yMax: island.y + island.h },
+      })
+    }
+    if (operation.kind === 'circle-pocket') {
+      const circle = operation.circle
+      zones.push({
+        name: 'circle-pocket',
+        rect: {
+          xMin: circle.x - circle.r,
+          xMax: circle.x + circle.r,
+          yMin: circle.y - circle.r,
+          yMax: circle.y + circle.r,
+        },
+      })
+    }
+  }
+  return zones
+}
+
+/** The overset of two rectangles, by their corners. */
+const overlaps = (a: Rect, b: Rect): boolean => a.xMin < b.xMax && b.xMin < a.xMax && a.yMin < b.yMax && b.yMin < a.yMax
+
 const readGolden = (): QuickProgram => {
   const parsed = parseProgram(readText('demo.qprog'))
   if (!parsed.ok) throw new Error(`demo.qprog: строка ${String(parsed.line)}: ${parsed.reason}`)
@@ -94,19 +159,13 @@ describe('the golden document', () => {
     // The technician's note of `CHECKLIST.md`: a label over a keyway drops its letters into the cut.
     // The rectangles are taken from the document and its own planners, not from the text of the
     // file: the engraving from `engraveLayout` (the box of its strokes, which is exactly what the
-    // planner cuts, since every stroke starts and ends on itself), the slot from `slotLayout` grown
-    // by half its width (the strips are inside the walls, so the ends plus half the width are the
-    // corners of the keyway), the pockets and the island as the document states them.
+    // planner cuts, since every stroke starts and ends on itself), the slot from `slotLayout` grown by
+    // the tool radius on every side (the cut is the mill disc swept over the strip centres), the
+    // pockets and the island as the document states them.
     const program = readGolden()
     const engrave = program.operations.find((operation) => operation.kind === 'engrave')
     if (engrave?.kind !== 'engrave') throw new Error('the golden document has no engraving')
 
-    interface Rect {
-      xMin: number
-      xMax: number
-      yMin: number
-      yMax: number
-    }
     const overlap = (a: Rect, b: Rect): boolean =>
       a.xMin < b.xMax && b.xMin < a.xMax && a.yMin < b.yMax && b.yMin < a.yMax
 
@@ -122,20 +181,20 @@ describe('the golden document', () => {
     for (const operation of program.operations) {
       if (!operation.enabled) continue
       if (operation.kind === 'slot') {
-        // The strips are the mill centres; the walls are half a diameter across the axis, so the
-        // ends of the walk grow by the mill radius along the walk and by the half width across it.
+        // The cut of a slot is the mill disc swept along every strip centre: the zone grows by the
+        // tool radius on every side, not by half the slot width (the width only spreads the strip
+        // centres, and a test with the wrong zone once let the word sit on the axis).
         const layout = slotLayout(operation)
         const ends = layout.strips.flatMap((strip) => [strip.from, strip.to])
         if (ends.length === 0) continue
         const radius = operation.tool.diameterMm / 2
-        const halfWidth = operation.widthMm / 2
         zones.push({
           name: operation.kind,
           rect: {
             xMin: Math.min(...ends.map((point) => point.x)) - radius,
             xMax: Math.max(...ends.map((point) => point.x)) + radius,
-            yMin: Math.min(...ends.map((point) => point.y)) - halfWidth,
-            yMax: Math.max(...ends.map((point) => point.y)) + halfWidth,
+            yMin: Math.min(...ends.map((point) => point.y)) - radius,
+            yMax: Math.max(...ends.map((point) => point.y)) + radius,
           },
         })
       }
@@ -185,6 +244,27 @@ describe('the golden program is reproducible', () => {
     expect(emitted).toBe(readText('demo.ngc').replace(/\n$/, ''))
   })
 
+  it('fails on the defect it guards: a word on the axis of the slot', () => {
+    // The guard is only worth something if it goes red on the very defect it was written for. The
+    // box of a word sits on its baseline and grows upwards, so the word put back onto the keyway axis
+    // (its baseline on the axis, the letters up to the far wall) must overlap the swept slot disc.
+    const program = readGolden()
+    const moved = program.operations.map((op) => (op.kind === 'engrave' ? { ...op, y: 31 } : op))
+    const engrave = moved.find((op) => op.kind === 'engrave')
+    if (engrave?.kind !== 'engrave') throw new Error('no engraving')
+    const strokes = engraveLayout(engrave).strokes.flat()
+    const label: Rect = {
+      xMin: Math.min(...strokes.map((point) => point.x)),
+      xMax: Math.max(...strokes.map((point) => point.x)),
+      yMin: Math.min(...strokes.map((point) => point.y)),
+      yMax: Math.max(...strokes.map((point) => point.y)),
+    }
+    // The zone of that slot with the mill on it: the keyway runs along X at Y 30, a 6 mm mill in a
+    // 10 mm groove puts the strip centres at Y 28 and 32, and the swept discs reach Y 25..35. The box
+    // of the moved word has to fall inside that band, otherwise the guard would not see the defect.
+    const slotZone: Rect = { xMin: -33, xMax: 33, yMin: 25, yMax: 35 }
+    expect(overlaps(label, slotZone), JSON.stringify({ label, slotZone })).toBe(true)
+  })
   it('carries the generator line of the panel, not of the demo', () => {
     expect(readText('demo.ngc')).toMatch(/^\( {2}GENERATOR: lynx-touch react-interface \d+\.\d+\.\d+\)$/m)
   })

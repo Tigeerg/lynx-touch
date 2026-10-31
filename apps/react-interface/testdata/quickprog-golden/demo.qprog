@@ -1,0 +1,216 @@
+schema 1
+name "DEMO-ALL"
+units mm
+wcs G54
+stock -50 -40 -20 50 40 0
+safeZ 5
+g64P 0.01
+g64Q 0.01
+stopAfterOp on
+op face "Торцевание"
+op.enabled on
+op.tool 1 12
+op.spindle 3979
+op.feed 716
+op.plunge 179
+op.coolant flood
+op.topZ 0
+op.depth 2
+op.stepDown 2
+op.z -2
+op.stepOver 60
+op pocket "Карман"
+op.enabled on
+op.tool 2 8
+op.spindle 5968
+op.feed 1074
+op.plunge 269
+op.coolant flood
+op.topZ 0
+op.depth 6
+op.stepDown 3
+op.rect -30 -20 60 40
+op.cornerRadius 0
+op.finishAllowance 0
+op.stepOver 70
+op circle "Круглый карман"
+op.enabled on
+op.tool 3 8
+op.spindle 5968
+op.feed 1074
+op.plunge 269
+op.coolant flood
+op.topZ 0
+op.depth 4
+op.stepDown 2
+op.circle 25 20 12
+op.finishAllowance 0
+op.stepOver 70
+op drill-grid "Сверление"
+op.enabled on
+op.tool 4 5
+op.spindle 2546
+op.feed 255
+op.plunge 255
+op.coolant flood
+op.topZ 0
+op.depth 10
+op.stepDown 0
+op.grid -20 -10 3 2 20 20
+op.peck 2
+op contour "Контур"
+op.enabled on
+op.tool 5 6
+op.spindle 7958
+op.feed 1432
+op.plunge 358
+op.coolant flood
+op.topZ 0
+op.depth 3
+op.stepDown 3
+op.points -35 -25 35 -25 35 25 -35 25
+op.closed on
+op.allowance 0
+op.side material
+op slot "Паз"
+op.enabled on
+op.tool 6 6
+op.spindle 7958
+op.feed 1432
+op.plunge 358
+op.coolant flood
+op.topZ 0
+op.depth 3
+op.stepDown 3
+op.from -30 30 0
+op.to 30 30 0
+op.width 10
+op.stepOver 70
+op chamfer "Фаска"
+op.enabled on
+op.tool 7 6
+op.spindle 7958
+op.feed 1432
+op.plunge 358
+op.coolant flood
+op.topZ 0
+op.depth 1
+op.stepDown 1
+op.from -30 -35 0
+op.to 30 -35 0
+op.chamfer 1
+op tap "Резьба метчиком"
+op.enabled on
+op.tool 8 8
+op.spindle 5968
+op.feed 1074
+op.plunge 1074
+op.coolant flood
+op.topZ 0
+op.depth 8
+op.stepDown 0
+op.pitch 1.25
+op.pattern hole
+op.hole -40 30 3.4
+op counterbore "Цековка"
+op.enabled on
+op.tool 9 6
+op.spindle 2122
+op.feed 255
+op.plunge 255
+op.coolant flood
+op.topZ 0
+op.depth 6
+op.stepDown 0
+op.seat 11
+op.seatDepth 6
+op.dwell 0.2
+op.r 1
+op.pattern hole
+op.hole 40 -25 3.3
+op thread "Резьбовая фреза"
+op.enabled on
+op.tool 10 6
+op.spindle 7958
+op.feed 1432
+op.plunge 358
+op.coolant flood
+op.topZ 0
+op.depth 8
+op.stepDown 0
+op.hole -40 -30 5
+op.pitch 1.25
+op.internal on
+op.threadDepth 8
+op.allowance 0.1
+op.stepOver 70
+op engrave "Гравировка"
+op.enabled on
+op.tool 11 3
+op.spindle 15915
+op.feed 2865
+op.plunge 716
+op.coolant flood
+op.topZ 0
+op.depth 0.5
+op.stepDown 0
+op.text "ДЕТАЛЬ"
+op.x 0
+op.y 30
+op.height 5
+op.angle 0
+op pocket-island "Карман с островом"
+op.enabled on
+op.tool 12 6
+op.spindle 7958
+op.feed 1432
+op.plunge 358
+op.coolant flood
+op.topZ 0
+op.depth 4
+op.stepDown 4
+op.rect -25 5 40 30
+op.island -17 12 20 16
+op.islandAllowance 0.1
+op.stepOver 70
+op rest "Остаточная обработка"
+op.enabled on
+op.tool 13 4
+op.spindle 11937
+op.feed 2149
+op.plunge 537
+op.coolant flood
+op.topZ 0
+op.depth 2
+op.stepDown 2
+op.source 1
+op.rect -30 -20 60 40
+op.allowance 0
+op.stepOver 70
+op custom "Свой G-код"
+op.enabled on
+op.tool 0 0
+op.spindle 4775
+op.feed 860
+op.plunge 215
+op.coolant flood
+op.topZ 0
+op.depth 0
+op.stepDown 0
+op.gcode "G4 P1"
+op.gcode "G0 Z10"
+op.gcode "G1 Z5 F100"
+op probe "Обмер"
+op.enabled on
+op.tool 14 10
+op.spindle 4775
+op.feed 860
+op.plunge 860
+op.coolant flood
+op.topZ 0
+op.depth 0
+op.stepDown 0
+op.points 0 0 0
+op.range 10
+op.touch 100
+op.axis Z

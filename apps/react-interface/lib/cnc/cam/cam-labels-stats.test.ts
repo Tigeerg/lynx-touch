@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { initialState, reducer, type Action } from '../machine'
 import type { MachineState } from '../types'
 import { programStats } from './cam-stats'
+import { formDocument } from './cam-preview'
 import { formOperation, newForm } from './form'
 import { DEFAULT_STOCK, newOperation, newProgram, toolRef } from './defaults'
 import type { Operation, QuickProgram } from './ops'
@@ -150,5 +151,33 @@ describe('сводка шапки при открытой форме', () => {
     }
     expect(movesOf(cam.program)).not.toBe(movesOf(withForm))
     expect(cam.stats?.moves).toBe(movesOf(withForm))
+  })
+})
+
+describe('сводка шапки при правке существующей операции', () => {
+  /** The moves of a plan built from `program`: the number the header prints for it. */
+  const movesOf = (program: QuickProgram): number => {
+    const plan = buildProgram(program)
+    return plan.ok ? plan.path.moves.length : 0
+  }
+
+  it('правка операции заменяет её в документе, а не добавляет копию', () => {
+    // The overlay opens an existing pocket for editing with a finer axial step: the header must
+    // describe the document with that operation replaced, not with a second copy of it appended (a
+    // copy would double the passes of the pocket). The document keeps one operation, and its own step.
+    const opened = run(initialState, { type: 'CAM_OPEN' })
+    const program: QuickProgram = { ...newProgram(DEFAULT_STOCK, 'EDIT'), operations: [POCKET] }
+    const withDoc = run({ ...opened, cam: { ...opened.cam!, program } }, { type: 'CAM_EDIT', index: 0 })
+    const s = run(withDoc, { type: 'CAM_PARAM', field: 'stepDownMm', value: '1' }, { type: 'CAM_PREVIEW', at: 200 })
+    const cam = s.cam!
+    expect(cam.form).not.toBeNull()
+    // With the form standing in place, the document of the screen has one operation and the finer step.
+    const onScreen = formDocument(cam)!
+    expect(onScreen.operations).toHaveLength(1)
+    expect(onScreen.operations[0].stepDownMm).toBe(1)
+    // The header describes that one operation; the document the operator keeps is still the old one.
+    expect(cam.stats?.moves).toBe(movesOf(onScreen))
+    expect(movesOf(cam.program)).toBe(movesOf({ ...program, operations: [{ ...POCKET, stepDownMm: 2 }] }))
+    expect(cam.stats?.moves).not.toBe(movesOf(cam.program))
   })
 })

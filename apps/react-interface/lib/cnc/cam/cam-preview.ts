@@ -29,7 +29,17 @@ export const previewOfPath = (program: QuickProgram): Preview | null => {
 export const formDocument = (cam: CamState): QuickProgram | null => {
   if (cam.form === null) return null
   const editing = cam.editing === null ? null : (cam.program.operations[cam.editing] ?? null)
-  return { ...cam.program, operations: [...cam.program.operations, formOperation(cam.form, editing)] }
+  const op = formOperation(cam.form, editing)
+  // While an existing operation is edited, the form stands for it: the document gets it in place, not
+  // a copy at the end. A copy would double the passes of that operation in the header numbers. The
+  // operation keeps its `id` as well: the plan numbers operations by id, and two operations of one
+  // document would otherwise collide on the same `UI_STAGE`.
+  const inPlace = editing === null ? op : { ...op, id: editing.id }
+  const operations =
+    editing === null
+      ? [...cam.program.operations, inPlace]
+      : cam.program.operations.map((old, i) => (i === cam.editing ? inPlace : old))
+  return { ...cam.program, operations }
 }
 
 /** The preview of the form, or the lines and stats the overlay already had when the form does not plan. */

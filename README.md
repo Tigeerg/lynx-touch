@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img alt="Версия" src="https://img.shields.io/badge/версия-0.34.0-blue">
+  <img alt="Версия" src="https://img.shields.io/badge/версия-0.35.0-blue">
   <img alt="Лицензия" src="https://img.shields.io/badge/лицензия-Apache--2.0-green">
   <img alt="Платформы" src="https://img.shields.io/badge/платформы-Windows%20%7C%20Linux-lightgrey">
   <img alt="Стек" src="https://img.shields.io/badge/стек-React%20%7C%20Qt%2FQML%20%7C%20C%2B%2B%2FOCCT-informational">
@@ -44,12 +44,12 @@ QtQuick3D и OpenCASCADE.
 ## 🧩 Состав
 
 **Lynx Touch** — продукт из пяти независимо версионируемых проектов (манифест — [`projects.json`](projects.json)).
-Версия продукта — `0.34.0` ([`VERSION`](VERSION)); правила ведения — [`VERSIONING.md`](VERSIONING.md).
+Версия продукта — `0.35.0` ([`VERSION`](VERSION)); правила ведения — [`VERSIONING.md`](VERSIONING.md).
 
 | Проект | Версия | Стек | Что это |
 |---|---|---|---|
 | **react-interface** — [панель оператора](apps/react-interface) | `0.24.0` | Next.js · React · TypeScript | Основной интерфейс: экраны, логика станка, сенсорный и панельный режимы |
-| **qt-interface** — [Qt-порт](apps/qt-interface) | `0.5.8` | QML | Перенос интерфейса на Qt/QML (`main.qml`, данные — `preview.qml`) |
+| **qt-interface** — [Qt-порт](apps/qt-interface) | `0.6.0` | QML · C++ | Перенос интерфейса на Qt/QML (`main.qml`) и отдельное окно `lynx-panel.exe` для отладки |
 | **gcode-viewer** — [3D-вьювер УП](modules/gcode-viewer) | `0.58.6` | QtQuick3D · C++ · OCCT | Траектория, деталь, инструмент, коллизии, поле съёма |
 | **cad-testdata** — [тестовые данные](data/cad-testdata) | `0.5.1` | данные · постпроцессор | Тестовые УП/модели и постпроцессор с тегами `UI_*` |
 | **quickprog** — [демо быстрого программирования](apps/quickprog) | `0.2.1` | C++ · stdlib | Операции (торцевание, карманы, сверление) → ходы → плоская УП с тегами `UI_*`; консоль, без Qt |
@@ -127,14 +127,17 @@ bash scripts/build-viewer.sh
 Окно консоли не открывается: `gcodeviewer.exe` собран как GUI-приложение, текст идёт в консоль
 вызывающего терминала (или в перенаправленный поток), а при запуске двойным щелчком консоли нет вовсе.
 
-Qt-порт (окно панели 1024×600) запускается через собранный вьювер и `qmlscene`:
+Qt-порт (окно панели 1024×600) для отладки собирается в отдельный исполняемый файл:
 
 ```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-qt-interface.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-qt-interface.ps1
 ```
 
-Скрипт поднимает `qmlscene` без консольного окна (`CREATE_NO_WINDOW`); каталоги Qt и OCCT берутся из
-`CNC_QT_DIR` и `CNC_OCC_DIR`, как в сборке вьювера.
+`scripts/build-qt-interface.ps1` собирает `build/qt-interface/lynx-panel.exe` (Qt 6, MSVC; OCCT не
+нужен для сборки). `scripts/run-qt-interface.ps1` запускает этот exe без консольного окна; если exe
+ещё не собран — откатывается на `qmlscene` с `CREATE_NO_WINDOW`. Каталоги Qt и OCCT берутся из
+`CNC_QT_DIR` и `CNC_OCC_DIR`, как в сборке вьювера. На стойке позже будет загрузчик QtVCP.
 
 <details>
 <summary>Клавиши вьювера</summary>

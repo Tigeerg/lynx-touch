@@ -145,7 +145,8 @@ Pre.: none.
 6. **The product entry point.** The panel does not start on the controller through `qmlscene`: it
    needs a proper launch (QtVCP/QML loader or an own exe without a console) with the `MockBackend`
    and `CNC.Edges` paths. `qmlscene` stays a debugging tool. The Qt port version is bumped in the
-   same commit.
+   same commit. **Done on Windows:** `scripts/build-qt-interface.ps1` builds
+   `build/qt-interface/lynx-panel.exe`; the QtVCP loader comes later on the controller.
 
 Checks: `pnpm test`, `pnpm guard`, `preview.qml` run.
 Acceptance: changing a label in `data.ts` without rebuilding the manifest goes red; no
@@ -389,6 +390,9 @@ follow; D after C; E after D; H is the acceptance after A-F.
 11. **CAM uses the C++ core.** `apps/quickprog` grows to 15 kinds and is exposed to QML through a
     wrapper; TypeScript stays the reference for comparing the output, no second implementation in
     the product.
+12. **The debug entry point is a separate exe.** On Windows the panel runs as
+    `build/qt-interface/lynx-panel.exe` (built by `scripts/build-qt-interface.ps1`); on the
+    controller a QtVCP loader comes later. `qmlscene` is only the fallback debugging path.
 
 ## 8. Out of scope
 

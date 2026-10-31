@@ -42,7 +42,6 @@ if (-not $QtDir) {
 }
 if (-not $QtDir) { Fail 'Qt6 не найден: задайте CNC_QT_DIR=<каталог Qt6>/msvc2022_64' }
 $qmlscene = Join-Path $QtDir 'bin\qmlscene.exe'
-if (-not (Test-Path -LiteralPath $qmlscene)) { Fail "нет $qmlscene" }
 
 if (-not $OccDir) {
     $OccDir = First-Existing @(
@@ -62,6 +61,18 @@ if (-not (Test-Path -LiteralPath $qmlFile)) { Fail "нет QML-файла $qmlFi
 # qmlscene resolves gvqmlbackend.dll and the CNC.Edges plugin through PATH, the same
 # way the viewer entry point does.
 $env:PATH = "$pluginDir;$(Join-Path $root 'build\edges\CNC\Edges');$(Join-Path $QtDir 'bin');$(Join-Path $OccDir 'bin');$env:PATH"
+
+# The standalone panel is the normal launch for debugging; qmlscene is the fallback for a machine
+# where the executable has not been built yet.
+$panel = Join-Path $root 'build\qt-interface\lynx-panel.exe'
+if (Test-Path -LiteralPath $panel) {
+    $started = Start-Process -FilePath $panel -WorkingDirectory $root -PassThru
+    Write-Host "run-qt-interface: lynx-panel pid=$($started.Id)"
+    exit 0
+}
+if (-not (Test-Path -LiteralPath $qmlscene)) {
+    Fail "нет $panel и нет $qmlscene - соберите панель: scripts/build-qt-interface.ps1"
+}
 
 Add-Type @"
 using System;

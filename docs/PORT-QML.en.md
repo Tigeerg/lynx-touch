@@ -50,7 +50,7 @@ React anchors are a file and a symbol; line numbers are as of 31.10.2026. "W" is
 | Themes | 6: `THEME_OPTIONS`, `THEME_CLASSES`, Minimal tokens in `globals.css` | 4 numeric palettes (`pal_light/dark/graphite/mint`), radii 8/6/4/3/2 | no Minimal, no tokens | E |
 | Touch mode | `ui-mode-context.ts`, `touch/touch-deck/` | none | no touch mode | E |
 | Texts | `SOFTKEY_LABEL`, `MODE_LABEL`, `WORKPLACE_LABEL`, `TAB_LABEL`, `SCREEN_LABEL`; 19 lines checked | Russian literals inline; 19 labels checked | parity covers little | A |
-| Quick program (CAM) | `lib/cnc/cam/` — 141 files, 15 kinds; `components/cnc/cam/` — 25 files | none; C++ `apps/quickprog` is a console demo with 4 kinds. **The entry is lost in the React panel:** the "Быстрая УП" softkey lives in `progScreen`, but that set is shadowed by the workplace sets (`testWorkplace`/`runProg`) and by the editor set; the `prog` screen under workplace `SETUP` is not opened by the tabs | no panel CAM and no way in | G |
+| Quick program (CAM) | `lib/cnc/cam/` — 141 files, 15 kinds; `components/cnc/cam/` — 25 files | none; C++ `apps/quickprog` is a console demo with 4 kinds. The React entry is restored in `0.33.2`: F8 "Быстрая УП" in the program editor | no panel CAM | G |
 
 Consequence: "word-for-word port" rests on 19 checked lines; everything else is from memory and
 has already diverged (tab count, slot count, sets, locking, side column).
@@ -264,13 +264,12 @@ In C++ there is only the console demo `apps/quickprog`: 608 self-check cases, pl
 (face, pocket, circle pocket, drill), reads a `.qprog` with all 15 kinds and skips the unsupported
 ones with a summary line. There is no panel CAM in C++ or Qt.
 
-**Known entry defect.** In the React panel there is currently no path to CAM through the interface:
-the "Быстрая УП" softkey is declared in `progScreen`, but `getSoftkeys` returns the workplace set
-(`testWorkplace`/`runProg`) or the editor set, and the `prog` screen under `SETUP` is opened by
-neither a tab nor a key. The automated tests dispatch `CAM_OPEN` directly. Before wave G the entry
-is fixed in React: the proposed change makes the "ПРОГРАММА" block in the header a button that
-opens the `prog` screen in the current workplace (then F8 "Быстрая УП" is reachable again), covered
-by a softkey test.
+**Entry (fixed in `0.33.2`).** Previously the React panel had no path to CAM through the
+interface: the "Быстрая УП" softkey was declared only in `progScreen` and was shadowed by the
+workplace sets (`testWorkplace`/`runProg`) and by the editor set. Now F8 "Быстрая УП" is in the
+program edit mode, and the same slot closes the overlay; a softkey test holds the slot. The
+operator either edits the open file or creates a new one and opens the quick program from the
+editor.
 
 1. Choose the carrier: (a) grow the C++ `apps/quickprog` core to 15 kinds and expose it to QML
    (preferred, matches the "C++ core" rule); (b) build the TypeScript code once into a
@@ -279,9 +278,8 @@ by a softkey test.
 2. Port the types and the `.qprog` document, then the kind planners, then the emitter; every kind
    is covered by a reference test (quick programming already has a React golden set).
 3. `CamOverlay.qml`: operation list, forms, preview, save with `.bak`, program check.
-4. Open it from the TEST screen, as in React; in touch mode with a separate button. Before the
-   port, fix the entry in React (see §4, "Known entry defect"): otherwise CAM stays reachable only
-   from tests.
+4. Open it from the TEST screen, as in React; in touch mode with a separate button. The React
+   editor entry is already restored (`0.33.2`); Qt gets it in this wave.
 
 Checks: C++ `quickprog_check`, new kind tests, golden program comparison, `panel_probe`.
 Acceptance: all 15 kinds plan and emit the same program as React on the demo part.

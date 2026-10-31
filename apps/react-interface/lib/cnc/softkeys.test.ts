@@ -4,7 +4,7 @@
 // cap of a line measured for that slot; the states below cover every softkey layout of
 // getSoftkeys, so a new overlong word fails here instead of being broken on the panel.
 import { describe, expect, it } from 'vitest'
-import { initialState } from './machine'
+import { initialState, reducer } from './machine'
 import { getSoftkeys, softkeyAction, SOFTKEY_LABEL_MAX } from './softkeys'
 import type { MachineState } from './types'
 
@@ -99,6 +99,20 @@ describe('софт-кеи: подпись влезает в слот', () => {
     }
 
     expect(() => getSoftkeys(s)).not.toThrow()
+  })
+})
+
+describe('quick program entry', () => {
+  it('F8 in the program editor opens the quick program and closes it on the same slot', () => {
+    const editing: MachineState = { ...initialState, workplace: 'RUN', screen: 'prog', editMode: true }
+    const bar = getSoftkeys(editing)
+
+    expect(bar).toHaveLength(8)
+    expect(bar[7]?.action).toEqual({ type: 'CAM_OPEN' })
+
+    const opened = reducer(editing, { type: 'CAM_OPEN' })
+
+    expect(getSoftkeys(opened)[7]?.action).toEqual({ type: 'CAM_CLOSE' })
   })
 })
 

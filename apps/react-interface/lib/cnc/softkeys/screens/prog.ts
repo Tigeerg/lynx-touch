@@ -38,6 +38,13 @@ export const progScreen = (s: MachineState, busy: boolean): (Softkey | null)[] =
       { label: 'Кадр ниже', icon: ChevronDown, action: { type: 'CURSOR', delta: 1 } },
       null,
       { label: 'Сохранить и выйти', icon: Save, action: { type: 'EDIT_MODE', on: false }, active: true },
+      // The quick program is reachable from the editor as well: the operator either edits the
+      // open file or opens the quick program from it and gets a saved .ngc. The eighth slot is
+      // the same one the program screen uses, so the bar does not move; while the overlay is
+      // open the same slot closes it.
+      s.cam
+        ? { label: 'Закрыть', icon: X, action: { type: 'CAM_CLOSE' }, active: true }
+        : { label: 'Быстрая УП', icon: Wand2, action: { type: 'CAM_OPEN' }, disabled: busy },
     ])
   }
   return slots([

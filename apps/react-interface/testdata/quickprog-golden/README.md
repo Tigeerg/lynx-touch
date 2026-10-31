@@ -64,7 +64,7 @@
    console.log(writeGolden('<repo>/apps/react-interface/testdata/quickprog-golden'))
    ```
 
-2. Прогнать тест: `npx vitest run lib/cnc/cam/golden.test.ts` (все 15 случаев зелёные).
+2. Прогнать тест: `npx vitest run lib/cnc/cam/golden.test.ts` (все 16 случаев зелёные).
 
 3. Блок из C++ демо в тесте выполняется сам, если есть
    `/tmp/opencode/qp-b/quickprog` (или путь задан в `QUICKPROG_BIN`); без бинарника эти два случая

@@ -127,7 +127,7 @@ function CamOverlayBody({ cam, state, dispatch }: { cam: CamState; state: Machin
                   type="button"
                   tabIndex={-1}
                   onClick={() => dispatch({ type: 'CAM_OPEN_SAVED' })}
-                  title={`Открыть  в редакторе`}
+                  title="Открыть в редакторе"
                   className={cn(
                     'flex items-center gap-1.5 rounded-md border-2 bg-card px-2.5 text-xs font-bold transition-colors hover:bg-accent',
                     touch ? 'min-h-11' : 'min-h-8',

@@ -237,7 +237,7 @@ describe('§5 приёмка на демо-детали: шаг за шагом'
   })
 
   it('шаг 11. «Запустить»: авария не пускает - CYCLE_START при ESTOP отказывает', () => {
-    // ПУСК under the emergency stop: refused with the reason, the run does not start.
+    // A start under the emergency stop: refused with the reason, the run does not start.
     const s = run({ ...panel, run: 'ESTOP' }, { type: 'CYCLE_START' })
 
     expect(s.run).toBe('ESTOP')

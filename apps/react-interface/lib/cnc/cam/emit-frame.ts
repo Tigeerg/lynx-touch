@@ -10,7 +10,7 @@ import type { Block } from './emit-state'
 import { commentSafe, coord, num, tag } from './emit-words'
 
 /** The generator line: the panel and its version, so a saved file names the program that made it. */
-export const GENERATOR = 'lynx-touch react-interface 0.22.0'
+export const GENERATOR = 'lynx-touch react-interface 0.23.0'
 
 /** The work offsets the document may name. */
 export const WCS_WORDS = ['G54', 'G55', 'G56', 'G57', 'G58', 'G59'] as const

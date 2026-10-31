@@ -1,7 +1,7 @@
 %
 (MACHINE)
 (  MODEL: SAMETOOL)
-(  GENERATOR: lynx-touch react-interface 0.22.0)
+(  GENERATOR: lynx-touch react-interface 0.23.0)
 (UI_ORIGIN: X0. Y0. Z0.)
 (UI_STOCK: XMIN=-30. XMAX=30. YMIN=-30. YMAX=30. ZMIN=-10. ZMAX=0.)
 N10 G21 G90 G94 G17 G40 G49 G80

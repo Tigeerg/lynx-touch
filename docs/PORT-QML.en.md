@@ -270,7 +270,7 @@ the same runtime the panel runs in.
 
 ### Wave G. Quick program (CAM) — separate work (8-12 days)
 
-Pre.: wave A (the C++ core can run in parallel with B/C/D).
+Pre.: waves A-F and H (CAM after the interface port).
 
 **What already exists.** CAM is implemented in React in TypeScript: `lib/cnc/cam/` (141 files, 15
 operation kinds, planner, emitter, `.qprog`, tests) and `components/cnc/cam/` (25 files, overlay).
@@ -297,8 +297,8 @@ editor.
    program, program check.
 4. **Opening** — from the TEST screen, as in React; in touch mode with a separate button. The React
    editor entry is already restored (`0.33.2`); Qt gets it in this wave.
-5. **Parallel work.** The C++ core can run alongside waves B/C/D: it does not depend on the QML
-   frame. It is the long pole (8-12 days), so it starts right after wave A.
+5. **Order.** The C++ core comes after interface parity (A-F, H), not in parallel: first the Qt
+   panel, then CAM. This is the dispatcher's decision of 01.11.2026.
 
 Checks: C++ `quickprog_check`, new kind tests, golden program comparison, `panel_probe`.
 Acceptance: all 15 kinds plan and emit the same program as React on the demo part.
@@ -346,9 +346,8 @@ visual parity; H (operation without a touchscreen) is another **2-3 days** and c
 G (CAM) is **8-12 days** separately.
 
 **The first pass.** Start with **A (foundation)** and immediately **B (visible frame)**: after B the
-panel already looks like React and can be shown on the controller. In parallel, before B finishes,
-start the **C++ CAM core (G, steps 1-2)**: it is the long pole and does not depend on QML. C and F
-follow; D after C; E after D; H is the acceptance after A-F.
+panel already looks like React and can be shown on the controller. Then C and F, then D, E, H. CAM
+(G) is separate after the interface port, as the dispatcher decided.
 
 ## 6. General risks
 
@@ -380,8 +379,8 @@ follow; D after C; E after D; H is the acceptance after A-F.
 6. **MPG pendant emulator — needed, in a separate window** from the interface (wave F), with axis
    and multiplier selection and the same actions as the physical handwheel.
 7. **`preview.qml` — a wrapper**, the hand copy is deleted (wave A).
-8. **CAM (quick program) — a separate wave** (G): the C++ core runs in parallel with B/C/D, the
-   overlay after the frame; the carrier is C++ (decision 11).
+8. **CAM (quick program) — a separate wave after the interface port** (G), after A-F and H; the
+   carrier is C++ (decision 11).
 9. **Operation without a touchscreen is mandatory** (wave H): every screen and dialog is driven by
    physical keys and the keyboard; touch is an additional way.
 10. **Qt is the product, React is the reference.** The controller runs Qt; React is frozen after

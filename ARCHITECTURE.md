@@ -75,11 +75,14 @@
   режимы `feeds.ts`, проверки `validate*.ts`, планировщики `path*.ts`, вывод УП `emit*.ts`, `.qprog`
   `serialize*.ts`, подсистема `cam.ts`, эталоны демо в `etl/`, правила парсера вьювера
   `viewer-check.ts`, коллизия `collision.ts`, запись `cam-save.ts`, копии `copy-ops.ts`, остаток
-  `rest-areas.ts`, чтение DXF `dxf-*.ts`; `types.ts` берёт `CamState` из `cam/types.ts`);
+  `rest-areas.ts`, чтение DXF `dxf-*.ts`, один пересчёт предпросмотра и сводки `cam-preview.ts`, правка
+  шапки `cam-program.ts`, DRO `cam-dro.ts`, открытие сохранённого `cam-open.ts`, статистика `cam-stats.ts`,
+  золотой набор `golden*.ts`; `types.ts` берёт `CamState` из `cam/types.ts`);
   `types.ts` держит
   `MachineState` и реэкспортирует типы ПЛК как прежняя точка входа; `ladder-scan.ts` — скан ПЛК, `nav.ts`,
   `cycle.ts` — фасад над каталогом `cycle/` (`cycle-exec.ts` — исполнение кадра, `cycle-actions.ts` —
-  объединение действий, `cycle-reducer.ts` — редьюсер), `control.ts`, `service.ts`), `types.ts`, `coords.ts`,
+  объединение действий, `cycle-reducer.ts` — редьюсер, `cam-start.ts` — подтверждение первого пуска
+  сохранённой быстрой УП), `control.ts`, `service.ts`), `types.ts`, `coords.ts`,
   `clamp.ts` (зажим индексов списков), `keys.ts` (раскладка пульта: `keyToAction`),
   `gcode.ts` (разбор кадра, модальные коды, инструменты программы), `spindle.ts` (обороты, резание,
   нагрузка), `calc.ts` (расчёт режимов), `guards.ts` (проверки входа), `data.ts` и

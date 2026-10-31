@@ -78,7 +78,10 @@ Layers, top to bottom:
   (PLC types); quick programming — `cam/` (types `ops.ts`, feeds `feeds.ts`, checks `validate*.ts`, planners
   `path*.ts`, the NC output `emit*.ts`, `.qprog` `serialize*.ts`, the subsystem `cam.ts`, the demo references in
   `etl/`, the viewer parser rules `viewer-check.ts`, the collision `collision.ts`, the write
-  `cam-save.ts`, the copies `copy-ops.ts`, the remainder `rest-areas.ts`, the DXF reader `dxf-*.ts`;
+  `cam-save.ts`, the copies `copy-ops.ts`, the remainder `rest-areas.ts`, the DXF reader `dxf-*.ts`, the one
+  recompute of the preview and the summary `cam-preview.ts`, the header edit `cam-program.ts`, the DRO
+  `cam-dro.ts`, opening a saved program `cam-open.ts`, the statistics `cam-stats.ts`, the golden set
+  `golden*.ts`;
   `types.ts` takes `CamState` from `cam/types.ts`); `types.ts` keeps `MachineState` and re-exports the
   PLC types as the former entry point),
   `ladder-scan.ts` is the PLC scan,

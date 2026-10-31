@@ -12,7 +12,9 @@ import type { MachineState } from '../types'
 import { checkProgram } from './collision'
 import type { CamState } from './cam'
 import { openTarget } from './cam-open'
-import { valuesOf } from './form'
+import { formDocument } from './cam-preview'
+import { programStats } from './cam-stats'
+import { newForm, valuesOf } from './form'
 import { DEFAULT_STOCK, newOperation, newProgram } from './defaults'
 import { emitProgram } from './emit'
 import type { Operation, QuickProgram } from './ops'
@@ -138,6 +140,23 @@ describe('§5 приёмка на демо-детали: шаг за шагом'
     expect((text.match(/^N\d+ M1$/gm) ?? []).length).toBe(2)
     expect(text.trimEnd().endsWith('%')).toBe(true)
     expect((text.match(/^N\d+ M30$/gm) ?? []).length).toBe(1)
+  })
+
+  it('шаги 4-7. «Добавить операцию»: сводка шапки считает документ вместе с открытой формой', () => {
+    // The pocket is half typed (not accepted) when the header changes the stock (step 2). The header
+    // numbers must describe the screen — the document PLUS the form — not the document alone, and
+    // the document alone does not plan, so a header reading it keeps the older numbers.
+    const opened = run(panel, { type: 'CAM_OPEN' }, { type: 'CAM_OP', kind: 'pocket' }, ...edit(POCKET).slice(0, -1))
+    const cam = camOf(run(opened, { type: 'CAM_PROGRAM', field: 'stock.max.x', value: '60' }))
+
+    expect(cam.form).not.toBeNull()
+    expect(cam.program.operations).toHaveLength(0)
+    const withForm = formDocument(cam)
+    if (withForm === null) throw new Error('the form closed and the document is empty')
+    const planForm = programStats(withForm)
+    if (planForm === null) throw new Error('the document plus the form does not plan')
+    expect(cam.stats).toEqual(planForm)
+    expect(cam.stats).not.toEqual(programStats(cam.program))
   })
 
   it('шаг 8-9. «Проверить»: коллизии и вьювер не находят ошибок у сохранённой программы', () => {

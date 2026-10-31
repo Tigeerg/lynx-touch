@@ -156,6 +156,25 @@ describe('сохранение УП: проверка коллизии', () => {
   })
 })
 
+describe('сохранение УП: подтверждение старта', () => {
+  it('успешное сохранение взводит подтверждение старта для записанного файла', () => {
+    // PLAN-QUICKPROG, 8: a program just written is not started by one press. The save arms
+    // `camStartConfirmed` on the machine state, naming the file it wrote and no pending press yet;
+    // the first `CYCLE_START` fills `pendingStart` (`cycle/cam-start.ts`). Dropping the arming in
+    // `cam-save.ts` leaves it null. The replacement path arms it the same way, clearing a stale one.
+    const base = {
+      ...withExisting('FACE-1.ngc', ['G0 OLD LINE', 'M2']),
+      camStartConfirmed: { name: 'X.ngc', pendingStart: 42 },
+    }
+    const fresh = run(ready(), { type: 'CAM_SAVE', at: 1_000 })
+    const replaced = run(run(base, { type: 'CAM_SAVE', at: 1_000 }), { type: 'CAM_SAVE', at: 3_000 })
+
+    expect(fresh.camStartConfirmed).toEqual({ name: 'FACE-1.ngc', pendingStart: null })
+    expect(replaced.message?.level).not.toBe('error')
+    expect(replaced.camStartConfirmed).toEqual({ name: 'FACE-1.ngc', pendingStart: null })
+  })
+})
+
 describe('сохранение УП: подтверждение замены', () => {
   it('первое нажатие при занятом имени не пишет, а просит подтверждение', () => {
     const old = ['G0 OLD LINE']

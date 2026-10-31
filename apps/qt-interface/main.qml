@@ -94,13 +94,18 @@ Item {
         i = (i + dir + modes.length) % modes.length;
         setMode(modes[i]);
     }
+    function setWorkplace(wp) {
+        // React SET_WORKPLACE: the workplace chooses the mode, the dry run and the Work screen.
+        workplace = wp;
+        machineMode = wp === "SETUP" ? "JOG" : "AUTO";
+        dryRun = wp === "TEST";
+        activeScreen = wp === "SETUP" ? "pos" : "prog";
+    }
     function submitServiceAuth() {
         if (authInput.text === "1234") { serviceWrite = true; serviceAuthOpen = false; serviceAuthError = false; }
         else { serviceAuthError = true; }
     }
     function tabLocked(sc) {
-        if (machineMode === "AUTO") return sc === "offset" || sc === "tool" || sc === "service";
-        if (machineMode === "MDI") return sc === "prog" || sc === "service";
         return false;
     }
     function serviceSectionStep(d) {

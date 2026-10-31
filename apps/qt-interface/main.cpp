@@ -1,4 +1,4 @@
-/* main.cpp - the standalone Qt panel for debugging on Windows.
+﻿/* main.cpp - the standalone Qt panel for debugging on Windows.
  *
  * The real controller will load the panel with a QtVCP loader later; until then this executable
  * starts the same `main.qml` as a normal desktop window, without a console. It adds the QML import
@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Lynx Touch"));
-    app.setApplicationVersion(QStringLiteral("0.6.2"));
+    app.setApplicationVersion(QStringLiteral("0.6.3"));
 
     const QString root = repoRoot();
     const QString qmlFile = root + QStringLiteral("/apps/qt-interface/main.qml");
@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    view.setTitle(QStringLiteral("Lynx Touch — панель оператора"));
+    view.setTitle(QStringLiteral("Lynx Touch вЂ” РїР°РЅРµР»СЊ РѕРїРµСЂР°С‚РѕСЂР°"));
     view.resize(1024, 600);
     view.show();
     return app.exec();

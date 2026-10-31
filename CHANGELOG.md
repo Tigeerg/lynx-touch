@@ -20,10 +20,18 @@
   побайтового сравнения.
 - **Метка размера `machine.ts`** в `tools/check.ps1` — 147 строк: первый прогон сторожа на Windows показал,
   что поле `camStartConfirmed` добавило строку уже после прошлой правки метки.
+- **Сторож находил цепочку C++ только по путям.** `tools/check.ps1` теперь берёт `cmake` и `ninja` сначала из
+  `CNC_CMAKE`/`CNC_NINJA`, как `scripts/build-viewer.ps1`: на машине с Visual Studio 2026 сторож больше не
+  пропускает сборку вьювера и пробники из-за устаревшего пути по умолчанию.
 
 ### Проверки
-- `tools/check.ps1` — чисто; `quickprog_check` — 608 случаев; `tsc` — 0; `vitest` — 869 тестов
-  в 82 файлах; `prettier` — чисто. 3D-вьювер и Qt-порт по-прежнему `skip`: в окружении нет Qt6/OCCT.
+- `tools/check.ps1` — чисто, без пропусков: C++ вьювера собран (Qt 6.12.0, OCCT 8.0.1), пробники STEP,
+  STL, силуэта и касательных сошлись с `oracle_manifest.json`, `keyprobe` прошёл в ru и en.
+- `gcodeviewer --smoke` — `RESULT: OK (parse-level)`; offscreen-прогон `Test_model.ngc` — 70 914 сегментов,
+  `loaded OK` без `[QML warning]`; кадр 1024×600 — 91 320 непустых пикселей.
+- Qt-порт запущен в `qmlscene` (offscreen): экран «Позиция» и экран «3D» отрисованы, ошибок QML нет;
+  `GcodeToolpath` из MockBackend читает демо-УП и отдаёт геометрии ходов.
+- `quickprog_check` — 608 случаев; `tsc` — 0; `vitest` — 869 тестов в 82 файлах; `prettier` — чисто.
 
 ### Версии
 - продукт — `0.33.1` (PATCH: сборка и проверки на Windows); `quickprog` — `0.2.1`.

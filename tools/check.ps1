@@ -149,9 +149,11 @@ if (Test-Path -LiteralPath $vswhere) {
   $vsRoot = (& $vswhere -latest -products * -property installationPath 2>$null | Out-String).Trim()
   if ($vsRoot) { $vcvarsCandidates += (Join-Path $vsRoot 'VC\Auxiliary\Build\vcvars64.bat') }
 }
-$cmakeExe = if (Get-Command cmake -ErrorAction SilentlyContinue) { (Get-Command cmake).Source }
+$cmakeExe = if ($env:CNC_CMAKE) { $env:CNC_CMAKE }
+            elseif (Get-Command cmake -ErrorAction SilentlyContinue) { (Get-Command cmake).Source }
             else { 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe' }
-$ninjaExe = if (Get-Command ninja -ErrorAction SilentlyContinue) { (Get-Command ninja).Source }
+$ninjaExe = if ($env:CNC_NINJA) { $env:CNC_NINJA }
+            elseif (Get-Command ninja -ErrorAction SilentlyContinue) { (Get-Command ninja).Source }
             else { 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe' }
 $vcvars = $vcvarsCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
 $cppReady = (Test-Path -LiteralPath (Join-Path $qtDir 'lib\cmake\Qt6\Qt6Config.cmake')) -and

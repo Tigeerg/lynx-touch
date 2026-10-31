@@ -140,9 +140,9 @@ void checkKindsFields() {
 // The `--qprog` mode of the console: the supported operation is planned and
 // written, the new kind is named as skipped, and the exit code stays 0.
 void checkKindsConsole() {
-    const std::string output = "/tmp/opencode/qprog-kinds.out.ngc";
+    const std::string output = qpcheck::tempPath("qprog-kinds.out.ngc");
     for (const KindCase& one : newKinds()) {
-        const std::string input = "/tmp/opencode/qprog-kinds." + one.kind + ".qprog";
+        const std::string input = qpcheck::tempPath("qprog-kinds." + one.kind + ".qprog");
         check(qp::writeFile(input, document(one)), "qprog_kinds.write." + one.kind,
               "the case must write its file");
         qpcheck::ConsoleCapture capture;
@@ -173,10 +173,10 @@ void checkDisabledIsNotSkipped() {
     std::string off = common(1, "250");
     off.replace(off.find("op.enabled on"), std::string("op.enabled on").size(), "op.enabled off");
     text += "op circle \"Круг\"\n" + off + "op.circle 0 0 15\nop.finishAllowance 0\nop.stepOver 70\n";
-    const std::string input = "/tmp/opencode/qprog-kinds.disabled.qprog";
+    const std::string input = qpcheck::tempPath("qprog-kinds.disabled.qprog");
     check(qp::writeFile(input, text), "qprog_kinds.disabled.write", "the case must write its file");
     qpcheck::ConsoleCapture capture;
-    const int code = qpcli::run({"--qprog", input, "/tmp/opencode/qprog-kinds.disabled.ngc"},
+    const int code = qpcli::run({"--qprog", input, qpcheck::tempPath("qprog-kinds.disabled.ngc")},
                                 capture.out, capture.err);
     const std::string out = capture.out.str();
     check(code == 0, "qprog_kinds.disabled.exit", "a disabled operation must not block the run: " +

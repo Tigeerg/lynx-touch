@@ -132,11 +132,11 @@ void checkHelpPostKeys() {
           "the shared keys must say that --material belongs to --op, not to --demo");
 
     // The words the section promises for `--demo` really work there.
-    const Mode withH = runMode({"--h", "5", "--demo", "/tmp/opencode/help-demo-h.ngc"});
+    const Mode withH = runMode({"--h", "5", "--demo", qpcheck::tempPath("help-demo-h.ngc")});
     check(withH.code == qp::kExitOk, "help.demo_h_code",
           "--h with --demo must return 0, got " + std::to_string(withH.code));
     const Mode material =
-        runMode({"--demo", "--material", "steel", "/tmp/opencode/help-demo-m.ngc"});
+        runMode({"--demo", "--material", "steel", qpcheck::tempPath("help-demo-m.ngc")});
     check(material.code == qp::kExitBadArgs, "help.demo_material_refused",
           "--material with --demo must be a usage error, got " + std::to_string(material.code));
 }

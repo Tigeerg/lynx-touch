@@ -1,4 +1,4 @@
-# scripts/build-quickprog.ps1 - build of the quick programming demo on Windows
+﻿# scripts/build-quickprog.ps1 - build of the quick programming demo on Windows
 # (apps/quickprog, PLAN-QUICKPROG, 7.2).
 #
 # Usage:  powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-quickprog.ps1

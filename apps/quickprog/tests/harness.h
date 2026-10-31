@@ -18,8 +18,10 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "core/feeds.h"
@@ -49,6 +51,15 @@ inline bool contains(const std::string& text, const std::string& needle) {
 
 inline bool near(double a, double b, double eps = 1e-6) {
     return std::fabs(a - b) <= eps;
+}
+
+// A path in the system temporary directory: the console cases write their
+// documents there. The directory is the platform one (/tmp on Linux, %TEMP% on
+// Windows), so the same case runs on both and no case names a fixed path.
+inline std::string tempPath(const std::string& name) {
+    std::error_code ec;
+    const std::filesystem::path dir = std::filesystem::temp_directory_path(ec);
+    return ((ec ? std::filesystem::path(".") : dir) / name).string();
 }
 
 // Lines of the file that carry a motion word. Comments and the header block

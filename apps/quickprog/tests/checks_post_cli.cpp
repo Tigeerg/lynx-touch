@@ -71,7 +71,7 @@ void checkPocketDocument() {
     const std::string out = runConsole({"--op", "pocket", "--tool", "4", "--diameter", "8",
                                         "--size", "60x40", "--depth", "6", "--step-down", "3",
                                         "--h", "9", "--step-over", "50", "--g64", "0.05", "0.02",
-                                        "--no-stop", "/tmp/opencode/post-pocket.ngc"});
+                                        "--no-stop", qpcheck::tempPath("post-pocket.ngc")});
     check(contains(out, "коррекция H9"), "post.cli_h_summary",
           "the summary must print the H row of the tool, got no 'коррекция H9'");
     check(contains(out, "G64 P0.050 Q0.020"), "post.cli_g64_summary",
@@ -85,14 +85,14 @@ void checkPocketDocument() {
 // strips), the post-processor words leave it alone.
 void checkFaceStep() {
     const std::string out = runConsole({"--op", "face", "--diameter", "10", "--step-over", "50",
-                                        "/tmp/opencode/post-face.ngc"});
+                                        qpcheck::tempPath("post-face.ngc")});
     check(contains(out, "полос: 15"), "post.cli_face_step",
           "a 100x80 stock at 50 % of D10 needs 15 strips, got no 'полос: 15' in the summary");
 }
 
 // The demo: the summary lines of the program and the H row of both tools.
 void checkDemoSummary() {
-    const std::string out = runConsole({"--demo", "/tmp/opencode/post-demo.ngc"});
+    const std::string out = runConsole({"--demo", qpcheck::tempPath("post-demo.ngc")});
     check(contains(out, "Смещение: G54"), "post.cli_demo_wcs",
           "the summary must print the work offset");
     check(contains(out, "G64 P0.010 Q0.010"), "post.cli_demo_g64",

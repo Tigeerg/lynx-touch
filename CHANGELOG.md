@@ -5,6 +5,29 @@
 
 Формат и правила — в [`VERSIONING.md`](VERSIONING.md). Термины — [`ROLES.md`](ROLES.md), раздел 9.
 
+## 0.33.1 - 2026-10-31
+
+### Исправлено
+- **Сборка демо `quickprog` на MSVC.** `fopen` под `/W4 /WX` давал C4996, а `M_PI` не был объявлен:
+  в `apps/quickprog/CMakeLists.txt` добавлены `_CRT_SECURE_NO_WARNINGS` и `_USE_MATH_DEFINES`.
+- **`scripts/build-quickprog.ps1`** теперь читается Windows PowerShell 5.1: файл сохранён с BOM UTF-8
+  (без него кириллица в строках ломала разбор, и сборка не запускалась вовсе).
+- **Самопроверка `quickprog_check`** писала временные документы по пути `/tmp/opencode` из сборочной
+  среды. Теперь каталог берётся у платформы (`std::filesystem::temp_directory_path`): на Linux `/tmp`,
+  на Windows `%TEMP%`.
+- **Эталонные УП и документы** (`.ngc`, `.qprog`, `*.summary.txt`) держат LF в рабочем дереве на любой
+  платформе — добавлен `.gitattributes`. Иначе `core.autocrlf=true` на Windows краснил 36 проверок
+  побайтового сравнения.
+- **Метка размера `machine.ts`** в `tools/check.ps1` — 147 строк: первый прогон сторожа на Windows показал,
+  что поле `camStartConfirmed` добавило строку уже после прошлой правки метки.
+
+### Проверки
+- `tools/check.ps1` — чисто; `quickprog_check` — 608 случаев; `tsc` — 0; `vitest` — 869 тестов
+  в 82 файлах; `prettier` — чисто. 3D-вьювер и Qt-порт по-прежнему `skip`: в окружении нет Qt6/OCCT.
+
+### Версии
+- продукт — `0.33.1` (PATCH: сборка и проверки на Windows); `quickprog` — `0.2.1`.
+
 ## 0.33.0 - 2026-10-31
 
 ### Добавлено

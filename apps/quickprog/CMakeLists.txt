@@ -28,6 +28,10 @@ set(QP_OUTPUT_DIR "${CMAKE_BINARY_DIR}")
 # (FMA) shifts the last digits.
 if (MSVC)
     add_compile_options(/W4 /WX /utf-8 /fp:precise)
+    # fopen and the other C run-time functions are not deprecated in the demo:
+    # /W4 /WX turns the C4996 suggestion into an error, and the console reads its
+    # documents with fopen on every platform.
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS _USE_MATH_DEFINES)
 else()
     add_compile_options(-Wall -Wextra -Wpedantic -Werror -ffp-contract=off -fno-fast-math)
 endif()

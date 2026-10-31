@@ -1,6 +1,6 @@
 {
   "product": "CNC Панель оператора",
-  "version": "0.33.0",
+  "version": "0.33.1",
   "versioning": "semver",
   "description": "Панель оператора ЧПУ: React-интерфейс, Qt-порт, 3D-вьювер УП и тестовые данные/постпроцессор.",
   "projects": [
@@ -43,7 +43,7 @@
     {
       "id": "quickprog",
       "name": "Демо быстрого программирования (C++)",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "path": "apps/quickprog",
       "kind": "cpp",
       "entry": "main.cpp",

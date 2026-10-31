@@ -1,0 +1,11 @@
+# .gitattributes - line endings of the tree.
+#
+# The guard and the tests compare the reference programs (.ngc, .qprog and their
+# summaries) byte for byte with the text the code builds, and the builder writes
+# "\n". The references therefore keep LF in the working tree of every platform:
+# core.autocrlf=true on Windows must not turn them into CRLF, otherwise a whole
+# run of checks goes red for a reason of the checkout, not of the code.
+* text=auto
+*.ngc text eol=lf
+*.qprog text eol=lf
+*.summary.txt text eol=lf

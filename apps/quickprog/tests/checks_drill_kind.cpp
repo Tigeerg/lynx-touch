@@ -114,7 +114,7 @@ void checkConsole() {
 
     qpcheck::ConsoleCapture capture;
     const int code = qpcli::run({"--op", "drill", "--diameter", "6", "--drill-kind", "carbide",
-                                 "/tmp/opencode/drill-kind.ngc"},
+                                 qpcheck::tempPath("drill-kind.ngc")},
                                 capture.out, capture.err);
     const std::string out = capture.out.str();
     check(code == 0, "drillkind.cli_exit", "the carbide drill must build, got " +

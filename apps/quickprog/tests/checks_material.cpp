@@ -54,7 +54,7 @@ void checkMillSteel() {
     qpcheck::ConsoleCapture capture;
     const int code = qpcli::run({"--op", "face", "--diameter", "10", "--stock", "100x80x20",
                                  "--top", "0", "--depth", "2", "--step-down", "2",
-                                 "--material", "steel", "/tmp/opencode/material-face.ngc"},
+                                 "--material", "steel", qpcheck::tempPath("material-face.ngc")},
                                 capture.out, capture.err);
     const std::string out = capture.out.str();
     check(code == 0, "material.mill_steel_exit",
@@ -72,7 +72,7 @@ void checkMillSteel() {
 void checkDrillSteel() {
     qpcheck::ConsoleCapture capture;
     const int code = qpcli::run({"--op", "drill", "--diameter", "10", "--depth", "12",
-                                 "--material", "steel", "/tmp/opencode/material-drill.ngc"},
+                                 "--material", "steel", qpcheck::tempPath("material-drill.ngc")},
                                 capture.out, capture.err);
     const std::string out = capture.out.str();
     check(code == 0, "material.drill_steel_exit",
@@ -154,7 +154,7 @@ void checkWords() {
 
     // The demo stays aluminium: its summary names the aluminium rows.
     qpcheck::ConsoleCapture capture;
-    const int code = qpcli::run({"--demo", "/tmp/opencode/material-demo.ngc"}, capture.out,
+    const int code = qpcli::run({"--demo", qpcheck::tempPath("material-demo.ngc")}, capture.out,
                                 capture.err);
     check(code == 0 && contains(capture.out.str(), "таблица: алюминий"),
           "material.demo_aluminium", "the demo must use aluminium and say so");

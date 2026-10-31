@@ -10,6 +10,7 @@ import { tapWarnings } from '@/lib/cnc/cam/validate-tap'
 import { counterboreWarnings } from '@/lib/cnc/cam/validate-counterbore'
 import { pathWarnings } from '@/lib/cnc/cam/validate-paths'
 import { restWarnings } from '@/lib/cnc/cam/validate-rest'
+import type { CamStats } from '@/lib/cnc/cam/cam-stats'
 
 /** The kind names of the picker and of an operation card; P1 requires the word, not the icon. */
 export const KIND_LABEL: Record<OperationKind, string> = {
@@ -138,3 +139,18 @@ export const hasKindWarning = (op: Operation, program: QuickProgram): boolean =>
 
 /** The word on a warning sign: one line in the card, the reasons on hover. */
 export const warningText = (reasons: string[]): string => `Проверьте: ${reasons.join(' ')}`
+
+/** Minutes and seconds of the estimate: `03:20`, as the panel prints the machining time. */
+export const formatMinutes = (seconds: number): string => {
+  const total = Math.max(0, Math.round(seconds))
+  return [Math.floor(total / 60), total % 60].map((n) => String(n).padStart(2, '0')).join(':')
+}
+
+/**
+ * The estimate line of the header (PLAN-QUICKPROG, 5 step 9): the moves, the cutting length and the
+ * time of the plan the preview was built from. Null while there is no plan to describe.
+ */
+export function programSummary(stats: CamStats | null): string | null {
+  if (stats === null) return null
+  return `ходов ${String(stats.moves)} · длина ${formatMm(stats.lengthMm)} мм · ≈ ${formatMinutes(stats.seconds)} мин`
+}

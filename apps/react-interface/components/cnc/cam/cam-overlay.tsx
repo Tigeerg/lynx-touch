@@ -12,14 +12,17 @@
 // smoothing tolerance and the stock. A refusal of the save is a line in the header, not a modal on
 // top of the form: the number that is wrong stays visible.
 import { useState, type Dispatch } from 'react'
-import { Save, TriangleAlert, X } from 'lucide-react'
+import { ExternalLink, Save, TriangleAlert, X } from 'lucide-react'
 import type { Action } from '@/lib/cnc/machine'
 import type { CamState } from '@/lib/cnc/cam/cam'
 import type { MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { useUiMode } from '../ui-mode-context'
 import { CamColumns } from './cam-overlay-body'
-import { headerText } from './cam-labels'
+import { headerText, programSummary } from './cam-labels'
+import { headerCells } from './cam-header-cells'
+import { HeaderInput } from './header-input'
+import { openTarget } from '@/lib/cnc/cam/cam-open'
 
 /** The column the touch variant shows; the panel draws all three. */
 export type Column = 'list' | 'form' | 'preview'
@@ -54,9 +57,14 @@ function CamOverlayBody({ cam, state, dispatch }: { cam: CamState; state: Machin
   // Until the operator taps a segment the form answers the state: a tile press on the list opens
   // the numbers, and «Добавить операцию» returns to the list.
   const column: Column = picked ?? (cam.form === null ? 'list' : 'form')
-  const { wcs, g64, stock } = headerText(cam.program)
+  const { g64 } = headerText(cam.program)
+  const cells = headerCells(cam.program)
   const warning = cam.error?.reason ?? null
   const saved = cam.saved
+  // The estimate of the plan behind the preview (PLAN-QUICKPROG, 5 step 9) and the file the
+  // header offers to the editor once the save wrote it (step 11).
+  const estimate = programSummary(cam.stats ?? null)
+  const openName = openTarget(cam)
   // The file the last save found in the way (PLAN-QUICKPROG, 7.5): the header asks for one more
   // press and the save button is «Заменить» while the confirmation stands.
   const pending = cam.pendingSave
@@ -83,15 +91,51 @@ function CamOverlayBody({ cam, state, dispatch }: { cam: CamState; state: Machin
             <h2 id="cam-title" className="text-sm font-bold uppercase tracking-wide">
               Быстрая УП
             </h2>
-            <span className="min-w-0 truncate text-xs text-muted-foreground">{cam.program.name}</span>
-            <span className="rounded-sm border bg-background px-1.5 py-0.5 font-mono text-[10px] font-bold">{wcs}</span>
+            <HeaderInput
+              cell={cells.find((c) => c.field === 'name')!}
+              touch={touch}
+              onCommit={(value) => dispatch({ type: 'CAM_PROGRAM', field: 'name', value })}
+            />
+            <HeaderInput
+              cell={cells.find((c) => c.field === 'wcs')!}
+              touch={touch}
+              onCommit={(value) => dispatch({ type: 'CAM_PROGRAM', field: 'wcs', value })}
+            />
             <span className="hidden shrink-0 rounded-sm border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground @[900px]:inline">
               {g64}
             </span>
-            <span className="hidden min-w-0 truncate rounded-sm border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground @[620px]:inline">
-              Заготовка {stock}
+            <span className="hidden min-w-0 items-center gap-0.5 @[620px]:flex">
+              {cells
+                .filter((c) => c.field.startsWith('stock.') || c.field === 'safeZ')
+                .map((c) => (
+                  <HeaderInput
+                    key={c.field}
+                    cell={c}
+                    touch={touch}
+                    onCommit={(value) => dispatch({ type: 'CAM_PROGRAM', field: c.field, value })}
+                  />
+                ))}
             </span>
+            {estimate !== null && (
+              <span className="hidden min-w-0 truncate rounded-sm border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground @[760px]:inline">
+                {estimate}
+              </span>
+            )}
             <div className="ml-auto flex shrink-0 items-center gap-1.5">
+              {openName !== null && (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => dispatch({ type: 'CAM_OPEN_SAVED' })}
+                  title={`Открыть  в редакторе`}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-md border-2 bg-card px-2.5 text-xs font-bold transition-colors hover:bg-accent',
+                    touch ? 'min-h-11' : 'min-h-8',
+                  )}
+                >
+                  <ExternalLink className="size-4" aria-hidden="true" />В редактор
+                </button>
+              )}
               <button
                 type="button"
                 tabIndex={-1}
@@ -164,3 +208,5 @@ function CamOverlayBody({ cam, state, dispatch }: { cam: CamState; state: Machin
     </div>
   )
 }
+
+export { HeaderInput } from './header-input'

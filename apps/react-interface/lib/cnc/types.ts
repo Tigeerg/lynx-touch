@@ -3,6 +3,7 @@ import type { LadderState } from './ladder/types'
 // The shape of the overlay, not the reducer: `./cam/types` has no import of a value, so this module
 // stays a leaf of the type graph (CLAUDE.md, section 2).
 import type { CamState } from './cam/types'
+import type { CamStart } from './cycle/cam-start'
 
 export type {
   CoilKind,
@@ -262,6 +263,12 @@ export interface MachineState {
   sim: SimState
   /** The quick-program overlay (PLAN-QUICKPROG, 7.4): null when it is closed. */
   cam: CamState | null
+  /**
+   * The saved quick program waiting for its first start (PLAN-QUICKPROG, 8): the file the save wrote
+   * and the moment of the first ПУСК, or null when no new program needs a confirmation. It lives here,
+   * not in `CamState`: the overlay is closed before the start, and the confirmation must outlive it.
+   */
+  camStartConfirmed: CamStart | null
   test: TestState
   toolMeasure: ToolMeasureState
   search: SearchState

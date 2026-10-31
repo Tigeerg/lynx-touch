@@ -16,6 +16,7 @@ import { tickToolMeasure } from '../tool-measure'
 import type { Dispatch, Result } from '../subsystem'
 import { MDI_HISTORY_SIZE, type MachineState } from '../types'
 import type { CycleAction } from './cycle-actions'
+import { questionText, startQuestion } from './cam-start'
 import { applyBlock, completeBlock, executeLine, stepMotion } from './cycle-exec'
 
 export function cycleReducer(s: MachineState, a: CycleAction, dispatch: Dispatch): Result {
@@ -49,81 +50,22 @@ export function cycleReducer(s: MachineState, a: CycleAction, dispatch: Dispatch
     }
 
     case 'CYCLE_START': {
-      if (s.run === 'ESTOP') return { s, msg: 'Аварийный стоп активен — отпустите кнопку', level: 'error' }
-      if (s.run === 'ALARM') return { s, msg: 'Есть авария — нажмите СБРОС', level: 'error' }
-      if (s.run === 'RUN') return { s }
-      if (s.run === 'HOLD') return { s: { ...s, sim: idleSim(), run: 'RUN' }, msg: 'Подача возобновлена' }
-      if (s.probe.open && s.screen === 'offset') {
-        if (s.probe.step !== PROBE_STEP_MEASURE)
-          return { s, msg: 'ПУСК щупа доступен на шаге «Измерение»', level: 'warn' }
-        if (s.tool !== PROBE_TOOL) return { s, msg: 'В шпинделе нет щупа T99', level: 'error' }
-        if (s.spindleOn) return { s, msg: 'Остановите шпиндель перед измерением', level: 'error' }
-        return {
-          s: {
-            ...s,
-            sim: idleSim(),
-            run: 'RUN',
-            probe: {
-              ...s.probe,
-              running: true,
-              elapsed: 0,
-              origin: { ...s.machine },
-              result: null,
-              written: false,
-              prev: null,
-            },
-          },
-          msg: 'Измерение щупом… G38.2',
-        }
-      }
-      if (s.editMode) return { s, msg: 'Выйдите из режима редактирования', level: 'warn' }
-      // The PROGON chooses what ПУСК runs (F4): the axis-free simulation, the dry run, the step
-      // run or the handwheel run. The branch is before the AUTO one, because the workplace keeps
-      // the AUTO mode.
-      if (s.workplace === 'TEST') {
-        const start = s.nextLine >= programLines(s).length ? 0 : s.nextLine
-        if (s.test.runMode === 'dry') {
-          return { s: executeLine({ ...s, sim: idleSim(), run: 'RUN', dryRun: true }, start) }
-        }
-        if (s.test.runMode === 'step') {
-          // One block per ПУСК: the block stops the run when it is done, whatever the F5 toggle
-          // says, so a stray single-block key cannot turn the step run into an uninterrupted one.
-          const next = executeLine({ ...s, sim: idleSim(), run: 'RUN', dryRun: false }, start)
-          return { s: { ...next, stopAfterBlock: true }, msg: `По шагам: кадр ${start + 1}. ПУСК — следующий кадр` }
-        }
-        if (s.test.runMode === 'mpg') {
-          // The handwheel run has no feed of its own: it is armed here and the MPG advances the
-          // toolpath block by block (mpg.ts needs the dry run, so it is switched on).
+      // A saved quick program asks once before its first start (PLAN-QUICKPROG, 8). The question
+      // comes before every branch of the start below, so the PROGON and the probe arm are covered
+      // too; a HOLD resume is not asked, because the run it continues was already confirmed.
+      if (s.run !== 'HOLD') {
+        const asked = startQuestion(s, a)
+        if (asked !== null && !asked.go)
           return {
-            s: { ...s, sim: idleSim(), run: 'IDLE', dryRun: true },
-            msg: `Прогон маховиком: кадр ${s.line + 1}. Вращайте маховик`,
+            s: asked.s,
+            msg: questionText(asked) ?? 'Проверьте программу и нажмите Старт ещё раз',
+            level: 'warn',
           }
-        }
-        // The SIM branch owns the guards (an empty program) and the message words; the PROGON
-        // adds only one thing: no dry run is left on while the axes stand still.
-        const next = dispatch(s, { type: 'SIM', on: true })
-        return { s: next.sim.active ? { ...next, dryRun: false } : next }
+        // The answered press continues from the state that dropped the flag, never from `s`.
+        if (asked !== null) return startProgram(asked.s, a, dispatch)
       }
-      if (s.mode === 'AUTO') {
-        const start = s.nextLine >= programLines(s).length ? 0 : s.nextLine
-        return { s: executeLine({ ...s, sim: idleSim(), run: 'RUN' }, start) }
-      }
-      if (s.workplace === 'SETUP') {
-        const text = s.mdi.buffer.trim().toUpperCase()
-        if (!text) return { s, msg: 'Введите кадр MDI', level: 'warn' }
-        if (!s.toolClamped && /M0?[34]\b/.test(text))
-          return { s, msg: 'Инструмент разжат — зажмите перед пуском шпинделя', level: 'error' }
-        const history = [text, ...s.mdi.history.filter((h) => h !== text)].slice(0, MDI_HISTORY_SIZE)
-        const n = applyBlock(
-          { ...s, sim: idleSim(), run: 'RUN', mdi: { buffer: '', history, running: true } },
-          text,
-          true,
-        )
-        return { s: { ...n, programEnd: false, stopAfterBlock: false }, msg: `MDI: ${text}` }
-      }
-      return { s, msg: `ПУСК недоступен в режиме «${WORKPLACE_LABEL[s.workplace]}»`, level: 'warn' }
+      return startProgram(s, a, dispatch)
     }
-
     case 'FEED_HOLD':
       // The PROGON simulation has no feed of its own: СТОП stops it, so the key is not dead.
       if (s.sim.active) return { s: { ...s, sim: idleSim() }, msg: 'Симуляция остановлена', level: 'warn' }
@@ -151,6 +93,7 @@ export function cycleReducer(s: MachineState, a: CycleAction, dispatch: Dispatch
           line: 0,
           nextLine: 0,
           cycleTime: 0,
+          camStartConfirmed: null,
           alarms: s.alarms.map((al) => (al.level === 'error' ? { ...al, active: false } : al)),
         },
         msg: 'Сброс выполнен',
@@ -195,6 +138,7 @@ export function cycleReducer(s: MachineState, a: CycleAction, dispatch: Dispatch
           coolant: false,
           mist: false,
           mdi: { ...s.mdi, running: false },
+          camStartConfirmed: null,
         },
         1001,
         'error',
@@ -204,4 +148,80 @@ export function cycleReducer(s: MachineState, a: CycleAction, dispatch: Dispatch
       return { s: n, msg: 'АВАРИЙНЫЙ СТОП', level: 'error' }
     }
   }
+}
+
+/**
+ * The start itself (PLAN-QUICKPROG, 8; the old body of `CYCLE_START`): the workplace decides what
+ * ПУСК runs, and the refusals of the machine come first. The confirmation of a new quick program is
+ * already answered by the caller, which passes the state with the flag gone.
+ */
+function startProgram(s: MachineState, a: CycleAction, dispatch: Dispatch): Result {
+  if (s.run === 'ESTOP') return { s, msg: 'Аварийный стоп активен — отпустите кнопку', level: 'error' }
+  if (s.run === 'ALARM') return { s, msg: 'Есть авария — нажмите СБРОС', level: 'error' }
+  if (s.run === 'RUN') return { s }
+  if (s.run === 'HOLD') return { s: { ...s, sim: idleSim(), run: 'RUN' }, msg: 'Подача возобновлена' }
+  if (s.probe.open && s.screen === 'offset') {
+    if (s.probe.step !== PROBE_STEP_MEASURE) return { s, msg: 'ПУСК щупа доступен на шаге «Измерение»', level: 'warn' }
+    if (s.tool !== PROBE_TOOL) return { s, msg: 'В шпинделе нет щупа T99', level: 'error' }
+    if (s.spindleOn) return { s, msg: 'Остановите шпиндель перед измерением', level: 'error' }
+    return {
+      s: {
+        ...s,
+        sim: idleSim(),
+        run: 'RUN',
+        probe: {
+          ...s.probe,
+          running: true,
+          elapsed: 0,
+          origin: { ...s.machine },
+          result: null,
+          written: false,
+          prev: null,
+        },
+      },
+      msg: 'Измерение щупом… G38.2',
+    }
+  }
+  if (s.editMode) return { s, msg: 'Выйдите из режима редактирования', level: 'warn' }
+  // The PROGON chooses what ПУСК runs (F4): the axis-free simulation, the dry run, the step
+  // run or the handwheel run. The branch is before the AUTO one, because the workplace keeps
+  // the AUTO mode.
+  if (s.workplace === 'TEST') {
+    const start = s.nextLine >= programLines(s).length ? 0 : s.nextLine
+    if (s.test.runMode === 'dry') {
+      return { s: executeLine({ ...s, sim: idleSim(), run: 'RUN', dryRun: true }, start) }
+    }
+    if (s.test.runMode === 'step') {
+      // One block per ПУСК: the block stops the run when it is done, whatever the F5 toggle
+      // says, so a stray single-block key cannot turn the step run into an uninterrupted one.
+      const next = executeLine({ ...s, sim: idleSim(), run: 'RUN', dryRun: false }, start)
+      return { s: { ...next, stopAfterBlock: true }, msg: `По шагам: кадр ${start + 1}. ПУСК — следующий кадр` }
+    }
+    if (s.test.runMode === 'mpg') {
+      // The handwheel run has no feed of its own: it is armed here and the MPG advances the
+      // toolpath block by block (mpg.ts needs the dry run, so it is switched on).
+      return {
+        s: { ...s, sim: idleSim(), run: 'IDLE', dryRun: true },
+        msg: `Прогон маховиком: кадр ${s.line + 1}. Вращайте маховик`,
+      }
+    }
+    // The SIM branch owns the guards (an empty program) and the message words; the PROGON
+    // adds only one thing: no dry run is left on while the axes stand still.
+    const next = dispatch(s, { type: 'SIM', on: true })
+    return { s: next.sim.active ? { ...next, dryRun: false } : next }
+  }
+  if (s.mode === 'AUTO') {
+    const start = s.nextLine >= programLines(s).length ? 0 : s.nextLine
+    return { s: executeLine({ ...s, sim: idleSim(), run: 'RUN' }, start) }
+  }
+  if (s.workplace === 'SETUP') {
+    const text = s.mdi.buffer.trim().toUpperCase()
+    if (!text) return { s, msg: 'Введите кадр MDI', level: 'warn' }
+    if (!s.toolClamped && /M0?[34]\b/.test(text))
+      return { s, msg: 'Инструмент разжат — зажмите перед пуском шпинделя', level: 'error' }
+    const history = [text, ...s.mdi.history.filter((h) => h !== text)].slice(0, MDI_HISTORY_SIZE)
+    const n = applyBlock({ ...s, sim: idleSim(), run: 'RUN', mdi: { buffer: '', history, running: true } }, text, true)
+    return { s: { ...n, programEnd: false, stopAfterBlock: false }, msg: `MDI: ${text}` }
+  }
+  return { s, msg: `ПУСК недоступен в режиме «${WORKPLACE_LABEL[s.workplace]}»`, level: 'warn' }
 }

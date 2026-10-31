@@ -340,3 +340,20 @@ export const errorsByField = (problems: { field: string; reason: string }[]): Re
 /** The reason of the shape as a whole when no single input is at fault (e.g. the stock is edge). */
 export const shapeProblem = (problems: { field: string; reason: string }[]): string | null =>
   errorsByField(problems)['geometry'] ?? null
+
+/**
+ * The field of the form that takes a coordinate off the display, or null (PLAN-QUICKPROG, 5 step 6:
+ * «Взять с DRO» for the centre and the top). The shape axes (`rect.x`, `hole.y`, the bare `x` of an
+ * engraving) and `topZ` are positions the operator can find on the display; a width, a depth or a
+ * list of points is a size and has no place there.
+ */
+export function droFieldOf(kind: OperationKind, key: string): 'x' | 'y' | 'topZ' | null {
+  if (!allFields(kind).some((field) => field.key === key)) return null
+  if (key === 'topZ') return 'topZ'
+  if (!key.endsWith('.x') && key !== 'x') return key.endsWith('.y') || key === 'y' ? 'y' : null
+  return 'x'
+}
+
+/** The axis of the display a field reads: the X of a `*.x`, the Y of a `*.y`, the Z of the top. */
+export const axisOf = (key: string): 'X' | 'Y' | 'Z' =>
+  key === 'topZ' ? 'Z' : key.endsWith('.y') || key === 'y' ? 'Y' : 'X'

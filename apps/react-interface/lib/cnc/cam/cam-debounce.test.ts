@@ -9,14 +9,14 @@ import { describe, expect, it } from 'vitest'
 
 import { initialState, reducer, type Action } from '../machine'
 import { currentFile } from '../files'
+import { emitProgram } from './emit'
 import type { MachineState } from '../types'
+import { buildProgram } from './path'
 import { needsPreview, PREVIEW_DEBOUNCE_MS, previewTimer, waitsForPreview } from './cam-debounce'
 import type { CamState } from './cam'
-import { newProgram } from './defaults'
-import { emitProgram } from './emit'
-import { formOperation } from './form'
 import { isCamAction } from './cam'
-import { buildProgram } from './path'
+import { newProgram } from './defaults'
+import { formOperation } from './form'
 
 const camOf = (s: MachineState): CamState => {
   if (s.cam === null) throw new Error('the overlay is closed')

@@ -15,6 +15,7 @@ import {
   allFields,
   CHOICE_LABEL,
   CHOICES,
+  droFieldOf,
   errorsByField,
   fieldFor,
   fieldGroups,
@@ -203,5 +204,21 @@ describe('поля новых видов (PLAN-QUICKPROG, 7.6)', () => {
     // A thread mill is the measured exception of Q5: eight shape fields plus the frame are 11 rows
     // of 36 px = 396 px of the 439 px column; the touch form scrolls it.
     expect(kindRows('thread', 'grid'), 'thread: строк').toBe(11)
+  })
+})
+
+describe('«С DRO» у полей формы', () => {
+  it('кнопка есть у центра и верха материала, но не у размеров и точек', () => {
+    // The fields that take a displayed coordinate: the centre of the shape and the top of the
+    // material. A width, a depth or a list of points is a size, not a position.
+    expect(droFieldOf('pocket', 'rect.x')).toBe('x')
+    expect(droFieldOf('pocket', 'rect.y')).toBe('y')
+    expect(droFieldOf('circle-pocket', 'circle.x')).toBe('x')
+    expect(droFieldOf('drill', 'hole.y')).toBe('y')
+    expect(droFieldOf('engrave', 'x')).toBe('x')
+    expect(droFieldOf('face', 'topZ')).toBe('topZ')
+    expect(droFieldOf('pocket', 'rect.w')).toBeNull()
+    expect(droFieldOf('pocket', 'depthMm')).toBeNull()
+    expect(droFieldOf('contour', 'points')).toBeNull()
   })
 })

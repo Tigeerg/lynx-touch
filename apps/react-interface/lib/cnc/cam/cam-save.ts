@@ -16,6 +16,7 @@ import { checkProgram, type CollisionResult } from './collision'
 import { emitProgram } from './emit'
 import type { QuickProgram } from './ops'
 import { buildProgram } from './path'
+import { statsOf } from './cam-stats'
 import { serializeProgram } from './serialize'
 import { validate } from './validate'
 import type { Result } from '../subsystem'
@@ -105,12 +106,12 @@ export const saveCam = (s: MachineState, cam: CamState, at: number | undefined):
     return { s, msg: `УП не сохранена: ${first.field}: ${first.reason}`, level: 'error' }
   }
   const found: { current: CollisionResult | null } = { current: null }
+  // The plan is built once: its lines are the file, its stats are what the header shows from now on.
+  const built = buildProgram(cam.program)
+  if (!built.ok) return { s, msg: `УП не сохранена: ${built.problems[0]}`, level: 'error' }
   const lines = emitOf(cam.program, found)
-  if (lines === null || found.current === null) {
-    const built = buildProgram(cam.program)
-    const reason = built.ok ? '' : built.problems[0]
-    return { s, msg: `УП не сохранена: ${reason}`, level: 'error' }
-  }
+  if (lines === null || found.current === null)
+    return { s, msg: 'УП не сохранена: программа не строится', level: 'error' }
   if (found.current.errors.length > 0) {
     const first = found.current.errors[0]
     return { s, msg: `УП не сохранена: ${first.field}: ${first.reason}`, level: 'error' }
@@ -136,7 +137,12 @@ export const saveCam = (s: MachineState, cam: CamState, at: number | undefined):
   const backup = existing === undefined ? '' : `; прежняя версия в ${stem}.bak`
   const notes = warnings === 0 ? '' : `, предупреждений ${String(warnings)}`
   return {
-    s: { ...written, cam: { ...cam, saved: name, preview: lines, pending: false, pendingSave: null } },
+    // The file is new to the operator: its first start asks for the confirmation (PLAN-QUICKPROG, 8).
+    s: {
+      ...written,
+      cam: { ...cam, saved: name, preview: lines, stats: statsOf(built.path), pending: false, pendingSave: null },
+      camStartConfirmed: { name, pendingStart: null },
+    },
     msg: `УП записана в файл ${name} — ${String(lines.length)} строк${notes}, модель — в ${stem}.qprog${backup}`,
   }
 }

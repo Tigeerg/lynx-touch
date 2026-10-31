@@ -2,10 +2,11 @@
 // input, and the reason of a failed check under the number it talks about. Four shapes of input:
 // the sources of a rest (`source`, a list of operations), a list (`CHOICES`), a multi-line box
 // (`MULTILINE`: a block of code, a list of points) and a number.
+import { Crosshair } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { Operation } from '@/lib/cnc/cam/ops'
+import type { Operation, OperationKind } from '@/lib/cnc/cam/ops'
 import { KIND_LABEL } from './cam-labels'
-import { CHOICE_LABEL, CHOICES, MULTILINE } from './cam-fields'
+import { CHOICE_LABEL, CHOICES, droFieldOf, MULTILINE } from './cam-fields'
 import { pickedSources, sourceOptions, toggleSource } from './source-choice'
 
 export function FieldRow({
@@ -15,8 +16,10 @@ export function FieldRow({
   touch,
   active,
   operations,
+  kind,
   onFocus,
   onChange,
+  onDro,
 }: {
   field: { key: string; label: string; unit: string; hint: string }
   value: string
@@ -25,11 +28,16 @@ export function FieldRow({
   active: boolean
   /** The document, so `source` offers the operations a rest can take its pockets from. */
   operations: Operation[]
+  /** The kind of the form: the shape fields that take a coordinate off the display depend on it. */
+  kind: OperationKind
   onFocus: () => void
   onChange: (value: string) => void
+  /** «С DRO»: the field takes the work coordinate of the display (PLAN-QUICKPROG, 5 step 6). */
+  onDro: (() => void) | null
 }) {
   const choice = CHOICES[field.key]
   const sources = field.key === 'source' ? sourceOptions(operations) : null
+  const dro = onDro !== null && droFieldOf(kind, field.key) !== null
   return (
     <div className={cn('flex flex-col gap-0.5 rounded-sm px-1 py-0.5', active && 'bg-accent/60')}>
       <span className="flex items-baseline justify-between gap-1">
@@ -37,6 +45,21 @@ export function FieldRow({
           {field.label}
           {field.unit && <span className="ml-1 font-normal">· {field.unit}</span>}
         </span>
+        {dro && (
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={`${field.label}: с DRO`}
+            onFocus={onFocus}
+            onClick={onDro ?? undefined}
+            className={cn(
+              'flex shrink-0 items-center gap-1 rounded-sm border px-1 font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+              touch ? 'min-h-11 text-[11px]' : 'min-h-6 text-[10px]',
+            )}
+          >
+            <Crosshair className="size-3" aria-hidden="true" />С DRO
+          </button>
+        )}
       </span>
       {sources !== null ? (
         <SourceList

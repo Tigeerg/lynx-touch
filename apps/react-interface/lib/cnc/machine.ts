@@ -112,6 +112,7 @@ export const initialState: MachineState = {
   },
   sim: idleSim(),
   cam: null,
+  camStartConfirmed: null,
   test: initialTest,
   toolMeasure: initialToolMeasure,
   search: { open: false, query: '', replace: '' },

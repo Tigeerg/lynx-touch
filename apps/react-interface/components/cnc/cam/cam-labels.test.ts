@@ -17,6 +17,7 @@ import {
   KIND_LABEL,
   keySize,
   kindWarnings,
+  programSummary,
   toolText,
   warningText,
 } from './cam-labels'
@@ -144,5 +145,19 @@ describe('значок предупреждений карточки', () => {
     // A rest warning needs the document: the same operation flips the sign with the program.
     const rest = newOperation('rest', { id: 'Остаток', topZ: 0 })
     expect(hasKindWarning(rest, { ...newProgram(), operations: [rest] })).toBe(true)
+  })
+})
+
+describe('строка оценки в шапке', () => {
+  it('читает ходы, длину и время в минутах и секундах', () => {
+    expect(programSummary({ moves: 42, lengthMm: 1234.5, seconds: 200 })).toBe(
+      'ходов 42 · длина 1234.5 мм · ≈ 03:20 мин',
+    )
+    expect(programSummary({ moves: 1, lengthMm: 0, seconds: 0 })).toBe('ходов 1 · длина 0 мм · ≈ 00:00 мин')
+    expect(programSummary(null)).toBeNull()
+  })
+
+  it('минуты округляются к ближайшей секунде, а не отбрасываются', () => {
+    expect(programSummary({ moves: 1, lengthMm: 1, seconds: 59.6 })).toContain('01:00 мин')
   })
 })

@@ -11,6 +11,7 @@ import { isBusy } from '../guards'
 import type { MachineState } from '../types'
 import { checkProgram } from './collision'
 import type { CamState } from './cam'
+import { openTarget } from './cam-open'
 import { valuesOf } from './form'
 import { DEFAULT_STOCK, newOperation, newProgram } from './defaults'
 import { emitProgram } from './emit'
@@ -183,10 +184,14 @@ describe('§5 приёмка на демо-детали: шаг за шагом'
     expect(currentFile(dialog).name).toBe('DEMO-3-3.ngc')
     expect(currentFile(dialog).lines.length).toBeGreaterThan(10)
     expect(currentFile(dialog).lines).toEqual(fileOf(saved, 'DEMO-3-3.ngc')!.lines)
+    // The header of the overlay offers the same file: the predicate names what the save wrote.
+    expect(openTarget(camOf(saved))).toBe('DEMO-3-3.ngc')
   })
 
-  it('шаг 11. «Запустить»: пуск на сохранённом файле проходит при IDLE, без ESTOP', () => {
-    // ПУСК on the saved file, machine idle: the run starts, the guard reads RUN.
+  it('шаг 11. «Запустить»: первый пуск сохранённой УП спрашивает, второй запускает', () => {
+    // PLAN-QUICKPROG, 8: the saved quick program asks once. The first press only asks, the second
+    // press within five seconds starts the run: nothing starts without the operator's second word
+    // on a program just written.
     const opened = run(
       withDocument(panel, [FACE, POCKET, DRILL], 'DEMO-3'),
       { type: 'CAM_SAVE', at: 1_000 },
@@ -197,13 +202,19 @@ describe('§5 приёмка на демо-детали: шаг за шагом'
     expect(currentFile(ready).name).toBe('DEMO-3-3.ngc')
     expect(isBusy(ready)).toBe(false)
 
-    const started = run(ready, { type: 'CYCLE_START' })
+    const asked = run(ready, { type: 'CYCLE_START', at: 2_000 })
+    expect(asked.run).toBe('IDLE')
+    expect(asked.message?.level).toBe('warn')
+    expect(asked.message?.text).toContain('ещё раз')
+
+    const started = run(asked, { type: 'CYCLE_START', at: 5_000 })
     expect(started.run).toBe('RUN')
     expect(isBusy(started)).toBe(true)
     expect(started.message?.level).not.toBe('error')
-    // The dry run of the same file starts too, under its own mode.
-    const again = run({ ...ready, workplace: 'TEST' }, { type: 'CYCLE_START' })
-    expect(again.run).toBe('RUN')
+    // The dry run of the same file asks and starts by the same rule, under its own mode.
+    const dry = run({ ...ready, workplace: 'TEST' }, { type: 'CYCLE_START', at: 2_000 })
+    expect(dry.run).not.toBe('RUN')
+    expect(run(dry, { type: 'CYCLE_START', at: 5_000 }).run).toBe('RUN')
   })
 
   it('шаг 11. «Запустить»: авария не пускает - CYCLE_START при ESTOP отказывает', () => {

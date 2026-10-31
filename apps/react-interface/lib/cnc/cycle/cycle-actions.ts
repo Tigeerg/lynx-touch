@@ -4,7 +4,7 @@
 
 export type CycleAction =
   | { type: 'TICK'; dt: number }
-  | { type: 'CYCLE_START' }
+  | { type: 'CYCLE_START'; at?: number }
   | { type: 'FEED_HOLD' }
   | { type: 'RESET' }
   | { type: 'ESTOP'; at?: number }

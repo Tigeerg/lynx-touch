@@ -61,6 +61,8 @@
  * not needed):
  * build/viewer/gcodeviewer data/cad-testdata/Test_model.ngc
  */
+#include <cstdio>
+
 #include <QColor>
 #include <QDir>
 #include <QElapsedTimer>
@@ -196,6 +198,27 @@ void detachOwnConsole()
     if (GetConsoleProcessList(attached, 4) != 1)
         return;
     FreeConsole();
+#endif
+}
+
+// A GUI-subsystem process gets no console of its own: when it is started from a
+// terminal the output goes to the console of the parent, when it is started by a
+// double click there is no console and the output is dropped. Redirected handles (a
+// pipe, a file) are left alone: --smoke and --frame are read through them by the
+// guard and the probes.
+void attachParentConsole()
+{
+#ifdef Q_OS_WIN
+    const HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (out && out != INVALID_HANDLE_VALUE && GetFileType(out) == FILE_TYPE_DISK)
+        return;  // stdout is a file: the caller wants the text there
+    if (out && out != INVALID_HANDLE_VALUE && GetFileType(out) == FILE_TYPE_PIPE)
+        return;  // stdout is a pipe: the caller reads it, a console is not needed
+    if (!AttachConsole(ATTACH_PARENT_PROCESS))
+        return;
+    FILE *stream = nullptr;
+    freopen_s(&stream, "CONOUT$", "w", stdout);
+    freopen_s(&stream, "CONOUT$", "w", stderr);
 #endif
 }
 
@@ -700,6 +723,7 @@ private:
 int main(int argc, char *argv[])
 {
 #ifdef Q_OS_WIN
+    attachParentConsole();
     SetConsoleOutputCP(CP_UTF8);          // Russian text is visible in the manager's console
 #endif
     // --smoke and --frame are looked for in argv before the application is created:

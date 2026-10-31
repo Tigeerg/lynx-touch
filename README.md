@@ -124,6 +124,18 @@ bash scripts/build-viewer.sh
 успеха: живое окно печатает `loaded g-code from: … segments: N` и ни одной строки `[QML warning]`;
 `--smoke` — `RESULT: OK (parse-level)`.
 
+Окно консоли не открывается: `gcodeviewer.exe` собран как GUI-приложение, текст идёт в консоль
+вызывающего терминала (или в перенаправленный поток), а при запуске двойным щелчком консоли нет вовсе.
+
+Qt-порт (окно панели 1024×600) запускается через собранный вьювер и `qmlscene`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-qt-interface.ps1
+```
+
+Скрипт поднимает `qmlscene` без консольного окна (`CREATE_NO_WINDOW`); каталоги Qt и OCCT берутся из
+`CNC_QT_DIR` и `CNC_OCC_DIR`, как в сборке вьювера.
+
 <details>
 <summary>Клавиши вьювера</summary>
 

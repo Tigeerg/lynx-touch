@@ -468,7 +468,7 @@ get_filename_component(GV_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOL
 set(GV_VIEWER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../build/viewer"
     CACHE PATH "Каталог, куда кладётся gcodeviewer.exe")
 
-add_executable(gcodeviewer viewer/main.cpp)
+add_executable(gcodeviewer WIN32 viewer/main.cpp)
 set_target_properties(gcodeviewer PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${GV_VIEWER_DIR}
     RUNTIME_OUTPUT_DIRECTORY_DEBUG ${GV_VIEWER_DIR}

@@ -117,16 +117,23 @@ if (-not $OccDir) {
         $(if ($env:CONDA_PREFIX) { Join-Path $env:CONDA_PREFIX 'Library' }),
         'C:\Users\Tiger\anaconda3\envs\gcode-cpp\Library')
 }
-if ($OccDir -and (Test-Path -LiteralPath (Join-Path $OccDir 'bin'))) {
+# Deployment uses the compact novtk set even when CNC_OCC_DIR points at the full build SDK.
+$deployOcc = First-Existing @('D:\cnc-toolchain\occt-novtk\Library', $OccDir)
+if ($deployOcc -and (Test-Path -LiteralPath (Join-Path $deployOcc 'bin'))) {
     $occtOut = Join-Path $BuildDir 'occt'
     # Clear the folder before the copy: an older deployment may have put a full occt-env set here,
     # and Copy-Item -Force would leave its extra DLLs behind (over a gigabyte).
     if (Test-Path -LiteralPath $occtOut) { Remove-Item -LiteralPath $occtOut -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $occtOut | Out-Null
-    Copy-Item -Path (Join-Path $OccDir 'bin\*.dll') -Destination $occtOut -Force
-    Write-Host ("build-qt-interface: OCCT " + $OccDir + " -> " + $occtOut)
+    Copy-Item -Path (Join-Path $deployOcc 'bin\*.dll') -Destination $occtOut -Force
+    Write-Host ("build-qt-interface: OCCT " + $deployOcc + " -> " + $occtOut)
 } else {
     Write-Host 'build-qt-interface: OCCT не найден - exe будет искать CNC_OCC_DIR в PATH' -ForegroundColor Yellow
 }
 
+$linker = Join-Path $root 'scripts\link-runtime.ps1'
+if (Test-Path -LiteralPath $linker) {
+    & $linker -Targets @($BuildDir) -QtDir $QtDir -OccDir $deployOcc
+    if ($LASTEXITCODE -ne 0) { Fail 'link-runtime.ps1 не прошёл' }
+}
 Write-Host ("build-qt-interface: OK " + $exe) -ForegroundColor Green

@@ -5,6 +5,23 @@
 
 Формат и правила — в [`VERSIONING.md`](VERSIONING.md). Термины — [`ROLES.md`](ROLES.md), раздел 9.
 
+## 0.35.8 - 2026-11-01
+
+### Изменено
+- **Один Qt/OCCT runtime вместо копий в каждом каталоге.** `scripts/link-runtime.ps1` держит
+  библиотеки в `build/runtime` и ставит в `build/viewer`, `build/edges`, `build/qt-interface`
+  NTFS-hardlinks на файлы и junctions на `qml`/`platforms`. Запуск exe из Проводника сохранён;
+  файлов в `build/` стало 2294 вместо 4978, полезный объём — около 0,35 ГБ вместо 0,62 ГБ
+  (Qt/OCCT больше не дублируются). Сборки вызывают helper автоматически; без NTFS — fallback
+  на копирование.
+
+### Проверки
+- `gcodeviewer`, `lynx-panel`, `keyprobe`, `stock_bind_probe`, `stepledges_probe` запускаются с
+  чистым PATH после дедупликации; `link-runtime.ps1` идемпотентен.
+
+### Версии
+- продукт — `0.35.8` (PATCH: оптимизация runtime).
+
 ## 0.35.7 - 2026-11-01
 
 ### Исправлено

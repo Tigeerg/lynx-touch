@@ -8,7 +8,7 @@
 
 | Место | Объём | Что это | Решение |
 |---|---:|---|---|
-| `build/` | ~0,62 ГБ, 4978 файлов | собранные Qt/C++ программы, пробники, Qt/OCCT DLL | оставить поддеревья, убрать мусор из корня |
+| `build/` | ~0,35 ГБ полезных данных, 2294 файла (Qt/OCCT — hardlinks) | собранные Qt/C++ программы, пробники, Qt/OCCT DLL | оставить поддеревья, убрать мусор из корня |
 | `apps/react-interface/.next` | ~320 МБ | кэш Next.js | не хранить, чистится |
 | `build/cpp` | 2 DLL | старый мост `gvbridge`/`gvqtshim` | удалить как устаревшее |
 | корень `build/` | ~30 файлов | наши скриншоты, одноразовые `.mjs`/`.ps1`, логи, тестовые `.ngc` | удалить, правило ниже |
@@ -53,6 +53,7 @@ build/                  сгенерированное, ignored (см. §3)
 | `build/qmlbackend` | MockBackend | `scripts/build-viewer.ps1` |
 | `build/quickprog` | `quickprog.exe`, `quickprog_check.exe` | `scripts/build-quickprog.ps1` |
 | `build/qt-interface` | `lynx-panel.exe`, Qt/OCCT | `scripts/build-qt-interface.ps1` |
+| `build/runtime` | один общий Qt и OCCT; из него — hardlinks/junctions в каталоги exe | `scripts/link-runtime.ps1` |
 | `build/artifacts` | временные скриншоты, логи, пробные файлы | агент/человек |
 | `build/tmp` | одноразовые скрипты и выгрузки | агент/человек |
 | `build/logs` | логи прогонов | агент/человек |
@@ -70,6 +71,10 @@ build/                  сгенерированное, ignored (см. §3)
 6. **Каталоги runtime (`build/<проект>/`) — сгенерированные.** Qt/OCCT рядом с exe раскладывает
    сборка; SDK руками не копируют. Перед раскладкой папка очищается: старый полный набор OCCT
    (1 ГБ) иначе остаётся рядом с новым компактным и удваивает `build/`.
+7. **Runtime один, а не по копии на exe.** `scripts/link-runtime.ps1` держит Qt и OCCT в
+   `build/runtime`, а в каталоги exe ставит NTFS-hardlinks (файлы) и junctions (папки `qml`,
+   `platforms`). Запуск из Проводника работает как раньше, место не удваивается; без NTFS —
+   fallback на копирование.
 
 ## 4. Скриншоты и доказательства
 

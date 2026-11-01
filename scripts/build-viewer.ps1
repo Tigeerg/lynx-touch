@@ -238,6 +238,12 @@ if (-not $ConfigureOnly) {
         if (Test-Path -LiteralPath $edgesPlugins) {
             Copy-Item -Path (Join-Path $edgesPlugins '*.dll') -Destination $BuildDir -Force
         }
+        # One Qt/OCCT copy under build/runtime; the executable folders get hardlinks and junctions.
+        $linker = Join-Path $root 'scripts\link-runtime.ps1'
+        if (Test-Path -LiteralPath $linker) {
+            & $linker -Targets @((Join-Path $BuildDir '..\viewer'), $BuildDir) -QtDir $QtDir -OccDir $deployOcc
+            if ($LASTEXITCODE -ne 0) { Fail 'link-runtime.ps1 не прошёл' }
+        }
         Write-Host ('build-viewer: Qt и OCCT разложены рядом с exe (' + $deployOcc + ')')
     }
 }

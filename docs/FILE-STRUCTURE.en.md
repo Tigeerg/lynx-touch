@@ -8,7 +8,7 @@ cleanup script `scripts/clean.ps1`.
 
 | Place | Size | What it is | Decision |
 |---|---:|---|---|
-| `build/` | ~0.62 GB, 4978 files | built Qt/C++ programs, probes, Qt/OCCT DLLs | keep the project subdirectories, remove the junk in the root |
+| `build/` | ~0.35 GB of payload, 2294 files (Qt/OCCT are hardlinks) | built Qt/C++ programs, probes, Qt/OCCT DLLs | keep the project subdirectories, remove the junk in the root |
 | `apps/react-interface/.next` | ~320 MB | Next.js cache | not stored; cleaned |
 | `build/cpp` | 2 DLLs | old `gvbridge`/`gvqtshim` bridge | delete as obsolete |
 | root of `build/` | ~30 files | our screenshots, one-off `.mjs`/`.ps1`, logs, test `.ngc` | delete; rule below |
@@ -52,6 +52,7 @@ and the licence. Sources live in `apps/`, `modules/`, `data/`, `docs/`, `scripts
 | `build/qmlbackend` | MockBackend | `scripts/build-viewer.ps1` |
 | `build/quickprog` | `quickprog.exe`, `quickprog_check.exe` | `scripts/build-quickprog.ps1` |
 | `build/qt-interface` | `lynx-panel.exe`, Qt/OCCT | `scripts/build-qt-interface.ps1` |
+| `build/runtime` | one shared Qt and OCCT; hardlinks/junctions into the executable folders | `scripts/link-runtime.ps1` |
 | `build/artifacts` | temporary screenshots, logs, trial files | agent/person |
 | `build/tmp` | one-off scripts and dumps | agent/person |
 | `build/logs` | run logs | agent/person |
@@ -69,6 +70,10 @@ Rules:
 6. **Runtime folders (`build/<project>/`) are generated.** Qt/OCCT next to the exe are placed by
    the build; SDKs are never copied by hand. The folder is cleared before deployment: an old full
    OCCT set (1 GB) otherwise stays next to the new compact one and doubles `build/`.
+7. **One runtime, not one copy per exe.** `scripts/link-runtime.ps1` keeps Qt and OCCT in
+   `build/runtime`, and puts NTFS hardlinks (files) and junctions (the `qml`, `platforms` folders)
+   into the executable folders. A double click works as before, disk space is not doubled; without
+   NTFS it falls back to copying.
 
 ## 4. Screenshots and evidence
 

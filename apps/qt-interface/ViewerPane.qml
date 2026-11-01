@@ -14,7 +14,27 @@ Item {
     objectName: "viewerPane"
     property Item host
     property bool showChrome: false
+    // Viewer settings from the panel service menu (saved values). An empty object keeps the
+    // viewer defaults; the debug gcodeviewer.exe does not use this property.
+    property var settings: ({})
     readonly property bool playing: viewerLoader.item ? viewerLoader.item.playing : false
+
+    function applySettings() {
+        var it = viewerLoader.item
+        if (!it || !settings) return
+        if (settings.quality !== undefined) it.quality = settings.quality
+        if (settings.stockVisible !== undefined) it.showStockVisible = settings.stockVisible
+        if (settings.stockView !== undefined) it.stockView = settings.stockView
+        if (settings.partMode !== undefined) it.partMode = settings.partMode
+        if (settings.showPartSkin !== undefined) it.showPartSkin = settings.showPartSkin
+        if (settings.showToolpath !== undefined) it.showToolpath = settings.showToolpath
+        if (settings.stockPlainBox !== undefined) it.stockPlainBox = settings.stockPlainBox
+        if (settings.stockGhost !== undefined) it.stockGhost = settings.stockGhost
+        if (settings.showBrepEdges !== undefined) it.showBrepEdges = settings.showBrepEdges
+        if (settings.showTangentLines !== undefined) it.showTangentLines = settings.showTangentLines
+        if (settings.showFps !== undefined) it.showFps = settings.showFps
+    }
+    onSettingsChanged: applySettings()
 
     // Panel actuators. The panel calls these from machineCycleStart/machineFeedHold/machineReset;
     // the viewer has no buttons of its own in the embedded copy.
@@ -28,6 +48,7 @@ Item {
         source: "../../modules/gcode-viewer/GcodeViewer3D.qml"
         onLoaded: {
             item.showChrome = pane.showChrome
+            pane.applySettings()
             item.gcode = host ? host.viewSample : ""
         }
     }

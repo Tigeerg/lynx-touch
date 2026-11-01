@@ -426,14 +426,16 @@ Item {
         { t: "item", id: "motion",   page: 0, fk: "F3", label: "Траектория", hint: "[TRAJ] [SPINDLE] [EMCMOT]",  icon: "\ue53e" },
         { t: "item", id: "joints",   page: 0, fk: "F4", label: "Оси",         hint: "[JOINT_n] пределы, поиск",   icon: "\ue2fe" },
         { t: "item", id: "pid",      page: 0, fk: "F5", label: "PID",         hint: "Контуры регулирования",      icon: "\ue29a" },
+        { t: "head", text: "ОТОБРАЖЕНИЕ" },
+        { t: "item", id: "viewer",   page: 0, fk: "F6", label: "Вьювер",      hint: "3D: качество, заготовка, деталь", icon: "\ue1db" },
         { t: "head", text: "ОБОРУДОВАНИЕ" },
         { t: "item", id: "mesa",     page: 1, fk: "F1", label: "Mesa",        hint: "hostmot2 · плата, stepgen",  icon: "\ue403" },
         { t: "item", id: "hal",      page: 1, fk: "F2", label: "HAL",         hint: "Монитор пинов HAL",          icon: "\ue4e3" },
         { t: "item", id: "ladder",   page: 1, fk: "F3", label: "Ladder",      hint: "ClassicLadder, онлайн",      icon: "\ue425" }
     ]
-    readonly property var serviceIds: ["system","linuxcnc","motion","joints","pid","mesa","hal","ladder"]
+    readonly property var serviceIds: ["system","linuxcnc","motion","joints","pid","mesa","hal","ladder","viewer"]
     function serviceLabelOf(id) {
-        var m = { system:"Система", linuxcnc:"LinuxCNC", motion:"Траектория", joints:"Оси", pid:"PID", mesa:"Mesa", hal:"HAL", ladder:"Ladder" };
+        var m = { system:"Система", linuxcnc:"LinuxCNC", motion:"Траектория", joints:"Оси", pid:"PID", mesa:"Mesa", hal:"HAL", ladder:"Ladder", viewer:"Вьювер" };
         return m[id] || "";
     }
     function serviceStep(d) {
@@ -551,6 +553,22 @@ Item {
         { label: "Огр. ошибки", key: "[JOINT_0] MAX_ERRR", dflt: 0, unit: "мм", min: 0, max: 5, step: 0.01, digits: 3 }
     ]
 
+    // Embedded 3D viewer settings. The viewer has no chrome of its own on the panel, so these
+    // values are the only way to change quality, stock/part view and overlays. They are applied
+    // on service save (not on every cursor step), so an operator can change several at once.
+    readonly property var viewerDefs: [
+        { label: "Качество отображения", key: "[DISPLAY] VIEWER_QUALITY", dflt: 1, options: ["низкое", "среднее", "высокое", "безопасное"], free: true },
+        { label: "Заготовка", key: "[DISPLAY] VIEWER_STOCK", dflt: 0, options: ["показать", "скрыть"], free: true },
+        { label: "Вид заготовки", key: "[DISPLAY] VIEWER_STOCK_VIEW", dflt: 1, options: ["точная", "гладкая", "скруглённая"], free: true },
+        { label: "Деталь", key: "[DISPLAY] VIEWER_PART", dflt: 0, options: ["сплошная", "прозрачная", "скрыта"], free: true },
+        { label: "Оболочка детали", key: "[DISPLAY] VIEWER_PART_SKIN", dflt: 0, options: ["включена", "выключена"], free: true },
+        { label: "Линии траектории", key: "[DISPLAY] VIEWER_TOOLPATH", dflt: 0, options: ["показать", "скрыть"], free: true },
+        { label: "Каркас заготовки", key: "[DISPLAY] VIEWER_STOCK_BOX", dflt: 0, options: ["нет", "да"], free: true },
+        { label: "Прозрачная заготовка", key: "[DISPLAY] VIEWER_STOCK_GHOST", dflt: 0, options: ["да", "нет"], free: true },
+        { label: "Рёбра STEP", key: "[DISPLAY] VIEWER_BREP_EDGES", dflt: 0, options: ["показать", "скрыть"], free: true },
+        { label: "Касательные линии", key: "[DISPLAY] VIEWER_TANGENTS", dflt: 0, options: ["показать", "скрыть"], free: true },
+        { label: "Счётчик FPS", key: "[DISPLAY] VIEWER_FPS", dflt: 0, options: ["скрыть", "показать"], free: true }
+    ]
     function sysParamsFor(section) {
         if (section === "system") return systemDefs;
         if (section === "linuxcnc") return linuxcncDefs;
@@ -558,9 +576,32 @@ Item {
         if (section === "mesa") return mesaDefs;
         if (section === "joints") return jointDefs;
         if (section === "pid") return pidDefs;
+        if (section === "viewer") return viewerDefs;
         return [];
     }
-    function hasSvcList() { var sc = serviceSection; return sc === "system" || sc === "linuxcnc" || sc === "motion" || sc === "joints" || sc === "pid" || sc === "mesa"; }
+    function hasSvcList() { var sc = serviceSection; return sc === "system" || sc === "linuxcnc" || sc === "motion" || sc === "joints" || sc === "pid" || sc === "mesa" || sc === "viewer"; }
+    // Saved viewer values (service Save) in the viewer's own terms. The binding depends on
+    // svcSavedMap, so the embedded viewer updates only after Save or Defaults+Save.
+    function viewerSavedVal(i) {
+        var def = viewerDefs[i];
+        var k = "viewer." + i;
+        return svcSavedMap[k] !== undefined ? svcSavedMap[k] : def.dflt;
+    }
+    function viewerSettings() {
+        return {
+            quality: ["low", "med", "high", "safe"][viewerSavedVal(0)],
+            stockVisible: viewerSavedVal(1) === 0,
+            stockView: viewerSavedVal(2),
+            partMode: viewerSavedVal(3),
+            showPartSkin: viewerSavedVal(4) === 0,
+            showToolpath: viewerSavedVal(5) === 0,
+            stockPlainBox: viewerSavedVal(6) === 1,
+            stockGhost: viewerSavedVal(7) === 0,
+            showBrepEdges: viewerSavedVal(8) === 0,
+            showTangentLines: viewerSavedVal(9) === 0,
+            showFps: viewerSavedVal(10) === 1
+        };
+    }
     readonly property var halDefs: [
         { title: "Питание и безопасность", pins: [ { name: "iocontrol.0.emc-enable-in", type: "bit", dir: "IN" }, { name: "halui.estop.is-activated", type: "bit", dir: "OUT" }, { name: "halui.machine.is-on", type: "bit", dir: "OUT" } ] },
         { title: "Режим и программа", pins: [ { name: "halui.mode.is-auto", type: "bit", dir: "OUT" }, { name: "halui.mode.is-mdi", type: "bit", dir: "OUT" }, { name: "halui.mode.is-manual", type: "bit", dir: "OUT" }, { name: "halui.program.is-running", type: "bit", dir: "OUT" }, { name: "halui.program.is-paused", type: "bit", dir: "OUT" }, { name: "halui.program.is-idle", type: "bit", dir: "OUT" }, { name: "motion.program-line", type: "s32", dir: "OUT" }, { name: "halui.feed-override.value", type: "float", dir: "OUT" } ] },
@@ -1991,9 +2032,9 @@ Item {
                                                 property int activePage: (root.serviceSection === "mesa" || root.serviceSection === "hal" || root.serviceSection === "ladder") ? 1 : 0
                                                 property bool dim: isItem && modelData.page !== activePage
                                                 Layout.fillWidth: true
-                                                Layout.preferredHeight: isItem ? 34 : 22
-                                                Layout.minimumHeight: isItem ? 34 : 22
-                                                Layout.maximumHeight: isItem ? 34 : 22
+                                                Layout.preferredHeight: isItem ? 30 : 19
+                                                Layout.minimumHeight: isItem ? 30 : 19
+                                                Layout.maximumHeight: isItem ? 30 : 19
                                                 color: on ? cPrimary : "transparent"
                                                 radius: 4
                                                 Text {
@@ -2090,13 +2131,35 @@ Item {
                                         }
                                     }
                                     Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.minimumHeight: 1; Layout.maximumHeight: 1; color: cBorder }
-                                    Repeater {
+                                    Flickable {
+                                        id: svcList
+                                        objectName: "serviceParamList"
+                                        visible: root.hasSvcList() && root.serviceSection !== "hal"
+                                        Layout.fillWidth: true; Layout.fillHeight: visible
+                                        contentWidth: width; contentHeight: root.svcListLen() * 32 + 36
+                                        clip: true; boundsBehavior: Flickable.StopAtBounds
+                                        function ensureVisible() {
+                                            // Reserve the softkey bar: the layout's bottom edge sits behind it,
+                                            // so a row at the raw bottom is not actually visible to the operator.
+                                            var viewH = Math.max(32, height - 36)
+                                            var y = root.svcCursor * 32
+                                            if (y < contentY) contentY = y
+                                            else if (y + 32 > contentY + viewH) contentY = y + 32 - viewH
+                                        }
+                                        Connections {
+                                            target: root
+                                            function onSvcCursorChanged() { svcList.ensureVisible() }
+                                        }
+                                        Column {
+                                            id: svcListCol
+                                            width: svcList.width
+                                            height: root.svcListLen() * 32
+                                            Repeater {
                                         model: root.sysParamsFor(root.serviceSection)
                                         delegate: Rectangle {
                                             property bool sel: index === root.svcCursor && root.svcFocus === "list"
                                             property bool editing: sel && root.svcEditing
-                                            visible: root.hasSvcList()
-                                            Layout.fillWidth: true; Layout.preferredHeight: 32; Layout.minimumHeight: 32; Layout.maximumHeight: 32
+                                            width: svcListCol.width; height: 32
                                             color: editing ? "#1aF3A518" : (sel ? cAccent : cCard)
                                             RowLayout { anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 6
                                                 RowLayout { Layout.minimumWidth: 300; Layout.maximumWidth: 300; Layout.preferredWidth: 300; spacing: 6
@@ -2118,13 +2181,15 @@ Item {
                                             Rectangle { anchors.left: parent.left; anchors.bottom: parent.bottom; width: parent.width; height: 1; color: cBorder }
                                             MouseArea { anchors.fill: parent; onClicked: { root.svcCursor = index; root.svcFocus = "list"; } }
                                         }
+                                            }
+                                        }
                                     }
                                     // ===== HAL — pin monitor (v0.5.1) =====
                                     Flickable {
                                         id: halFlick
                                         objectName: "halGroup"
                                         visible: root.serviceSection === "hal"
-                                        Layout.fillWidth: true; Layout.fillHeight: true
+                                        Layout.fillWidth: true; Layout.fillHeight: visible
                                         contentWidth: halFlick.width; contentHeight: halCol.height
                                         clip: true; boundsBehavior: Flickable.StopAtBounds
                                         Column {
@@ -2173,7 +2238,7 @@ Item {
                                     ColumnLayout {
                                         id: ladderGroup
                                         visible: root.serviceSection === "ladder"
-                                        Layout.fillWidth: true; Layout.fillHeight: true; spacing: 0
+                                        Layout.fillWidth: true; Layout.fillHeight: visible; spacing: 0
                                         Repeater {
                                             model: root.ladderRungs
                                             delegate: Rectangle {
@@ -2231,7 +2296,6 @@ Item {
                                             Text { text: "Сканирование 10 мс"; color: cMutedForeground; font.pixelSize: 10 } }
                                         Item { Layout.fillWidth: true; Layout.fillHeight: true }
                                     }
-                                    Item { Layout.fillWidth: true; Layout.fillHeight: true }
                                 }
                             }
                         }

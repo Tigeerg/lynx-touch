@@ -6,7 +6,7 @@ code and its run; this file holds the intent, anchors in both trees and acceptan
 
 This edition was merged on 31.10.2026: the inventory and anchors come from the previous edition,
 the order of work, acceptance and decisions come from the lead. State at the day of the edition:
-React `0.24.0` (product `0.35.18`), Qt `0.6.13`.
+React `0.24.1` (product `0.35.19`), Qt `0.6.14`.
 
 **Roles fixed (01.11.2026).** The real controller runs **Qt — it is the product**. React was a demo
 stage: after the start and CAM-insert fixes it is **frozen** — no new features are developed there.
@@ -35,7 +35,7 @@ dispatcher's decisions are in §7.
 
 React anchors are a file and a symbol; line numbers are as of 31.10.2026. "W" is the wave in §4.
 
-| Panel node | React `0.24.0` (source) | Qt `0.6.13` (`main.qml`) | Gap | W |
+| Panel node | React `0.24.1` (source) | Qt `0.6.14` (`main.qml`) | Gap | W |
 |---|---|---|---|---|
 | Workplaces | `types.ts` (`SETUP`/`TEST`/`RUN`), `WORKPLACE_LABEL` (`data.ts`), `SET_WORKPLACE` (`nav.ts`) | none; only `machineMode` (`:24`) and `modeCycle` | no workplaces | C |
 | Tabs | 5: `TABS`/`TAB_LABEL` (`types.ts`) Work, Offsets, Tool, Messages, Service; Work merges `pos` and `prog` (`tabOfScreen`) | 7: `tab0`..`tab6` (`:967-1256`), Position and Program separate, plus 3D | +2 tabs | B |
@@ -208,9 +208,10 @@ Pre.: B, C.
    4 views (`AUTO_VIEWS`), transparent code window.
 3. The viewer as a child (the `MockBackend`/`GcodeToolpath` plugin already exists; load the program
    from the catalogue, not `viewSample`). After this the temporary 3D tab is removed. The embedded
-   viewer has **no control panel of its own and no hotkey hints**: settings come from the panel's
-   service menu, playback is driven by the panel (`machineCycleStart`/`machineFeedHold`/`machineReset`);
-   the viewer buttons stay only in the debug `gcodeviewer.exe`.
+   viewer has **no control panel of its own and no hotkey hints**: settings come from
+   "Service → Viewer" (quality, stock, part, lines; applied on Save), playback is driven by the
+   panel (`machineCycleStart`/`machineFeedHold`/`machineReset`); the viewer buttons stay only in
+   the debug `gcodeviewer.exe`.
 4. Single-block viewing and "Start from block" (`PROG_TO_CURSOR`), restoring modal codes.
 5. Program editor and search/replace.
 

@@ -293,6 +293,7 @@ Item {
                         id: viewerPane
                         anchors.fill: parent
                         host: workScreen.host
+                        settings: workScreen.host ? workScreen.host.viewerSettings() : ({})
                     }
                     RowLayout {
                         anchors.left: parent.left

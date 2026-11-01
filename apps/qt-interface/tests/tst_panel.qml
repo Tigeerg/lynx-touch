@@ -106,6 +106,43 @@ TestCase {
         verify(viewerItem.pathDist === 0)
     }
 
+    function test_viewer_service_settings() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        // The viewer is configured from its own service section, not from viewer buttons.
+        verify(p.serviceIds.indexOf("viewer") >= 0)
+        compare(p.sysParamsFor("viewer").length, 11)
+
+        var viewer = findByName(p, "viewerPane")
+        var viewerItem = viewer.children[0].item
+        // The real service flow: edit values, then Save applies them to the viewer.
+        p.serviceSection = "viewer"
+        p.svcValues = ({})
+        p.svcSavedMap = ({})
+        p.setSvcVal(0, 2)    // quality high
+        p.setSvcVal(1, 1)    // stock hidden
+        p.setSvcVal(3, 2)    // part hidden
+        p.setSvcVal(5, 1)    // toolpath hidden
+        p.setSvcVal(10, 1)   // fps shown
+        p.svcSave()
+        wait(0)
+        compare(viewerItem.quality, "high")
+        compare(viewerItem.showStockVisible, false)
+        compare(viewerItem.partMode, 2)
+        compare(viewerItem.showToolpath, false)
+        compare(viewerItem.showFps, true)
+
+        // Clearing the saved map returns the viewer to the documented defaults.
+        p.svcSavedMap = ({})
+        p.serviceSection = "system"
+        wait(0)
+        compare(viewerItem.quality, "med")
+        compare(viewerItem.showStockVisible, true)
+        compare(viewerItem.partMode, 0)
+        compare(viewerItem.showToolpath, true)
+        compare(viewerItem.showFps, false)
+    }
+
     function test_debug_windows_exist() {
         var pendant = Qt.createComponent("../PendantWindow.qml")
         var mpg = Qt.createComponent("../MpgWindow.qml")

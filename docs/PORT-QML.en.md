@@ -6,7 +6,7 @@ code and its run; this file holds the intent, anchors in both trees and acceptan
 
 This edition was merged on 31.10.2026: the inventory and anchors come from the previous edition,
 the order of work, acceptance and decisions come from the lead. State at the day of the edition:
-React `0.24.1` (product `0.35.24`), Qt `0.6.19`.
+React `0.24.1` (product `0.35.25`), Qt `0.6.20`.
 
 **Roles fixed (01.11.2026).** The real controller runs **Qt — it is the product**. React was a demo
 stage: after the start and CAM-insert fixes it is **frozen** — no new features are developed there.
@@ -35,7 +35,7 @@ dispatcher's decisions are in §7.
 
 React anchors are a file and a symbol; line numbers are as of 31.10.2026. "W" is the wave in §4.
 
-| Panel node | React `0.24.1` (source) | Qt `0.6.19` (`main.qml`) | Gap | W |
+| Panel node | React `0.24.1` (source) | Qt `0.6.20` (`main.qml`) | Gap | W |
 |---|---|---|---|---|
 | Workplaces | `types.ts` (`SETUP`/`TEST`/`RUN`), `WORKPLACE_LABEL` (`data.ts`), `SET_WORKPLACE` (`nav.ts`) | none; only `machineMode` (`:24`) and `modeCycle` | no workplaces | C |
 | Tabs | 5: `TABS`/`TAB_LABEL` (`types.ts`) Work, Offsets, Tool, Messages, Service; Work merges `pos` and `prog` (`tabOfScreen`) | 7: `tab0`..`tab6` (`:967-1256`), Position and Program separate, plus 3D | +2 tabs | B |
@@ -51,9 +51,9 @@ React anchors are a file and a symbol; line numbers are as of 31.10.2026. "W" is
 | Hardware keyboard | `hardware/hardware-panel/` 6×5, keys 72×72, `keys.ts` | none; only `Keys.onPressed` | no pendant | F |
 | MPG pendant | `side-status/jog.tsx`, `MPG_STEPS`, mode `MPG` | no separate pendant; `MPG` only as a mode | no handwheel emulator | F |
 | Side column | `side-status/`: tool (current + next), correctors S/F/G0, active G, load, execution | `sideStatus` "MODES", outdated | composition and order | B, D |
-| MDI line | in SETUP on `SetupScreen` (keyboard and touch) | only the MDI mode screen inside `pos` | not as in React | D |
+| MDI line | in SETUP on `SetupScreen` (keyboard and touch) | MDI row in `WorkScreen` (input, Enter, Esc, history) | keyboard parity | D |
 | Themes | 6: `THEME_OPTIONS`, `THEME_CLASSES`, Minimal tokens in `globals.css` | 4 numeric palettes (`pal_light/dark/graphite/mint`), radii 8/6/4/3/2 | no Minimal, no tokens | E |
-| Touch mode | `ui-mode-context.ts`, `touch/touch-deck/` | none | no touch mode | E |
+| Touch mode | `ui-mode-context.ts`, `touch/touch-deck/` (864×1536) | `TouchUI.qml`, `--touch`; same machine state | some wizards missing | E |
 | Texts | `SOFTKEY_LABEL`, `MODE_LABEL`, `WORKPLACE_LABEL`, `TAB_LABEL`, `SCREEN_LABEL`; 19 lines checked | Russian literals inline; 19 labels checked | parity covers little | A |
 | Quick program (CAM) | `lib/cnc/cam/` — 141 files, 15 kinds; `components/cnc/cam/` — 25 files | none; C++ `apps/quickprog` is a console demo with 4 kinds. The React entry is restored in `0.33.2`: F8 "Быстрая УП" in the program editor | no panel CAM | G |
 
@@ -236,9 +236,10 @@ Pre.: C, D (softkey windows from C).
    overrides the screen set.
 4. `Theme.qml`: 6 themes from the separate token source; Minimal — 1 px lines, 0 gap, radius from
    `--radius`, no shadows; hard-coded radii become a token.
-5. `TouchDeck.qml`: touch deck, softkeys without F labels, Start/Stop/Reset/Emergency row only on
-   Work, MDI in the SETUP bottom zone, combined view vertical; the mode is a `[DISPLAY] UI_MODE`
-   parameter.
+5. `TouchUI.qml` (done): a portrait 864×1536 canvas with its own header/tabs/softkeys without F
+   labels, a deck with workplaces, jog, functions and the Start/Stop/Reset/Emergency row; Work and
+   AUTO reuse `WorkScreen`/`AutoScreen` and the shared machine state. Entry: `--touch` (debug exe)
+   or `preview-touch.qml`.
 
 Checks: `panel_probe` (themes, probe steps), `preview.qml` in every theme and both modes.
 Acceptance: measuring through to a written length; emergency stop interrupts; the probe measuring

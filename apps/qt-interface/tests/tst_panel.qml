@@ -208,6 +208,27 @@ TestCase {
         p.jogStep = 1
     }
 
+    function test_touch_mode() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        p.touchMode = true
+        wait(0)
+        // The Loader in the test fixes the item size to its own; the canvas check belongs to the
+        // standalone window (864x1536), while here the touch frame and its tabs are checked.
+        var touch = findByName(p, "touchPanel")
+        verify(touch !== null)
+        compare(touch.tabTitles.length, 5)
+        compare(touch.tabTitles[0], "Работа")
+        // The same state drives the touch frame: the Work tab opens the workplace screen.
+        p.setWorkplace("SETUP")
+        touch.tabTarget(0)
+        compare(p.activeScreen, "pos")
+
+        p.touchMode = false
+        p.setWorkplace("RUN")
+        wait(0)
+    }
+
     function test_auto_screen() {
         tryCompare(panel, "status", Loader.Ready)
         var p = panel.item

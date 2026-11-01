@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Lynx Touch"));
-    app.setApplicationVersion(QStringLiteral("0.6.19"));
+    app.setApplicationVersion(QStringLiteral("0.6.20"));
 
     const QString root = repoRoot();
     const QString qmlFile = root + QStringLiteral("/apps/qt-interface/main.qml");
@@ -67,15 +67,20 @@ int main(int argc, char *argv[])
     if (!occ.isEmpty())
         addPathEntry(occ + QStringLiteral("/bin"));
 
+    // The panel has two fixed canvases: the 1024x600 key panel and the 864x1536 portrait touch
+    // panel. `--touch` (also read by main.qml) starts the touch variant.
+    const bool touch = app.arguments().contains(QStringLiteral("--touch"));
+    const QSize canvas = touch ? QSize(864, 1536) : QSize(1024, 600);
+
     QQuickView view;
     QQmlEngine *engine = view.engine();
     engine->addImportPath(root + QStringLiteral("/build/qmlbackend"));
     engine->addImportPath(root + QStringLiteral("/build/edges"));
-    // The panel is a fixed 1024x600 design: the window must not stretch, otherwise a layout that
-    // fits the design would only look fitting at one arbitrary size.
+    // Both canvases are fixed designs: the window must not stretch, otherwise a layout that fits
+    // the design would only look fitting at one arbitrary size.
     view.setResizeMode(QQuickView::SizeViewToRootObject);
-    view.setMinimumSize(QSize(1024, 600));
-    view.setMaximumSize(QSize(1024, 600));
+    view.setMinimumSize(canvas);
+    view.setMaximumSize(canvas);
     view.setSource(QUrl::fromLocalFile(qmlFile));
     if (view.status() == QQuickView::Error) {
         for (const QQmlError &error : view.errors())
@@ -83,8 +88,9 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    view.setTitle(QStringLiteral("Lynx Touch — панель оператора"));
-    view.resize(1024, 600);
+    view.setTitle(touch ? QStringLiteral("Lynx Touch — сенсорная панель")
+                        : QStringLiteral("Lynx Touch — панель оператора"));
+    view.resize(canvas);
     view.show();
     return app.exec();
 }

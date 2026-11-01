@@ -152,6 +152,9 @@ is local (when an API request appears, add and name that layer here).
 * The Work screen is split: `WorkScreen.qml` is the manual mode (live coordinates, MDI, viewer),
   `AutoScreen.qml` is AUTO (position, distance to the block, remaining path, four F8 views). Both use
   one `ViewerPane.qml` over the real `GcodeViewer3D.qml`.
+* `TouchUI.qml` is the touch variant at 864×1536 (portrait) on the same machine state: its own
+  header, tabs, softkeys without F labels and a deck with jog/cycle. Entry: `--touch` on
+  `lynx-panel.exe` or `preview-touch.qml`; the key-panel variant stays 1024×600.
 * The port lags the React panel by several passes (workplaces, 8 softkeys, Minimal, touch mode);
   the plan to catch up is [docs/PORT-QML.md](docs/PORT-QML.md).
 

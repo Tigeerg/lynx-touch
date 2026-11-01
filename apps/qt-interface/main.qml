@@ -13,8 +13,11 @@ import QtQuick.Layouts
 
 Item {
     id: root
-    width: 1024
-    height: 600
+    // Two physical variants of the same panel: the 1024x600 key panel and the 864x1536 portrait
+    // touch panel. `--touch` selects the touch canvas for the standalone debug exe.
+    property bool touchMode: Qt.application.arguments.indexOf("--touch") >= 0
+    width: touchMode ? 864 : 1024
+    height: touchMode ? 1536 : 600
 
     // Active screen (bind to logic in QtVCP). Values: pos, prog, ...
     property string activeScreen: "pos"
@@ -981,6 +984,7 @@ Item {
         anchors.fill: parent
         anchors.margins: pad
         spacing: gap
+        visible: !root.touchMode
         focus: true
         Component.onCompleted: rootCol.forceActiveFocus()
         Keys.onPressed: {
@@ -3061,6 +3065,13 @@ Item {
                 }
             }
         }
+    }
+
+    TouchUI {
+        id: touchUI
+        anchors.fill: parent
+        visible: root.touchMode
+        host: root
     }
 
     PendantWindow {

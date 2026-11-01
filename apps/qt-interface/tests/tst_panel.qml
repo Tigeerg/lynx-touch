@@ -87,6 +87,7 @@ TestCase {
         verify(findByName(panel.item, "workScreen") !== null)
         verify(findByName(panel.item, "workCoordStrip") !== null)
         verify(findByName(panel.item, "workPreview") !== null)
+        verify(findByName(panel.item, "viewerPane") !== null)
         verify(findByName(panel.item, "workStatusColumn") !== null)
     }
 

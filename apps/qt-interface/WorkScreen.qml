@@ -216,6 +216,7 @@ Item {
 
                     Canvas {
                         id: pathCanvas
+                        visible: false
                         anchors.fill: parent
                         onWidthChanged: requestPaint()
                         onHeightChanged: requestPaint()
@@ -282,6 +283,10 @@ Item {
                                 ctx.stroke();
                             }
                         }
+                    }
+                    ViewerPane {
+                        anchors.fill: parent
+                        host: workScreen.host
                     }
                     RowLayout {
                         anchors.left: parent.left

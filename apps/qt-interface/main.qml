@@ -23,6 +23,7 @@ Item {
     property string workplace: "RUN"
     property bool pendantOpen: false
     property bool mpgOpen: false
+    readonly property var toolpathObject: toolpath
     onActiveScreenChanged: { if (activeScreen === "service") svcFocus = "nav"; }
     property string machineMode: "AUTO"
 

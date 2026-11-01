@@ -788,9 +788,9 @@ Item {
             // ----- 2. Mode block (Mode / AUTO + 5 icons + M) ------------
             Rectangle {
                 id: modeBlock
-                Layout.preferredWidth: 188
-                Layout.minimumWidth: 188
-                Layout.maximumWidth: 188
+                Layout.preferredWidth: 230
+                Layout.minimumWidth: 230
+                Layout.maximumWidth: 230
                 Layout.fillHeight: true
                 clip: true
                 color: cCard
@@ -824,11 +824,29 @@ Item {
                             elide: Text.ElideRight
                         }
                     }
-                                        // 4 mode icons (v0.4: AUTO/MDI/JOG/MPG), the active one follows machineMode
-                    Rectangle { Layout.preferredWidth: 28; Layout.preferredHeight: 28; Layout.minimumWidth: 28; Layout.maximumWidth: 28; Layout.minimumHeight: 28; Layout.maximumHeight: 28; color: root.machineMode === "AUTO" ? cPrimary : cMuted; radius: 4; clip: true; Text { anchors.centerIn: parent; text: "\ue146"; color: root.machineMode === "AUTO" ? cPrimaryFg : cMutedForeground; font.family: "lucide"; font.pixelSize: 15 } }
-                    Rectangle { Layout.preferredWidth: 28; Layout.preferredHeight: 28; Layout.minimumWidth: 28; Layout.maximumWidth: 28; Layout.minimumHeight: 28; Layout.maximumHeight: 28; color: root.machineMode === "MDI" ? cPrimary : cMuted; radius: 4; clip: true; Text { anchors.centerIn: parent; text: "\ue20a"; color: root.machineMode === "MDI" ? cPrimaryFg : cMutedForeground; font.family: "lucide"; font.pixelSize: 15 } }
-                    Rectangle { Layout.preferredWidth: 28; Layout.preferredHeight: 28; Layout.minimumWidth: 28; Layout.maximumWidth: 28; Layout.minimumHeight: 28; Layout.maximumHeight: 28; color: root.machineMode === "JOG" ? cPrimary : cMuted; radius: 4; clip: true; Text { anchors.centerIn: parent; text: "\ue1d7"; color: root.machineMode === "JOG" ? cPrimaryFg : cMutedForeground; font.family: "lucide"; font.pixelSize: 15 } }
-                    Rectangle { Layout.preferredWidth: 28; Layout.preferredHeight: 28; Layout.minimumWidth: 28; Layout.maximumWidth: 28; Layout.minimumHeight: 28; Layout.maximumHeight: 28; color: root.machineMode === "MPG" ? cPrimary : cMuted; radius: 4; clip: true; Text { anchors.centerIn: parent; text: "\ue494"; color: root.machineMode === "MPG" ? cPrimaryFg : cMutedForeground; font.family: "lucide"; font.pixelSize: 15 } }
+                    // Workplaces replace the four mode icons: the workplace chooses the mode.
+                    Repeater {
+                        model: [ { id: "RUN", label: "АВТО" }, { id: "TEST", label: "ПРОГОН" }, { id: "SETUP", label: "НАЛАДКА" } ]
+                        delegate: Rectangle {
+                            Layout.preferredWidth: 54
+                            Layout.preferredHeight: 28
+                            Layout.minimumWidth: 54
+                            Layout.maximumWidth: 54
+                            Layout.minimumHeight: 28
+                            Layout.maximumHeight: 28
+                            color: root.workplace === modelData.id ? cPrimary : cMuted
+                            radius: 4
+                            clip: true
+                            Text {
+                                anchors.centerIn: parent
+                                text: modelData.label
+                                color: root.workplace === modelData.id ? cPrimaryFg : cMutedForeground
+                                font.bold: true
+                                font.pixelSize: 8
+                            }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.setWorkplace(modelData.id) }
+                        }
+                    }
                 }
             }
 

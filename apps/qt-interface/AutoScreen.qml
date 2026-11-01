@@ -24,6 +24,11 @@ Item {
     function cycleStart() { autoViewer.cycleStart(); }
     function feedHold() { autoViewer.feedHold(); }
     function reset() { autoViewer.reset(); }
+    function seek(fraction) {
+        if (autoViewer.active) autoViewer.seek(fraction)
+        else if (overlayViewer.active) overlayViewer.seek(fraction)
+        else if (bothViewer.active) bothViewer.seek(fraction)
+    }
 
     // Distance from the live position to the next programmed point and the remaining XY path
     // from the cursor to the end of the active program. Both are estimates for the operator.

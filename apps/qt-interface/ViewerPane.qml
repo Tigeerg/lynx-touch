@@ -46,6 +46,14 @@ Item {
     function cycleStart() { if (viewerLoader.item) viewerLoader.item.play() }
     function feedHold() { if (viewerLoader.item) viewerLoader.item.pause() }
     function reset() { if (viewerLoader.item) viewerLoader.item.resetPath() }
+    // Couldn't seek by program block yet: the viewer knows path length, not NC line numbers. The
+    // fraction is the honest estimate used by "start from block".
+    function seek(fraction) {
+        if (!viewerLoader.item) return
+        var f = Math.max(0, Math.min(1, fraction))
+        viewerLoader.item.playing = false
+        viewerLoader.item.pathDist = viewerLoader.item.moveLength * f
+    }
 
     Loader {
         id: viewerLoader

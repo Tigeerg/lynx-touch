@@ -27,6 +27,9 @@ Item {
     function viewerReset() {
         if (host && host.workplace === "RUN") autoScreen.reset(); else viewerPane.reset();
     }
+    function viewerSeek(fraction) {
+        if (host && host.workplace === "RUN") autoScreen.seek(fraction); else viewerPane.seek(fraction);
+    }
 
     ColumnLayout {
         anchors.fill: parent

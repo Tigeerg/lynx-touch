@@ -208,6 +208,36 @@ TestCase {
         p.jogStep = 1
     }
 
+    function test_softkey_actions() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        p.partCount = 0
+        p.pressSoftkey({ id: "partCounter" })
+        compare(p.partCount, 1)
+
+        p.cursorTool = 2
+        p.pressSoftkey({ id: "brokenTool" })
+        compare(p.toolsData[2].life, 0)
+        p.pressSoftkey({ id: "resetLife" })
+        compare(p.toolsData[2].life, 100)
+
+        p.machinePos = ({ x: 10, y: 20, z: -30, a: 0 })
+        p.pressSoftkey({ id: "goSafe" })
+        compare(p.machinePos.z, 50)
+        p.pressSoftkey({ id: "goWorkZero" })
+        compare(p.machinePos.x, 0)
+        compare(p.machinePos.z, 0)
+
+        p.editMode = false
+        p.pressSoftkey({ id: "edit" })
+        verify(p.editMode)
+        p.pressSoftkey({ id: "edit" })
+        verify(!p.editMode)
+
+        p.machinePos = ({ x: -120.500, y: 35.250, z: -210.400, a: 0.000 })
+        p.cursorTool = 0
+    }
+
     function test_tool_measure() {
         tryCompare(panel, "status", Loader.Ready)
         var p = panel.item

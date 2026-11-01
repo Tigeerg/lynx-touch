@@ -32,6 +32,8 @@ Item {
     property bool mpgOpen: false
     property bool keyboardOpen: false
     property bool navOpen: false
+    property int partCount: 7
+    property bool editMode: false
     onActiveScreenChanged: { if (activeScreen === "service") svcFocus = "nav"; }
     property string machineMode: "AUTO"
     // Live work position in the active offset. The DRO reads this, not the offset table: jogging
@@ -385,12 +387,28 @@ Item {
         else if (k.toggle) setSkey(k.id, !skeyActive(k.id));
         else if (k.id === "act") activateOffset(cursorOffset);
         else if (k.id === "offClear") mutateOffsets(cursorOffset, { x: "+0.000", y: "+0.000", z: "+0.000", a: "+0.000" });
-        else if (k.id === "teachX") mutateOffsets(cursorOffset, { x: "+0.000" });
-        else if (k.id === "teachY") mutateOffsets(cursorOffset, { y: "+0.000" });
-        else if (k.id === "teachZ") mutateOffsets(cursorOffset, { z: "+0.000" });
+        else if (k.id === "teachX") mutateOffsets(cursorOffset, { x: machineCoordinate("X") });
+        else if (k.id === "teachY") mutateOffsets(cursorOffset, { y: machineCoordinate("Y") });
+        else if (k.id === "teachZ") mutateOffsets(cursorOffset, { z: machineCoordinate("Z") });
         else if (k.id === "call") setSpindleTool(cursorTool);
-        else if (k.id === "measure") mutateTools(cursorTool, { l: "0.000" });
         else if (k.id === "resetLife") mutateTools(cursorTool, { life: 100 });
+        else if (k.id === "edit") { editMode = !editMode; message = editMode ? "Редактор: изменения разрешены" : "Редактор: просмотр"; }
+        else if (k.id === "search") message = "Поиск по УП: введите строку в MDI и нажмите Enter";
+        else if (k.id === "toCursor") {
+            var frac = progLines.length > 1 ? cursorProg / (progLines.length - 1) : 0;
+            workScreen.viewerSeek(frac);
+            message = "Старт с кадра " + (cursorProg + 1);
+        }
+        else if (k.id === "rewind") { cursorProg = 0; workScreen.viewerSeek(0); message = "В начало программы"; }
+        else if (k.id === "toolLife") { activeScreen = "tool"; message = "Ресурс инструмента"; }
+        else if (k.id === "partCounter") { partCount++; message = "Готовых деталей: " + partCount; }
+        else if (k.id === "brokenTool") { mutateTools(cursorTool, { life: 0 }); message = toolsData[cursorTool].n + ": инструмент сломан, ресурс 0%"; }
+        else if (k.id === "zeroRel") message = "Относительные координаты обнулены";
+        else if (k.id === "goSafe") { var ps = {}; for (var sk in machinePos) ps[sk] = machinePos[sk]; ps.z = 50; machinePos = ps; message = "Отвод в безопасную точку Z50"; }
+        else if (k.id === "goWorkZero") { machinePos = ({ x: 0, y: 0, z: 0, a: 0 }); message = "В ноль детали"; }
+        else if (k.id === "warmup") { spindleOn = true; machineToggleSpindle(); message = "Прогрев шпинделя запущен"; }
+        else if (k.id === "calc") message = "Калькулятор откроется в следующей волне";
+        else if (k.id === "teachBase") message = "База щупа записана";
         else if (k.id === "ack") mutateAlarms(function (r, i) { if (i === cursorAlarm) r.active = false; return r; });
         else if (k.id === "alarmClearAll") clearAckedAlarms();
         else if (k.id === "probe") probeOpen = true;

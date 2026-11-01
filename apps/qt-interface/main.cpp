@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Lynx Touch"));
-    app.setApplicationVersion(QStringLiteral("0.6.21"));
+    app.setApplicationVersion(QStringLiteral("0.6.22"));
 
     const QString root = repoRoot();
     const QString qmlFile = root + QStringLiteral("/apps/qt-interface/main.qml");
@@ -76,11 +76,9 @@ int main(int argc, char *argv[])
     QQmlEngine *engine = view.engine();
     engine->addImportPath(root + QStringLiteral("/build/qmlbackend"));
     engine->addImportPath(root + QStringLiteral("/build/edges"));
-    // Both canvases are fixed designs: the window must not stretch, otherwise a layout that fits
-    // the design would only look fitting at one arbitrary size.
+    // Both canvases are fixed designs and the root item owns the size: SizeViewToRootObject lets
+    // [DISPLAY] UI_MODE switch the window between 1024x600 and 864x1536 at runtime.
     view.setResizeMode(QQuickView::SizeViewToRootObject);
-    view.setMinimumSize(canvas);
-    view.setMaximumSize(canvas);
     view.setSource(QUrl::fromLocalFile(qmlFile));
     if (view.status() == QQuickView::Error) {
         for (const QQmlError &error : view.errors())

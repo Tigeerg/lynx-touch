@@ -6,7 +6,7 @@ code and its run; this file holds the intent, anchors in both trees and acceptan
 
 This edition was merged on 31.10.2026: the inventory and anchors come from the previous edition,
 the order of work, acceptance and decisions come from the lead. State at the day of the edition:
-React `0.24.1` (product `0.35.26`), Qt `0.6.21`.
+React `0.24.1` (product `0.35.27`), Qt `0.6.22`.
 
 **Roles fixed (01.11.2026).** The real controller runs **Qt — it is the product**. React was a demo
 stage: after the start and CAM-insert fixes it is **frozen** — no new features are developed there.
@@ -35,7 +35,7 @@ dispatcher's decisions are in §7.
 
 React anchors are a file and a symbol; line numbers are as of 31.10.2026. "W" is the wave in §4.
 
-| Panel node | React `0.24.1` (source) | Qt `0.6.21` (`main.qml`) | Gap | W |
+| Panel node | React `0.24.1` (source) | Qt `0.6.22` (`main.qml`) | Gap | W |
 |---|---|---|---|---|
 | Workplaces | `types.ts` (`SETUP`/`TEST`/`RUN`), `WORKPLACE_LABEL` (`data.ts`), `SET_WORKPLACE` (`nav.ts`) | none; only `machineMode` (`:24`) and `modeCycle` | no workplaces | C |
 | Tabs | 5: `TABS`/`TAB_LABEL` (`types.ts`) Work, Offsets, Tool, Messages, Service; Work merges `pos` and `prog` (`tabOfScreen`) | 7: `tab0`..`tab6` (`:967-1256`), Position and Program separate, plus 3D | +2 tabs | B |
@@ -279,7 +279,47 @@ the selected axis by the selected step.
 Risk: a second window needs `Window` and `QtQuick.Window`; QtVCP supports it, but it is checked in
 the same runtime the panel runs in.
 
-### Wave G. Quick program (CAM) — separate work (8-12 days)
+### Three interface modes (required)
+
+One product, three configurations; the switch is `[DISPLAY] UI_MODE` plus `--touch` at launch.
+Panel and touch-only work today; hybrid is reserved as value 1 and needs its own layout.
+
+| Mode | Canvas | Input | State |
+|---|---|---|---|
+| `0` Panel | 1024×600 | physical keyboard, 8 softkeys, mouse for debugging | done |
+| `1` Hybrid | 1024×600 | physical keyboard **and** enlarged touch zones (softkeys, jog, cycle) | not done |
+| `2` Touch-only | 864×1536 portrait | touch only, large tiles, deck, no F labels | done |
+
+Rules: one value for every window; switching changes the window size and the controls, while the
+machine state and active NC file survive; in hybrid both inputs are equal and do not double-fire;
+in touch-only no action requires an F key. Each mode needs its own screenshot and scenario.
+
+### Settings: inventory and logic
+
+Definitions live in `main.qml` (`systemDefs`, `linuxcncDefs`, … `viewerDefs`), values in
+`svcValues`, saved values in `svcSavedMap`. Present: theme (4 palettes), UI mode (3 values),
+language (value only, no logic), units, position feedback, cycle time, override limits, debug;
+LinuxCNC/Motion/Axes/PID/Mesa/HAL/Ladder sections; 11 embedded-viewer parameters.
+
+Needed: move the parameter catalogue into data with type/range/unit/default/apply scope/translation
+key; complete the React sections; implement dependent parameters, busy guards, restart, reset,
+unsaved marks and `.ini` write for all three modes; test read/write/save/effect, mode and theme
+switches keeping state, and unknown keys not breaking the panel.
+
+### Multilingual: plan (not implemented today)
+
+The `[DISPLAY] LANGUAGE` setting exists, but no text depends on it; QML and React hardcode Russian.
+
+Target: one message catalogue (`i18n/ru.json`, `i18n/en.json`) shared by React and Qt; a `Tr.qml`
+singleton with `t(key, params)` and a `language` property; no literals in components; live switch
+from the setting without restart; locale number/date/unit formats; G-codes, M-codes and NC names
+untranslated; layout checks at 1024×600, 864×1536 and hybrid; tests that every key exists in both
+languages, no empty/unused keys, disabled-key reasons are translated and React/Qt texts match.
+Phases: string inventory, catalogue + `Tr.qml` + tests, QML keys, English catalogue and proofread,
+language setting/live switch, screenshots in all modes and both languages. Until phase 3 the
+Russian literals stay; translating only the parameter is not done.
+
+### Wave G. Quick program (CAM) - separate work (8-12 days)
 
 Pre.: waves A-F and H (CAM after the interface port).
 

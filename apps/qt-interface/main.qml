@@ -14,8 +14,14 @@ import QtQuick.Layouts
 Item {
     id: root
     // Two physical variants of the same panel: the 1024x600 key panel and the 864x1536 portrait
-    // touch panel. `--touch` selects the touch canvas for the standalone debug exe.
-    property bool touchMode: Qt.application.arguments.indexOf("--touch") >= 0
+    // touch panel. The service parameter [DISPLAY] UI_MODE selects it; `--touch` only seeds the
+    // default for the standalone debug exe. The window follows the root size.
+    readonly property int uiModeIndex: 9
+    property bool touchMode: {
+        var v = svcValues["system." + uiModeIndex];
+        if (v === undefined) v = systemDefs[uiModeIndex].dflt;
+        return v === 2;   // 0 panel, 1 hybrid, 2 touch-only
+    }
     width: touchMode ? 864 : 1024
     height: touchMode ? 1536 : 600
 
@@ -551,7 +557,8 @@ Item {
         { label: "Макс. коррекция подачи", key: "[DISPLAY] MAX_FEED_OVERRIDE", dflt: 150, unit: "%", min: 100, max: 200, step: 10 },
         { label: "Макс. коррекция шпинделя", key: "[DISPLAY] MAX_SPINDLE_OVERRIDE", dflt: 120, unit: "%", min: 100, max: 150, step: 10 },
         { label: "Линейные единицы", key: "[TRAJ] LINEAR_UNITS", dflt: 0, options: ["мм", "дюйм"], restart: true },
-        { label: "Уровень отладки", key: "[EMC] DEBUG", dflt: 0, min: 0, max: 7, step: 1 }
+        { label: "Уровень отладки", key: "[EMC] DEBUG", dflt: 0, min: 0, max: 7, step: 1 },
+        { label: "Режим интерфейса", key: "[DISPLAY] UI_MODE", dflt: (Qt.application.arguments.indexOf("--touch") >= 0 ? 2 : 0), options: ["панель", "гибрид", "сенсор"], free: true }
     ]
     readonly property var linuxcncDefs: [
         { label: "Модуль кинематики", key: "[KINS] KINEMATICS", dflt: 0, options: ["trivkins XYZA", "trivkins XYZ", "gantrykins"], restart: true },

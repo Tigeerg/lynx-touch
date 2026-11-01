@@ -211,8 +211,9 @@ TestCase {
     function test_touch_mode() {
         tryCompare(panel, "status", Loader.Ready)
         var p = panel.item
-        p.touchMode = true
+        p.svcValues = ({ "system.9": 2 })
         wait(0)
+        verify(p.touchMode)
         // The Loader in the test fixes the item size to its own; the canvas check belongs to the
         // standalone window (864x1536), while here the touch frame and its tabs are checked.
         var touch = findByName(p, "touchPanel")
@@ -224,7 +225,8 @@ TestCase {
         touch.tabTarget(0)
         compare(p.activeScreen, "pos")
 
-        p.touchMode = false
+        p.svcValues = ({})
+        verify(!p.touchMode)
         p.setWorkplace("RUN")
         wait(0)
     }

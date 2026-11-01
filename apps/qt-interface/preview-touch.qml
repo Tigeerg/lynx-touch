@@ -15,6 +15,6 @@ Window {
     Loader {
         anchors.fill: parent
         source: "main.qml"
-        onLoaded: item.touchMode = true
+        onLoaded: item.svcValues = ({ "system.9": 2 })
     }
 }

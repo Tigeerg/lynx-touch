@@ -1,4 +1,4 @@
-# tools/check.ps1 - the guard of the project style and structure (rules - CLAUDE.md).
+﻿# tools/check.ps1 - the guard of the project style and structure (rules - CLAUDE.md).
 #
 # Run: pnpm guard
 # The text rules are checked here and now. Checks that need pnpm/node run only if the tool is

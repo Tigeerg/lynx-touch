@@ -28,6 +28,11 @@ Item {
     }
     function offsetCode() { return host ? host.activeOffsetCode() : "—"; }
 
+    // Panel actuators feed the embedded viewer: the viewer has no playback buttons of its own.
+    function viewerCycleStart() { viewerPane.cycleStart(); }
+    function viewerFeedHold() { viewerPane.feedHold(); }
+    function viewerReset() { viewerPane.reset(); }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 6
@@ -285,6 +290,7 @@ Item {
                         }
                     }
                     ViewerPane {
+                        id: viewerPane
                         anchors.fill: parent
                         host: workScreen.host
                     }

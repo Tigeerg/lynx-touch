@@ -92,6 +92,18 @@ TestCase {
         var viewer = findByName(panel.item, "viewerPane")
         verify(viewer !== null)
         verify(viewer.children.length > 0)
+        // The embedded viewer has no chrome of its own; playback comes from panel actuators.
+        verify(viewer.showChrome === false)
+        var viewerItem = viewer.children[0].item
+        verify(viewerItem !== null)
+        verify(viewerItem.showChrome === false)
+        // The panel actuators themselves, not the viewer API: signal -> Connections -> viewer.
+        panel.item.machineCycleStart()
+        verify(viewerItem.playing === true)
+        panel.item.machineFeedHold()
+        verify(viewerItem.playing === false)
+        panel.item.machineReset()
+        verify(viewerItem.pathDist === 0)
     }
 
     function test_debug_windows_exist() {

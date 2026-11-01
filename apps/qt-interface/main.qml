@@ -451,6 +451,15 @@ Item {
     signal machineToggleSpindle()
     signal machineToggleCoolant()
 
+    // The embedded viewer is a display: its playback follows the panel actuators, not the
+    // viewer's own buttons (those stay only in the debug gcodeviewer.exe).
+    Connections {
+        target: root
+        function onMachineCycleStart() { workScreen.viewerCycleStart(); }
+        function onMachineFeedHold() { workScreen.viewerFeedHold(); }
+        function onMachineReset() { workScreen.viewerReset(); }
+    }
+
     // Program data (for the "Program" screen)
 
 

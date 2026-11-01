@@ -37,7 +37,11 @@ Item {
     property color backgroundColor: "#FCFDFF"
     property string gcode: ""
     property bool loading: false     // show the "loading" overlay while a program loads
-    readonly property string viewerVersion: "0.58.8"   // keep in sync with modules/gcode-viewer/VERSION
+    // Own chrome (bottom toolbar and the hotkey hint column). The standalone debug
+    // gcodeviewer.exe keeps it; an embedded host (the panel Work screen) turns it off
+    // and drives the viewer from its own actuators and service settings.
+    property bool showChrome: true
+    readonly property string viewerVersion: "0.58.9"   // keep in sync with modules/gcode-viewer/VERSION
 
     // ---- orbit / pan camera state ----
     property real yaw: 35          // degrees (eulerRotation.y)
@@ -1392,6 +1396,16 @@ Item {
     // are visible through it too; removing the lines is the answer to that.
     property bool showToolpath: true
 
+    // Deterministic playback entry points for a host (panel cycle start / feed hold /
+    // reset), so the embedded viewer never needs its own buttons.
+    function play() {
+        if (root.moveLength > 0) {
+            if (root.pathDist >= root.moveLength)
+                root.pathDist = 0             // replay from the start
+            root.playing = true
+        }
+    }
+    function pause() { root.playing = false }
     function togglePlay() {
         if (root.moveLength > 0) {
             root.playing = !root.playing
@@ -1622,6 +1636,7 @@ Item {
     // the same words as at the bottom panel buttons.
     Rectangle {
         id: hintPanel
+        visible: root.showChrome
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.margins: 8
@@ -1709,6 +1724,7 @@ Item {
     // ---- Mode / playback toolbar (bottom center, two rows) ----
     Column {
         id: toolbar
+        visible: root.showChrome
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 8

@@ -2,7 +2,19 @@
 
 > **Историческая справка.** Записи ниже описывают и удалённый Python-слой; текущий состав вьювера —
 > C++/QML (`modules/gcode-viewer/cpp`, `GcodeViewer3D.qml`), см. [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
-> Новые записи ведутся сверху, по версиям. Текущая версия вьювера — `0.58.8` (см. `modules/gcode-viewer/VERSION`).
+> Новые записи ведутся сверху, по версиям. Текущая версия вьювера — `0.58.9` (см. `modules/gcode-viewer/VERSION`).
+
+## 0.58.9 - 2026-11-01
+
+### Добавлено
+- **Host-owned chrome and playback.** `showChrome` hides the bottom toolbar and the hotkey hint
+  column; the standalone `gcodeviewer.exe` keeps them (default `true`). Deterministic `play()`
+  and `pause()` join `resetPath()`, so an embedded host drives playback without the viewer's
+  buttons.
+
+### Проверки
+- `check-qt-panel` — OK; `tst_panel` checks `showChrome === false` and cycle start / feed hold /
+  reset through the panel; live screenshot without viewer chrome.
 
 ## 0.58.8 - 2026-11-01
 

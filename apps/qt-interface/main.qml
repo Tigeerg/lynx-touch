@@ -21,6 +21,8 @@ Item {
     // Active screen (bind to logic in QtVCP). Values: pos, prog, ...
     property string activeScreen: "pos"
     property string workplace: "RUN"
+    property bool pendantOpen: false
+    property bool mpgOpen: false
     onActiveScreenChanged: { if (activeScreen === "service") svcFocus = "nav"; }
     property string machineMode: "AUTO"
 
@@ -1946,6 +1948,20 @@ Item {
                                     Rectangle { visible: root.svcUnsavedCount() > 0; Layout.preferredHeight: 18; Layout.minimumHeight: 18; Layout.maximumHeight: 18; width: unsTxt.implicitWidth + 14; color: "#1a0362BB"; border.color: "#800362BB"; radius: 3
                                         Text { id: unsTxt; anchors.centerIn: parent; text: "Не сохранено: " + root.svcUnsavedCount(); color: cPrimary; font.bold: true; font.pixelSize: 11 } }
                                     Text { text: "vmc850.ini"; color: cMutedForeground; font.pixelSize: 11; font.family: fontMono }
+                                    Rectangle {
+                                        Layout.preferredWidth: 62; Layout.preferredHeight: 20; Layout.minimumWidth: 62; Layout.maximumWidth: 62
+                                        Layout.minimumHeight: 20; Layout.maximumHeight: 20
+                                        color: cCard; border.color: cBorder; radius: 3
+                                        Text { anchors.centerIn: parent; text: "Пульт"; color: cForeground; font.bold: true; font.pixelSize: 10 }
+                                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.pendantOpen = true }
+                                    }
+                                    Rectangle {
+                                        Layout.preferredWidth: 52; Layout.preferredHeight: 20; Layout.minimumWidth: 52; Layout.maximumWidth: 52
+                                        Layout.minimumHeight: 20; Layout.maximumHeight: 20
+                                        color: cCard; border.color: cBorder; radius: 3
+                                        Text { anchors.centerIn: parent; text: "MPG"; color: cForeground; font.bold: true; font.pixelSize: 10 }
+                                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.mpgOpen = true }
+                                    }
                                     Rectangle { Layout.preferredWidth: 72; Layout.preferredHeight: 18; Layout.minimumWidth: 72; Layout.maximumWidth: 72; Layout.minimumHeight: 18; Layout.maximumHeight: 18; color: "transparent"; border.color: cMutedForeground; radius: 3
                                         Text { anchors.centerIn: parent; text: "ЧТЕНИЕ"; color: cMutedForeground; font.bold: true; font.pixelSize: 10 } }
                                 }
@@ -2748,6 +2764,16 @@ Item {
             NumberAnimation { target: splashHint; property: "opacity"; from: 1.0; to: 0.35; duration: 1200; easing.type: Easing.InOutSine }
             NumberAnimation { target: splashHint; property: "opacity"; from: 0.35; to: 1.0; duration: 1200; easing.type: Easing.InOutSine }
         }
+    }
+
+    PendantWindow {
+        host: root
+        visible: root.pendantOpen
+    }
+
+    MpgWindow {
+        host: root
+        visible: root.mpgOpen
     }
 
 

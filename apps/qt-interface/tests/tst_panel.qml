@@ -89,4 +89,17 @@ TestCase {
         verify(findByName(panel.item, "workPreview") !== null)
         verify(findByName(panel.item, "workStatusColumn") !== null)
     }
+
+    function test_debug_windows_exist() {
+        var pendant = Qt.createComponent("../PendantWindow.qml")
+        var mpg = Qt.createComponent("../MpgWindow.qml")
+        compare(pendant.status, Component.Ready)
+        compare(mpg.status, Component.Ready)
+        compare(panel.item.pendantOpen, false)
+        compare(panel.item.mpgOpen, false)
+        panel.item.pendantOpen = true
+        panel.item.mpgOpen = true
+        compare(panel.item.pendantOpen, true)
+        compare(panel.item.mpgOpen, true)
+    }
 }

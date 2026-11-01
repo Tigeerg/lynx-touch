@@ -14,6 +14,9 @@
 - **Воспроизведение УП — от панели.** `machineCycleStart`/`machineFeedHold`/`machineReset`
   вызывают `play()`/`pause()`/`resetPath()` встроенного вьювера через `ViewerPane` и `WorkScreen`;
   у вьювера появились детерминированные `play()`/`pause()`.
+- **Дубли констант CAM сведены.** `WCS_WORDS` — один источник (`validate-common.ts`), `EPS`
+  разведён на `EPS_PATH`/`EPS_VALIDATE`, второй `formatTime` переименован в `formatDurationMs`.
+  Поведение не менялось; попало в `d4a9e49`, журнал и версия догоняют здесь.
 
 ### Исправлено
 - **`tools/check.ps1` читается Windows PowerShell 5.1.** Файл сохранён в UTF-8 с BOM, как
@@ -29,7 +32,8 @@
   живой снимок без кнопок вьювера.
 
 ### Версии
-- продукт — `0.35.18`; `qt-interface` — `0.6.13`; `gcode-viewer` — `0.58.9`.
+- продукт — `0.35.18`; `qt-interface` — `0.6.13`; `gcode-viewer` — `0.58.9`;
+  `react-interface` — `0.24.1` (PATCH: внутренний перенос без смены поведения).
 
 ## 0.35.17 - 2026-11-01
 

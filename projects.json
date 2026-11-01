@@ -7,7 +7,7 @@
     {
       "id": "react-interface",
       "name": "React интерфейс (панель оператора)",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "path": "apps/react-interface",
       "kind": "next.js",
       "entry": "app/page.tsx",

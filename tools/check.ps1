@@ -258,6 +258,33 @@ if ($quickprogCheck) {
   Skipped 'quickprog_check: нет собранной проверки (scripts/build-quickprog.ps1)'
 }
 
+# 10. File structure (docs/FILE-STRUCTURE.md): generated files never enter git, no binaries in
+#     the tree, the build root has only project directories and screenshots do not lie around.
+$trackedGenerated = @(& git ls-files -- build .next 2>$null)
+if ($trackedGenerated.Count -gt 0) {
+  foreach ($path in $trackedGenerated) { Bad "в git попал сгенерированный файл: $path" }
+} else {
+  Ok 'сгенерированные файлы (build/, .next) не отслеживаются'
+}
+$trackedBinary = @(& git ls-files -- '*.exe' '*.dll' '*.pdb' '*.lib' '*.obj' 2>$null)
+if ($trackedBinary.Count -gt 0) {
+  foreach ($path in $trackedBinary) { Bad "в git попал бинарник: $path" }
+} else {
+  Ok 'бинарники (exe/dll/pdb/lib/obj) не отслеживаются'
+}
+$looseBuild = @(Get-ChildItem -LiteralPath 'build' -File -ErrorAction SilentlyContinue)
+if ($looseBuild.Count -gt 0) {
+  foreach ($file in $looseBuild) { Bad "файл в корне build/: $($file.Name) - перенесите в build/artifacts или удалите" }
+} else {
+  Ok 'в корне build/ только каталоги'
+}
+$rootPng = @(Get-ChildItem -LiteralPath '.' -File -Filter '*.png' -ErrorAction SilentlyContinue)
+if ($rootPng.Count -gt 0) {
+  foreach ($file in $rootPng) { Bad "скриншот в корне репозитория: $($file.Name) - ему место в img/ или build/artifacts/" }
+} else {
+  Ok 'в корне репозитория нет *.png'
+}
+
 Write-Host ''
 if ($fail.Count -gt 0) {
   Write-Host "GUARD: FAIL ($($fail.Count))" -ForegroundColor Red

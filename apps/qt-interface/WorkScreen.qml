@@ -125,7 +125,90 @@ Item {
             }
         }
 
-        // ---------- Toolpath preview: the loaded viewSample path, G0 red, G1 blue ----------
+        // ---------- MDI line (SETUP): typed with the panel keyboard, Enter runs ----------
+        Rectangle {
+            id: mdiPanel
+            objectName: "mdiPanel"
+            visible: host.workplace === "SETUP"
+            Layout.fillWidth: true
+            Layout.preferredHeight: visible ? 62 : 0
+            Layout.minimumHeight: visible ? 62 : 0
+            Layout.maximumHeight: visible ? 62 : 0
+            color: host.cCard
+            border.color: host.cPrimary
+            border.width: 2
+            radius: 6
+            clip: true
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 10
+
+                Text {
+                    text: "MDI>"
+                    color: host.cPrimary
+                    font.bold: true
+                    font.pixelSize: 18
+                    font.family: host.fontMono
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: 2
+                    Text {
+                        Layout.fillWidth: true
+                        text: host.mdiBuffer !== "" ? host.mdiBuffer : "Введите команду: G0 X0 Y0"
+                        color: host.mdiBuffer !== "" ? host.cForeground : host.cMutedForeground
+                        font.pixelSize: 17
+                        font.family: host.fontMono
+                        elide: Text.ElideRight
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+                        Repeater {
+                            model: host.mdiHistory
+                            delegate: Rectangle {
+                                Layout.preferredHeight: 16
+                                width: histText.implicitWidth + 10
+                                radius: 3
+                                color: host.cMuted
+                                Text {
+                                    id: histText
+                                    anchors.centerIn: parent
+                                    text: modelData
+                                    color: host.cMutedForeground
+                                    font.pixelSize: 9
+                                    font.family: host.fontMono
+                                }
+                                MouseArea { anchors.fill: parent; onClicked: host.mdiRecall(index) }
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                    }
+                }
+                Rectangle {
+                    Layout.preferredWidth: 84
+                    Layout.preferredHeight: 30
+                    radius: 4
+                    color: host.cMuted
+                    border.color: host.cBorder
+                    Text { anchors.centerIn: parent; text: "Очистить"; color: host.cForeground; font.bold: true; font.pixelSize: 11 }
+                    MouseArea { anchors.fill: parent; onClicked: host.mdiBuffer = "" }
+                }
+                Rectangle {
+                    Layout.preferredWidth: 70
+                    Layout.preferredHeight: 30
+                    radius: 4
+                    color: host.cPrimary
+                    Text { anchors.centerIn: parent; text: "Пуск"; color: host.cPrimaryFg; font.bold: true; font.pixelSize: 12 }
+                    MouseArea { anchors.fill: parent; onClicked: host.runMdi() }
+                }
+            }
+        }
+
+        // ---------- Toolpath preview: the active NC path, G0 red, G1 blue ----------
         Rectangle {
             id: workPreview
             objectName: "workPreview"

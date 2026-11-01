@@ -6,7 +6,7 @@ code and its run; this file holds the intent, anchors in both trees and acceptan
 
 This edition was merged on 31.10.2026: the inventory and anchors come from the previous edition,
 the order of work, acceptance and decisions come from the lead. State at the day of the edition:
-React `0.24.1` (product `0.35.21`), Qt `0.6.16`.
+React `0.24.1` (product `0.35.22`), Qt `0.6.17`.
 
 **Roles fixed (01.11.2026).** The real controller runs **Qt — it is the product**. React was a demo
 stage: after the start and CAM-insert fixes it is **frozen** — no new features are developed there.
@@ -35,7 +35,7 @@ dispatcher's decisions are in §7.
 
 React anchors are a file and a symbol; line numbers are as of 31.10.2026. "W" is the wave in §4.
 
-| Panel node | React `0.24.1` (source) | Qt `0.6.16` (`main.qml`) | Gap | W |
+| Panel node | React `0.24.1` (source) | Qt `0.6.17` (`main.qml`) | Gap | W |
 |---|---|---|---|---|
 | Workplaces | `types.ts` (`SETUP`/`TEST`/`RUN`), `WORKPLACE_LABEL` (`data.ts`), `SET_WORKPLACE` (`nav.ts`) | none; only `machineMode` (`:24`) and `modeCycle` | no workplaces | C |
 | Tabs | 5: `TABS`/`TAB_LABEL` (`types.ts`) Work, Offsets, Tool, Messages, Service; Work merges `pos` and `prog` (`tabOfScreen`) | 7: `tab0`..`tab6` (`:967-1256`), Position and Program separate, plus 3D | +2 tabs | B |
@@ -202,8 +202,8 @@ Risk: two mode systems. Decision: derived `machineMode` (step 2).
 
 Pre.: B, C.
 
-1. `WorkScreen.qml`: SETUP — coordinates + MDI line; TEST — program view with code curtain,
-   "Clear graphics"; RUN — delegates to `AutoScreen.qml`.
+1. `WorkScreen.qml`: SETUP — live coordinates + MDI line (keyboard input, Enter runs, Esc clears);
+   TEST — program view with code curtain, "Clear graphics"; RUN — delegates to `AutoScreen.qml`.
 2. `AutoScreen.qml`: position strip, "mm to block", distance-to-go, Single block/M01/Dry run lamps,
    4 views (`AUTO_VIEWS`), transparent code window.
 3. The viewer as a child (the `MockBackend`/`GcodeToolpath` plugin already exists). The NC catalogue

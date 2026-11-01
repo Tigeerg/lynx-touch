@@ -30,6 +30,58 @@ Item {
     // (panel keys, pendant, MPG) moves the numbers, editing G54 does not.
     property var machinePos: ({ x: -120.500, y: 35.250, z: -210.400, a: 0.000 })
 
+    // MDI (manual data input) line: open on the SETUP work screen, typed with the panel keyboard.
+    property string mdiBuffer: ""
+    property var mdiHistory: ["G90 G54", "S1200 M3", "G0 X0 Y0"]
+    function mdiOpen() { return workplace === "SETUP" && activeScreen === "pos"; }
+    function mdiChar(event) {
+        if (event.key >= Qt.Key_A && event.key <= Qt.Key_Z)
+            return String.fromCharCode(event.key).toUpperCase();
+        if (event.key >= Qt.Key_0 && event.key <= Qt.Key_9)
+            return String.fromCharCode(event.key);
+        if (event.key === Qt.Key_Space) return " ";
+        if (event.key === Qt.Key_Period || event.key === Qt.Key_Comma) return ".";
+        if (event.key === Qt.Key_Minus) return "-";
+        if (event.key === Qt.Key_Plus || event.key === Qt.Key_Equal) return "+";
+        return "";
+    }
+    function mdiType(ch) { mdiBuffer = (mdiBuffer + ch).toUpperCase(); }
+    function mdiBackspace() { mdiBuffer = mdiBuffer.slice(0, -1); }
+    function mdiRecall(i) { if (i >= 0 && i < mdiHistory.length) mdiBuffer = mdiHistory[i]; }
+    function runMdi() {
+        var text = mdiBuffer.trim();
+        if (text === "") return;
+        var toks = text.replace(/\(.*?\)/g, " ").toUpperCase().split(/\s+/);
+        var relative = false;
+        var p = {};
+        for (var k in machinePos) p[k] = machinePos[k];
+        for (var i = 0; i < toks.length; i++) {
+            var t = toks[i];
+            if (t === "G91") relative = true;
+            else if (t === "G90") relative = false;
+            else if (t.charAt(0) === "X") p.x = moveCoord(p.x, t.substring(1), relative);
+            else if (t.charAt(0) === "Y") p.y = moveCoord(p.y, t.substring(1), relative);
+            else if (t.charAt(0) === "Z") p.z = moveCoord(p.z, t.substring(1), relative);
+            else if (t.charAt(0) === "A") p.a = moveCoord(p.a, t.substring(1), relative);
+            else if (t === "M03" || t === "M3") { spindleOn = true; machineToggleSpindle(); }
+            else if (t === "M05" || t === "M5") { spindleOn = false; machineToggleSpindle(); }
+            else if (t === "M08" || t === "M8") { coolantOn = true; machineToggleCoolant(); }
+            else if (t === "M09" || t === "M9") { coolantOn = false; machineToggleCoolant(); }
+        }
+        machinePos = p;
+        var h = [text];
+        for (var j = 0; j < mdiHistory.length && h.length < 3; j++)
+            if (mdiHistory[j] !== text) h.push(mdiHistory[j]);
+        mdiHistory = h;
+        message = "MDI: " + text;
+        mdiBuffer = "";
+    }
+    function moveCoord(current, value, relative) {
+        var v = parseFloat(value);
+        if (!isFinite(v)) return current;
+        return relative ? Math.round((current + v) * 1000) / 1000 : v;
+    }
+
     // --- 3D toolpath: QML plugin MockBackend (C++) + QtQuick3D ---
     // The hidden 3D tab follows the same active NC file as the Work screen viewer.
     GcodeToolpath {
@@ -959,6 +1011,22 @@ Item {
                     root.fileDialog = false; event.accepted = true; return;
                 }
                 event.accepted = true; return;
+            }
+            if (root.mdiOpen()) {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    root.runMdi(); event.accepted = true; return;
+                }
+                if (event.key === Qt.Key_Escape)   { root.mdiBuffer = ""; event.accepted = true; return; }
+                if (event.key === Qt.Key_Backspace){ root.mdiBackspace(); event.accepted = true; return; }
+                if (event.key === Qt.Key_Delete)   { root.mdiBuffer = ""; event.accepted = true; return; }
+                if (event.key === Qt.Key_Up || event.key === Qt.Key_Down
+                        || event.key === Qt.Key_Left || event.key === Qt.Key_Right
+                        || event.key === Qt.Key_PageUp || event.key === Qt.Key_PageDown
+                        || event.key === Qt.Key_Home || event.key === Qt.Key_End) {
+                    event.accepted = true; return;
+                }
+                var mdiCh = root.mdiChar(event);
+                if (mdiCh !== "") { root.mdiType(mdiCh); event.accepted = true; return; }
             }
             if (event.key === Qt.Key_Up)    { root.navUp(); event.accepted = true; return; }
             if (event.key === Qt.Key_Down)  { root.navDown(); event.accepted = true; return; }

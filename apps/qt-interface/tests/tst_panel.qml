@@ -199,6 +199,42 @@ TestCase {
         p.jogStep = 1
     }
 
+    function test_mdi_line() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        p.workplace = "SETUP"
+        p.activeScreen = "pos"
+        wait(0)
+        p.machinePos = ({ x: 0, y: 0, z: 0, a: 0 })
+        p.mdiBuffer = ""
+
+        p.mdiType("g0 x10")
+        compare(p.mdiBuffer, "G0 X10")
+        p.mdiBackspace()
+        compare(p.mdiBuffer, "G0 X1")
+
+        p.mdiBuffer = "G0 X10 Y20"
+        p.runMdi()
+        compare(p.machinePos.x, 10)
+        compare(p.machinePos.y, 20)
+        compare(p.mdiBuffer, "")
+        compare(p.mdiHistory[0], "G0 X10 Y20")
+
+        // G91 moves relative to the live position; the command is kept in the recent history.
+        p.mdiBuffer = "G91 X5"
+        p.runMdi()
+        compare(p.machinePos.x, 15)
+        compare(p.mdiHistory[0], "G91 X5")
+
+        // The row is laid out on the Work screen in SETUP; its own visible value follows the
+        // tab's visibility, so the state check is mdiOpen().
+        verify(findByName(p, "mdiPanel") !== null)
+        verify(p.mdiOpen())
+
+        p.workplace = "RUN"
+        p.machinePos = ({ x: -120.500, y: 35.250, z: -210.400, a: 0.000 })
+    }
+
     function test_debug_windows_exist() {
         var pendant = Qt.createComponent("../PendantWindow.qml")
         var mpg = Qt.createComponent("../MpgWindow.qml")

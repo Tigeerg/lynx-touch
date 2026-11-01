@@ -154,6 +154,24 @@ Item {
     function cursorDown() { setCursorIndex(cursorIndex() + 1); }
     property var softkeyOn: ({})
     property int jogStep: 1
+    // The message line under the softkey bar: a disabled key explains itself instead of staying
+    // silent, like the React MessageBar (softkey-bar.tsx).
+    property string message: ""
+    // Workplace run state for the PROGON set (F4) and the view cycle (F8), ported from test.ts.
+    property string testRunMode: "dry"
+    property string autoView: "trajectory"
+    property bool testBbox: false
+    readonly property var testRunModeLabels: ({ sim: "\u0421\u0438\u043c\u0443\u043b\u044f\u0446\u0438\u044f", dry: "\u0425\u043e\u043b\u043e\u0441\u0442\u043e\u0439", step: "\u041f\u043e \u0448\u0430\u0433\u0430\u043c", mpg: "\u041f\u043e \u043c\u0430\u0445\u043e\u0432\u0438\u043a\u0443" })
+    readonly property var testRunModeIcons: ({ sim: "\ue0d5", dry: "\ue13c", step: "\ue3ea", mpg: "\ue494" })
+    readonly property var autoViewLabels: ({ trajectory: "\u0442\u0440\u0430\u0435\u043a\u0442\u043e\u0440\u0438\u044f", gcode: "gcode", both: "\u0441\u043e\u0432\u043c\u0435\u0441\u0442\u043d\u043e", overlay: "\u0423\u041f \u043f\u043e\u0432\u0435\u0440\u0445" })
+    readonly property var autoViews: ["trajectory", "gcode", "both", "overlay"]
+    function cycleTestRunMode() {
+        var modes = ["sim", "dry", "step", "mpg"];
+        testRunMode = modes[(modes.indexOf(testRunMode) + 1) % modes.length];
+    }
+    function cycleAutoView() {
+        autoView = autoViews[(autoViews.indexOf(autoView) + 1) % autoViews.length];
+    }
     property bool probeOpen: false
     property bool serviceWrite: false
     property bool serviceAuthOpen: false
@@ -240,12 +258,17 @@ Item {
         m[id] = val; softkeyOn = m;
     }
     function pressSoftkey(k) {
-        if (!k || k.disabled) return;
+        if (!k) return;
+        // A disabled key explains itself instead of staying silent (React softkeyAction).
+        if (k.disabled) { message = k.reason || "Клавиша недоступна"; return; }
         if (k.machine === "coolant") { coolantOn = !coolantOn; machineToggleCoolant(); }
         else if (k.machine === "spindle") { spindleOn = !spindleOn; machineToggleSpindle(); }
         else if (k.id === "single") singleBlock = !singleBlock;
         else if (k.id === "optStop") optStop = !optStop;
         else if (k.id === "dryRun") dryRun = !dryRun;
+        else if (k.id === "testMode") cycleTestRunMode();
+        else if (k.id === "testBbox") testBbox = !testBbox;
+        else if (k.id === "autoView") cycleAutoView();
         else if (k.toggle) setSkey(k.id, !skeyActive(k.id));
         else if (k.id === "act") activateOffset(cursorOffset);
         else if (k.id === "offClear") mutateOffsets(cursorOffset, { x: "+0.000", y: "+0.000", z: "+0.000", a: "+0.000" });
@@ -278,13 +301,58 @@ Item {
     function mutateAlarms(fn) { var d = []; for (var i = 0; i < alarmsData.length; i++) { var r = {}; for (var k in alarmsData[i]) r[k] = alarmsData[i][k]; d.push(fn(r, i)); } alarmsData = d; }
     function activeAlarmCount() { var n = 0; for (var i = 0; i < alarmsData.length; i++) if (alarmsData[i].active) n++; return n; }
     function clearAckedAlarms() { var d = []; for (var i = 0; i < alarmsData.length; i++) if (alarmsData[i].active) d.push(alarmsData[i]); alarmsData = d; if (cursorAlarm >= alarmsData.length) cursorAlarm = Math.max(0, alarmsData.length - 1); }
+    // Pads the set to eight slots and fills in the reason for disabled keys, so a disabled key
+    // does not stay silent (React softkey-slots.ts, `slots`).
+    function softSlots(a) {
+        var r = (a || []).slice(0, 8);
+        while (r.length < 8) r.push(null);
+        for (var i = 0; i < r.length; i++) {
+            if (r[i] && r[i].disabled && !r[i].reason) r[i].reason = "Клавиша недоступна";
+        }
+        return r;
+    }
     function padSoft(a) { var r = a.slice(); while (r.length < 8) r.push(null); return r.slice(0, 8); }
+    // The bar is chosen in the React order (softkeys.ts): a workplace set first, then the screen set.
+    function softkeysFor(screen) { return softSlots(softkeySet(screen)); }
     function pressSoftkeyIndex(i) {
-        var arr = softkeysFor(activeScreen);
+        var arr = softkeysFor(root.activeScreen);
         if (i >= 0 && i < arr.length) pressSoftkey(arr[i]);
     }
-    function softkeysFor(screen) {
+    function softkeySet(screen) {
         var manual = machineMode === "JOG" || machineMode === "MPG";
+        var busy = false;
+        // The workplace before the screen (React getSoftkeys): SETUP on Position, PROGON on
+        // Position/Program, AUTO on Program. The other screens keep their own sets.
+        if (screen === "pos" && workplace === "SETUP") return [
+            { id: "toolProbe", label: "Обмер инструмента", icon: "\ue14b", disabled: spindleOn },
+            { id: "probe", label: "3D щуп", icon: "\ue1db" },
+            { id: "teachBase", label: "Запись базы", icon: "\ue14d" },
+            { id: "hintBase", label: "Резерв", icon: "\ue082", disabled: true, reason: "Свободный слот: «Смещения» есть на вкладке" },
+            { id: "goSafe", label: "Безопасный отвод", icon: "\ue0f5" },
+            { id: "goWorkZero", label: "В ноль детали", icon: "\ue0ac" },
+            { id: "warmup", label: "Прогрев", icon: "\ue0d2", disabled: spindleOn },
+            { id: "calc", label: "Калькулятор", icon: "\ue1bc" }
+        ];
+        if ((screen === "pos" || screen === "prog") && workplace === "TEST") return [
+            { id: "openFile", label: "Каталог УП", icon: "\ue247", disabled: busy },
+            { id: "edit", label: "Редактор", icon: "\ue1f9", disabled: busy },
+            { id: "search", label: "Поиск / Замена", icon: "\ue151" },
+            { id: "testMode", label: "Режим: " + testRunModeLabels[testRunMode], icon: testRunModeIcons[testRunMode], active: true, disabled: busy, reason: "Остановите прогон, чтобы сменить режим" },
+            { id: "single", label: "Покадр.", icon: "\ue3ea", toggle: true },
+            { id: "optStop", label: "M01", icon: "\ue07f", toggle: true },
+            { id: "testBbox", label: "Габариты УП", icon: "\ue14b", active: testBbox },
+            { id: "autoView", label: "Отображение: " + autoViewLabels[autoView], icon: "\ue0ba" }
+        ];
+        if (screen === "prog" && workplace === "RUN") return [
+            { id: "openFile", label: "Каталог УП", icon: "\ue247", disabled: busy },
+            { id: "toCursor", label: "Старт с кадра", icon: "\ue459", disabled: busy },
+            { id: "toolLife", label: "Ресурс инструмента", icon: "\ue1b1" },
+            { id: "hintMacro1", label: "Резерв", icon: "\ue082", disabled: true, reason: "Свободный слот под макрос" },
+            { id: "partCounter", label: "Счётчики деталей", icon: "\ue129" },
+            { id: "brokenTool", label: "Проверка слома", icon: "\ue537" },
+            { id: "hintMacro2", label: "Резерв", icon: "\ue082", disabled: true, reason: "Свободный слот под макрос" },
+            { id: "autoView", label: "Отображение: " + autoViewLabels[autoViews[(autoViews.indexOf(autoView) + 1) % autoViews.length]], icon: "\ue0ba" }
+        ];
         if (screen === "pos") return [
             { id: "zeroRel", label: "Обнулить ОТН", icon: "\ue0ac" },
             { id: "step0", label: "Шаг 0.001", icon: "\ue14b", disabled: !manual, step: 0 },
@@ -694,7 +762,7 @@ Item {
             if (event.key >= Qt.Key_1 && event.key <= Qt.Key_6) {
                 root.activeScreen = root.screenIds[event.key - Qt.Key_1]; event.accepted = true; return;
             }
-            if (event.key >= Qt.Key_F1 && event.key <= Qt.Key_F7) {
+            if (event.key >= Qt.Key_F1 && event.key <= Qt.Key_F8) {
                 root.pressSoftkeyIndex(event.key - Qt.Key_F1); event.accepted = true; return;
             }
             if (event.key === Qt.Key_PageUp)   { root.pageCursor(-10); event.accepted = true; return; }
@@ -2412,6 +2480,7 @@ Item {
                         : modelData.id === "optStop" ? root.optStop
                         : modelData.id === "svcLock" ? root.serviceWrite
                         : modelData.id === "dryRun" ? root.dryRun
+                        : modelData.active === true ? true
                         : root.skeyActive(modelData.id))
                     Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 120
                     opacity: (!ph && modelData.disabled) ? 0.4 : 1.0
@@ -2506,6 +2575,32 @@ Item {
                 }
             }
         }
+    }
+
+    // ===== Message bar (a disabled softkey explains itself) =====
+    Rectangle {
+        id: messageBar
+        objectName: "messageBar"
+        visible: root.message.length > 0
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 72
+        width: Math.min(parent.width - 32, 600)
+        height: 28
+        color: cCard
+        border.color: cWarning
+        radius: 6
+        z: 50
+        Text {
+            anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12
+            text: root.message
+            color: cForeground
+            font.bold: true
+            font.pixelSize: 12
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.message = "" }
     }
 
     // ===== Splash (v0.5.1 Lynx Touch) =====

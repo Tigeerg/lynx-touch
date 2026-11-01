@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Lynx Touch"));
-    app.setApplicationVersion(QStringLiteral("0.6.7"));
+    app.setApplicationVersion(QStringLiteral("0.6.8"));
 
     const QString root = repoRoot();
     const QString qmlFile = root + QStringLiteral("/apps/qt-interface/main.qml");

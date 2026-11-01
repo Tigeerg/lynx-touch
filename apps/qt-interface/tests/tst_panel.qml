@@ -42,6 +42,44 @@ TestCase {
         var keys = panel.item.padSoft(panel.item.softkeysFor("pos"))
 
         compare(keys.length, 8)
+        // Every screen returns the full bar; empty slots are null (React SOFTKEY_SLOTS).
+        var screens = panel.item.screenIds
+        for (var i = 0; i < screens.length; i++) {
+            compare(panel.item.softkeysFor(screens[i]).length, 8)
+        }
+    }
+
+    function test_workplace_sets() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+
+        p.setWorkplace("SETUP")
+        var setup = p.softkeysFor("pos")
+        p.setWorkplace("TEST")
+        var test = p.softkeysFor("prog")
+        p.setWorkplace("RUN")
+        var run = p.softkeysFor("prog")
+
+        // The workplace chooses the set before the screen (React getSoftkeys): SETUP is the
+        // preparation set, PROGON the test set, AUTO the machining set.
+        compare(setup.length, 8)
+        compare(test.length, 8)
+        compare(run.length, 8)
+        compare(setup[0].label, "Обмер инструмента")
+        compare(test[0].label, "Каталог УП")
+        compare(run[0].label, "Каталог УП")
+        verify(setup[0].label !== test[0].label)
+        // PROGON and AUTO share F1 but differ at F4: the run mode against a reserved slot.
+        verify(test[3].label !== run[3].label)
+
+        // A disabled key carries its reason and says it in the message line, never silently.
+        verify(setup[3].disabled === true)
+        verify(setup[3].reason.length > 0)
+        p.message = ""
+        p.pressSoftkey(setup[3])
+        verify(p.message.length > 0)
+
+        p.setWorkplace("RUN")
     }
 
     function test_work_screen_parts() {

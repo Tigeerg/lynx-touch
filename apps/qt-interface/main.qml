@@ -28,10 +28,14 @@ Item {
     property string machineMode: "AUTO"
 
     // --- 3D toolpath: QML plugin MockBackend (C++) + QtQuick3D ---
-    readonly property string viewSample: "O1000 (3D DEMO)\nG21 G90 G54\nT1 M06\nS8000 M03\nG0 X0 Y0 Z5\nG1 Z-2 F200\nG1 X60 Y0 F600\nG1 X60 Y40\nG1 X0 Y40\nG1 X0 Y0\nG0 Z5\nG0 X10 Y10\nG1 Z-4 F150\nG1 X50 Y10\nG1 X50 Y30\nG1 X10 Y30\nG1 X10 Y10\nG0 Z5\nG0 X0 Y0\n"
+    // The hidden 3D tab follows the same active NC file as the Work screen viewer.
     GcodeToolpath {
         id: toolpath
-        Component.onCompleted: load_string(root.viewSample)
+        Component.onCompleted: load_string(root.programText())
+    }
+    Connections {
+        target: root
+        function onActiveFileChanged() { toolpath.load_string(root.programText()); }
     }
 
     // --- Ladder (ClassicLadder) ---
@@ -264,6 +268,7 @@ Item {
         if (!k) return;
         // A disabled key explains itself instead of staying silent (React softkeyAction).
         if (k.disabled) { message = k.reason || "Клавиша недоступна"; return; }
+        if (k.id === "openFile") { openFileDialog(); return; }
         if (k.machine === "coolant") { coolantOn = !coolantOn; machineToggleCoolant(); }
         else if (k.machine === "spindle") { spindleOn = !spindleOn; machineToggleSpindle(); }
         else if (k.id === "single") singleBlock = !singleBlock;
@@ -719,24 +724,139 @@ Item {
         { code: "1104", text: "Низкий уровень СОЖ в баке", level: "error", lvl: "Авария", time: "06:58:44", active: false }
     ]
 
-    property var progLines: [
-        { num: 1, cur: true, toks: [ { t: "O1024", c: "fg" }, { t: "(КОРПУС ФЛАНЦА)", c: "comment" } ] },
-        { num: 2, cur: false, toks: [ { t: "N10", c: "muted" }, { t: "G21", c: "primary" }, { t: "G90", c: "primary" }, { t: "G17", c: "primary" }, { t: "G40", c: "primary" }, { t: "G49", c: "primary" }, { t: "G80", c: "primary" } ] },
-        { num: 3, cur: false, toks: [ { t: "N20", c: "muted" }, { t: "T1", c: "success" }, { t: "M06", c: "destructive" }, { t: "(ФРЕЗА D12)", c: "comment" } ] },
-        { num: 4, cur: false, toks: [ { t: "N30", c: "muted" }, { t: "G54", c: "primary" }, { t: "G00", c: "primary" }, { t: "X0", c: "fg" }, { t: "Y0", c: "fg" } ] },
-        { num: 5, cur: false, toks: [ { t: "N40", c: "muted" }, { t: "S8000", c: "success" }, { t: "M03", c: "destructive" } ] },
-        { num: 6, cur: false, toks: [ { t: "N50", c: "muted" }, { t: "G43", c: "primary" }, { t: "H01", c: "fg" }, { t: "Z50.0", c: "fg" }, { t: "M08", c: "destructive" } ] },
-        { num: 7, cur: false, toks: [ { t: "N60", c: "muted" }, { t: "G00", c: "primary" }, { t: "X-40.0", c: "fg" }, { t: "Y-30.0", c: "fg" } ] },
-        { num: 8, cur: false, toks: [ { t: "N70", c: "muted" }, { t: "Z5.0", c: "fg" } ] },
-        { num: 9, cur: false, toks: [ { t: "N80", c: "muted" }, { t: "G01", c: "primary" }, { t: "Z-2.0", c: "fg" }, { t: "F400", c: "success" } ] },
-        { num: 10, cur: false, toks: [ { t: "N90", c: "muted" }, { t: "G01", c: "primary" }, { t: "X40.0", c: "fg" }, { t: "F1200", c: "success" } ] },
-        { num: 11, cur: false, toks: [ { t: "N100", c: "muted" }, { t: "Y30.0", c: "fg" } ] },
-        { num: 12, cur: false, toks: [ { t: "N110", c: "muted" }, { t: "X-40.0", c: "fg" } ] },
-        { num: 13, cur: false, toks: [ { t: "N120", c: "muted" }, { t: "Y-30.0", c: "fg" } ] },
-        { num: 14, cur: false, toks: [ { t: "N130", c: "muted" }, { t: "G00", c: "primary" }, { t: "Z5.0", c: "fg" } ] },
-        { num: 15, cur: false, toks: [ { t: "N135", c: "muted" }, { t: "M01", c: "destructive" }, { t: "(КОНТРОЛЬ РАЗМЕРА)", c: "comment" } ] },
-        { num: 16, cur: false, toks: [ { t: "N140", c: "muted" }, { t: "X-30.0", c: "fg" }, { t: "Y-20.0", c: "fg" } ] }
+    // ---- NC program catalogue -----------------------------------------------------------------
+    // The files the panel can open. The editor and the 3D viewer share the active file; the
+    // catalogue is data, so a later controller adapter only has to replace this array.
+    readonly property var programFiles: [
+        {
+            name: "O1024", title: "КОРПУС ФЛАНЦА", modified: "08.02.2026 14:20",
+            lines: [
+                "O1024 (КОРПУС ФЛАНЦА)",
+                "N10 G21 G90 G17 G40 G49 G80",
+                "N20 T1 M06 (ФРЕЗА D12)",
+                "N30 G54 G00 X0 Y0",
+                "N40 S8000 M03",
+                "N50 G43 H01 Z50.0 M08",
+                "N60 G00 X-40.0 Y-30.0",
+                "N70 Z5.0",
+                "N80 G01 Z-2.0 F400",
+                "N90 G01 X40.0 F1200",
+                "N100 Y30.0",
+                "N110 X-40.0",
+                "N120 Y-30.0",
+                "N130 G00 Z5.0",
+                "N135 M01 (КОНТРОЛЬ РАЗМЕРА)",
+                "N140 X-30.0 Y-20.0",
+                "N150 G01 Z-4.0 F400",
+                "N160 X30.0 F1000",
+                "N170 Y20.0",
+                "N180 X-30.0",
+                "N190 Y-20.0",
+                "N200 G00 Z50.0 M09",
+                "N210 M05",
+                "N220 G91 G28 Z0",
+                "N230 M30"
+            ]
+        },
+        {
+            name: "O2048", title: "ПЛИТА КРЕПЁЖНАЯ", modified: "05.02.2026 09:12",
+            lines: [
+                "O2048 (ПЛИТА КРЕПЁЖНАЯ)",
+                "N10 G21 G90 G17 G40 G49 G80",
+                "N20 T2 M06 (СВЕРЛО D6.8)",
+                "N30 G54 G00 X0 Y0",
+                "N40 S2400 M03",
+                "N50 G43 H02 Z50.0 M08",
+                "N60 G00 X-50.0 Y-30.0 Z3.0",
+                "N70 G01 Z-15.0 F180",
+                "N80 G00 Z3.0",
+                "N90 X50.0",
+                "N100 G01 Z-15.0 F180",
+                "N110 G00 Z3.0",
+                "N120 Y30.0",
+                "N130 G01 Z-15.0 F180",
+                "N140 G00 Z3.0",
+                "N150 X-50.0",
+                "N160 G01 Z-15.0 F180",
+                "N170 G00 Z50.0 M09",
+                "N180 M05",
+                "N190 G91 G28 Z0",
+                "N200 M30"
+            ]
+        },
+        {
+            name: "O3100", title: "КРЫШКА ПОД ПОДШИПНИК", modified: "29.01.2026 16:47",
+            lines: [
+                "O3100 (КРЫШКА ПОД ПОДШИПНИК)",
+                "N10 G21 G90 G17 G40 G49 G80",
+                "N20 T4 M06 (ФРЕЗА ТОРЦЕВАЯ D50)",
+                "N30 G55 G00 X-70.0 Y0",
+                "N40 S3500 M03",
+                "N50 G43 H04 Z50.0 M08",
+                "N60 Z2.0",
+                "N70 G01 Z-0.5 F300",
+                "N80 X70.0 F1500",
+                "N90 G00 Z50.0 M09",
+                "N100 M05",
+                "N110 G91 G28 Z0",
+                "N120 M30"
+            ]
+        },
+        {
+            name: "O0007", title: "ПРОВЕРКА ШПИНДЕЛЯ", modified: "12.01.2026 07:05",
+            lines: [
+                "O0007 (ПРОВЕРКА ШПИНДЕЛЯ)",
+                "N10 G21 G90 G17",
+                "N20 S2000 M03",
+                "N30 G04 P5",
+                "N40 S5000",
+                "N50 G04 P5",
+                "N60 S8000",
+                "N70 G04 P5",
+                "N80 M05",
+                "N90 M30"
+            ]
+        }
     ]
+    property int activeFile: 0
+    property int fileCursor: 0
+    property bool fileDialog: false
+    function activeProgram() { return programFiles[activeFile] || programFiles[0]; }
+    function programText() { var f = activeProgram(); return f ? f.lines.join("\n") : ""; }
+    function openProgram(i) {
+        if (i < 0 || i >= programFiles.length) return;
+        activeFile = i; fileCursor = i; fileDialog = false; cursorProg = 0;
+        message = "Открыта УП " + programFiles[i].name + " · " + programFiles[i].title;
+    }
+    function openFileDialog() {
+        if (fileDialog) return;
+        fileCursor = activeFile; fileDialog = true;
+        message = "Выберите УП и нажмите Enter";
+    }
+    function fileStep(d) {
+        fileCursor = Math.max(0, Math.min(programFiles.length - 1, fileCursor + d));
+    }
+    function tokenColor(t) {
+        if (t.charAt(0) === "(") return "comment";
+        if (t.charAt(0) === "N") return "muted";
+        if (t.charAt(0) === "G") return "primary";
+        if (t.charAt(0) === "M") return "destructive";
+        if (t.charAt(0) === "T" || t.charAt(0) === "S" || t.charAt(0) === "F") return "success";
+        return "fg";
+    }
+    function tokenizeLine(line) {
+        var parts = line.match(/\([^)]*\)|[^\s]+/g) || [];
+        var out = [];
+        for (var i = 0; i < parts.length; i++) out.push({ t: parts[i], c: tokenColor(parts[i]) });
+        return out;
+    }
+    readonly property var progLines: {
+        var f = activeProgram();
+        var out = [];
+        if (!f) return out;
+        for (var i = 0; i < f.lines.length; i++) out.push({ num: i + 1, toks: tokenizeLine(f.lines[i]) });
+        return out;
+    }
 
     // ================= Themes (from globals.css v0.5.1) =====================
     // OKLCH -> sRGB HEX (Ottosson). Themes: light / dark / graphite / mint.
@@ -808,6 +928,17 @@ Item {
             if (!root.splashGone && !root.splashLeaving) root.splashDismiss();
             if (event.isAutoRepeat) return;
             if (event.modifiers & Qt.ControlModifier || event.modifiers & Qt.AltModifier) return;
+            if (root.fileDialog) {
+                if (event.key === Qt.Key_Up)   { root.fileStep(-1); event.accepted = true; return; }
+                if (event.key === Qt.Key_Down) { root.fileStep(1); event.accepted = true; return; }
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_F1) {
+                    root.openProgram(root.fileCursor); event.accepted = true; return;
+                }
+                if (event.key === Qt.Key_Escape || event.key === Qt.Key_F2) {
+                    root.fileDialog = false; event.accepted = true; return;
+                }
+                event.accepted = true; return;
+            }
             if (event.key === Qt.Key_Up)    { root.navUp(); event.accepted = true; return; }
             if (event.key === Qt.Key_Down)  { root.navDown(); event.accepted = true; return; }
             if (event.key === Qt.Key_Left)  { root.navLeft(event.modifiers & Qt.ShiftModifier); event.accepted = true; return; }
@@ -1021,7 +1152,7 @@ Item {
                         Layout.fillHeight: true
                         spacing: 4
                         Text {
-                            text: "O1024"
+                            text: root.activeProgram().name
                             Layout.maximumWidth: 60
                             color: cForeground
                             font.bold: true
@@ -1030,7 +1161,7 @@ Item {
                             elide: Text.ElideRight
                         }
                         Text {
-                            text: "КОРПУС ФЛАНЦА"
+                            text: root.activeProgram().title
                             Layout.maximumWidth: 100000
                             color: cMutedForeground
                             font.pixelSize: pxSmall
@@ -1488,7 +1619,7 @@ Item {
                                 anchors.rightMargin: 10
                                 spacing: 8
                                 Text { text: "\ue0c3"; color: cMutedForeground; font.family: "lucide"; font.pixelSize: 16 }
-                                Text { text: "ПРОГРАММА  O1024 · КОРПУС ФЛАНЦА"; Layout.fillWidth: true; color: cMutedForeground; font.bold: true; font.pixelSize: 11; font.letterSpacing: 0.5; elide: Text.ElideRight }
+                                Text { text: "ПРОГРАММА  " + root.activeProgram().name + " · " + root.activeProgram().title; Layout.fillWidth: true; color: cMutedForeground; font.bold: true; font.pixelSize: 11; font.letterSpacing: 0.5; elide: Text.ElideRight }
                                 Rectangle { Layout.preferredWidth: 10; Layout.preferredHeight: 10; Layout.minimumWidth: 10; Layout.maximumWidth: 10; radius: 5; border.color: "#2634363a"; border.width: 1; color: root.singleBlock ? cWarning : cMuted }
                                 Text { text: "Покадр."; color: root.singleBlock ? cForeground : cMutedForeground; font.pixelSize: 11 }
                                 Rectangle { Layout.preferredWidth: 10; Layout.preferredHeight: 10; Layout.minimumWidth: 10; Layout.maximumWidth: 10; radius: 5; border.color: "#2634363a"; border.width: 1; color: root.optStop ? cPrimary : cMuted }
@@ -1502,45 +1633,63 @@ Item {
                         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.minimumHeight: 1; Layout.maximumHeight: 1; color: cBorder }
 
                         // ----- program lines -----
-                        Column {
-                            id: progList
+                        Flickable {
+                            id: progScroll
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             Layout.topMargin: 2
-                            spacing: 0
+                            contentWidth: width
+                            contentHeight: root.progLines.length * 20 + 30
                             clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            function ensureVisible() {
+                                var viewH = Math.max(20, height - 30)
+                                var y = root.cursorProg * 20
+                                if (y < contentY) contentY = y
+                                else if (y + 20 > contentY + viewH) contentY = y + 20 - viewH
+                            }
+                            Connections {
+                                target: root
+                                function onCursorProgChanged() { progScroll.ensureVisible() }
+                            }
+                            Column {
+                                id: progList
+                                width: progScroll.width
+                                spacing: 0
 
-                            Repeater {
-                                model: root.progLines
-                                delegate: Rectangle {
-                                    width: progList.width
-                                    height: 20
-                                    color: modelData.cur ? cAccent : cCard
-                                    Rectangle { anchors.fill: parent; color: "transparent"; border.color: "#6634363a"; border.width: 2; visible: index === root.cursorProg }
-                                    Rectangle { x: 0; y: 0; width: 4; height: parent.height; color: cPrimary; visible: modelData.cur }
-                                    Row {
-                                        anchors.left: parent.left
-                                        anchors.leftMargin: 8
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 8
-                                        Text { width: 32; text: modelData.num; color: cMutedForeground; font.pixelSize: 12; font.family: fontMono; horizontalAlignment: Text.AlignRight }
-                                        Text { width: 16; text: modelData.cur ? "\u25B6" : ""; color: cPrimary; font.pixelSize: 11 }
-                                        Repeater {
-                                            model: modelData.toks
-                                            delegate: Text {
-                                                text: modelData.t + " "
-                                                color: modelData.c === "primary" ? cPrimary
-                                                     : modelData.c === "destructive" ? cDestructive
-                                                     : modelData.c === "success" ? cSuccess
-                                                     : modelData.c === "muted" ? cMutedForeground
-                                                     : modelData.c === "comment" ? cMutedForeground
-                                                     : cForeground
-                                                font.family: fontMono
-                                                font.pixelSize: 14
-                                                font.italic: modelData.c === "comment"
-                                                font.bold: (modelData.c === "primary" || modelData.c === "destructive")
+                                Repeater {
+                                    model: root.progLines
+                                    delegate: Rectangle {
+                                        width: progList.width
+                                        height: 20
+                                        color: index === root.cursorProg ? cAccent : cCard
+                                        Rectangle { anchors.fill: parent; color: "transparent"; border.color: "#6634363a"; border.width: 2; visible: index === root.cursorProg }
+                                        Rectangle { x: 0; y: 0; width: 4; height: parent.height; color: cPrimary; visible: index === root.cursorProg }
+                                        Row {
+                                            anchors.left: parent.left
+                                            anchors.leftMargin: 8
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            spacing: 8
+                                            Text { width: 32; text: modelData.num; color: cMutedForeground; font.pixelSize: 12; font.family: fontMono; horizontalAlignment: Text.AlignRight }
+                                            Text { width: 16; text: index === root.cursorProg ? "\u25B6" : ""; color: cPrimary; font.pixelSize: 11 }
+                                            Repeater {
+                                                model: modelData.toks
+                                                delegate: Text {
+                                                    text: modelData.t + " "
+                                                    color: modelData.c === "primary" ? cPrimary
+                                                         : modelData.c === "destructive" ? cDestructive
+                                                         : modelData.c === "success" ? cSuccess
+                                                         : modelData.c === "muted" ? cMutedForeground
+                                                         : modelData.c === "comment" ? cMutedForeground
+                                                         : cForeground
+                                                    font.family: fontMono
+                                                    font.pixelSize: 14
+                                                    font.italic: modelData.c === "comment"
+                                                    font.bold: (modelData.c === "primary" || modelData.c === "destructive")
+                                                }
                                             }
                                         }
+                                        MouseArea { anchors.fill: parent; onClicked: root.cursorProg = index }
                                     }
                                 }
                             }
@@ -2837,6 +2986,94 @@ Item {
             loops: Animation.Infinite
             NumberAnimation { target: splashHint; property: "opacity"; from: 1.0; to: 0.35; duration: 1200; easing.type: Easing.InOutSine }
             NumberAnimation { target: splashHint; property: "opacity"; from: 0.35; to: 1.0; duration: 1200; easing.type: Easing.InOutSine }
+        }
+    }
+
+    // ---- NC file catalogue dialog (FILE_OPEN) ------------------------------------------------
+    // Opened by the Program softkey "Открыть УП"; the operator picks a file with Up/Down and
+    // confirms with Enter. The active file feeds the editor, the Work viewer and the 3D tab.
+    Rectangle {
+        id: fileDialogOverlay
+        visible: root.fileDialog
+        anchors.fill: parent
+        z: 200
+        color: "#99000000"
+
+        Rectangle {
+            id: fileDialogPanel
+            width: 560; height: 380
+            anchors.centerIn: parent
+            radius: 8
+            color: cCard
+            border.color: cPrimary
+            border.width: 2
+            clip: true
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 1
+                spacing: 0
+
+                Rectangle {
+                    Layout.fillWidth: true; Layout.preferredHeight: 42
+                    color: cMuted; radius: 7
+                    RowLayout {
+                        anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14; spacing: 8
+                        Text { text: "\ue247"; color: cPrimary; font.family: "lucide"; font.pixelSize: 20 }
+                        Text { text: "КАТАЛОГ УП"; Layout.fillWidth: true; color: cForeground; font.bold: true; font.pixelSize: 15; font.letterSpacing: 0.5 }
+                        Text { text: "↑/↓ выбор · Enter открыть · Esc отмена"; color: cMutedForeground; font.pixelSize: 10 }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: cBorder }
+
+                Column {
+                    Layout.fillWidth: true; Layout.fillHeight: true
+                    spacing: 0
+                    Repeater {
+                        model: root.programFiles
+                        delegate: Rectangle {
+                            width: fileDialogPanel.width - 2; height: 48
+                            color: index === root.fileCursor ? cAccent : cCard
+                            border.color: index === root.fileCursor ? cPrimary : "transparent"
+                            border.width: index === root.fileCursor ? 2 : 0
+                            RowLayout {
+                                anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14; spacing: 12
+                                Text { text: modelData.name; Layout.preferredWidth: 76; color: cForeground; font.bold: true; font.pixelSize: 16; font.family: fontMono }
+                                ColumnLayout { Layout.fillWidth: true; spacing: 1
+                                    Text { text: modelData.title; Layout.fillWidth: true; color: cForeground; font.pixelSize: 13; elide: Text.ElideRight }
+                                    Text { text: modelData.lines.length + " кадров"; color: cMutedForeground; font.pixelSize: 10 }
+                                }
+                                Text { text: modelData.modified; color: cMutedForeground; font.pixelSize: 10; font.family: fontMono }
+                                Text { text: index === root.activeFile ? "АКТИВНА" : ""; Layout.preferredWidth: 66; color: cSuccess; font.bold: true; font.pixelSize: 10; horizontalAlignment: Text.AlignRight }
+                            }
+                            Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 1; color: cBorder }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: root.fileCursor = index
+                                onDoubleClicked: root.openProgram(index)
+                            }
+                        }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: cBorder }
+
+                RowLayout {
+                    Layout.fillWidth: true; Layout.preferredHeight: 48
+                    Layout.leftMargin: 14; Layout.rightMargin: 14
+                    spacing: 8
+                    Item { Layout.fillWidth: true }
+                    Rectangle {
+                        width: 132; height: 32; radius: 4; color: cPrimary
+                        Text { anchors.centerIn: parent; text: "F1  Открыть"; color: cPrimaryFg; font.bold: true; font.pixelSize: 12 }
+                        MouseArea { anchors.fill: parent; onClicked: root.openProgram(root.fileCursor) }
+                    }
+                    Rectangle {
+                        width: 132; height: 32; radius: 4; color: cMuted; border.color: cBorder
+                        Text { anchors.centerIn: parent; text: "F2  Отмена"; color: cForeground; font.bold: true; font.pixelSize: 12 }
+                        MouseArea { anchors.fill: parent; onClicked: root.fileDialog = false }
+                    }
+                }
+            }
         }
     }
 

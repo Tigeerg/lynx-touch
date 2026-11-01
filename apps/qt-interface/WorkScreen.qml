@@ -230,7 +230,7 @@ Item {
                             ctx.clearRect(0, 0, width, height);
                             ctx.fillStyle = "#0E1319";
                             ctx.fillRect(0, 0, width, height);
-                            var text = workScreen.host ? workScreen.host.viewSample : "";
+                            var text = workScreen.host ? workScreen.host.programText() : "";
                             var lines = text.split("\n");
                             var segs = [];
                             var cx = 0, cy = 0;

@@ -143,6 +143,37 @@ TestCase {
         compare(viewerItem.showFps, false)
     }
 
+    function test_program_catalogue() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        verify(p.programFiles.length >= 4)
+        compare(p.activeProgram().name, "O1024")
+        verify(p.progLines.length > 10)
+        compare(p.progLines[0].toks[0].t, "O1024")
+
+        // The Program softkey opens the catalogue; choosing a file makes it active everywhere.
+        p.setWorkplace("RUN")
+        p.activeScreen = "prog"
+        p.fileDialog = true
+        p.fileCursor = 1
+        p.openProgram(p.fileCursor)
+        compare(p.fileDialog, false)
+        compare(p.activeProgram().name, "O2048")
+        compare(p.activeProgram().title, "ПЛИТА КРЕПЁЖНАЯ")
+        compare(p.progLines[0].toks[0].t, "O2048")
+        verify(p.programText().indexOf("O2048") === 0)
+        compare(p.cursorProg, 0)
+
+        // The Work-screen viewer receives the same active program text.
+        var viewer = findByName(p, "viewerPane")
+        var viewerItem = viewer.children[0].item
+        wait(0)
+        verify(viewerItem.gcode.indexOf("O2048") === 0)
+
+        p.openProgram(0)
+        compare(p.activeProgram().name, "O1024")
+    }
+
     function test_debug_windows_exist() {
         var pendant = Qt.createComponent("../PendantWindow.qml")
         var mpg = Qt.createComponent("../MpgWindow.qml")

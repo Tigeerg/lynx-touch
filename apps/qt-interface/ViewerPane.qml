@@ -14,6 +14,8 @@ Item {
     objectName: "viewerPane"
     property Item host
     property bool showChrome: false
+    property string programText: host ? host.programText() : ""
+    onProgramTextChanged: if (viewerLoader.item) viewerLoader.item.gcode = programText
     // Viewer settings from the panel service menu (saved values). An empty object keeps the
     // viewer defaults; the debug gcodeviewer.exe does not use this property.
     property var settings: ({})
@@ -49,7 +51,7 @@ Item {
         onLoaded: {
             item.showChrome = pane.showChrome
             pane.applySettings()
-            item.gcode = host ? host.viewSample : ""
+            item.gcode = pane.programText
         }
     }
 
@@ -57,6 +59,13 @@ Item {
         target: viewerLoader.item
         property: "showChrome"
         value: pane.showChrome
+        when: viewerLoader.item !== null
+    }
+
+    Binding {
+        target: viewerLoader.item
+        property: "gcode"
+        value: pane.programText
         when: viewerLoader.item !== null
     }
 }

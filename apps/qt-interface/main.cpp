@@ -13,6 +13,7 @@
 #include <QGuiApplication>
 #include <QQmlEngine>
 #include <QQuickView>
+#include <QSize>
 #include <QUrl>
 #include <QtGlobal>
 
@@ -47,7 +48,7 @@ int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Lynx Touch"));
-    app.setApplicationVersion(QStringLiteral("0.6.4"));
+    app.setApplicationVersion(QStringLiteral("0.6.5"));
 
     const QString root = repoRoot();
     const QString qmlFile = root + QStringLiteral("/apps/qt-interface/main.qml");
@@ -70,7 +71,11 @@ int main(int argc, char *argv[])
     QQmlEngine *engine = view.engine();
     engine->addImportPath(root + QStringLiteral("/build/qmlbackend"));
     engine->addImportPath(root + QStringLiteral("/build/edges"));
-    view.setResizeMode(QQuickView::SizeRootObjectToView);
+    // The panel is a fixed 1024x600 design: the window must not stretch, otherwise a layout that
+    // fits the design would only look fitting at one arbitrary size.
+    view.setResizeMode(QQuickView::SizeViewToRootObject);
+    view.setMinimumSize(QSize(1024, 600));
+    view.setMaximumSize(QSize(1024, 600));
     view.setSource(QUrl::fromLocalFile(qmlFile));
     if (view.status() == QQuickView::Error) {
         for (const QQmlError &error : view.errors())

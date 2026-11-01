@@ -94,6 +94,10 @@ has already diverged (tab count, slot count, sets, locking, side column).
    reachable from the physical keys and the keyboard: `F1`..`F8`, arrows, `Tab`, `Enter`, `Esc`,
    digits, the jog pad and the handwheel. Touch is an additional way, never the only one; mouse and
    hover are optional. This is checked by a "keyboard only" scenario on every screen, not by eye.
+11. **Design parity has three levels.** Tokens (fonts, colours, key spacings, icons) come from one
+    manifest and are checked by a test; the panel window is fixed at 1024×600 and never changes its
+    aspect ratio; key screens are compared to React pixel by pixel with a tolerance, and a manual
+    screenshot in `img/` stays the acceptance evidence.
 
 ## 3. React -> Qt map (where the executor looks)
 

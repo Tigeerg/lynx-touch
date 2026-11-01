@@ -12,6 +12,10 @@ Window {
     id: root
     width: 1024
     height: 600
+    minimumWidth: 1024
+    minimumHeight: 600
+    maximumWidth: 1024
+    maximumHeight: 600
     visible: true
     title: "Lynx Touch — панель оператора (Qt-порт)"
 

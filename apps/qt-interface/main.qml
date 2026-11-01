@@ -2294,7 +2294,7 @@ Item {
                     }
                     PerspectiveCamera {
                         position: Qt.vector3d(190, 150, 210)
-                        eulerRotation: Qt.vector3d(-24, -40, 0)
+                        eulerRotation: Qt.vector3d(24, 40, 0)
                         clipNear: 1
                         clipFar: 4000
                     }

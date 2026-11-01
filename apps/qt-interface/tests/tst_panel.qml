@@ -89,6 +89,9 @@ TestCase {
         verify(findByName(panel.item, "workPreview") !== null)
         verify(findByName(panel.item, "viewerPane") !== null)
         verify(findByName(panel.item, "workStatusColumn") !== null)
+        var viewer = findByName(panel.item, "viewerPane")
+        verify(viewer.path !== null)
+        verify(viewer.path.rapidGeometry !== null)
     }
 
     function test_debug_windows_exist() {

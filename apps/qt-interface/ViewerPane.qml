@@ -2,12 +2,22 @@ import QtQuick
 import QtQuick3D
 
 // The viewer pane of the Work screen: the same GcodeToolpath geometries the standalone viewer and
-// the hidden 3D tab use. The host owns the controller; this file only draws its geometries.
+// the hidden 3D tab use. The camera is the viewer's look-at construction: pivot is the path centre,
+// position = pivot - distance * forward.
 Item {
     id: pane
     objectName: "viewerPane"
     property Item host
     property var path: host ? host.toolpathObject : null
+
+    readonly property real yaw: 35
+    readonly property real pitch: -32
+    readonly property real dist: Math.max(60, (path ? path.radius : 40) * 1.8 + 30)
+    readonly property vector3d center: path ? path.center : Qt.vector3d(0, 0, 0)
+    readonly property vector3d fwd: Qt.vector3d(
+        -Math.sin(yaw * Math.PI / 180) * Math.cos(pitch * Math.PI / 180),
+        Math.sin(pitch * Math.PI / 180),
+        -Math.cos(yaw * Math.PI / 180) * Math.cos(pitch * Math.PI / 180))
 
     View3D {
         anchors.fill: parent
@@ -16,9 +26,11 @@ Item {
             backgroundMode: SceneEnvironment.Color
         }
         PerspectiveCamera {
-            position: Qt.vector3d(190, 150, 210)
-            eulerRotation: Qt.vector3d(-24, -40, 0)
-            clipNear: 1
+            position: Qt.vector3d(pane.center.x - pane.dist * pane.fwd.x,
+                                  pane.center.y - pane.dist * pane.fwd.y,
+                                  pane.center.z - pane.dist * pane.fwd.z)
+            eulerRotation: Qt.vector3d(pane.pitch, pane.yaw, 0)
+            clipNear: Math.max(0.05, pane.dist / 1000)
             clipFar: 4000
         }
         DirectionalLight {

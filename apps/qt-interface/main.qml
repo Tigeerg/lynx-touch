@@ -90,6 +90,58 @@ Item {
         return relative ? Math.round((current + v) * 1000) / 1000 : v;
     }
 
+    // ---- Tool length measurement (tool setter) ------------------------------------------------
+    property bool toolMeasureOpen: false
+    property bool measureRunning: false
+    property real measureElapsed: 0
+    property real measureLength: -1
+    readonly property real measureTotal: 4.8
+    readonly property var measureParams: ({ rapidFeed: 3000, fineFeed: 50, zTravel: 201, retract: 3, tolerance: 2 })
+    function openToolMeasure() {
+        if (!toolsData[cursorTool]) { message = "Выберите инструмент в таблице"; return; }
+        toolMeasureOpen = true; measureRunning = false; measureElapsed = 0; measureLength = -1;
+        message = "Обмер: " + toolsData[cursorTool].n;
+    }
+    function startToolMeasure() {
+        if (!toolMeasureOpen || measureRunning) return;
+        measureRunning = true; measureElapsed = 0; measureLength = -1;
+    }
+    function closeToolMeasure() { toolMeasureOpen = false; measureRunning = false; }
+    function measurePhase() {
+        if (measureLength >= 0) return "done";
+        if (!measureRunning) return "idle";
+        var t = measureElapsed;
+        if (t < 1.4) return "rapid";
+        if (t < 3.2) return "fine";
+        if (t < 3.7) return "touch";
+        return "retract";
+    }
+    function measureDepth() {
+        if (measureLength >= 0) return 0;
+        if (!measureRunning) return 0;
+        var t = measureElapsed;
+        if (t < 1.4) { var p = t / 1.4; return (1 - (1 - p) * (1 - p)) * 0.78; }
+        if (t < 3.2) return 0.78 + ((t - 1.4) / 1.8) * 0.22;
+        if (t < 3.7) return 1;
+        var b = Math.min(1, (t - 3.7) / 1.1);
+        return 1 - (b < 0.5 ? 2 * b * b : 1 - Math.pow(-2 * b + 2, 2) / 2);
+    }
+    function finishToolMeasure() {
+        var len = Math.round((60 + ((Math.abs(machinePos.z) * 7.31 + cursorTool * 13.7) % 70)) * 1000) / 1000;
+        mutateTools(cursorTool, { l: len.toFixed(3) });
+        measureLength = len; measureRunning = false; measureElapsed = measureTotal;
+        message = toolsData[cursorTool].n + ": длина " + len.toFixed(3) + " мм";
+    }
+    Timer {
+        interval: 50
+        repeat: true
+        running: root.measureRunning
+        onTriggered: {
+            root.measureElapsed = Math.min(root.measureTotal, root.measureElapsed + 0.05);
+            if (root.measureElapsed >= root.measureTotal) root.finishToolMeasure();
+        }
+    }
+
     // --- Ladder (ClassicLadder) ---
     property var ladderRungs: [
         { n: "001", title: "Готовность станка", contacts: [ { a: "I0.0", l: "Цепь АВ.СТОП" }, { a: "I0.1", l: "Ограждение" }, { a: "I0.2", l: "Давл. воздуха" } ], coil: { a: "Q0.0", l: "Станок готов" }, on: true },
@@ -321,6 +373,7 @@ Item {
         // A disabled key explains itself instead of staying silent (React softkeyAction).
         if (k.disabled) { message = k.reason || "Клавиша недоступна"; return; }
         if (k.id === "openFile") { openFileDialog(); return; }
+        if (k.id === "toolProbe" || k.id === "measure") { openToolMeasure(); return; }
         if (k.machine === "coolant") { coolantOn = !coolantOn; machineToggleCoolant(); }
         else if (k.machine === "spindle") { spindleOn = !spindleOn; machineToggleSpindle(); }
         else if (k.id === "single") singleBlock = !singleBlock;
@@ -1000,6 +1053,15 @@ Item {
             if (!root.splashGone && !root.splashLeaving) root.splashDismiss();
             if (event.isAutoRepeat) return;
             if (event.modifiers & Qt.ControlModifier || event.modifiers & Qt.AltModifier) return;
+            if (root.toolMeasureOpen) {
+                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    root.startToolMeasure(); event.accepted = true; return;
+                }
+                if (event.key === Qt.Key_Escape) {
+                    root.closeToolMeasure(); event.accepted = true; return;
+                }
+                event.accepted = true; return;
+            }
             if (root.fileDialog) {
                 if (event.key === Qt.Key_Up)   { root.fileStep(-1); event.accepted = true; return; }
                 if (event.key === Qt.Key_Down) { root.fileStep(1); event.accepted = true; return; }
@@ -2999,6 +3061,169 @@ Item {
             loops: Animation.Infinite
             NumberAnimation { target: splashHint; property: "opacity"; from: 1.0; to: 0.35; duration: 1200; easing.type: Easing.InOutSine }
             NumberAnimation { target: splashHint; property: "opacity"; from: 0.35; to: 1.0; duration: 1200; easing.type: Easing.InOutSine }
+        }
+    }
+
+    // ---- Tool length measurement (tool setter) ------------------------------------------------
+    Rectangle {
+        id: toolMeasureOverlay
+        visible: root.toolMeasureOpen
+        anchors.fill: parent
+        z: 210
+        color: "#99000000"
+
+        Rectangle {
+            width: 740; height: 480
+            anchors.centerIn: parent
+            radius: 8
+            color: cCard
+            border.color: cPrimary
+            border.width: 2
+            clip: true
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 1
+                spacing: 0
+
+                Rectangle {
+                    Layout.fillWidth: true; Layout.preferredHeight: 42
+                    color: cMuted; radius: 7
+                    RowLayout {
+                        anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14; spacing: 8
+                        Text { text: "\ue14b"; color: cPrimary; font.family: "lucide"; font.pixelSize: 20 }
+                        Text { text: "ОБМЕР ДЛИНЫ ИНСТРУМЕНТА · TOOL SETTER"; Layout.fillWidth: true; color: cForeground; font.bold: true; font.pixelSize: 14; font.letterSpacing: 0.5 }
+                        Rectangle {
+                            width: 28; height: 28; radius: 4; color: cCard; border.color: cBorder
+                            Text { anchors.centerIn: parent; text: "×"; color: cForeground; font.bold: true; font.pixelSize: 18 }
+                            MouseArea { anchors.fill: parent; onClicked: root.closeToolMeasure() }
+                        }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: cBorder }
+
+                RowLayout {
+                    Layout.fillWidth: true; Layout.fillHeight: true
+                    spacing: 1
+
+                    // Parameters
+                    Rectangle {
+                        Layout.preferredWidth: 210; Layout.fillHeight: true; color: cCard
+                        ColumnLayout {
+                            anchors.fill: parent; anchors.margins: 12; spacing: 8
+                            Text { text: "ИНСТРУМЕНТ"; color: cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 1 }
+                            Text { text: (toolsData[cursorTool] ? toolsData[cursorTool].n : "--") + "  " + (toolsData[cursorTool] ? toolsData[cursorTool].name : ""); Layout.fillWidth: true; color: cForeground; font.bold: true; font.pixelSize: 13; elide: Text.ElideRight }
+                            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: cBorder }
+                            Repeater {
+                                model: [
+                                    { l: "Быстрый подвод", v: root.measureParams.rapidFeed + " мм/мин" },
+                                    { l: "Точный подвод", v: root.measureParams.fineFeed + " мм/мин" },
+                                    { l: "Ход по Z", v: root.measureParams.zTravel + " мм" },
+                                    { l: "Отвод", v: root.measureParams.retract + " мм" },
+                                    { l: "Допуск слома", v: "±" + root.measureParams.tolerance + " мм" }
+                                ]
+                                delegate: RowLayout {
+                                    Layout.fillWidth: true; spacing: 6
+                                    Text { text: modelData.l; Layout.fillWidth: true; color: cMutedForeground; font.pixelSize: 11 }
+                                    Text { text: modelData.v; color: cForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono }
+                                }
+                            }
+                            Item { Layout.fillHeight: true }
+                            Text { text: "Текущая длина: " + (toolsData[cursorTool] ? toolsData[cursorTool].l + " мм" : "—"); color: cMutedForeground; font.pixelSize: 11; font.family: fontMono }
+                        }
+                    }
+                    Rectangle { Layout.preferredWidth: 1; Layout.fillHeight: true; color: cBorder }
+
+                    // Scene
+                    Rectangle {
+                        Layout.fillWidth: true; Layout.fillHeight: true; color: cBackground
+                        ColumnLayout {
+                            anchors.fill: parent; anchors.margins: 10; spacing: 4
+                            Text { Layout.alignment: Qt.AlignHCenter; text: "СЦЕНА ОБМЕРА"; color: cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 1 }
+                            Item {
+                                Layout.fillWidth: true; Layout.fillHeight: true
+                                Rectangle {
+                                    width: 18; height: 46; radius: 4
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    y: 18 + root.measureDepth() * Math.max(40, parent.height - 140)
+                                    color: cWarning; border.color: "#8E6508"; border.width: 2
+                                }
+                                Rectangle {
+                                    width: parent.width * 0.55; height: 16; radius: 3
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    anchors.bottom: parent.bottom; anchors.bottomMargin: 34
+                                    color: cPrimary
+                                }
+                                Rectangle {
+                                    width: parent.width * 0.65; height: 10; radius: 3
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    anchors.bottom: parent.bottom; anchors.bottomMargin: 24
+                                    color: cMuted; border.color: cBorder
+                                }
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom
+                                    text: "TOOL SETTER"
+                                    color: cMutedForeground; font.pixelSize: 9; font.letterSpacing: 1
+                                    bottomPadding: 2
+                                }
+                            }
+                        }
+                    }
+                    Rectangle { Layout.preferredWidth: 1; Layout.fillHeight: true; color: cBorder }
+
+                    // Readout
+                    Rectangle {
+                        Layout.preferredWidth: 220; Layout.fillHeight: true; color: cCard
+                        ColumnLayout {
+                            anchors.fill: parent; anchors.margins: 12; spacing: 8
+                            Text { text: "ФАЗА"; color: cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 1 }
+                            Text {
+                                text: root.measurePhase() === "idle" ? "ОЖИДАНИЕ" : root.measurePhase() === "rapid" ? "БЫСТРЫЙ ПОДВОД"
+                                    : root.measurePhase() === "fine" ? "ТОЧНЫЙ ПОДВОД" : root.measurePhase() === "touch" ? "КОСНУЛИСЬ"
+                                    : root.measurePhase() === "retract" ? "ОТВОД" : "ГОТОВО"
+                                color: root.measurePhase() === "touch" ? cSuccess : root.measurePhase() === "done" ? cPrimary : cForeground
+                                font.bold: true; font.pixelSize: 14
+                            }
+                            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: cBorder }
+                            Text { text: "ВРЕМЯ"; color: cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 1 }
+                            Text { text: root.measureElapsed.toFixed(2) + " / " + root.measureTotal.toFixed(2) + " с"; color: cForeground; font.pixelSize: 13; font.family: fontMono }
+                            Text { text: "Z сейчас"; color: cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 1 }
+                            Text { text: (root.machinePos.z - root.measureDepth() * 80).toFixed(3) + " мм"; color: cForeground; font.pixelSize: 15; font.bold: true; font.family: fontMono }
+                            Item { Layout.fillHeight: true }
+                            Text { text: "ИЗМЕРЕННАЯ ДЛИНА"; color: cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 1 }
+                            Text {
+                                text: root.measureLength >= 0 ? root.measureLength.toFixed(3) + " мм" : "—"
+                                color: root.measureLength >= 0 ? cSuccess : cMutedForeground
+                                font.bold: true; font.pixelSize: 26; font.family: fontMono
+                            }
+                        }
+                    }
+                }
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: cBorder }
+
+                RowLayout {
+                    Layout.fillWidth: true; Layout.preferredHeight: 52
+                    Layout.leftMargin: 14; Layout.rightMargin: 14
+                    spacing: 8
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.measureRunning ? "Идёт обмер — дождитесь касания и отвода"
+                            : root.measureLength >= 0 ? ("Записано в " + (toolsData[cursorTool] ? toolsData[cursorTool].n : ""))
+                            : "Проверьте инструмент, Enter — пуск, Esc — закрыть"
+                        color: cMutedForeground; font.pixelSize: 11; elide: Text.ElideRight
+                    }
+                    Rectangle {
+                        width: 150; height: 32; radius: 4; color: root.measureRunning ? cMuted : cPrimary
+                        Text { anchors.centerIn: parent; text: root.measureRunning ? "ИДЁТ" : root.measureLength >= 0 ? "ЗАНОВО" : "ПУСК ОБМЕРА"; color: cPrimaryFg; font.bold: true; font.pixelSize: 12 }
+                        MouseArea { anchors.fill: parent; onClicked: root.startToolMeasure() }
+                    }
+                    Rectangle {
+                        width: 110; height: 32; radius: 4; color: cMuted; border.color: cBorder
+                        Text { anchors.centerIn: parent; text: "ЗАКРЫТЬ"; color: cForeground; font.bold: true; font.pixelSize: 12 }
+                        MouseArea { anchors.fill: parent; onClicked: root.closeToolMeasure() }
+                    }
+                }
+            }
         }
     }
 

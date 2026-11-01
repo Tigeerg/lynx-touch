@@ -208,6 +208,26 @@ TestCase {
         p.jogStep = 1
     }
 
+    function test_tool_measure() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        p.cursorTool = 0
+        p.openToolMeasure()
+        verify(p.toolMeasureOpen)
+        compare(p.measurePhase(), "idle")
+        p.startToolMeasure()
+        verify(p.measureRunning)
+        p.measureElapsed = 1.0
+        compare(p.measurePhase(), "rapid")
+        verify(p.measureDepth() > 0)
+        p.finishToolMeasure()
+        verify(p.measureLength > 0)
+        compare(p.toolsData[0].l, p.measureLength.toFixed(3))
+        compare(p.measurePhase(), "done")
+        p.closeToolMeasure()
+        verify(!p.toolMeasureOpen)
+    }
+
     function test_touch_mode() {
         tryCompare(panel, "status", Loader.Ready)
         var p = panel.item

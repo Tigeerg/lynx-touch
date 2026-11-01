@@ -6,7 +6,7 @@ code and its run; this file holds the intent, anchors in both trees and acceptan
 
 This edition was merged on 31.10.2026: the inventory and anchors come from the previous edition,
 the order of work, acceptance and decisions come from the lead. State at the day of the edition:
-React `0.24.1` (product `0.35.27`), Qt `0.6.22`.
+React `0.24.1` (product `0.35.28`), Qt `0.6.23`.
 
 **Roles fixed (01.11.2026).** The real controller runs **Qt — it is the product**. React was a demo
 stage: after the start and CAM-insert fixes it is **frozen** — no new features are developed there.
@@ -35,7 +35,7 @@ dispatcher's decisions are in §7.
 
 React anchors are a file and a symbol; line numbers are as of 31.10.2026. "W" is the wave in §4.
 
-| Panel node | React `0.24.1` (source) | Qt `0.6.22` (`main.qml`) | Gap | W |
+| Panel node | React `0.24.1` (source) | Qt `0.6.23` (`main.qml`) | Gap | W |
 |---|---|---|---|---|
 | Workplaces | `types.ts` (`SETUP`/`TEST`/`RUN`), `WORKPLACE_LABEL` (`data.ts`), `SET_WORKPLACE` (`nav.ts`) | none; only `machineMode` (`:24`) and `modeCycle` | no workplaces | C |
 | Tabs | 5: `TABS`/`TAB_LABEL` (`types.ts`) Work, Offsets, Tool, Messages, Service; Work merges `pos` and `prog` (`tabOfScreen`) | 7: `tab0`..`tab6` (`:967-1256`), Position and Program separate, plus 3D | +2 tabs | B |
@@ -46,7 +46,7 @@ React anchors are a file and a symbol; line numbers are as of 31.10.2026. "W" is
 | SETUP (work->pos) | `setupPos`: tool measure, 3D probe, base write, reserve, safe retract, part zero, warm-up, calculator | steps 0.001/0.01/0.1, clear offset, coolant, spindle | no setup set | C, D |
 | TEST (work->prog) | `testWorkplace`: program catalogue, editor, search/replace, run mode, single block, M01, program extents, display | open file, edit, single block, optional stop, dry run, rewind, start from block; first three are stubs | no simulation, extents, graphics clear | C, D |
 | RUN (work->prog) | `runProg`; screen: distance-to-go, 4 views (`AUTO_VIEWS`), transparent code window | none | no RUN screen | C, D |
-| Tool measure | `tool-measure.ts` (phases, timings 1.4/1.8/0.5/1.1 s), `tool-measure-dialog/` | "Measure length" without behaviour | no wizard | E |
+| Tool measure | `tool-measure.ts` (phases, timings 1.4/1.8/0.5/1.1 s), `tool-measure-dialog/` | modal dialog, phases, animation, length written to T | no 3D scene/editable params | E |
 | Probe wizard | `probe.ts`/`probe-shapes.ts` (`PROBE_CYCLES`, `PROBE_TOOL = 99`, `PROBE_STEPS`), `probe/probe-wizard/` | texts exist, `pWrite` just closes | no rules | E |
 | Hardware keyboard | `hardware/hardware-keyboard.tsx`, `hardware-nav.tsx`, 72×72 keys | `KeyboardWindow.qml` + `NavWindow.qml` (bottom/side), MDI input | no shared 6×5 panel | F |
 | MPG pendant | `side-status/jog.tsx`, `MPG_STEPS`, mode `MPG` | `MpgWindow.qml` — round encoder, rotary axis/multiplier | 18° per detent | F |

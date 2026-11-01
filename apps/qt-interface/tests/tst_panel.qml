@@ -1,9 +1,9 @@
 import QtQuick
 import QtTest
 
-// Offscreen checks of the Qt port (wave A): the panel loads at 1024x600 and its public surface is
-// alive. The tab and softkey counts become strict in wave B/C, when the port has the 5 tabs and
-// 8 slots; today the probe guards the load and the size.
+// Offscreen checks of the Qt port: the panel loads at 1024x600, the public surface is alive,
+// and wave B keeps the Work screen in components of its own (coordinate strip, toolpath
+// preview, status column) instead of growing another axis table inside main.qml.
 TestCase {
     name: "QtPanel"
     width: 1024
@@ -13,6 +13,17 @@ TestCase {
         id: panel
         anchors.fill: parent
         source: "../main.qml"
+    }
+
+    function findByName(item, name) {
+        if (!item) return null
+        if (item.objectName === name) return item
+        var kids = item.children
+        for (var i = 0; i < kids.length; i++) {
+            var hit = findByName(kids[i], name)
+            if (hit) return hit
+        }
+        return null
     }
 
     function test_panel_loads() {
@@ -28,9 +39,16 @@ TestCase {
     }
 
     function test_softkeys_are_slots() {
-        var keys = panel.item.softkeysFor("pos")
+        var keys = panel.item.padSoft(panel.item.softkeysFor("pos"))
 
-        verify(keys.length >= 6)
-        verify(keys.length <= 8)
+        compare(keys.length, 8)
+    }
+
+    function test_work_screen_parts() {
+        tryCompare(panel, "status", Loader.Ready)
+        verify(findByName(panel.item, "workScreen") !== null)
+        verify(findByName(panel.item, "workCoordStrip") !== null)
+        verify(findByName(panel.item, "workPreview") !== null)
+        verify(findByName(panel.item, "workStatusColumn") !== null)
     }
 }

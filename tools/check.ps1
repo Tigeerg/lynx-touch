@@ -191,7 +191,7 @@ if ($cppReady) {
 
 # 6b. The Qt panel itself: the standalone debug executable and its offscreen checks. They need the
 # built MockBackend module (the viewer build above), not a second toolchain check.
-if (Test-Path -LiteralPath 'build/qmlbackend/MockBackend/gvqmlbackend.dll') {
+if ($cppReady -and (Test-Path -LiteralPath 'build/qmlbackend/MockBackend/gvqmlbackend.dll')) {
   Run-Tool 'build-qt-interface.ps1 (панель Qt)' {
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-qt-interface.ps1
   }

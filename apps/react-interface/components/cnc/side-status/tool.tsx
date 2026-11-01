@@ -6,7 +6,7 @@ import { programLines, type Action } from '@/lib/cnc/machine'
 import { MAX_FEED_PARAM, MAX_SPINDLE_PARAM, paramValue } from '@/lib/cnc/service-data'
 import type { MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
-import { formatTime, Keycap, OverrideBar } from '../primitives'
+import { formatDurationMs, Keycap, OverrideBar } from '../primitives'
 import { STEP_KEY, Section } from './sections'
 import { RapidRow } from './load'
 
@@ -56,7 +56,7 @@ export function ToolSection({
                   {current && <span className="sr-only"> (в шпинделе)</span>}
                 </span>
                 <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground" title="Наработка">
-                  {formatTime(state.toolTime[n] ?? 0)}
+                  {formatDurationMs(state.toolTime[n] ?? 0)}
                 </span>
                 {tool && (
                   <span

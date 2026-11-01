@@ -16,7 +16,7 @@ import type { Operation, ProgramShape, SlotOperation } from './ops'
 import { direction } from './contour-offset'
 import type { Vec2 } from './contour-offset'
 import { axialPasses } from './path-face'
-import { EPS, PathBuilder } from './path-builder'
+import { EPS_PATH, PathBuilder } from './path-builder'
 
 /** The slot layout: one strip across the width, the real step and the axial passes. */
 export interface SlotStrip {
@@ -73,9 +73,9 @@ export function slotLayout(operation: SlotOperation): SlotLayout {
  * one, so neighbouring strips overlap and no band of the slot stays uncut.
  */
 function stripCentres(usable: number, diameterMm: number, stepOverPct: number): number[] {
-  if (usable <= EPS) return [0]
-  const nominal = Math.min(Math.max(diameterMm * (stepOverPct / 100), EPS), diameterMm)
-  const strips = Math.ceil(usable / nominal - EPS) + 1
+  if (usable <= EPS_PATH) return [0]
+  const nominal = Math.min(Math.max(diameterMm * (stepOverPct / 100), EPS_PATH), diameterMm)
+  const strips = Math.ceil(usable / nominal - EPS_PATH) + 1
   const step = usable / (strips - 1)
   const offsets: number[] = []
   for (let i = 0; i < strips; i += 1) offsets.push(i * step - usable / 2)

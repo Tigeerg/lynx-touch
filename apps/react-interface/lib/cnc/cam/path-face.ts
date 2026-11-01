@@ -16,7 +16,7 @@
 // then the next strip starts from there. Each Z pass repeats the strips one step deeper; the last
 // pass is exactly the bottom.
 import type { FaceOperation, Operation, QuickProgram, StockBox } from './ops'
-import { EPS, PathBuilder } from './path-builder'
+import { EPS_PATH, PathBuilder } from './path-builder'
 
 /** The share of the diameter a strip leads past the stock, per side. */
 const OVERRUN_SHARE = 0.1
@@ -53,7 +53,7 @@ export const axialPasses = (topZ: number, depthMm: number, stepDownMm: number): 
   const passes: number[] = []
   let z = topZ
   if (stepDownMm > 0) {
-    while (z - stepDownMm > bottom + EPS) {
+    while (z - stepDownMm > bottom + EPS_PATH) {
       z -= stepDownMm
       passes.push(z)
     }
@@ -73,13 +73,13 @@ export function faceLayout(stock: StockBox, operation: FaceOperation): FaceLayou
   const acrossMin = alongX ? stock.min.y : stock.min.x
   const edgeOverrunMm = faceLead(d)
   const usable = across - d
-  const nominal = Math.min(Math.max(d * (operation.stepOverPct / 100), EPS), d)
+  const nominal = Math.min(Math.max(d * (operation.stepOverPct / 100), EPS_PATH), d)
   const passes = axialPasses(operation.topZ, operation.depthMm, operation.stepDownMm)
-  if (usable <= EPS) {
+  if (usable <= EPS_PATH) {
     // The tool is at least as wide as the stock: one strip through the centre covers the width.
     return { alongX, stripStepMm: 0, strips: 1, stripStart: acrossMin + across / 2, edgeOverrunMm, passes }
   }
-  const strips = Math.ceil(usable / nominal - EPS) + 1
+  const strips = Math.ceil(usable / nominal - EPS_PATH) + 1
   return {
     alongX,
     stripStepMm: usable / (strips - 1),

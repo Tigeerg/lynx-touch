@@ -9,7 +9,7 @@ import { fmt } from './feeds'
 import type { EngraveOperation, Operation } from './ops'
 import { unsupportedChar } from './path-engrave'
 import type { Problem } from './validate-common'
-import { EPS, add } from './validate-common'
+import { EPS_VALIDATE, add } from './validate-common'
 
 /** A letter of a stroke thinner than the mill loses its counters: the smallest gap of the font. */
 const THINNEST_GAP = 0.3
@@ -36,7 +36,7 @@ export function checkEngrave(op: Operation, out: Problem[]): void {
 export function engraveToolWarnings(op: EngraveOperation): Problem[] {
   const out: Problem[] = []
   const thinnest = op.heightMm * THINNEST_GAP
-  if (op.heightMm > 0 && op.tool.diameterMm > thinnest + EPS) {
+  if (op.heightMm > 0 && op.tool.diameterMm > thinnest + EPS_VALIDATE) {
     add(
       out,
       'tool.diameterMm',

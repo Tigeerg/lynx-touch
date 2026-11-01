@@ -11,7 +11,7 @@
 import { fmt } from './feeds'
 import type { ChamferOperation, SlotOperation } from './ops'
 import type { Problem } from './validate-common'
-import { EPS, add } from './validate-common'
+import { EPS_VALIDATE, add } from './validate-common'
 
 /** The shortest slot worth a pass, mm: shorter is a point, not a keyway. */
 export const MIN_SLOT_MM = 1
@@ -21,18 +21,18 @@ const lengthMm = (op: SlotOperation | ChamferOperation): number => Math.hypot(op
 
 /** A slot: two ends, a width the mill fits and a step over the strips. Errors only. */
 export function checkSlot(op: SlotOperation, out: Problem[]): void {
-  if (lengthMm(op) < MIN_SLOT_MM - EPS) {
+  if (lengthMm(op) < MIN_SLOT_MM - EPS_VALIDATE) {
     add(out, 'to', `Длина паза меньше ${fmt(MIN_SLOT_MM)} мм: задайте две разные точки вдоль паза.`)
     return
   }
-  if (op.widthMm < op.tool.diameterMm - EPS) {
+  if (op.widthMm < op.tool.diameterMm - EPS_VALIDATE) {
     add(out, 'widthMm', 'Паз уже фрезы: возьмите фрезу не шире паза.')
     return
   }
   // The strip step is the pocket rule, named on the slot's own field so the form points at it.
-  if (op.stepOverPct < 10 - EPS) {
+  if (op.stepOverPct < 10 - EPS_VALIDATE) {
     add(out, 'stepOver', `Шаг ${fmt(op.stepOverPct)} % меньше 10 % диаметра: фреза будет тереть уже срезанное.`)
-  } else if (op.stepOverPct > 100 + EPS) {
+  } else if (op.stepOverPct > 100 + EPS_VALIDATE) {
     add(out, 'stepOver', `Шаг ${fmt(op.stepOverPct)} % больше 100 % диаметра: между проходами останутся дыры.`)
   }
 }
@@ -44,7 +44,7 @@ export function checkSlot(op: SlotOperation, out: Problem[]): void {
  */
 export function slotWarnings(op: SlotOperation): Problem[] {
   const out: Problem[] = []
-  if (op.widthMm > 2 * op.tool.diameterMm + EPS) {
+  if (op.widthMm > 2 * op.tool.diameterMm + EPS_VALIDATE) {
     add(out, 'widthMm', 'Паз шире двух диаметров: точнее контуром.')
   }
   return out
@@ -56,11 +56,11 @@ export function checkChamfer(op: ChamferOperation, out: Problem[]): void {
     add(out, 'chamferMm', 'Фаска должна быть больше нуля: иначе снимать нечего.')
     return
   }
-  if (op.chamferMm > op.tool.diameterMm / 2 + EPS) {
+  if (op.chamferMm > op.tool.diameterMm / 2 + EPS_VALIDATE) {
     add(out, 'chamferMm', 'Фаска больше радиуса фрезы: возьмите фрезу крупнее или меньше фаску.')
     return
   }
-  if (lengthMm(op) < MIN_SLOT_MM - EPS) {
+  if (lengthMm(op) < MIN_SLOT_MM - EPS_VALIDATE) {
     add(out, 'to', `Длина кромки меньше ${fmt(MIN_SLOT_MM)} мм: задайте две разные точки вдоль кромки.`)
   }
 }

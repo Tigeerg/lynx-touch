@@ -16,7 +16,7 @@ import type { Vec2 } from './contour-offset'
 import { axialPasses } from './path-face'
 import { pocketLayout } from './path-pocket'
 import type { PocketLayout } from './path-pocket'
-import { EPS, PathBuilder } from './path-builder'
+import { EPS_PATH, PathBuilder } from './path-builder'
 
 /** One piece of a row: the mill centre from one end to the other, mm. */
 export interface RowPiece {
@@ -75,13 +75,13 @@ export function islandPocketLayout(operation: IslandPocketOperation): IslandLayo
     const across = frame.acrossMin + frame.stepMm * i
     const rowPoint = (along: number): Vec2 => (frame.alongX ? { x: along, y: across } : { x: across, y: along })
     const pieces: RowPiece[] = []
-    if (across < acrossLow - EPS || across > acrossHigh + EPS) {
+    if (across < acrossLow - EPS_PATH || across > acrossHigh + EPS_PATH) {
       pieces.push({ from: rowPoint(frame.alongMin), to: rowPoint(frame.alongMax) })
     } else {
-      if (alongLow - frame.alongMin > EPS) {
+      if (alongLow - frame.alongMin > EPS_PATH) {
         pieces.push({ from: rowPoint(frame.alongMin), to: rowPoint(alongLow) })
       }
-      if (frame.alongMax - alongHigh > EPS) {
+      if (frame.alongMax - alongHigh > EPS_PATH) {
         pieces.push({ from: rowPoint(alongHigh), to: rowPoint(frame.alongMax) })
       }
     }

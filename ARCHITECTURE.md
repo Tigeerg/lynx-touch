@@ -60,7 +60,8 @@
   `cam-preview.tsx` — 2D по тем же ходам, `cam-fields.ts` — подписи и группы полей, `cam-labels.ts` —
   надписи карточек, `keypad.tsx` — цифровой блок сенсора, `cam-overlay-body.tsx` — колонки и состояние
   диалога DXF, `operation-card.tsx` — карточка с меню копий, `field-row.tsx` — строка поля и выбор
-  источников остатка, `use-form-state.ts` — таймер предпросмотра, `copy-dialogs.tsx`/`copy-dialog-form.tsx` —
+  источников остатка, `cam-header-cells.ts`/`header-input.tsx` — ячейки шапки документа (смещение,
+  заготовка, safe Z, имя), `cam-dialogs.ts` — чистая часть диалогов «Массив» и «Поворот», `use-form-state.ts` — таймер предпросмотра, `copy-dialogs.tsx`/`copy-dialog-form.tsx` —
   массив и поворот, `source-choice.ts` — выбор исходных операций, `dxf-dialog.tsx`/`dxf-dialog-text.ts` —
   импорт DXF). Наборы софт-кеев по экранам — `softkeys/screens/*.ts` под фасадом `softkey-screens.ts`. Сенсорный
   вариант — `components/cnc/touch/`; переключатель — `ui-mode.tsx`,
@@ -71,13 +72,33 @@
   предикаты), `ladder-parse.ts` (разбор сравнения), `ladder-reducer.ts` (редьюсер редактора), `ladder-forms.ts`
   (форма элемента), `ladder-schemes.ts` (менеджер схем), `ladder-nav.ts` (курсор и навигация по цепям),
   `ladder-rung.ts` (построение цепи: свободный адрес, новая цепь, копия) — листья графа, на них опираются
-  форма, схемы и редьюсер; `ladder/types.ts` (типы ПЛК); быстрое программирование — `cam/` (типы `ops.ts`,
-  режимы `feeds.ts`, проверки `validate*.ts`, планировщики `path*.ts`, вывод УП `emit*.ts`, `.qprog`
-  `serialize*.ts`, подсистема `cam.ts`, эталоны демо в `etl/`, правила парсера вьювера
-  `viewer-check.ts`, коллизия `collision.ts`, запись `cam-save.ts`, копии `copy-ops.ts`, остаток
-  `rest-areas.ts`, чтение DXF `dxf-*.ts`, один пересчёт предпросмотра и сводки `cam-preview.ts`, правка
-  шапки `cam-program.ts`, DRO `cam-dro.ts`, открытие сохранённого `cam-open.ts`, статистика `cam-stats.ts`,
-  золотой набор `golden*.ts`; `types.ts` берёт `CamState` из `cam/types.ts`);
+  форма, схемы и редьюсер; `ladder/types.ts` (типы ПЛК); быстрое программирование — `cam/`: модель —
+  типы `ops.ts`, руки объединения по видам `ops-kinds*.ts` (классические `ops-kinds.ts`, Q5
+  `ops-kinds-q5.ts`, остаток `ops-kinds-rest.ts`), поля создания операции `operation-init.ts`, умолчания
+  новой программы и операции `defaults*.ts` (общие поля `defaults-common.ts`, щуп `defaults-probe.ts`,
+  Q5 `defaults-q5.ts`), пределы станка `limits.ts`, режимы `feeds.ts`; форма — `form*.ts` (маппинг в
+  документ `form.ts`, значения полей `form-fields.ts` и `form-fields-kinds.ts`, значения вида
+  `form-values.ts`, виды Q5 `form-fields-q5.ts`/`form-fields-q5a.ts`, многострочный текст блока
+  `form-lines.ts`, операция формы и её проблемы `form-operation.ts`), проверки `validate*.ts` (общие
+  `validate-common.ts`, числа `validate-numbers.ts`, вид `validate-shape.ts`, программа
+  `validate-program.ts`, фасад `validate.ts`); планировщики — `path*.ts` (сборщик ходов и длина реза
+  `path-builder.ts`, идентичность плана `path-uuid.ts`, сводка операции `path-stats.ts`), ходы `moves.ts`,
+  центра сверления `drill-holes.ts`, центра резьб `tap-holes.ts`, циклы G82 и винт `bores.ts`, смещение
+  контура на радиус фрезы `contour-offset.ts`, точки контура одной строкой поля `contour-points.ts`,
+  однопроходный шрифт гравировки `engrave-*.ts` (глифы `engrave-font.ts`, наборы
+  `engrave-latin.ts`/`engrave-digits.ts`/`engrave-cyrillic.ts`), область остатка ранних карманов
+  `rest-areas.ts`; вывод УП `emit*.ts`; `.qprog` — слова и числа `serialize*.ts`, файл целиком
+  `serialize.ts`, чтение `read-*.ts` (шапка документа `read-header.ts`, диспетчер видов `read-op.ts`,
+  виды `read-op-classic.ts`/`read-op-shapes.ts`/`read-op-path.ts`, значения `op.*` `read-op-words.ts`),
+  ошибка строки `qprog-error.ts`; щуп — блок G38.2 `probe.ts`, точки касаний строкой поля
+  `probe-points.ts`, умолчания `probe-defaults.ts`; правила парсера вьювера `viewer-check.ts`, коллизия
+  `collision.ts`, подсистема `cam.ts`, правки не из формы `cam-edit.ts`, вставка в открытый файл
+  `cam-insert.ts`, форма в редьюсере `cam-form-run.ts`, антидребезг предпросмотра `cam-debounce.ts`,
+  запись `cam-save.ts`, копии `copy-ops.ts`, чтение DXF `dxf-*.ts`, один пересчёт предпросмотра и
+  сводки `cam-preview.ts`, правка шапки `cam-program.ts`, DRO `cam-dro.ts`, открытие сохранённого
+  `cam-open.ts`, статистика `cam-stats.ts`, эталоны демо в `etl/` и сверка с ними `etl-cases.ts`,
+  золотой набор `golden*.ts` (документ `golden-doc.ts`, генерация `golden-gen.ts`, помощники теста
+  `golden-chain.ts`); `types.ts` берёт `CamState` из `cam/types.ts`);
   `types.ts` держит
   `MachineState` и реэкспортирует типы ПЛК как прежняя точка входа; `ladder-scan.ts` — скан ПЛК, `nav.ts`,
   `cycle.ts` — фасад над каталогом `cycle/` (`cycle-exec.ts` — исполнение кадра, `cycle-actions.ts` —
@@ -89,15 +110,21 @@
   `data.ts` (тексты) и `softkeys.ts` — фасад над каталогом `softkeys/`: `softkey-slots.ts` (слоты, потолок
   подписи, `softkeyAction`), `softkey-icons.ts` (иконки), `softkey-dialogs.ts` (наборы диалогов),
   `softkey-workplaces.ts` (НАЛАДКА, ПРОГОН, АВТО), `softkey-screens.ts` (наборы экранов); `service-data.ts`
-  (API каталога: типы `ParamDef` и разделы),
+  (API каталога: типы `ParamDef` и разделы), `service-edit.ts` (правка параметра: отмена, запись
+  значения с повторным зажимом пределов),
   `params/` (таблицы разделов, по файлу на раздел: `def.ts`, `display.ts`, `system.ts`, `motion.ts`,
   `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`; отдельный каталог — чтобы таблицы не смешивались с
   логикой), `service-sections.ts` (разделы вкладки «Сервис»), `keys-route.ts` (маршрут клавиши к действию;
   берёт `keyToAction` из `keys.ts`, обратного импорта нет),
   `hal.ts` (справочник пинов HAL), `messages.ts`, `time.ts` (отметки времени из экшена), `toolpath.ts`,
-  `tool-check.ts`, `probe.ts` (замер щупом; таблица циклов и её геометрия — `probe-shapes.ts`),
-  `mpg.ts`, `test.ts` (ПРОГОН: четыре способа прогона — симуляция, холостой, по шагам, по маховику),
-  `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, `tool-measure.ts` (замер инструмента по
+  `tool-check.ts`, `tool-preview.ts` (инструменты кадра: в шпинделе и следующий по УП),
+  `probe.ts` (замер щупом; таблица циклов и её геометрия — `probe-shapes.ts`, исполнение цикла —
+  `probe-exec.ts`), `mpg.ts`, `test.ts` (ПРОГОН: четыре способа прогона — симуляция, холостой, по шагам,
+  по маховику),
+  `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, `editor.ts` (экран «Программа»: выбор файла УП и
+  правка кадров), `setup.ts` (наладка: смещения, инструменты, обнуление), `panel-data.ts` (манифест для
+  Qt-порта: вкладки, рабочие места, экраны и подписи из таблиц React, рендер в
+  `apps/qt-interface/panel-data.js`), `tool-measure.ts` (замер инструмента по
   датчику), `machine-branches.ts` (собственные ветки машины: аварии, справка, тема), `theme`-логика.
 * `public/` — картинки и статика проекта.
 * Тесты — рядом с логикой (`lib/cnc/*.test.ts`), слой тот же, что и дефект. Свод проверок редьюсера держат

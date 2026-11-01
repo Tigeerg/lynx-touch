@@ -6,15 +6,15 @@ code and its run; this file holds the intent, anchors in both trees and acceptan
 
 This edition was merged on 31.10.2026: the inventory and anchors come from the previous edition,
 the order of work, acceptance and decisions come from the lead. State at the day of the edition:
-React `0.24.0` (product `0.35.16`), Qt `0.6.11`.
+React `0.24.0` (product `0.35.17`), Qt `0.6.12`.
 
 **Roles fixed (01.11.2026).** The real controller runs **Qt — it is the product**. React was a demo
 stage: after the start and CAM-insert fixes it is **frozen** — no new features are developed there.
 React stays the reference for texts, behaviour and tests; a defect found during the port is fixed in
 React and moved to Qt at once.
 
-The port exists and is not empty: `main.qml` is 3558 lines, `preview.qml` is a hand-maintained copy
-of the same panel (3567 lines; edited together with `main.qml` until wave A), `assets/` and `fonts/`
+The port exists and is not empty: `main.qml` is 2781 lines, `preview.qml` is a `Window` wrapper with a
+`Loader` over `main.qml` (wave A is done, there is no copy of the panel), `assets/` and `fonts/`
 sit next to them. Text parity is in place: `apps/react-interface/lib/cnc/qt-parity.test.ts` holds
 19 shared labels and reads only `main.qml`. The rule is `CLAUDE.md`, section 5: **the port is
 compared with the original word for word, not translated again**; a divergence must go red in a
@@ -35,7 +35,7 @@ dispatcher's decisions are in §7.
 
 React anchors are a file and a symbol; line numbers are as of 31.10.2026. "W" is the wave in §4.
 
-| Panel node | React `0.24.0` (source) | Qt `0.6.11` (`main.qml`) | Gap | W |
+| Panel node | React `0.24.0` (source) | Qt `0.6.12` (`main.qml`) | Gap | W |
 |---|---|---|---|---|
 | Workplaces | `types.ts` (`SETUP`/`TEST`/`RUN`), `WORKPLACE_LABEL` (`data.ts`), `SET_WORKPLACE` (`nav.ts`) | none; only `machineMode` (`:24`) and `modeCycle` | no workplaces | C |
 | Tabs | 5: `TABS`/`TAB_LABEL` (`types.ts`) Work, Offsets, Tool, Messages, Service; Work merges `pos` and `prog` (`tabOfScreen`) | 7: `tab0`..`tab6` (`:967-1256`), Position and Program separate, plus 3D | +2 tabs | B |
@@ -207,7 +207,10 @@ Pre.: B, C.
 2. `AutoScreen.qml`: position strip, "mm to block", distance-to-go, Single block/M01/Dry run lamps,
    4 views (`AUTO_VIEWS`), transparent code window.
 3. The viewer as a child (the `MockBackend`/`GcodeToolpath` plugin already exists; load the program
-   from the catalogue, not `viewSample`). After this the temporary 3D tab is removed.
+   from the catalogue, not `viewSample`). After this the temporary 3D tab is removed. The embedded
+   viewer has **no control panel of its own and no hotkey hints**: settings come from the panel's
+   service menu, playback is driven by the panel (`machineCycleStart`/`machineFeedHold`/`machineReset`);
+   the viewer buttons stay only in the debug `gcodeviewer.exe`.
 4. Single-block viewing and "Start from block" (`PROG_TO_CURSOR`), restoring modal codes.
 5. Program editor and search/replace.
 

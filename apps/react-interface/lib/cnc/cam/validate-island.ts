@@ -7,17 +7,17 @@
 import { fmt } from './feeds'
 import type { IslandPocketOperation, Rect } from './ops'
 import type { Problem } from './validate-common'
-import { EPS, add } from './validate-common'
+import { EPS_VALIDATE, add } from './validate-common'
 
 /** The clearance of the island to the pocket wall, mm: the mill has to pass between them. */
 export const MIN_ISLAND_CLEARANCE_MM = 0
 
 /** True when every side of `inner` stands inside `outer` (touching counts as inside). */
 const inside = (inner: Rect, outer: Rect): boolean =>
-  inner.x >= outer.x - EPS &&
-  inner.y >= outer.y - EPS &&
-  inner.x + inner.w <= outer.x + outer.w + EPS &&
-  inner.y + inner.h <= outer.y + outer.h + EPS
+  inner.x >= outer.x - EPS_VALIDATE &&
+  inner.y >= outer.y - EPS_VALIDATE &&
+  inner.x + inner.w <= outer.x + outer.w + EPS_VALIDATE &&
+  inner.y + inner.h <= outer.y + outer.h + EPS_VALIDATE
 
 /** The island rules of the pocket: the two rectangles, the island inside and the clearance. */
 export function checkIslandPocket(op: IslandPocketOperation): Problem[] {
@@ -37,7 +37,7 @@ export function checkIslandPocket(op: IslandPocketOperation): Problem[] {
   // The island outside the pocket is the clearance rule of its overlapping side: an island larger
   // than the pocket does not fit between the walls either, and the operator reads one wording.
   if (!inside(op.island, op.rect)) {
-    if (gapOf(op) < op.tool.diameterMm - EPS) {
+    if (gapOf(op) < op.tool.diameterMm - EPS_VALIDATE) {
       add(out, 'island', gapReason(op))
     } else {
       add(
@@ -57,7 +57,7 @@ export function checkIslandPocket(op: IslandPocketOperation): Problem[] {
     op.rect.y + op.rect.h - (op.island.y + op.island.h),
   )
   const needed = op.tool.diameterMm + MIN_ISLAND_CLEARANCE_MM
-  if (minGap < needed - EPS) add(out, 'island', gapReason(op))
+  if (minGap < needed - EPS_VALIDATE) add(out, 'island', gapReason(op))
   return out
 }
 

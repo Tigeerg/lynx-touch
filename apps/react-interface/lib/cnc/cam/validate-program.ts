@@ -6,7 +6,7 @@ import { fmt } from './feeds'
 import type { QuickProgram } from './ops'
 import { stockTop } from './ops'
 import type { Problem } from './validate-common'
-import { EPS, add } from './validate-common'
+import { EPS_VALIDATE, add } from './validate-common'
 
 /** Safe Z has to be above the top of the stock; an equal Z is not above it. */
 export function checkSafeZ(program: QuickProgram, out: Problem[]): void {
@@ -22,7 +22,7 @@ export function checkTolerance(out: Problem[], field: string, value: number): vo
   const letter = field.charAt(field.length - 1)
   if (!(value > 0)) {
     add(out, field, `Допуск G64 ${letter} = ${fmt(value)} мм: допуск должен быть больше нуля.`)
-  } else if (value > 1 + EPS) {
+  } else if (value > 1 + EPS_VALIDATE) {
     add(out, field, `Допуск G64 ${letter} = ${fmt(value)} мм больше 1 мм: сглаживание уведёт фрезу от контура.`)
   }
 }

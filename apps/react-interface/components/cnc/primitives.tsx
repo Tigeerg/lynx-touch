@@ -162,7 +162,7 @@ export function PositionStrip({
   )
 }
 
-export function formatTime(ms: number) {
+export function formatDurationMs(ms: number) {
   const total = Math.floor(ms / 1000)
   const h = Math.floor(total / 3600)
   const m = Math.floor((total % 3600) / 60)

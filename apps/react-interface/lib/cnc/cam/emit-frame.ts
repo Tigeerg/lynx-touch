@@ -8,12 +8,10 @@
 import type { QuickProgram } from './ops'
 import type { Block } from './emit-state'
 import { commentSafe, coord, num, tag } from './emit-words'
+import { WCS_WORDS } from './validate-common'
 
 /** The generator line: the panel and its version, so a saved file names the program that made it. */
 export const GENERATOR = 'lynx-touch react-interface 0.24.0'
-
-/** The work offsets the document may name. */
-export const WCS_WORDS = ['G54', 'G55', 'G56', 'G57', 'G58', 'G59'] as const
 
 /** True when `text` is one of G54..G59; a fallback to G54 would cut at the wrong offset. */
 export const validWcs = (text: string): boolean => (WCS_WORDS as readonly string[]).includes(text)

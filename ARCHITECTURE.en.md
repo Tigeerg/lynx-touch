@@ -63,7 +63,9 @@ Layers, top to bottom:
   with tabs, `cam-preview.tsx` — the 2D view over the same moves, `cam-fields.ts` — field captions and groups,
   `cam-labels.ts` — card words, `keypad.tsx` — the touch digit pad, `cam-overlay-body.tsx` — the columns
   and the DXF dialog state, `operation-card.tsx` — the card with the copy menu, `field-row.tsx` — the field
-  row and the rest source picker, `use-form-state.ts` — the preview timer,
+  row and the rest source picker, `cam-header-cells.ts`/`header-input.tsx` — the cells of the document
+  header (the offset, the stock box, safe Z, the name), `cam-dialogs.ts` — the pure part of the «Array» and
+  «Rotation» dialogs, `use-form-state.ts` — the preview timer,
   `copy-dialogs.tsx`/`copy-dialog-form.tsx` — the array and the rotation, `source-choice.ts` — the source
   operations, `dxf-dialog.tsx`/`dxf-dialog-text.ts` — the DXF import). The per-screen softkey sets live in `softkeys/screens/*.ts` under the `softkey-screens.ts`
   facade. Touch variant — `components/cnc/touch/`; switch — `ui-mode.tsx`, context —
@@ -75,13 +77,34 @@ Layers, top to bottom:
   (editor reducer), `ladder-forms.ts` (element form), `ladder-schemes.ts` (scheme manager),
   `ladder-nav.ts` (cursor and rung navigation), `ladder-rung.ts` (rung building: free address, new rung, a
   copy) — leaves of the graph that the form, the schemes and the reducer stand on; `ladder/types.ts`
-  (PLC types); quick programming — `cam/` (types `ops.ts`, feeds `feeds.ts`, checks `validate*.ts`, planners
-  `path*.ts`, the NC output `emit*.ts`, `.qprog` `serialize*.ts`, the subsystem `cam.ts`, the demo references in
-  `etl/`, the viewer parser rules `viewer-check.ts`, the collision `collision.ts`, the write
-  `cam-save.ts`, the copies `copy-ops.ts`, the remainder `rest-areas.ts`, the DXF reader `dxf-*.ts`, the one
-  recompute of the preview and the summary `cam-preview.ts`, the header edit `cam-program.ts`, the DRO
-  `cam-dro.ts`, opening a saved program `cam-open.ts`, the statistics `cam-stats.ts`, the golden set
-  `golden*.ts`;
+  (PLC types); quick programming — `cam/`: the model — types `ops.ts`, the arms of the operation union per
+  kind `ops-kinds*.ts` (classic `ops-kinds.ts`, Q5 `ops-kinds-q5.ts`, rest `ops-kinds-rest.ts`), the fields a
+  new operation starts from `operation-init.ts`, the defaults of a new program and operation `defaults*.ts`
+  (the common fields `defaults-common.ts`, the probe `defaults-probe.ts`, Q5 `defaults-q5.ts`), the machine
+  limits `limits.ts`, feeds `feeds.ts`; the form — `form*.ts` (the mapping to the document `form.ts`, the field
+  values `form-fields.ts` and `form-fields-kinds.ts`, the per-kind values `form-values.ts`, the Q5 kinds
+  `form-fields-q5.ts`/`form-fields-q5a.ts`, the multi-line text of a block `form-lines.ts`, the form
+  operation and its problems `form-operation.ts`), the checks `validate*.ts` (the common ones
+  `validate-common.ts`, the numbers `validate-numbers.ts`, the kind `validate-shape.ts`, the program
+  `validate-program.ts`, the facade `validate.ts`); the planners — `path*.ts` (the move collector and the cut
+  length `path-builder.ts`, the plan identity `path-uuid.ts`, the operation summary `path-stats.ts`), the
+  moves `moves.ts`, the drill centres `drill-holes.ts`, the tap centres `tap-holes.ts`, the G82 and thread
+  cycles `bores.ts`, the contour offset to the mill centre `contour-offset.ts`, the contour points as one
+  field line `contour-points.ts`, the single-stroke engraving font `engrave-*.ts` (the glyphs
+  `engrave-font.ts`, the sets `engrave-latin.ts`/`engrave-digits.ts`/`engrave-cyrillic.ts`), the rest area of
+  the earlier pockets `rest-areas.ts`; the NC output `emit*.ts`; `.qprog` — the words and numbers
+  `serialize*.ts`, the file as a whole `serialize.ts`, the reader `read-*.ts` (the document header
+  `read-header.ts`, the kind dispatcher `read-op.ts`, the kinds `read-op-classic.ts`/`read-op-shapes.ts`/
+  `read-op-path.ts`, the `op.*` values `read-op-words.ts`), the bad-line error `qprog-error.ts`; the probe —
+  the G38.2 block `probe.ts`, the touch points as one field line `probe-points.ts`, the defaults
+  `probe-defaults.ts`; the viewer parser rules `viewer-check.ts`, the collision `collision.ts`, the subsystem
+  `cam.ts`, the edits that are not a form keystroke `cam-edit.ts`, the insert into the open file
+  `cam-insert.ts`, the form in the reducer `cam-form-run.ts`, the preview debounce `cam-debounce.ts`, the
+  write `cam-save.ts`, the copies `copy-ops.ts`, the DXF reader `dxf-*.ts`, the one recompute of the preview
+  and the summary `cam-preview.ts`, the header edit `cam-program.ts`, the DRO `cam-dro.ts`, opening a saved
+  program `cam-open.ts`, the statistics `cam-stats.ts`, the demo references in `etl/` and the check against
+  them `etl-cases.ts`, the golden set `golden*.ts` (the document `golden-doc.ts`, the generation
+  `golden-gen.ts`, the test helpers `golden-chain.ts`);
   `types.ts` takes `CamState` from `cam/types.ts`); `types.ts` keeps `MachineState` and re-exports the
   PLC types as the former entry point),
   `ladder-scan.ts` is the PLC scan,
@@ -95,13 +118,18 @@ Layers, top to bottom:
   the label ceiling, `softkeyAction`), `softkey-icons.ts` (icons), `softkey-dialogs.ts` (dialog sets),
   `softkey-workplaces.ts` (SETUP, PROGON, AUTO), `softkey-screens.ts` (screen sets); `service-data.ts`
   (the catalogue API: `ParamDef` types and
-  the sections), `params/` (the section tables, one file per section: `def.ts`, `display.ts`, `system.ts`,
+  the sections), `service-edit.ts` (the parameter edit: cancel, writing a value with the limits re-clamped), `params/` (the section tables, one file per section: `def.ts`, `display.ts`, `system.ts`,
   `motion.ts`, `linuxcnc.ts`, `mesa.ts`, `joints.ts`, `pid.ts`; a directory of its own so the tables stay
   apart from the logic), `hal.ts` (the HAL pin reference), `messages.ts`, `time.ts` (the stamps from the
-  action), `toolpath.ts`, `tool-check.ts`, `service-sections.ts` (the Service tab sections), `keys-route.ts`
-  (the key to action route; it takes `keyToAction` from `keys.ts`, there is no import back), `probe.ts` (probing; the cycle table and its geometry — `probe-shapes.ts`),
+  action), `toolpath.ts`, `tool-check.ts`, `tool-preview.ts` (the block tools: the one in the spindle and the
+  next the program calls), `service-sections.ts` (the Service tab sections), `keys-route.ts`
+  (the key to action route; it takes `keyToAction` from `keys.ts`, there is no import back), `probe.ts` (probing; the cycle table and its geometry — `probe-shapes.ts`, the cycle run —
+  `probe-exec.ts`),
   `mpg.ts`, `test.ts` (PROGON: four run modes — simulation, dry, step, handwheel),
-  `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, `tool-measure.ts` (tool measuring
+  `workplace.ts`, `files.ts`, `list.ts`, `prog.ts`, `editor.ts` (the Program screen: choosing the NC file and
+  editing its blocks), `setup.ts` (setup: offsets, tools, zeroing), `panel-data.ts` (the manifest for the Qt
+  port: tabs, workplaces, screens and the labels from the React tables, rendered into
+  `apps/qt-interface/panel-data.js`), `tool-measure.ts` (tool measuring
   with the setter), `machine-branches.ts` (the machine's own keys: alarms, help, theme), theme logic.
 * `public/` — images and static assets of the project.
 * Tests live next to the logic (`lib/cnc/*.test.ts`), in the same layer as the defect. The reducer checks
@@ -114,8 +142,8 @@ is local (when an API request appears, add and name that layer here).
 
 ## 3. `qt-interface` (Qt port of the UI)
 
-* `main.qml` — the source of the UI (edited by hand); `preview.qml` — data, also edited by hand (the generator
-  was removed together with the Python layer).
+* `main.qml` — the source of the UI (edited by hand); `preview.qml` — a `Window` with a `Loader`
+  over it, not a second copy of the panel.
 * `assets/` — project images; `fonts/` — `Inter`, `JetBrains Mono`, `lucide.ttf`.
 * The debug entry point is `build/qt-interface/lynx-panel.exe` (`scripts/build-qt-interface.ps1`):
   a 1024×600 window without a console; it adds the `MockBackend`/`CNC.Edges` paths itself. On the

@@ -10,7 +10,7 @@ import { SESSION_UUID } from './path-uuid'
 const ORIGIN: Point3 = { x: 0, y: 0, z: 0 }
 
 /** The parser resolution of the file: a value is the same when it is this close. */
-export const EPS = 1e-6
+export const EPS_PATH = 1e-6
 
 /** The cutting length of one move from `from`: the arc when it is an arc, the chord otherwise. */
 export function moveLength(move: CamMove, from: Point3): number {

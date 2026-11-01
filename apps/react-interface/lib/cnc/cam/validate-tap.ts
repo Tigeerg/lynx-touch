@@ -14,7 +14,7 @@ import { fmt } from './feeds'
 import type { Operation, ProgramShape, QuickProgram, TapOperation } from './ops'
 import { paramValue } from '../service-data'
 import type { Problem } from './validate-common'
-import { EPS, add } from './validate-common'
+import { EPS_VALIDATE, add } from './validate-common'
 import { tapHoles } from './tap-holes'
 
 /** The catalogue id of the machine's rigid tapping switch (`params/system.ts`). */
@@ -52,7 +52,12 @@ export function checkTap(program: ProgramShape & Pick<QuickProgram, 'params'>, o
   const { min, max } = program.stock
   const r = tap.tool.diameterMm / 2
   for (const hole of layout.points) {
-    if (hole.x - r < min.x - EPS || hole.x + r > max.x + EPS || hole.y - r < min.y - EPS || hole.y + r > max.y + EPS) {
+    if (
+      hole.x - r < min.x - EPS_VALIDATE ||
+      hole.x + r > max.x + EPS_VALIDATE ||
+      hole.y - r < min.y - EPS_VALIDATE ||
+      hole.y + r > max.y + EPS_VALIDATE
+    ) {
       add(
         out,
         'geometry',

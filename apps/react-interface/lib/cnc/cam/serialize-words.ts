@@ -8,7 +8,10 @@
 //   * free text (a name, an id, a note) is the rest of the line and may carry spaces; the writer
 //     puts it in double quotes and the reader drops one outer pair, nothing is escaped;
 //   * numbers are a full token with a decimal point; `1x` and `1,5` are errors, not 1.
-import type { Coolant, OperationKind, Wcs } from './ops'
+import type { Coolant, OperationKind } from './ops'
+
+/** The work offsets the document may name: the one list of `validate-common`, re-exported for the readers. */
+export { WCS_WORDS } from './validate-common'
 
 /** The words of the operation kinds on the `op` line, as the console names them. */
 export const KIND_WORDS: Record<OperationKind, string> = {
@@ -76,8 +79,6 @@ export const unquoteText = (text: string): string =>
   text.length >= 2 && text.startsWith('"') && text.endsWith('"') ? text.slice(1, -1) : text
 
 export const COOLANT_WORDS: Coolant[] = ['off', 'mist', 'flood']
-
-export const WCS_WORDS: Wcs[] = ['G54', 'G55', 'G56', 'G57', 'G58', 'G59']
 
 /** The on/off words of a boolean field of the file. */
 export const onOff = (value: boolean): string => (value ? 'on' : 'off')

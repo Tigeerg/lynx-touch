@@ -53,7 +53,7 @@ export function readHeaderKey(program: QuickProgram, key: string, line: string, 
   }
   if (key === 'wcs') {
     const value = one()
-    if (!(WCS_WORDS as string[]).includes(value)) fail(where, `wcs ждёт ${WCS_WORDS.join(', ')}.`)
+    if (!(WCS_WORDS as readonly string[]).includes(value)) fail(where, `wcs ждёт ${WCS_WORDS.join(', ')}.`)
     program.wcs = value as QuickProgram['wcs']
     return
   }

@@ -2,7 +2,7 @@ import { CircleAlert, Crosshair, Info, TriangleAlert, Wrench } from 'lucide-reac
 import type { Action } from '@/lib/cnc/machine'
 import { AXES, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
-import { formatCoord, formatTime, Panel } from '../primitives'
+import { formatCoord, formatDurationMs, Panel } from '../primitives'
 import { ProbeWizard } from '../probe/probe-wizard'
 
 const th = 'px-2.5 py-1 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground'
@@ -131,7 +131,7 @@ export function ToolScreen({ state }: { state: MachineState }) {
                     </div>
                   </td>
                   <td className="px-2.5 py-1 text-right font-mono text-sm tabular-nums text-muted-foreground">
-                    {formatTime(state.toolTime[t.number] ?? 0)}
+                    {formatDurationMs(state.toolTime[t.number] ?? 0)}
                   </td>
                 </tr>
               )

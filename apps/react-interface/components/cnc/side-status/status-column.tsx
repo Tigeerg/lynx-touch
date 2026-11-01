@@ -5,7 +5,7 @@ import { spindleLoad, spindleRpm } from '@/lib/cnc/spindle'
 import type { MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
 import { Droplets, Fan, FileCode, Gauge, History, Package, Timer, Wrench } from 'lucide-react'
-import { Lamp, Panel, formatTime } from '../primitives'
+import { Lamp, Panel, formatDurationMs } from '../primitives'
 import { ProdStat, Reading, SIDE_FLOW, Section } from './sections'
 import { OverrideRow } from './tool'
 import { LoadRow, RapidRow } from './load'
@@ -51,8 +51,8 @@ export function SideStatus({
               <span className="w-10 text-right font-mono text-xs font-bold tabular-nums">{progress}%</span>
             </div>
             <dl className="grid grid-cols-3 gap-1 border-t pt-0.5">
-              <ProdStat icon={Timer} label="Цикл" value={formatTime(state.cycleTime)} />
-              <ProdStat icon={History} label="Прошлый" value={formatTime(state.lastCycle)} />
+              <ProdStat icon={Timer} label="Цикл" value={formatDurationMs(state.cycleTime)} />
+              <ProdStat icon={History} label="Прошлый" value={formatDurationMs(state.lastCycle)} />
               <ProdStat icon={Package} label="Деталей" value={String(state.partCount)} />
             </dl>
           </Section>

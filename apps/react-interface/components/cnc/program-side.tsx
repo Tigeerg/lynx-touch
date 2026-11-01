@@ -4,7 +4,7 @@ import { programLines, type Action } from '@/lib/cnc/machine'
 import { axisLoad, spindleLoad } from '@/lib/cnc/spindle'
 import { AXES, type MachineState } from '@/lib/cnc/types'
 import { cn } from '@/lib/utils'
-import { formatTime, Panel } from './primitives'
+import { formatDurationMs, Panel } from './primitives'
 import {
   AxisLoad,
   CorrectorsSection,
@@ -121,8 +121,8 @@ export function ExecutionBody({ state }: { state: MachineState }) {
         <span className="truncate font-mono font-bold">{nextLine ?? 'конец программы'}</span>
       </p>
       <dl className="grid grid-cols-3 gap-1 border-t pt-0.5">
-        <ProdStat icon={Timer} label="Цикл" value={formatTime(state.cycleTime)} />
-        <ProdStat icon={History} label="Прошлый" value={formatTime(state.lastCycle)} />
+        <ProdStat icon={Timer} label="Цикл" value={formatDurationMs(state.cycleTime)} />
+        <ProdStat icon={History} label="Прошлый" value={formatDurationMs(state.lastCycle)} />
         <ProdStat icon={Package} label="Деталей" value={String(state.partCount)} />
       </dl>
     </>

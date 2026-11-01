@@ -1,14 +1,22 @@
 # Журнал изменений — 3D-вьювер G-кода (QtQuick3D)
 
-> **Историческая справка.** Таблица ниже описывает удалённый Python-слой; текущий состав вьювера —
+> **Историческая справка.** Записи ниже описывают и удалённый Python-слой; текущий состав вьювера —
 > C++/QML (`modules/gcode-viewer/cpp`, `GcodeViewer3D.qml`), см. [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
-> Новые записи ведутся сверху, по версиям.
+> Новые записи ведутся сверху, по версиям. Текущая версия вьювера — `0.58.8` (см. `modules/gcode-viewer/VERSION`).
 
 ## 0.58.8 - 2026-11-01
 
 ### Исправлено
 - **Запуск из Проводника.** Qt, OCCT, `qoffscreen.dll` и `cncedgesplugin.dll` раскладываются рядом
   с exe; `gcodeviewer`, `keyprobe`, `stock_bind_probe`, `stepledges_probe` работают без PATH.
+
+Файлы, которых касались изменения:
+
+| Файл | Назначение |
+|------|-----------|
+| `scripts/build-viewer.ps1` | Раскладка Qt, OCCT (набор novtk), `qoffscreen.dll` и `cncedgesplugin.dll` рядом с exe — запуск из Проводника без PATH |
+| `modules/gcode-viewer/GcodeViewer3D.qml` | Подпись версии `viewerVersion` |
+| `modules/gcode-viewer/VERSION`, `projects.json`, `README.md`, `CHANGELOG.md` | Версия 0.58.8 и журнал |
 
 ## 0.58.7 - 2026-10-31
 
@@ -20,93 +28,11 @@
 
 | Файл | Назначение |
 |------|-----------|
-| `modules/gcode-viewer/mock_backend.py` | Python/Qt-бэкенд: парсер G-кода, геометрии (траектория, сетка, меш, контуры), расчёт трансформа детали |
-| `modules/gcode-viewer/GcodeViewer3D.qml` | Сам вьювер: сцена, камера, материалы, анимация, оверлей загрузки |
-| `modules/gcode-viewer/preview_3d.qml` | Обёртка `Item -> Window` для запуска вьювера |
-| `modules/gcode-viewer/preview_3d.py` | Точка входа: запуск окна, загрузка УП |
-| `modules/gcode-viewer/toolpath.vert` / `toolpath.frag` | Шейдеры кастомного материала для скрытия пройденных линий |
-| `modules/gcode-viewer/stepledges.vert` / `stepledges.frag` | Шейдеры ленточной обводки: постоянная толщина в px, distance-field AA, polygon offset в клип-пространстве |
-| `modules/gcode-viewer/gcode_parser.py` | Парсер УП: перемещения, дуги, циклы сверления, допуски и скорости |
-| `modules/gcode-viewer/ui_tags.py` | Теги постпроцессора `UI_*`: поворот, начало, матрица, инструмент, оправка, заготовка, этапы |
-| `modules/gcode-viewer/gv_common.py` | Общий низ слоёв: numpy и замок OCCT |
-| `modules/gcode-viewer/gv_types.py` | Типы границ модулей: точки пути, этапы, габарит, буферы, поверхности, топология, профили |
-| `modules/gcode-viewer/cache_store.py` | Дисковый кэш подготовленных данных: траектория, меш, обводка |
-| `modules/gcode-viewer/stl_import.py` | Импорт STL (бинарный и ASCII) в суп треугольников |
-| `modules/gcode-viewer/packing.py` | Упаковка отрезков и дуг в буферы геометрии |
-| `modules/gcode-viewer/step_import.py` | Импорт STEP: B-rep, тесселяция, истинные рёбра, ориентация оболочки |
-| `modules/gcode-viewer/step_surfaces.py` | Аналитические поверхности вращения из STEP: цилиндры и конусы |
-| `modules/gcode-viewer/tangents.py` | Аналитические касательные контура (семейства цилиндров и конусов) |
-| `modules/gcode-viewer/silhouette.py` | Силуэт по топологии меша: сварка вершин, горизонт поверхности |
-| `modules/gcode-viewer/normals.py` | Crease-aware нормали кожи |
-| `modules/gcode-viewer/outline.py` | Обводка меша: рёбра по двугранному углу и склейка цепочек |
-| `modules/gcode-viewer/path_prep.py` | Подготовка траектории: потоки вершин, этапы, границы |
-| `modules/gcode-viewer/tooling.py` | Инструмент и оправка: профили, кольца, вылет |
-| `modules/gcode-viewer/collision.py` | Коллизии оправки с заготовкой и проверка инструмента |
-| `modules/gcode-viewer/geometry.py` | Геометрии Qt Quick 3D: траектория, рёбра, сетка, оси, меш, инструмент |
-| `modules/gcode-viewer/controller.py` | Контроллер вьювера: `GcodeToolpath` и регистрация типа `MockBackend` |
-| `modules/gcode-viewer/test_tangent_policy.py` | Headless-проверка политики касательного контура на STEP-модели |
-| `modules/gcode-viewer/test_normals_orientation.py` | Headless-проверка ориентации нормалей кожи (наружу по обходу оболочки) |
-| `modules/gcode-viewer/test_outline_segments.py` | Headless-проверка контура меша: звенья склеены, покрытие не потеряно |
-| `modules/gcode-viewer/test_module_names.py` | Headless-проверка: модуль использует только то, что определил или импортировал |
-| `modules/gcode-viewer/test_gcode_parser.py` | Headless-проверка парсера УП: перемещения, дуги G2/G3, единицы F, прореживание, переход машина->сцена |
-| `modules/gcode-viewer/test_drill_cycles.py` | Headless-проверка кадровых циклов сверления G73/G81/G82/G83: клевки, вывод стружки, возврат на R |
-| `modules/gcode-viewer/test_tool_profile.py` | Headless-проверка профиля инструмента и оправки: типы `UI_TOOL`, вылет, кольца |
-| `modules/gcode-viewer/test_collision.py` | Headless-проверка коллизий: `_circle_rect_hit`, скан оправки по заготовке, отсутствие тихого отказа |
-| `scripts/build-viewer.ps1` | Сборка C++-плагина `CNC.Edges` (Ninja, MSVC, Qt 6.12, OCCT, Eigen) в `build/edges` |
-| `modules/gcode-viewer/cpp/CMakeLists.txt` | Каркас сборки плагина `CNC.Edges`: цели `cncedgesplugin`, `cncedgespluginplugin`, `stepledges_probe` |
-| `modules/gcode-viewer/cpp/stepledgesgeometry.h` / `.cpp` | Рёбра STEP (B-rep) как `Lines`-геометрия QML: сэмплер и фильтр швов согласованы с `load_step_model` |
-| `modules/gcode-viewer/cpp/stepledges_probe.cpp` | Пробник: сегменты рёбер STEP из плагина (число и `sha256` набора точек), проверка импорта QML |
-| `modules/gcode-viewer/test_stepledges_plugin.py` | Headless-сверка сегментов плагина `CNC.Edges` с питоновским эталоном `load_step_model` |
-| `modules/gcode-viewer/cpp/core/gcode_parser.h` / `.cpp` | C++-ядро: парсер G-кода, циклы сверления, дуги, прореживание, скорости |
-| `modules/gcode-viewer/cpp/core/ui_tags.h` / `.cpp` | C++-ядро: теги постпроцессора `UI_*` и подписи этапов |
-| `modules/gcode-viewer/cpp/core/path_prep.h` / `.cpp` | C++-ядро: `_prepare_ordered`, потоки вершин, этапы |
-| `modules/gcode-viewer/cpp/core/gv_types.h`, `text_util.h` / `.cpp` | C++-ядро: типы границ модулей и строковые помощники |
-| `modules/gcode-viewer/cpp/gcode_probe.cpp` | Пробник ядра: буферы и этапы УП, `sha256` против оракула |
-| `modules/gcode-viewer/test_gcode_core.py` | Headless-сверка C++-ядра с `parse_gcode` и оракулом (плюс ветки, которых нет в Test_model) |
-| `modules/gcode-viewer/cpp/qt/gv_geometry.h` / `.cpp` | C++-геометрии Qt Quick 3D: траектория, рёбра HLR, сетка, оси, меш, инструмент |
-| `modules/gcode-viewer/cpp/geometry_probe.cpp` | Пробник геометрий: дампы буферов и `sha256` против питоновских геометрий |
-| `modules/gcode-viewer/test_geometry_core.py` | Headless-сверка буферов C++-геометрий с `geometry.py` побайтово |
-| `modules/gcode-viewer/cpp/occt/step_import.h` / `.cpp` | C++-импорт STEP: B-rep, тесселяция, ориентация оболочки (OCCT SDK) |
-| `modules/gcode-viewer/cpp/core/normals.h` / `.cpp` | C++-нормали кожи: сварка, кластеризация по крейзу, среднее по площади |
-| `modules/gcode-viewer/cpp/sha256.h` | Общий SHA-256 для пробников (вынесен из `gcode_probe.cpp`) |
-| `modules/gcode-viewer/cpp/step_probe.cpp` | Пробник STEP: суп вершин, треугольники, нормали, `sha256` |
-| `modules/gcode-viewer/test_step_core.py` | Headless-сверка STEP-тесселяции и нормалей C++ с `load_step_model` и оракулом |
-| `modules/gcode-viewer/cpp/core/stl_import.h` / `.cpp` | C++-импорт STL (бинарный и ASCII) в суп треугольников |
-| `modules/gcode-viewer/cpp/core/outline.h` / `.cpp` | C++-обводка меша: рёбра по двугранному углу, склейка цепочек, упрощение |
-| `modules/gcode-viewer/cpp/core/packing.h` / `.cpp` | C++-упаковка рёбер в буферы геометрии (`_pack_edges_np`, `packed_positions`) |
-| `modules/gcode-viewer/cpp/stl_probe.cpp` | Пробник STL: суп и рёбра обводки, `sha256` |
-| `modules/gcode-viewer/test_stl_core.py` | Headless-сверка STL-импорта и обводки C++ с оракулом |
-| `modules/gcode-viewer/cpp/core/silhouette.h` / `.cpp` | C++-топология силуэта меша и горизонт поверхности |
-| `modules/gcode-viewer/cpp/silhouette_probe.cpp` | Пробник силуэта: топология и пять глаз, `sha256` |
-| `modules/gcode-viewer/test_silhouette_core.py` | Headless-сверка топологии силуэта и глаз C++ с оракулом |
-| `modules/gcode-viewer/cpp/occt/step_surfaces.h` / `.cpp` | C++-аналитические поверхности STEP: цилиндры и конусы |
-| `modules/gcode-viewer/cpp/core/tangents.h` / `.cpp` | C++-касательные контура: семейства цилиндров и конусов, политика конусов, силуэт из семейств |
-| `modules/gcode-viewer/cpp/tangents_probe.cpp` | Пробник касательных: поверхности, семейства, силуэт на пяти глазах |
-| `modules/gcode-viewer/test_tangents_core.py` | Headless-сверка поверхностей STEP и касательных C++ с питоновским эталоном |
-| `modules/gcode-viewer/cpp/bridge/gv_bridge.h` / `.cpp` | C-ABI-мост над C++-ядром: нормали кожи и STEP-модель для вызова из Python |
-| `modules/gcode-viewer/cpp/occt/step_edges.h` / `.cpp` | Отбор и склейка рёбер STEP вынесены в Qt-free слой: одна редакция алгоритма для плагина и моста |
-| `modules/gcode-viewer/cpp/occt/step_bundle.h` / `.cpp` | Комплект STEP (суп, нормали, рёбра до склейки) для моста |
-| `modules/gcode-viewer/gv_cpp.py` | Python-шим моста: загрузка через `ctypes`, поиск DLL, каталог OCCT в путь |
-| `modules/gcode-viewer/test_cpp_bridge.py` | Проверка моста: разбор флага, нормали и STEP бит-в-бит, фолбэк на Python |
-| `modules/gcode-viewer/gv_qtgeom.py` | Оболочка C++-геометрий Qt: буфер считает `gvgeom`, установку делает эталонный `_rebuild()` |
-| `modules/gcode-viewer/cpp/exp/gvqtshim.h` / `.cpp` | C-ABI шим к геометриям Qt: сборка буферов и обёртка объектов для процесса PySide6 |
-| `modules/gcode-viewer/test_qt_bridge.py` | Проверка: буферы шести C++-геометрий и проводка QML в процессе PySide6 |
-| `modules/gcode-viewer/cpp/qmlbackend/gv_qmlgeom.h` / `.cpp` | QML-обёртки C++-геометрий в модуле `MockBackend` 1.0 |
-| `modules/gcode-viewer/cpp/qmlbackend/gv_toolpath.h` / `.cpp` | C++-контроллер `GcodeToolpath`: каркас, загрузка УП, буферы, свойства и слоты выборки |
-| `modules/gcode-viewer/test_controller_cpp.py` | Сверка C++- и питоновского контроллеров на одном УП |
-| `modules/gcode-viewer/cpp/core/tooling.h` / `.cpp` | C++-профили инструмента и оправки: режущая часть, кольца, вылет |
-| `modules/gcode-viewer/cpp/core/collision.h` / `.cpp` | C++-скан коллизий оправки с заготовкой и проверка инструмента |
-| `modules/gcode-viewer/cpp/viewer/main.cpp` | C++-точка входа `gcodeviewer`: окно QML, проводка плагина и OCCT, запуск без Python |
-| `modules/gcode-viewer/cpp/bench_probe.cpp` | Пробник замеров: время фаз холодной загрузки и цена кадра |
-| `modules/gcode-viewer/cpp/core/np_helpers.h` | Общие числовые помощники ядра (скалярное и векторное произведение, нормы, округление) |
-| `modules/gcode-viewer/oracle_dump.py` | Оракул промежуточных результатов: эталон для переноса на C++ |
-| `modules/gcode-viewer/test_ribbon_width.py` | Живая проверка толщины ленты (2 px по вертикали и горизонтали) |
-| `modules/gcode-viewer/test_solid_skin.py` | Живая проверка: сплошная кожа закрывает скрытые рёбра (без просвечивания) |
-| `modules/gcode-viewer/render_probe.py` | Диагностический захват кадра (режимы: none/model/async, pitch=, yaw=, nostock) |
-
-Запуск: `python modules/gcode-viewer/preview_3d.py "путь/к/файлу.ngc"` (STL с тем же именем подхватывается автоматически).
-
-**Текущая версия вьювера:** `0.58.3` (см. `modules/gcode-viewer/VERSION`).
+| `modules/gcode-viewer/cpp/viewer/main.cpp` | GUI-подсистема и `AttachConsole`: вывод в консоль вызывающего терминала, при двойном щелчке консоли нет |
+| `modules/gcode-viewer/cpp/CMakeLists.txt` | Сборка `gcodeviewer` как GUI-приложения (без консоли) |
+| `scripts/run-qt-interface.ps1` | Запуск `qmlscene` с флагом `CREATE_NO_WINDOW`: панель Qt без консоли разработчика |
+| `modules/gcode-viewer/GcodeViewer3D.qml` | Подпись версии `viewerVersion` |
+| `modules/gcode-viewer/VERSION`, `projects.json`, `CHANGELOG.md`, `README.md` | Версия 0.58.7 и журнал |
 
 ---
 

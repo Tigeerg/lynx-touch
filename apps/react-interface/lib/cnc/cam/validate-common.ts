@@ -30,8 +30,8 @@ export type Validation = { ok: true } | { ok: false; bad: Problem[] }
 /** The WCS words the post-processor and the check share. */
 export const WCS_WORDS = ['G54', 'G55', 'G56', 'G57', 'G58', 'G59'] as const
 
-/** The tolerance the numbers compare at: a millimetre is a coarse unit of a toolpath. */
-export const EPS = 1e-9
+/** The tolerance the checks compare at: a millimetre is a coarse unit of a toolpath. */
+export const EPS_VALIDATE = 1e-9
 /** The smallest axial step worth a pass, mm. */
 export const MIN_STEP_MM = 0.1
 /** The smallest peck Q of G83 worth a cycle, mm. */
@@ -160,10 +160,10 @@ function checkDepth(program: QuickProgram, op: Operation, out: Problem[]): void 
     add(out, 'depthMm', 'Глубина обработки должна быть больше нуля.')
     return
   }
-  if (op.depthMm > top - bottom + EPS && op.topZ <= top + EPS) {
+  if (op.depthMm > top - bottom + EPS_VALIDATE && op.topZ <= top + EPS_VALIDATE) {
     add(out, 'depthMm', `Глубина ${fmt(op.depthMm)} мм ниже дна заготовки: снимается не более ${fmt(top - bottom)} мм.`)
   }
-  if (op.topZ - op.depthMm < bottom - EPS) {
+  if (op.topZ - op.depthMm < bottom - EPS_VALIDATE) {
     add(
       out,
       'depthMm',

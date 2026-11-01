@@ -14,7 +14,7 @@
 import { fmt } from './feeds'
 import type { CounterboreOperation, Operation, ProgramShape, ThreadOperation } from './ops'
 import type { Problem } from './validate-common'
-import { EPS, add } from './validate-common'
+import { EPS_VALIDATE, add } from './validate-common'
 import { counterboreHoles } from './tap-holes'
 
 /** The default dwell of G82 when the document does not set it, seconds. */
@@ -34,7 +34,12 @@ function checkHoleBody(
   const { min, max } = program.stock
   const r = toolMm / 2
   for (const hole of points) {
-    if (hole.x - r < min.x - EPS || hole.x + r > max.x + EPS || hole.y - r < min.y - EPS || hole.y + r > max.y + EPS) {
+    if (
+      hole.x - r < min.x - EPS_VALIDATE ||
+      hole.x + r > max.x + EPS_VALIDATE ||
+      hole.y - r < min.y - EPS_VALIDATE ||
+      hole.y + r > max.y + EPS_VALIDATE
+    ) {
       add(
         out,
         'geometry',
@@ -60,7 +65,7 @@ export function checkCounterbore(program: ProgramShape, op: Operation, out: Prob
     add(out, 'seatDiameterMm', 'Диаметр цековки должен быть больше нуля.')
     return
   }
-  if (cb.seatDiameterMm < holeDiameter - EPS) {
+  if (cb.seatDiameterMm < holeDiameter - EPS_VALIDATE) {
     add(out, 'seatDiameterMm', 'Цековка уже отверстия')
     return
   }
@@ -75,7 +80,7 @@ export function checkCounterbore(program: ProgramShape, op: Operation, out: Prob
     add(out, 'rMm', 'Задайте плоскость R цековки: без неё цикл возьмёт высоту по умолчанию.')
     return
   }
-  if (cb.rMm < cb.topZ - EPS) {
+  if (cb.rMm < cb.topZ - EPS_VALIDATE) {
     add(out, 'rMm', `R ${fmt(cb.rMm)} мм ниже верха материала ${fmt(cb.topZ)} мм: быстрый ход войдёт в металл.`)
     return
   }
@@ -87,7 +92,7 @@ export function checkCounterbore(program: ProgramShape, op: Operation, out: Prob
 /** The counterbore warnings: a shallow seat over a wide head is still a seat, but a weak one. */
 export function counterboreWarnings(op: CounterboreOperation): Problem[] {
   if (!(op.seatDepthMm > 0) || !(op.seatDiameterMm > 0)) return []
-  if (op.seatDepthMm < op.seatDiameterMm - EPS) {
+  if (op.seatDepthMm < op.seatDiameterMm - EPS_VALIDATE) {
     return [{ field: 'seatDepthMm', reason: 'Цековка мельче диаметра: проверьте крепёж' }]
   }
   return []
@@ -106,7 +111,7 @@ function checkThread(program: ProgramShape, op: Operation, out: Problem[]): void
     return
   }
   const d = thread.tool.diameterMm
-  if (thread.pitchMm > d + EPS) {
+  if (thread.pitchMm > d + EPS_VALIDATE) {
     add(out, 'pitchMm', `Шаг ${fmt(thread.pitchMm)} мм больше фрезы ${fmt(d)} мм: спираль шире инструмента.`)
     return
   }
@@ -115,11 +120,11 @@ function checkThread(program: ProgramShape, op: Operation, out: Problem[]): void
     return
   }
   if (thread.internal) {
-    if (d / 2 >= thread.hole.r - thread.pitchMm / 2 - EPS) {
+    if (d / 2 >= thread.hole.r - thread.pitchMm / 2 - EPS_VALIDATE) {
       add(out, 'tool.diameterMm', 'Фреза не проходит в отверстие под резьбу')
       return
     }
-  } else if (d > thread.hole.r * 2 - thread.pitchMm + EPS) {
+  } else if (d > thread.hole.r * 2 - thread.pitchMm + EPS_VALIDATE) {
     add(out, 'tool.diameterMm', 'Фреза не тоньше впадины резьбы: возьмите фрезу поменьше.')
     return
   }

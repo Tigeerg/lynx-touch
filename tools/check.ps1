@@ -1,4 +1,4 @@
-﻿# tools/check.ps1 - the guard of the project style and structure (rules - CLAUDE.md).
+# tools/check.ps1 - the guard of the project style and structure (rules - CLAUDE.md).
 #
 # Run: pnpm guard
 # The text rules are checked here and now. Checks that need pnpm/node run only if the tool is
@@ -106,6 +106,33 @@ foreach ($rel in $marks.Keys) {
     Ok "${rel}: $count строк"
   }
 }
+
+# 4b. The product version is a single number in five places: VERSION, projects.json, the first
+#     entry of CHANGELOG.md, the README.md badge, the VERSIONING.md header. A divergence is red
+#     with the paths and the numbers. Pure PowerShell, no tools needed.
+function Get-FirstGroup([string]$path, [string]$pattern) {
+  $hit = Select-String -LiteralPath $path -Pattern $pattern -Encoding UTF8 | Select-Object -First 1
+  if ($hit) { return $hit.Matches.Groups[1].Value }
+  return $null
+}
+$versionSources = [ordered]@{
+  'VERSION'                          = (Get-Content -LiteralPath 'VERSION' -TotalCount 1).Trim()
+  'projects.json (product.version)'  = (Get-Content -LiteralPath 'projects.json' -Encoding UTF8 -Raw | ConvertFrom-Json).version
+  'CHANGELOG.md (первая запись ## )' = Get-FirstGroup 'CHANGELOG.md' '^## (\d+\.\d+\.\d+)'
+  'README.md (бейдж)'                = Get-FirstGroup 'README.md' 'badge/версия-(\d+\.\d+\.\d+)-'
+  'VERSIONING.md (шапка)'            = Get-FirstGroup 'VERSIONING.md' 'Текущая версия — \*\*(\d+\.\d+\.\d+)\*\*'
+}
+$versionOk = $true
+foreach ($entry in $versionSources.GetEnumerator()) {
+  if ([string]::IsNullOrEmpty($entry.Value)) {
+    Bad "версия продукта: в $($entry.Key) номер не найден"
+    $versionOk = $false
+  } elseif ($entry.Value -ne $versionSources['VERSION']) {
+    Bad "версия продукта: $($entry.Key) = '$($entry.Value)', а VERSION = '$($versionSources['VERSION'])'"
+    $versionOk = $false
+  }
+}
+if ($versionOk) { Ok "версии продукта согласованы: $($versionSources['VERSION'])" }
 
 # 5. Tool checks - if the tool is real, not a stub.
 $pnpmExe = $null

@@ -23,8 +23,8 @@
 
 * **`react-interface`** — панель оператора: Next.js + React + TypeScript (`app/`, `components/cnc/`,
   `lib/cnc/`). Логика станка — чистый TypeScript, рендер — компоненты.
-* **`qt-interface`** — перенос интерфейса на QML (`apps/qt-interface/main.qml`, `preview.qml` — данные,
-  правятся руками).
+* **`qt-interface`** — перенос интерфейса на QML (`apps/qt-interface/main.qml` — источник панели;
+  `preview.qml` — обёртка `Window` 1024×600 с `Loader`).
 * **`gcode-viewer`** — 3D-вьювер УП: QML + C++ (`GcodeViewer3D.qml`, `cpp/`, шейдеры
   `toolpath.*`, `stepledges.*`, `stocksurface.*`, `stockshell.*`). Питоновского слоя в репозитории нет.
 * **`cad-testdata`** — тестовые УП/модели и постпроцессор (`data/cad-testdata/`).
@@ -110,8 +110,8 @@
   термин годится как есть («СОЖ», «Отмена»); подсказка обращается к оператору на «вы» и безлично. Без
   восклицаний, без «ВНИМАНИЕ», без «нажмите кнопочку».
 * Qt-порт: тексты совпадают с React дословно — порт сверяют с оригиналом, а не переводят заново.
-* `preview.qml` — данные, а не генерация: генератор удалён вместе с питоновским слоем, файл правят руками,
-  источник — `main.qml`.
+* `preview.qml` — обёртка над `main.qml` (`Window` 1024×600 с `Loader`), а не копия панели; отладочная
+  точка входа — `build/qt-interface/lynx-panel.exe`.
 * Иконки только lucide: React — `lucide-react`, QML — приложенный `fonts/lucide.ttf`. Второй набор иконок
   не заводят.
 * Картинка живёт в проекте, который её показывает: web — `public/`, QML — `apps/qt-interface/assets/`.

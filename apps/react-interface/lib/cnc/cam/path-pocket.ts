@@ -13,7 +13,7 @@
 // A pass: rapid at safe Z over the start of the first row, rapid down to the material top, plunge to
 // the pass Z, the rows, a cut back up to the top, then the next pass. The last pass is the bottom.
 import type { Operation, QuickProgram, RectPocketOperation } from './ops'
-import { EPS, PathBuilder } from './path-builder'
+import { EPS_PATH, PathBuilder } from './path-builder'
 import { axialPasses } from './path-face'
 
 /** The pocket raster layout: the inner rectangle, the row count and the passes. */
@@ -62,9 +62,9 @@ export function pocketLayout(operation: RectPocketOperation): PocketLayout {
   }
   const innerAlong = along - 2 * insetMm
   const innerAcross = across - 2 * insetMm
-  if (innerAlong < -EPS || innerAcross < -EPS) return empty
+  if (innerAlong < -EPS_PATH || innerAcross < -EPS_PATH) return empty
   const nominal = Math.min(operation.tool.diameterMm * (operation.stepOverPct / 100), innerAcross)
-  const rows = nominal <= EPS ? 1 : Math.ceil(innerAcross / nominal - EPS) + 1
+  const rows = nominal <= EPS_PATH ? 1 : Math.ceil(innerAcross / nominal - EPS_PATH) + 1
   return {
     fits: true,
     alongX,

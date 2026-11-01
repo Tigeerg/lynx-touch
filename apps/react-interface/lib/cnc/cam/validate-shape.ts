@@ -21,7 +21,7 @@ import type {
   RectPocketOperation,
 } from './ops'
 import type { Problem } from './validate-common'
-import { EPS, MIN_PECK_MM, MIN_STEP_MM, add } from './validate-common'
+import { EPS_VALIDATE, MIN_PECK_MM, MIN_STEP_MM, add } from './validate-common'
 import { checkContour } from './validate-contour'
 import { checkChamfer, checkSlot } from './validate-slot'
 import { checkTap } from './validate-tap'
@@ -78,9 +78,9 @@ export function checkGeometry(
 
 /** The raster step of a pocket: under 10 % the mill rubs, over 100 % a strip stays uncut. */
 function checkStepOver(pct: number, out: Problem[]): void {
-  if (pct < 10 - EPS) {
+  if (pct < 10 - EPS_VALIDATE) {
     add(out, 'stepOver', `Шаг ${fmt(pct)} % меньше 10 % диаметра: фреза будет тереть уже срезанное.`)
-  } else if (pct > 100 + EPS) {
+  } else if (pct > 100 + EPS_VALIDATE) {
     add(out, 'stepOver', `Шаг ${fmt(pct)} % больше 100 % диаметра: между проходами останутся дыры.`)
   }
 }
@@ -107,7 +107,7 @@ function checkFace(program: ProgramShape, op: FaceOperation, out: Problem[]): vo
       `Перекрытие полос ${fmt(op.stepOverPct)} % вне разумных 20..90 %: полосы либо не сомкнутся, либо прожгут.`,
     )
   }
-  if (op.z > op.topZ + EPS) {
+  if (op.z > op.topZ + EPS_VALIDATE) {
     add(out, 'geometry', 'Плоскость обработки выше верха материала.')
   }
   if (op.depthMm > 0 && op.stepDownMm > 0 && op.stepDownMm < MIN_STEP_MM) {
@@ -133,12 +133,12 @@ function checkPocket(op: RectPocketOperation, out: Problem[]): void {
   }
   checkStepOver(op.stepOverPct, out)
   const shortSide = Math.min(rect.w, rect.h)
-  if (corner > shortSide / 2 + EPS) {
+  if (corner > shortSide / 2 + EPS_VALIDATE) {
     add(out, 'geometry', `Радиус угла ${fmt(corner)} мм больше половины короткой стороны: такого кармана нет.`)
     return
   }
   const inset = tool.diameterMm / 2 + allowance
-  if (inset + EPS >= shortSide / 2) {
+  if (inset + EPS_VALIDATE >= shortSide / 2) {
     add(
       out,
       'geometry',
@@ -162,7 +162,7 @@ function checkCirclePocket(op: CirclePocketOperation, out: Problem[]): void {
   }
   checkStepOver(op.stepOverPct, out)
   const inset = tool.diameterMm / 2 + allowance
-  if (inset + EPS >= circle.r) {
+  if (inset + EPS_VALIDATE >= circle.r) {
     add(
       out,
       'geometry',
@@ -183,7 +183,12 @@ function checkDrill(program: ProgramShape, op: Operation, out: Problem[]): void 
   const { min, max } = program.stock
   const r = op.tool.diameterMm / 2
   for (const hole of points) {
-    if (hole.x - r < min.x - EPS || hole.x + r > max.x + EPS || hole.y - r < min.y - EPS || hole.y + r > max.y + EPS) {
+    if (
+      hole.x - r < min.x - EPS_VALIDATE ||
+      hole.x + r > max.x + EPS_VALIDATE ||
+      hole.y - r < min.y - EPS_VALIDATE ||
+      hole.y + r > max.y + EPS_VALIDATE
+    ) {
       add(
         out,
         'geometry',
@@ -201,13 +206,13 @@ export function checkPeck(op: Operation, out: Problem[]): void {
   if (!isDrillOperation(op)) return
   const peck = op.peckMm
   if (peck <= 0) return
-  if (op.depthMm > 0 && peck > op.depthMm + EPS) {
+  if (op.depthMm > 0 && peck > op.depthMm + EPS_VALIDATE) {
     add(
       out,
       'peck',
       `Шаг вывода стружки Q${fmt(peck)} мм больше глубины отверстия ${fmt(op.depthMm)} мм: такого цикла нет.`,
     )
-  } else if (peck < MIN_PECK_MM - EPS) {
+  } else if (peck < MIN_PECK_MM - EPS_VALIDATE) {
     add(out, 'peck', `Шаг вывода стружки Q${fmt(peck)} мм меньше 0.1 мм: цикл будет только дробить стружку.`)
   }
 }

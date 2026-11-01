@@ -14,7 +14,7 @@
 import type { Operation, QuickProgram } from './ops'
 import { axialPasses } from './path-face'
 import type { Vec2 } from './contour-offset'
-import { EPS, PathBuilder } from './path-builder'
+import { EPS_PATH, PathBuilder } from './path-builder'
 import type { Area } from './rest-areas'
 import { restAreas } from './rest-areas'
 
@@ -47,14 +47,14 @@ const rest = (op: Operation): Extract<Operation, { kind: 'rest' }> => {
 const cellPieces = (cell: Area, inset: number, stepMm: number): RestPiece[] => {
   const innerW = cell.w - 2 * inset
   const innerH = cell.h - 2 * inset
-  if (innerW < -EPS || innerH < -EPS) return []
+  if (innerW < -EPS_PATH || innerH < -EPS_PATH) return []
   const alongX = cell.w >= cell.h
   const along = alongX ? innerW : innerH
   const across = alongX ? innerH : innerW
   const alongLow = (alongX ? cell.x : cell.y) + inset
   const acrossLow = (alongX ? cell.y : cell.x) + inset
   const nominal = Math.min(stepMm, across)
-  const rows = nominal <= EPS || across <= EPS ? 1 : Math.ceil(across / nominal - EPS) + 1
+  const rows = nominal <= EPS_PATH || across <= EPS_PATH ? 1 : Math.ceil(across / nominal - EPS_PATH) + 1
   const step = rows > 1 ? across / (rows - 1) : 0
   const point = (a: number, b: number): Vec2 => (alongX ? { x: a, y: b } : { x: b, y: a })
   const pieces: RestPiece[] = []

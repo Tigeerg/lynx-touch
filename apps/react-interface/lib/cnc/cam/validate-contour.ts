@@ -15,7 +15,7 @@ import type { ContourOperation, ProgramShape } from './ops'
 import { fmt } from './feeds'
 import type { Vec2 } from './contour-offset'
 import { segments } from './contour-offset'
-import { EPS, add } from './validate-common'
+import { EPS_VALIDATE, add } from './validate-common'
 import type { Problem } from './validate-common'
 
 /** Below this turn two segments are one line: a vertex of a straight wall, not a corner. */
@@ -54,7 +54,13 @@ export function checkContour(program: ProgramShape, op: ContourOperation, out: P
 /** True when no point of the profile stands inside the stock rectangle in XY. */
 const whollyOutside = (program: ProgramShape, points: ContourOperation['points']): boolean => {
   const { min, max } = program.stock
-  return points.every((p) => p.x < min.x - EPS || p.x > max.x + EPS || p.y < min.y - EPS || p.y > max.y + EPS)
+  return points.every(
+    (p) =>
+      p.x < min.x - EPS_VALIDATE ||
+      p.x > max.x + EPS_VALIDATE ||
+      p.y < min.y - EPS_VALIDATE ||
+      p.y > max.y + EPS_VALIDATE,
+  )
 }
 
 /**

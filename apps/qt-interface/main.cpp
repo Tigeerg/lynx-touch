@@ -1,4 +1,4 @@
-﻿/* main.cpp - the standalone Qt panel for debugging on Windows.
+/* main.cpp - the standalone Qt panel for debugging on Windows.
  *
  * The real controller will load the panel with a QtVCP loader later; until then this executable
  * starts the same `main.qml` as a normal desktop window, without a console. It adds the QML import
@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Lynx Touch"));
-    app.setApplicationVersion(QStringLiteral("0.6.3"));
+    app.setApplicationVersion(QStringLiteral("0.6.4"));
 
     const QString root = repoRoot();
     const QString qmlFile = root + QStringLiteral("/apps/qt-interface/main.qml");
@@ -59,6 +59,9 @@ int main(int argc, char *argv[])
     // The QML plugin of the viewer controller and the CNC.Edges plugin are built into the repo.
     addPathEntry(root + QStringLiteral("/build/qmlbackend/MockBackend"));
     addPathEntry(root + QStringLiteral("/build/edges/CNC/Edges"));
+    // The deployed package keeps the OCCT DLLs next to the executable, so a double click works
+    // without CNC_OCC_DIR in the environment.
+    addPathEntry(QCoreApplication::applicationDirPath() + QStringLiteral("/occt"));
     const QString occ = qEnvironmentVariable("CNC_OCC_DIR");
     if (!occ.isEmpty())
         addPathEntry(occ + QStringLiteral("/bin"));
@@ -75,7 +78,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    view.setTitle(QStringLiteral("Lynx Touch вЂ” РїР°РЅРµР»СЊ РѕРїРµСЂР°С‚РѕСЂР°"));
+    view.setTitle(QStringLiteral("Lynx Touch — панель оператора"));
     view.resize(1024, 600);
     view.show();
     return app.exec();

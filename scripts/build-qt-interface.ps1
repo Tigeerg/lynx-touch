@@ -13,6 +13,7 @@
 [CmdletBinding()]
 param(
     [string]$QtDir = $env:CNC_QT_DIR,
+    [string]$OccDir = $env:CNC_OCC_DIR,
     [string]$BuildDir = 'build/qt-interface'
 )
 
@@ -95,4 +96,34 @@ if ($LASTEXITCODE -ne 0) { Fail "сборка не прошла (код $LASTEXI
 
 $exe = Join-Path $BuildDir 'lynx-panel.exe'
 if (-not (Test-Path -LiteralPath $exe)) { Fail "панель не собрана: нет $exe" }
+
+# A double click from Explorer has no Qt in PATH: deploy the Qt DLLs, the platform plugins and the
+# QML modules next to the exe. The viewer plugins (MockBackend, CNC.Edges) stay in the repository
+# and main.cpp adds their import paths; their Qt dependencies are found in the exe directory.
+$deploy = Join-Path $QtDir 'bin\windeployqt.exe'
+if (-not (Test-Path -LiteralPath $deploy)) { Fail "нет $deploy - проверьте CNC_QT_DIR" }
+& $deploy --release --no-translations --compiler-runtime --qmldir $srcDir $exe
+if ($LASTEXITCODE -ne 0) { Fail "windeployqt не прошёл (код $LASTEXITCODE)" }
+if (-not (Test-Path -LiteralPath (Join-Path $BuildDir 'Qt6Core.dll'))) {
+    Fail "Qt6Core.dll не скопирован рядом с exe"
+}
+
+# The viewer controller links OCCT (BRep, STEP, mesh); a double click has no CNC_OCC_DIR. The
+# 147-DLL novtk set is enough for MockBackend and keeps the debug package small.
+if (-not $OccDir) {
+    $OccDir = First-Existing @(
+        'D:\cnc-toolchain\occt-novtk\Library',
+        'D:\cnc-toolchain\occt-env\Library',
+        $(if ($env:CONDA_PREFIX) { Join-Path $env:CONDA_PREFIX 'Library' }),
+        'C:\Users\Tiger\anaconda3\envs\gcode-cpp\Library')
+}
+if ($OccDir -and (Test-Path -LiteralPath (Join-Path $OccDir 'bin'))) {
+    $occtOut = Join-Path $BuildDir 'occt'
+    New-Item -ItemType Directory -Force -Path $occtOut | Out-Null
+    Copy-Item -Path (Join-Path $OccDir 'bin\*.dll') -Destination $occtOut -Force
+    Write-Host ("build-qt-interface: OCCT " + $OccDir + " -> " + $occtOut)
+} else {
+    Write-Host 'build-qt-interface: OCCT не найден - exe будет искать CNC_OCC_DIR в PATH' -ForegroundColor Yellow
+}
+
 Write-Host ("build-qt-interface: OK " + $exe) -ForegroundColor Green

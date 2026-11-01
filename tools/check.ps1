@@ -134,6 +134,40 @@ foreach ($entry in $versionSources.GetEnumerator()) {
 }
 if ($versionOk) { Ok "версии продукта согласованы: $($versionSources['VERSION'])" }
 
+# 4c. Each project version in projects.json must match the project manifest where one exists
+#     (VERSIONING.md section 3): react-interface -> package.json, gcode-viewer -> VERSION plus
+#     viewerVersion in the QML, quickprog -> core/version.h. qt-interface and cad-testdata have
+#     no manifest of their own by design. A divergence is red with the paths and the numbers;
+#     without this step a project change can ride a foreign commit with no version bump at all.
+$projectsJson = Get-Content -LiteralPath 'projects.json' -Encoding UTF8 -Raw | ConvertFrom-Json
+function Project-Version([string]$id) {
+  $p = $projectsJson.projects | Where-Object { $_.id -eq $id }
+  if ($p) { return $p.version }
+  return $null
+}
+$projectSources = [ordered]@{
+  'react-interface: package.json'   = Get-FirstGroup 'apps/react-interface/package.json' '"version":\s*"(\d+\.\d+\.\d+)"'
+  'gcode-viewer: VERSION'           = (Get-Content -LiteralPath 'modules/gcode-viewer/VERSION' -TotalCount 1).Trim()
+  'gcode-viewer: GcodeViewer3D.qml' = Get-FirstGroup 'modules/gcode-viewer/GcodeViewer3D.qml' 'viewerVersion:\s*"(\d+\.\d+\.\d+)"'
+  'quickprog: core/version.h'       = Get-FirstGroup 'apps/quickprog/core/version.h' 'kGeneratorVersion\s*=\s*"(\d+\.\d+\.\d+)"'
+}
+$projectOk = $true
+foreach ($entry in $projectSources.GetEnumerator()) {
+  $id = ($entry.Key -split ':')[0]
+  $expected = Project-Version $id
+  if ([string]::IsNullOrEmpty($entry.Value)) {
+    Bad "версия ${id}: в '$($entry.Key)' номер не найден"
+    $projectOk = $false
+  } elseif ([string]::IsNullOrEmpty($expected)) {
+    Bad "версия ${id}: проект не найден в projects.json"
+    $projectOk = $false
+  } elseif ($entry.Value -ne $expected) {
+    Bad "версия ${id}: $($entry.Key) = '$($entry.Value)', а projects.json = '$expected'"
+    $projectOk = $false
+  }
+}
+if ($projectOk) { Ok "версии проектов согласованы с манифестами" }
+
 # 5. Tool checks - if the tool is real, not a stub.
 $pnpmExe = $null
 $pnpmPrefix = @()

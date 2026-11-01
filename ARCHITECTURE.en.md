@@ -154,7 +154,7 @@ the parser in the same pass (`VERSIONING.md`, section 7).
 An experimental project: a separate console application to exercise the quick programming pipeline before the
 panel (`docs/PLAN-QUICKPROG.md`, section 7.2).
 
-* `apps/quickprog/main.cpp` — a thin dispatcher (22 lines); the console scenario is `cli/` (`help`, `app`,
+* `apps/quickprog/main.cpp` - a thin dispatcher (27 lines); the console scenario is `cli/` (`help`, `app`,
   `operation_program`, `demo_program`, `run`): `--demo`, `--op face|pocket|circle-pocket|drill`, `--qprog`,
   `--save-qprog`, `--version`, `--help`.
 * `apps/quickprog/core/` — pure logic without Qt, OCCT or screen I/O: the model (`ops.h`), geometry

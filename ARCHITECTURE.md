@@ -149,7 +149,7 @@
 Опытный проект: отдельное консольное приложение, чтобы обкатать конвейер быстрого программирования до
 панели (`docs/PLAN-QUICKPROG.md`, раздел 7.2).
 
-* `apps/quickprog/main.cpp` — тонкий диспетчер (22 строки); консольный сценарий — `cli/` (`help`, `app`,
+* `apps/quickprog/main.cpp` — тонкий диспетчер (27 строк); консольный сценарий — `cli/` (`help`, `app`,
   `operation_program`, `demo_program`, `run`): `--demo`, `--op face|pocket|circle-pocket|drill`, `--qprog`,
   `--save-qprog`, `--version`, `--help`.
 * `apps/quickprog/core/` — чистая логика без Qt, OCCT и ввода-вывода экрана: модель (`ops.h`), геометрия

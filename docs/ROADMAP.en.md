@@ -1,5 +1,10 @@
 # ROADMAP.md — from the current panel to alpha and the physical bench
 
+> **Superseded on 01.11.2026.** The current strategy is [`PORT-QML.md`](PORT-QML.md): the Qt port runs
+> on the real controller and is the product, React is frozen as the demo reference, and CAM moves
+> after the interface to the C++ core. This file is kept as the history of the previous course, not
+> as the active plan.
+
 This is a plan, not a report of work done. It answers three questions: what counts as alpha, in what order we
 move, and what proves a stage is finished. The source of truth for behavior is the code and its run; this file
 only holds intent, boundaries and exit criteria.

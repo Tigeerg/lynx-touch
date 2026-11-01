@@ -2,6 +2,11 @@
 # (Linux, bash) and the same list drives the list in tools/check.ps1 (Windows,
 # pnpm guard). A line is one check:
 #
+# The two guards are deliberately split: this file is the Linux list (check.sh);
+# tools/check.ps1 keeps the Windows-only steps (MSVC/Qt build, quickprog_check, the Qt
+# panel probe, typecheck/test/format). A check that must run on both sides goes here
+# AND into check.ps1; a Windows-only step is not added here. Labels may differ.
+#
 #   label|requirement|command
 #
 # Requirements: probe - built probes needed (build/edges); plugin - the built

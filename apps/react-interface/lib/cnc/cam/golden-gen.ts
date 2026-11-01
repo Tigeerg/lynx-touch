@@ -4,8 +4,8 @@
 // `serializeProgram` and the `.ngc` from the plannable document through `emitProgram`, so the pair
 // is exactly what the panel saves. The module writes and does not decide: the checks (planning, the
 // viewer rules, the collision check, the counts) live in `golden.test.ts`, and this is called only
-// by the small runner the README describes (`scripts/golden-q6-gen.mjs` through esbuild, or a
-// one-line `node -e`). It is not imported by the application.
+// by hand through a one-line `node -e` (the old `scripts/golden-q6-gen.mjs` runner is not kept in the
+// repository). It is not imported by the application.
 import { writeFileSync } from 'node:fs'
 import { emitProgram } from './emit'
 import { goldenProgram } from './golden-doc'

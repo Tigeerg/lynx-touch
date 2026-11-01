@@ -225,6 +225,22 @@ if ($cppReady -and (Test-Path -LiteralPath $viewerExe) -and (Test-Path -LiteralP
   Skipped 'gcodeviewer.exe offscreen: нет собранной точки входа или Qt'
 }
 
+# 7b. Frame capture on the live platform: the guard checks that the exe writes a 1024x600 PNG.
+#     Offscreen Quick3D does not draw the scene, so this is the same headless path as checks.txt.
+if ($cppReady -and (Test-Path -LiteralPath $viewerExe)) {
+  Run-Tool 'gcodeviewer --frame' {
+    $env:QT_QPA_PLATFORM = 'offscreen'
+    $env:PATH = (Join-Path $qtDir 'bin') + ';' + $env:PATH
+    $frameDir = Join-Path $PWD 'build\artifacts\screenshots'
+    New-Item -ItemType Directory -Force -Path $frameDir | Out-Null
+    $frame = Join-Path $frameDir 'frame_check.png'
+    & $viewerExe --frame $frame 'data/cad-testdata/Test_model.ngc' 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $frame)) { cmd /c exit 1 } else { cmd /c exit 0 }
+  }
+} else {
+  Skipped 'gcodeviewer --frame: нет собранной точки входа'
+}
+
 # 8. The viewer hotkey probe (build/viewer/keyprobe.exe): feeds keys with the signs of a real
 #    event (scan code, VK and the symbol by layout) in the Russian and English layouts and
 #    checks that each hotkey switched its own property. The "hotkeys require the language"

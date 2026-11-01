@@ -1,6 +1,6 @@
 {
   "product": "CNC Панель оператора",
-  "version": "0.35.10",
+  "version": "0.35.11",
   "versioning": "semver",
   "description": "Панель оператора ЧПУ: React-интерфейс, Qt-порт, 3D-вьювер УП и тестовые данные/постпроцессор.",
   "projects": [
@@ -21,7 +21,7 @@
       "path": "apps/qt-interface",
       "kind": "qml",
       "entry": "main.qml",
-      "description": "Перенос React-интерфейса на Qt/QML. main.qml, preview.qml (данные, не генерируется), ассеты/шрифты. Точки запуска в репозитории нет: питоновский предпросмотр удалён, рантайм `qml` модуль MockBackend не грузит."
+      "description": "Qt-порт интерфейса оператора. main.qml — единственный источник панели; preview.qml — окно с Loader. Отдельная точка входа для отладки — build/qt-interface/lynx-panel.exe (scripts/build-qt-interface.ps1); на стойке позже — загрузчик QtVCP. MockBackend и CNC.Edges подключаются как QML-модули."
     },
     {
       "id": "gcode-viewer",

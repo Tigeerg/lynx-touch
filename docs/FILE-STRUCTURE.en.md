@@ -8,7 +8,7 @@ cleanup script `scripts/clean.ps1`.
 
 | Place | Size | What it is | Decision |
 |---|---:|---|---|
-| `build/` | ~0.63 GB, 5018 files | built Qt/C++ programs, probes, Qt/OCCT DLLs | keep the project subdirectories, remove the junk in the root |
+| `build/` | ~0.62 GB, 4978 files | built Qt/C++ programs, probes, Qt/OCCT DLLs | keep the project subdirectories, remove the junk in the root |
 | `apps/react-interface/.next` | ~320 MB | Next.js cache | not stored; cleaned |
 | `build/cpp` | 2 DLLs | old `gvbridge`/`gvqtshim` bridge | delete as obsolete |
 | root of `build/` | ~30 files | our screenshots, one-off `.mjs`/`.ps1`, logs, test `.ngc` | delete; rule below |
@@ -66,6 +66,9 @@ Rules:
 4. **Partial cleanup** — `scripts/clean.ps1 -Artifacts` (root of `build/`, `build/artifacts`,
    `build/tmp`, `build/logs`, old `build/cpp`).
 5. **Next.js cache** (`apps/react-interface/.next`) is not stored; cleaned by `-Next`.
+6. **Runtime folders (`build/<project>/`) are generated.** Qt/OCCT next to the exe are placed by
+   the build; SDKs are never copied by hand. The folder is cleared before deployment: an old full
+   OCCT set (1 GB) otherwise stays next to the new compact one and doubles `build/`.
 
 ## 4. Screenshots and evidence
 

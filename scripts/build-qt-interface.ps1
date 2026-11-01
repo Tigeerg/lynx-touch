@@ -119,6 +119,9 @@ if (-not $OccDir) {
 }
 if ($OccDir -and (Test-Path -LiteralPath (Join-Path $OccDir 'bin'))) {
     $occtOut = Join-Path $BuildDir 'occt'
+    # Clear the folder before the copy: an older deployment may have put a full occt-env set here,
+    # and Copy-Item -Force would leave its extra DLLs behind (over a gigabyte).
+    if (Test-Path -LiteralPath $occtOut) { Remove-Item -LiteralPath $occtOut -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $occtOut | Out-Null
     Copy-Item -Path (Join-Path $OccDir 'bin\*.dll') -Destination $occtOut -Force
     Write-Host ("build-qt-interface: OCCT " + $OccDir + " -> " + $occtOut)

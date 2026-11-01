@@ -1,7 +1,5 @@
 import QtQuick
 import QtQuick.Layouts
-import QtQuick3D
-import MockBackend 1.0
 
 /**
  * CNC Operator Panel «VMC-850» — QtQuick UI 2.15 visual skeleton.
@@ -23,7 +21,6 @@ Item {
     property string workplace: "RUN"
     property bool pendantOpen: false
     property bool mpgOpen: false
-    readonly property var toolpathObject: toolpath
     onActiveScreenChanged: { if (activeScreen === "service") svcFocus = "nav"; }
     property string machineMode: "AUTO"
     // Live work position in the active offset. The DRO reads this, not the offset table: jogging
@@ -80,17 +77,6 @@ Item {
         var v = parseFloat(value);
         if (!isFinite(v)) return current;
         return relative ? Math.round((current + v) * 1000) / 1000 : v;
-    }
-
-    // --- 3D toolpath: QML plugin MockBackend (C++) + QtQuick3D ---
-    // The hidden 3D tab follows the same active NC file as the Work screen viewer.
-    GcodeToolpath {
-        id: toolpath
-        Component.onCompleted: load_string(root.programText())
-    }
-    Connections {
-        target: root
-        function onActiveFileChanged() { toolpath.load_string(root.programText()); }
     }
 
     // --- Ladder (ClassicLadder) ---
@@ -474,7 +460,7 @@ Item {
         }
         return [];
     }
-    readonly property var screenIds: ["pos", "prog", "offset", "tool", "alarm", "service", "view"]
+    readonly property var screenIds: ["pos", "prog", "offset", "tool", "alarm", "service"]
 
     // --- Service: selected section (visual logic in QML) ---
     property string serviceSection: "system"
@@ -1582,45 +1568,6 @@ Item {
                 }
                 MouseArea { anchors.fill: parent; enabled: !tab5.locked; onClicked: root.activeScreen = "service" }
             }
-            // ----- Tab 7: 3D -----
-            Rectangle {
-                id: tab6
-                visible: false
-                property bool on: root.activeScreen === "view"
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.preferredWidth: 150
-                clip: true
-                color: cCard
-                border.color: cBorder
-                radius: 6
-                state: on ? "active" : "idle"
-                states: [
-                    State { name: "idle" },
-                    State {
-                        name: "active"
-                        PropertyChanges { target: tab6; color: cPrimary; border.color: cPrimary }
-                    }
-                ]
-                transitions: Transition { ColorAnimation { properties: "color,border.color"; duration: 150 } }
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 6
-                    spacing: 4
-                    Rectangle {
-                        Layout.preferredWidth: 20; Layout.preferredHeight: 20
-                        Layout.minimumWidth: 20; Layout.maximumWidth: 20
-                        Layout.minimumHeight: 20; Layout.maximumHeight: 20
-                        color: tab6.on ? cPrimaryFg : cCard
-                        border.color: tab6.on ? cPrimaryFg : cBorderMuted
-                        radius: 4
-                        Text { anchors.centerIn: parent; text: "7"; color: tab6.on ? cPrimary : cForeground; font.bold: true; font.pixelSize: 10 }
-                    }
-                    Text { text: "\ue53e"; color: tab6.on ? cPrimaryFg : cForeground; font.family: "lucide"; font.pixelSize: 16 }
-                    Text { text: "3D"; Layout.fillWidth: true; color: tab6.on ? cPrimaryFg : cForeground; font.bold: true; font.pixelSize: 12; elide: Text.ElideRight }
-                }
-                MouseArea { anchors.fill: parent; onClicked: root.activeScreen = "view" }
-            }
         }   // tabsRow
 
         // ============ CONTENT ROW: POSITION SCREEN + SIDE STATUS ==========
@@ -1640,8 +1587,7 @@ Item {
                             : root.activeScreen === "offset" ? 2
                             : root.activeScreen === "tool" ? 3
                             : root.activeScreen === "alarm" ? 4
-                            : root.activeScreen === "service" ? 5
-                            : root.activeScreen === "view" ? 6 : 0
+                            : root.activeScreen === "service" ? 5 : 0
 
             // ============ STAGE 3 — WORK SCREEN (Wave B) ============
             WorkScreen {
@@ -2583,55 +2529,6 @@ Item {
                             }
                         }
 }
-
-            // ============ STAGE 8 — 3D TOOLPATH (QtQuick3D) ============
-            Rectangle {
-                id: viewScreen
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                color: "#0E1319"
-                border.color: cBorder
-                border.width: 1
-                radius: 6
-                clip: true
-
-                View3D {
-                    anchors.fill: parent
-                    anchors.margins: 1
-
-                    environment: SceneEnvironment {
-                        clearColor: "#0E1319"
-                        backgroundMode: SceneEnvironment.Color
-                    }
-                    PerspectiveCamera {
-                        position: Qt.vector3d(190, 150, 210)
-                        eulerRotation: Qt.vector3d(24, 40, 0)
-                        clipNear: 1
-                        clipFar: 4000
-                    }
-                    DirectionalLight {
-                        eulerRotation: Qt.vector3d(-45, -35, 0)
-                        brightness: 1.0
-                    }
-                    Model {
-                        geometry: toolpath.rapidGeometry
-                        materials: [ PrincipledMaterial { lighting: PrincipledMaterial.NoLighting; baseColor: "#F23333" } ]
-                    }
-                    Model {
-                        geometry: toolpath.feedGeometry
-                        materials: [ PrincipledMaterial { lighting: PrincipledMaterial.NoLighting; baseColor: "#338CFF" } ]
-                    }
-                }
-
-                RowLayout {
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.margins: 10
-                    spacing: 8
-                    Text { text: "\ue53e"; color: cMutedForeground; font.family: "lucide"; font.pixelSize: 14 }
-                    Text { text: "3D ТРАЕКТОРИЯ · G0 — красный, G1 — синий"; color: cMutedForeground; font.bold: true; font.pixelSize: 12 }
-                }
-            }
 
             }   // screensStack
 

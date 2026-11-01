@@ -149,8 +149,11 @@ is local (when an API request appears, add and name that layer here).
   a 1024×600 window without a console; it adds the `MockBackend`/`CNC.Edges` paths itself. On the
   controller a QtVCP loader replaces it later.
 * Texts match `react-interface` word for word; icons are lucide only, from the bundled font.
-* The port lags the React panel by several passes (workplaces, the Work tab, 8 softkeys, the AUTO screen,
-  Minimal, touch mode); the plan to catch up is [docs/PORT-QML.md](docs/PORT-QML.md).
+* The Work screen is split: `WorkScreen.qml` is the manual mode (live coordinates, MDI, viewer),
+  `AutoScreen.qml` is AUTO (position, distance to the block, remaining path, four F8 views). Both use
+  one `ViewerPane.qml` over the real `GcodeViewer3D.qml`.
+* The port lags the React panel by several passes (workplaces, 8 softkeys, Minimal, touch mode);
+  the plan to catch up is [docs/PORT-QML.md](docs/PORT-QML.md).
 
 ## 4. `gcode-viewer` (3D viewer for NC programs)
 

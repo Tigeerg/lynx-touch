@@ -17,13 +17,20 @@ Item {
     }
     function offsetCode() { return host ? host.activeOffsetCode() : "—"; }
 
-    // Panel actuators feed the embedded viewer: the viewer has no playback buttons of its own.
-    function viewerCycleStart() { viewerPane.cycleStart(); }
-    function viewerFeedHold() { viewerPane.feedHold(); }
-    function viewerReset() { viewerPane.reset(); }
+    // Panel actuators feed the active viewer: manual on TEST/SETUP, AUTO on RUN.
+    function viewerCycleStart() {
+        if (host && host.workplace === "RUN") autoScreen.cycleStart(); else viewerPane.cycleStart();
+    }
+    function viewerFeedHold() {
+        if (host && host.workplace === "RUN") autoScreen.feedHold(); else viewerPane.feedHold();
+    }
+    function viewerReset() {
+        if (host && host.workplace === "RUN") autoScreen.reset(); else viewerPane.reset();
+    }
 
     ColumnLayout {
         anchors.fill: parent
+        visible: !host || host.workplace !== "RUN"
         spacing: 6
 
         // ---------- Coordinate strip: G54 / X Y Z A in one row ----------
@@ -365,6 +372,7 @@ Item {
                         id: viewerPane
                         anchors.fill: parent
                         host: workScreen.host
+                        active: !host || host.workplace !== "RUN"
                         settings: workScreen.host ? workScreen.host.viewerSettings() : ({})
                     }
                     RowLayout {
@@ -378,5 +386,14 @@ Item {
                 }
             }
         }
+    }
+
+    // The AUTO workplace shares the real viewer and the active NC file, but has its own layout
+    // (position, distance to the block, remaining path, F8 views).
+    AutoScreen {
+        id: autoScreen
+        anchors.fill: parent
+        visible: host && host.workplace === "RUN"
+        host: workScreen.host
     }
 }

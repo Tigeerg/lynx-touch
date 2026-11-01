@@ -14,6 +14,9 @@ Item {
     objectName: "viewerPane"
     property Item host
     property bool showChrome: false
+    // Inactive panes unload the real viewer, so the manual and AUTO screens never hold two
+    // QtQuick3D scenes at once.
+    property bool active: true
     property string programText: host ? host.programText() : ""
     onProgramTextChanged: if (viewerLoader.item) viewerLoader.item.gcode = programText
     // Viewer settings from the panel service menu (saved values). An empty object keeps the
@@ -47,6 +50,7 @@ Item {
     Loader {
         id: viewerLoader
         anchors.fill: parent
+        active: pane.active
         source: "../../modules/gcode-viewer/GcodeViewer3D.qml"
         onLoaded: {
             item.showChrome = pane.showChrome

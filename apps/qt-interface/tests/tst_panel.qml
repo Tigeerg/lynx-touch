@@ -84,6 +84,8 @@ TestCase {
 
     function test_work_screen_parts() {
         tryCompare(panel, "status", Loader.Ready)
+        panel.item.workplace = "TEST"
+        wait(0)
         verify(findByName(panel.item, "workScreen") !== null)
         verify(findByName(panel.item, "workCoordStrip") !== null)
         verify(findByName(panel.item, "workPreview") !== null)
@@ -104,11 +106,14 @@ TestCase {
         verify(viewerItem.playing === false)
         panel.item.machineReset()
         verify(viewerItem.pathDist === 0)
+        panel.item.workplace = "RUN"
     }
 
     function test_viewer_service_settings() {
         tryCompare(panel, "status", Loader.Ready)
         var p = panel.item
+        p.workplace = "TEST"
+        wait(0)
         // The viewer is configured from its own service section, not from viewer buttons.
         verify(p.serviceIds.indexOf("viewer") >= 0)
         compare(p.sysParamsFor("viewer").length, 11)
@@ -141,6 +146,7 @@ TestCase {
         compare(viewerItem.partMode, 0)
         compare(viewerItem.showToolpath, true)
         compare(viewerItem.showFps, false)
+        p.workplace = "RUN"
     }
 
     function test_program_catalogue() {
@@ -164,7 +170,9 @@ TestCase {
         verify(p.programText().indexOf("O2048") === 0)
         compare(p.cursorProg, 0)
 
-        // The Work-screen viewer receives the same active program text.
+        // The Work-screen viewer receives the same active program text (manual workplace).
+        p.workplace = "TEST"
+        wait(0)
         var viewer = findByName(p, "viewerPane")
         var viewerItem = viewer.children[0].item
         wait(0)
@@ -172,6 +180,7 @@ TestCase {
 
         p.openProgram(0)
         compare(p.activeProgram().name, "O1024")
+        p.workplace = "RUN"
     }
 
     function test_machine_position() {
@@ -197,6 +206,34 @@ TestCase {
         p.machinePos = ({ x: -120.500, y: 35.250, z: -210.400, a: 0.000 })
         p.jogAxis = "X"
         p.jogStep = 1
+    }
+
+    function test_auto_screen() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        p.workplace = "RUN"
+        p.activeScreen = "pos"
+        p.machinePos = ({ x: 0, y: 0, z: 0, a: 0 })
+        p.cursorProg = 0
+        p.autoView = "trajectory"
+        wait(0)
+
+        var auto = findByName(p, "autoScreen")
+        verify(auto !== null)
+        verify(auto.stats.toFrame > 0)
+        verify(auto.stats.rest >= 0)
+        compare(auto.view, "trajectory")
+
+        p.autoView = "both"
+        wait(0)
+        compare(auto.view, "both")
+        compare(auto.viewTitles[auto.view], "СОВМЕСТНО")
+
+        p.autoView = "overlay"
+        wait(0)
+        compare(auto.view, "overlay")
+
+        p.autoView = "trajectory"
     }
 
     function test_mdi_line() {

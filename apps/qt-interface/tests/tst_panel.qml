@@ -174,6 +174,31 @@ TestCase {
         compare(p.activeProgram().name, "O1024")
     }
 
+    function test_machine_position() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        p.machinePos = ({ x: 0, y: 0, z: 0, a: 0 })
+        p.jogAxis = "X"
+        p.jogStep = 2          // 0.1 mm
+        p.machineJogRequest(1)
+        compare(p.machinePos.x, 0.1)
+        compare(p.machineCoordinate("X"), "+0.100")
+
+        p.jogAxis = "Z"
+        p.jogStep = 0          // 0.001 mm
+        p.machineJogRequest(-1)
+        compare(p.machinePos.z, -0.001)
+
+        // The Work DRO reads the live position, not the G54 table row.
+        var ws = findByName(p, "workScreen")
+        compare(ws.dro("X"), "+0.100")
+        compare(ws.dro("Z"), "-0.001")
+
+        p.machinePos = ({ x: -120.500, y: 35.250, z: -210.400, a: 0.000 })
+        p.jogAxis = "X"
+        p.jogStep = 1
+    }
+
     function test_debug_windows_exist() {
         var pendant = Qt.createComponent("../PendantWindow.qml")
         var mpg = Qt.createComponent("../MpgWindow.qml")

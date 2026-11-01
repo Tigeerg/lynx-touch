@@ -2,8 +2,8 @@ import QtQuick
 import QtQuick.Layouts
 
 // Wave B Work screen: the work DRO in one large line, the toolpath preview under it and the
-// autonomous status column on the right. Every reading comes from the host panel:
-// offsetsData/activeOffsetCode, machine flags and the loaded viewSample path.
+// autonomous status column on the right. The DRO is the live machine position in the active
+// offset; the offsets screen edits the offset table, not these numbers.
 Item {
     id: workScreen
     objectName: "workScreen"
@@ -12,19 +12,8 @@ Item {
 
     readonly property var axes: ["X", "Y", "Z", "A"]
 
-    // The active work offset row is the one and only source of the DRO numbers: the same row
-    // the Offsets screen edits.
-    function activeRow() {
-        if (!host || !host.offsetsData) return null;
-        for (var i = 0; i < host.offsetsData.length; i++)
-            if (host.offsetsData[i].active) return host.offsetsData[i];
-        return null;
-    }
     function dro(axis) {
-        var row = activeRow();
-        if (!row) return "—";
-        var value = row[axis.toLowerCase()];
-        return value === undefined ? "—" : value;
+        return host ? host.machineCoordinate(axis) : "—";
     }
     function offsetCode() { return host ? host.activeOffsetCode() : "—"; }
 
@@ -61,7 +50,7 @@ Item {
                     spacing: 6
                     Text { text: "\ue121"; color: host.cMutedForeground; font.family: "lucide"; font.pixelSize: 13 }
                     Text {
-                        text: "СМЕЩЕНИЕ G54 · ММ"
+                        text: "ПОЛОЖЕНИЕ · ММ"
                         color: host.cMutedForeground
                         font.bold: true
                         font.pixelSize: 10
@@ -301,7 +290,7 @@ Item {
                         anchors.margins: 8
                         spacing: 8
                         Text { text: "G0 — красный, G1 — синий"; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10 }
-                        Text { text: "· " + workScreen.offsetCode() + " · мм"; color: host.cMutedForeground; font.pixelSize: 10; font.family: host.fontMono }
+                        Text { text: "· положение в " + workScreen.offsetCode() + " · мм"; color: host.cMutedForeground; font.pixelSize: 10; font.family: host.fontMono }
                     }
                 }
             }

@@ -26,6 +26,9 @@ Item {
     readonly property var toolpathObject: toolpath
     onActiveScreenChanged: { if (activeScreen === "service") svcFocus = "nav"; }
     property string machineMode: "AUTO"
+    // Live work position in the active offset. The DRO reads this, not the offset table: jogging
+    // (panel keys, pendant, MPG) moves the numbers, editing G54 does not.
+    property var machinePos: ({ x: -120.500, y: 35.250, z: -210.400, a: 0.000 })
 
     // --- 3D toolpath: QML plugin MockBackend (C++) + QtQuick3D ---
     // The hidden 3D tab follows the same active NC file as the Work screen viewer.
@@ -457,6 +460,24 @@ Item {
     signal machineEmergencyStop()
     signal machineToggleSpindle()
     signal machineToggleCoolant()
+
+    onMachineJogRequest: function(dir) { root.jogMachine(dir) }
+
+    function jogMachine(dir) {
+        var steps = [0.001, 0.01, 0.1];
+        var step = steps[Math.max(0, Math.min(2, jogStep))];
+        var key = jogAxis.toLowerCase();
+        var p = {};
+        for (var k in machinePos) p[k] = machinePos[k];
+        var next = (p[key] === undefined ? 0 : p[key]) + dir * step;
+        p[key] = Math.round(next * 1000) / 1000;
+        machinePos = p;
+    }
+    function machineCoordinate(axis) {
+        var v = machinePos[axis.toLowerCase()];
+        if (v === undefined || !isFinite(v)) return "—";
+        return (v >= 0 ? "+" : "") + Number(v).toFixed(3);
+    }
 
     // The embedded viewer is a display: its playback follows the panel actuators, not the
     // viewer's own buttons (those stay only in the debug gcodeviewer.exe).

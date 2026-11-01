@@ -6,7 +6,7 @@ code and its run; this file holds the intent, anchors in both trees and acceptan
 
 This edition was merged on 31.10.2026: the inventory and anchors come from the previous edition,
 the order of work, acceptance and decisions come from the lead. State at the day of the edition:
-React `0.24.1` (product `0.35.25`), Qt `0.6.20`.
+React `0.24.1` (product `0.35.26`), Qt `0.6.21`.
 
 **Roles fixed (01.11.2026).** The real controller runs **Qt — it is the product**. React was a demo
 stage: after the start and CAM-insert fixes it is **frozen** — no new features are developed there.
@@ -35,7 +35,7 @@ dispatcher's decisions are in §7.
 
 React anchors are a file and a symbol; line numbers are as of 31.10.2026. "W" is the wave in §4.
 
-| Panel node | React `0.24.1` (source) | Qt `0.6.20` (`main.qml`) | Gap | W |
+| Panel node | React `0.24.1` (source) | Qt `0.6.21` (`main.qml`) | Gap | W |
 |---|---|---|---|---|
 | Workplaces | `types.ts` (`SETUP`/`TEST`/`RUN`), `WORKPLACE_LABEL` (`data.ts`), `SET_WORKPLACE` (`nav.ts`) | none; only `machineMode` (`:24`) and `modeCycle` | no workplaces | C |
 | Tabs | 5: `TABS`/`TAB_LABEL` (`types.ts`) Work, Offsets, Tool, Messages, Service; Work merges `pos` and `prog` (`tabOfScreen`) | 7: `tab0`..`tab6` (`:967-1256`), Position and Program separate, plus 3D | +2 tabs | B |
@@ -48,8 +48,8 @@ React anchors are a file and a symbol; line numbers are as of 31.10.2026. "W" is
 | RUN (work->prog) | `runProg`; screen: distance-to-go, 4 views (`AUTO_VIEWS`), transparent code window | none | no RUN screen | C, D |
 | Tool measure | `tool-measure.ts` (phases, timings 1.4/1.8/0.5/1.1 s), `tool-measure-dialog/` | "Measure length" without behaviour | no wizard | E |
 | Probe wizard | `probe.ts`/`probe-shapes.ts` (`PROBE_CYCLES`, `PROBE_TOOL = 99`, `PROBE_STEPS`), `probe/probe-wizard/` | texts exist, `pWrite` just closes | no rules | E |
-| Hardware keyboard | `hardware/hardware-panel/` 6×5, keys 72×72, `keys.ts` | none; only `Keys.onPressed` | no pendant | F |
-| MPG pendant | `side-status/jog.tsx`, `MPG_STEPS`, mode `MPG` | no separate pendant; `MPG` only as a mode | no handwheel emulator | F |
+| Hardware keyboard | `hardware/hardware-keyboard.tsx`, `hardware-nav.tsx`, 72×72 keys | `KeyboardWindow.qml` + `NavWindow.qml` (bottom/side), MDI input | no shared 6×5 panel | F |
+| MPG pendant | `side-status/jog.tsx`, `MPG_STEPS`, mode `MPG` | `MpgWindow.qml` — round encoder, rotary axis/multiplier | 18° per detent | F |
 | Side column | `side-status/`: tool (current + next), correctors S/F/G0, active G, load, execution | `sideStatus` "MODES", outdated | composition and order | B, D |
 | MDI line | in SETUP on `SetupScreen` (keyboard and touch) | MDI row in `WorkScreen` (input, Enter, Esc, history) | keyboard parity | D |
 | Themes | 6: `THEME_OPTIONS`, `THEME_CLASSES`, Minimal tokens in `globals.css` | 4 numeric palettes (`pal_light/dark/graphite/mint`), radii 8/6/4/3/2 | no Minimal, no tokens | E |

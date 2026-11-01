@@ -296,13 +296,23 @@ TestCase {
     function test_debug_windows_exist() {
         var pendant = Qt.createComponent("../PendantWindow.qml")
         var mpg = Qt.createComponent("../MpgWindow.qml")
+        var keyboard = Qt.createComponent("../KeyboardWindow.qml")
+        var nav = Qt.createComponent("../NavWindow.qml")
         compare(pendant.status, Component.Ready)
         compare(mpg.status, Component.Ready)
+        compare(keyboard.status, Component.Ready)
+        compare(nav.status, Component.Ready)
         compare(panel.item.pendantOpen, false)
         compare(panel.item.mpgOpen, false)
+        compare(panel.item.keyboardOpen, false)
+        compare(panel.item.navOpen, false)
         panel.item.pendantOpen = true
         panel.item.mpgOpen = true
+        panel.item.keyboardOpen = true
+        panel.item.navOpen = true
         compare(panel.item.pendantOpen, true)
         compare(panel.item.mpgOpen, true)
+        compare(panel.item.keyboardOpen, true)
+        compare(panel.item.navOpen, true)
     }
 }

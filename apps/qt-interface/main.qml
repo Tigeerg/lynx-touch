@@ -24,6 +24,8 @@ Item {
     property string workplace: "RUN"
     property bool pendantOpen: false
     property bool mpgOpen: false
+    property bool keyboardOpen: false
+    property bool navOpen: false
     onActiveScreenChanged: { if (activeScreen === "service") svcFocus = "nav"; }
     property string machineMode: "AUTO"
     // Live work position in the active offset. The DRO reads this, not the offset table: jogging
@@ -2201,6 +2203,20 @@ Item {
                                         Text { anchors.centerIn: parent; text: "MPG"; color: cForeground; font.bold: true; font.pixelSize: 10 }
                                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.mpgOpen = true }
                                     }
+                                    Rectangle {
+                                        Layout.preferredWidth: 42; Layout.preferredHeight: 20; Layout.minimumWidth: 42; Layout.maximumWidth: 42
+                                        Layout.minimumHeight: 20; Layout.maximumHeight: 20
+                                        color: cCard; border.color: cBorder; radius: 3
+                                        Text { anchors.centerIn: parent; text: "КЛВ"; color: cForeground; font.bold: true; font.pixelSize: 10 }
+                                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.keyboardOpen = true }
+                                    }
+                                    Rectangle {
+                                        Layout.preferredWidth: 42; Layout.preferredHeight: 20; Layout.minimumWidth: 42; Layout.maximumWidth: 42
+                                        Layout.minimumHeight: 20; Layout.maximumHeight: 20
+                                        color: cCard; border.color: cBorder; radius: 3
+                                        Text { anchors.centerIn: parent; text: "НАВ"; color: cForeground; font.bold: true; font.pixelSize: 10 }
+                                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.navOpen = true }
+                                    }
                                     Rectangle { Layout.preferredWidth: 72; Layout.preferredHeight: 18; Layout.minimumWidth: 72; Layout.maximumWidth: 72; Layout.minimumHeight: 18; Layout.maximumHeight: 18; color: "transparent"; border.color: cMutedForeground; radius: 3
                                         Text { anchors.centerIn: parent; text: "ЧТЕНИЕ"; color: cMutedForeground; font.bold: true; font.pixelSize: 10 } }
                                 }
@@ -3082,6 +3098,16 @@ Item {
     MpgWindow {
         host: root
         visible: root.mpgOpen
+    }
+
+    KeyboardWindow {
+        host: root
+        visible: root.keyboardOpen
+    }
+
+    NavWindow {
+        host: root
+        visible: root.navOpen
     }
 
 

@@ -155,6 +155,9 @@ is local (when an API request appears, add and name that layer here).
 * `TouchUI.qml` is the touch variant at 864×1536 (portrait) on the same machine state: its own
   header, tabs, softkeys without F labels and a deck with jog/cycle. Entry: `--touch` on
   `lynx-panel.exe` or `preview-touch.qml`; the key-panel variant stays 1024×600.
+* Console debug windows: `KeyboardWindow.qml` (the bottom NC keyboard), `NavWindow.qml` (side
+  screen/arrow keys), `MpgWindow.qml` (round handwheel, rotary axis and multiplier) and
+  `PendantWindow.qml`. They send the same signals as the physical keys.
 * The port lags the React panel by several passes (workplaces, 8 softkeys, Minimal, touch mode);
   the plan to catch up is [docs/PORT-QML.md](docs/PORT-QML.md).
 

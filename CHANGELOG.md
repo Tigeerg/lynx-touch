@@ -5,6 +5,24 @@
 
 Формат и правила — в [`VERSIONING.md`](VERSIONING.md). Термины — [`ROLES.md`](ROLES.md), раздел 9.
 
+## 0.35.5 - 2026-11-01
+
+### Исправлено
+- **Все exe запускаются из Проводника.** `scripts/build-viewer.ps1` раскладывает рядом с
+  `gcodeviewer.exe` и пробниками Qt (windeployqt: DLL, платформенные плагины, QML-модули,
+  runtime MSVC) и OCCT (набор novtk). Дополнительно копируются `qoffscreen.dll` (пробники сами
+  включают offscreen) и `cncedgesplugin.dll` (его напрямую импортирует `stepledges_probe`).
+  `gcodeviewer`, `keyprobe`, `stock_bind_probe`, `stepledges_probe`, `version_probe`,
+  `quickprog_check` проверены с чистым PATH.
+
+### Проверки
+- Запуск exe с чистым PATH (как из Проводника): `gcodeviewer` открывает окно; `keyprobe` —
+  `RESULT: OK (48 из 48)`; `stock_bind_probe` — `RESULT: OK`; `stepledges_probe` — OK;
+  `quickprog_check` — все случаи.
+
+### Версии
+- продукт — `0.35.5` (PATCH: автономный запуск exe); `gcode-viewer` — `0.58.8`.
+
 ## 0.35.4 - 2026-11-01
 
 ### Исправлено

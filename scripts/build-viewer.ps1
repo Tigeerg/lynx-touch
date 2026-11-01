@@ -204,6 +204,42 @@ if ($LASTEXITCODE -ne 0) { Fail "конфигурирование не прош�
 if (-not $ConfigureOnly) {
     & $cmake --build $BuildDir
     if ($LASTEXITCODE -ne 0) { Fail "сборка не прошла (код $LASTEXITCODE)" }
+
+    # A double click from Explorer has no Qt or OCCT in PATH: deploy the Qt runtime and the OCCT DLLs
+    # next to the executables. The viewer plugin finds its Qt dependencies in the application
+    # directory; the novtk OCCT set is enough for MockBackend and keeps the folders small.
+    $deploy = Join-Path $QtDir 'bin\windeployqt.exe'
+    $deployOcc = First-Existing @(
+        'D:\cnc-toolchain\occt-novtk\Library',
+        $OccDir)
+    if (Test-Path -LiteralPath $deploy) {
+        $targets = @(
+            @{ exe = (Join-Path $BuildDir 'geometry_probe.exe'); dir = $BuildDir },
+            @{ exe = (Join-Path $BuildDir 'stepledges_probe.exe'); dir = $BuildDir },
+            @{ exe = (Join-Path $BuildDir '..\viewer\gcodeviewer.exe'); dir = (Join-Path $BuildDir '..\viewer') }
+        )
+        foreach ($target in $targets) {
+            if (-not (Test-Path -LiteralPath $target.exe)) { continue }
+            & $deploy --release --no-translations --compiler-runtime --qmldir (Join-Path $root 'modules\gcode-viewer') $target.exe
+            if ($LASTEXITCODE -ne 0) { Fail "windeployqt не прошёл: $($target.exe)" }
+            if ($deployOcc -and (Test-Path -LiteralPath (Join-Path $deployOcc 'bin'))) {
+                Copy-Item -Path (Join-Path $deployOcc 'bin\*.dll') -Destination $target.dir -Force
+            }
+            # The probes set QT_QPA_PLATFORM=offscreen themselves; windeployqt copies only the
+            # windows platform plugin, so the offscreen one goes next to it.
+            $platforms = Join-Path $target.dir 'platforms'
+            $offscreen = Join-Path $QtDir 'plugins\platforms\qoffscreen.dll'
+            if ((Test-Path -LiteralPath $platforms) -and (Test-Path -LiteralPath $offscreen)) {
+                Copy-Item -LiteralPath $offscreen -Destination $platforms -Force
+            }
+        }
+        # stepledges_probe imports cncedgesplugin.dll directly: copy the plugin next to the probes.
+        $edgesPlugins = Join-Path $BuildDir 'CNC\Edges'
+        if (Test-Path -LiteralPath $edgesPlugins) {
+            Copy-Item -Path (Join-Path $edgesPlugins '*.dll') -Destination $BuildDir -Force
+        }
+        Write-Host ('build-viewer: Qt и OCCT разложены рядом с exe (' + $deployOcc + ')')
+    }
 }
 
 $moduleDir = Join-Path $BuildDir 'CNC\Edges'

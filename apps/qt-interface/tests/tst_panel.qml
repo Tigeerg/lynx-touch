@@ -53,6 +53,37 @@ TestCase {
         compare(keys[1].id, "toCursor")
     }
 
+    function test_softkey_matrix() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        var cases = [
+            { wp: "SETUP", screen: "pos" },
+            { wp: "TEST", screen: "prog" },
+            { wp: "RUN", screen: "prog" },
+            { wp: "RUN", screen: "offset" },
+            { wp: "RUN", screen: "tool" },
+            { wp: "RUN", screen: "alarm" },
+            { wp: "RUN", screen: "service" }
+        ]
+        for (var c = 0; c < cases.length; c++) {
+            p.workplace = cases[c].wp
+            p.activeScreen = cases[c].screen
+            var keys = p.softkeysFor(cases[c].screen)
+            for (var i = 0; i < keys.length; i++) {
+                if (!keys[i]) continue
+                p.lastAction = ""
+                p.pressSoftkey(keys[i])
+                verify(p.lastAction !== "")
+                p.fileDialog = false
+                p.toolMeasureOpen = false
+                p.serviceAuthOpen = false
+                p.probeOpen = false
+            }
+        }
+        p.setWorkplace("RUN")
+        p.activeScreen = "prog"
+    }
+
     function test_softkeys_are_slots() {
         var keys = panel.item.padSoft(panel.item.softkeysFor("pos"))
 

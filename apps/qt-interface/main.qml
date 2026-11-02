@@ -375,10 +375,12 @@ Item {
         var m = {}; for (var k in softkeyOn) m[k] = softkeyOn[k];
         m[id] = val; softkeyOn = m;
     }
+    property string lastAction: ""
     function pressSoftkey(k) {
         if (!k) return;
         // A disabled key explains itself instead of staying silent (React softkeyAction).
-        if (k.disabled) { message = k.reason || "Клавиша недоступна"; return; }
+        if (k.disabled) { lastAction = "disabled:" + k.id; message = k.reason || "Клавиша недоступна"; return; }
+        lastAction = k.id || k.machine || "unknown";
         if (k.id === "openFile") { openFileDialog(); return; }
         if (k.id === "toolProbe" || k.id === "measure") { openToolMeasure(); return; }
         if (k.machine === "coolant") { coolantOn = !coolantOn; machineToggleCoolant(); }

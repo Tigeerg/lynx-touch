@@ -2858,6 +2858,13 @@ Item {
             }
         }   // contentRow
 
+        // Hybrid: the cycle keys must be present even when the side panel is shown.
+        HybridBar {
+            Layout.fillWidth: true
+            visible: root.hybridMode
+            host: root
+        }
+
         // ============ STAGE 5 — SOFTKEY BAR (F1–F8) ============
         // React: <SoftkeyBar> grid-cols-8 gap-2, each key h-[76px]
         RowLayout {

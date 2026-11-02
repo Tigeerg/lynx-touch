@@ -485,15 +485,20 @@ Item {
             spacing: 8
             Repeater {
                 model: [
-                    { label: "ПУСК", action: "start", color: host.cSuccess },
-                    { label: "СТОП", action: "hold", color: host.cWarning },
-                    { label: "СБРОС", action: "reset", color: host.cPrimary },
-                    { label: "АВАРИЯ", action: "estop", color: host.cDestructive }
+                    { label: "ПУСК", action: "start", color: host.cSuccess, icon: "▶" },
+                    { label: "СТОП", action: "hold", color: host.cWarning, icon: "II" },
+                    { label: "СБРОС", action: "reset", color: host.cPrimary, icon: "↺" },
+                    { label: "АВАРИЯ", action: "estop", color: host.cDestructive, icon: "■" }
                 ]
                 delegate: Rectangle {
                     Layout.fillWidth: true; Layout.fillHeight: true
                     radius: 8; color: modelData.color
-                    Text { anchors.centerIn: parent; text: modelData.label; color: host.cPrimaryFg; font.bold: true; font.pixelSize: 18; font.letterSpacing: 1 }
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 6
+                        Text { text: modelData.icon; color: host.cPrimaryFg; font.pixelSize: 18; font.bold: true }
+                        Text { text: modelData.label; color: host.cPrimaryFg; font.bold: true; font.pixelSize: 16; font.letterSpacing: 1 }
+                    }
                     MouseArea {
                         anchors.fill: parent
                         onClicked: {

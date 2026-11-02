@@ -118,6 +118,12 @@ Item {
                 MouseArea { anchors.fill: parent; onClicked: host.activeScreen = "alarm" }
             }
             Rectangle {
+                Layout.preferredWidth: 56; Layout.fillHeight: true
+                color: host.cCard; border.color: host.cBorder; radius: 8
+                Text { anchors.centerIn: parent; text: "?"; color: host.cForeground; font.bold: true; font.pixelSize: 22 }
+                MouseArea { anchors.fill: parent; onClicked: host.helpOpen = !host.helpOpen }
+            }
+            Rectangle {
                 Layout.preferredWidth: 120; Layout.fillHeight: true
                 color: host.cCard; border.color: host.cBorder; radius: 8
                 Text { anchors.centerIn: parent; text: touch.clockText; color: host.cForeground; font.bold: true; font.pixelSize: 18; font.family: host.fontMono }

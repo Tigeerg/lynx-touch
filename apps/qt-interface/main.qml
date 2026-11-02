@@ -2694,7 +2694,7 @@ Item {
             // ============ PROGRAM SIDE (Machining, v0.4) ============
             Rectangle {
                 id: programSide
-                visible: root.activeScreen === "prog"
+                visible: root.activeScreen === "prog" && !root.hybridMode
                 Layout.preferredWidth: 300
                 Layout.minimumWidth: 300
                 Layout.maximumWidth: 300
@@ -2836,7 +2836,7 @@ Item {
             WorkStatusColumn {
                 id: workStatusColumn
                 host: root
-                visible: root.activeScreen === "pos"
+                visible: root.activeScreen === "pos" && !root.hybridMode
                 Layout.preferredWidth: 300
                 Layout.minimumWidth: 300
                 Layout.maximumWidth: 300

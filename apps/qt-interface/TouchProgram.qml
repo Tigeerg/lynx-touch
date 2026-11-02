@@ -96,33 +96,6 @@ Item {
             }
         }
 
-        // View buttons
-        RowLayout {
-            visible: host.workplace === "RUN"
-            Layout.fillWidth: true
-            Layout.preferredHeight: visible ? 56 : 0
-            Layout.minimumHeight: visible ? 56 : 0
-            Layout.maximumHeight: visible ? 56 : 0
-            spacing: 6
-            Repeater {
-                model: prog.viewList
-                delegate: Rectangle {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    radius: 6
-                    color: host.autoView === modelData.id ? host.cPrimary : host.cCard
-                    border.color: host.autoView === modelData.id ? host.cPrimary : host.cBorder
-                    RowLayout {
-                        anchors.centerIn: parent
-                        spacing: 5
-                        Text { text: modelData.icon; color: host.autoView === modelData.id ? host.cPrimaryFg : host.cForeground; font.family: "lucide"; font.pixelSize: 18 }
-                        Text { text: modelData.label; color: host.autoView === modelData.id ? host.cPrimaryFg : host.cForeground; font.bold: true; font.pixelSize: 13 }
-                    }
-                    MouseArea { anchors.fill: parent; onClicked: host.autoView = modelData.id }
-                }
-            }
-        }
-
         // Content: RUN views or the block list
         Item {
             Layout.fillWidth: true
@@ -189,6 +162,16 @@ Item {
                     }
                 }
             }
+        }
+
+        // AUTO status zone under the viewer, as in the React touch panel.
+        TouchStatusZone {
+            visible: host.workplace === "RUN" && host.autoView === "trajectory"
+            Layout.fillWidth: true
+            Layout.preferredHeight: visible ? 310 : 0
+            Layout.minimumHeight: visible ? 310 : 0
+            Layout.maximumHeight: visible ? 310 : 0
+            host: prog.host
         }
     }
 }

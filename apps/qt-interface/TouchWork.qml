@@ -115,6 +115,16 @@ Item {
             }
         }
 
+        // Status zone (AUTO/RUN): execution, tool, load, codes and correctors.
+        TouchStatusZone {
+            visible: host.workplace === "RUN"
+            Layout.fillWidth: true
+            Layout.preferredHeight: visible ? 380 : 0
+            Layout.minimumHeight: visible ? 380 : 0
+            Layout.maximumHeight: visible ? 380 : 0
+            host: work.host
+        }
+
         // Viewer
         Rectangle {
             Layout.fillWidth: true

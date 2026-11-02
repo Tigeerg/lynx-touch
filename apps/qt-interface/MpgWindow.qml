@@ -13,6 +13,14 @@ Window {
     objectName: "mpgWindow"
     title: "MPG-пульт — маховик"
     color: "#23282E"
+    minimumWidth: 260
+    minimumHeight: 400
+
+    readonly property real logicalW: 520
+    readonly property real logicalH: 800
+    property bool ratioGuard: false
+    onWidthChanged: if (!ratioGuard) { ratioGuard = true; height = Math.round(width * logicalH / logicalW); ratioGuard = false }
+    onHeightChanged: if (!ratioGuard) { ratioGuard = true; width = Math.round(height * logicalW / logicalH); ratioGuard = false }
 
     property Item host
     property string axis: "X"
@@ -71,6 +79,15 @@ Window {
         while (encoderAccum >= 18) { pulse(1); encoderAccum -= 18 }
         while (encoderAccum <= -18) { pulse(-1); encoderAccum += 18 }
     }
+
+    Item {
+        id: canvas
+        width: mpg.logicalW
+        height: mpg.logicalH
+        scale: Math.min(mpg.width / mpg.logicalW, mpg.height / mpg.logicalH)
+        transformOrigin: Item.TopLeft
+        x: (mpg.width - mpg.logicalW * scale) / 2
+        y: (mpg.height - mpg.logicalH * scale) / 2
 
     Rectangle {
         anchors.fill: parent
@@ -288,6 +305,7 @@ Window {
                 }
             }
         }
+    }
     }
 }
 

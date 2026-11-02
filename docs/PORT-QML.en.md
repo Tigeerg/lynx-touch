@@ -6,7 +6,7 @@ code and its run; this file holds the intent, anchors in both trees and acceptan
 
 This edition was merged on 31.10.2026: the inventory and anchors come from the previous edition,
 the order of work, acceptance and decisions come from the lead. State at the day of the edition:
-React `0.24.1` (product `0.35.32`), Qt `0.6.27`.
+React `0.24.1` (product `0.35.33`), Qt `0.6.28`.
 
 **Roles fixed (01.11.2026).** The real controller runs **Qt — it is the product**. React was a demo
 stage: after the start and CAM-insert fixes it is **frozen** — no new features are developed there.
@@ -35,7 +35,7 @@ dispatcher's decisions are in §7.
 
 React anchors are a file and a symbol; line numbers are as of 31.10.2026. "W" is the wave in §4.
 
-| Panel node | React `0.24.1` (source) | Qt `0.6.27` (`main.qml`) | Gap | W |
+| Panel node | React `0.24.1` (source) | Qt `0.6.28` (`main.qml`) | Gap | W |
 |---|---|---|---|---|
 | Workplaces | `types.ts` (`SETUP`/`TEST`/`RUN`), `WORKPLACE_LABEL` (`data.ts`), `SET_WORKPLACE` (`nav.ts`) | none; only `machineMode` (`:24`) and `modeCycle` | no workplaces | C |
 | Tabs | 5: `TABS`/`TAB_LABEL` (`types.ts`) Work, Offsets, Tool, Messages, Service; Work merges `pos` and `prog` (`tabOfScreen`) | 7: `tab0`..`tab6` (`:967-1256`), Position and Program separate, plus 3D | +2 tabs | B |
@@ -278,6 +278,16 @@ Acceptance: both buttons in Debug open separate windows; actions match the main 
 the selected axis by the selected step.
 Risk: a second window needs `Window` and `QtQuick.Window`; QtVCP supports it, but it is checked in
 the same runtime the panel runs in.
+
+### Strict React hardware console port (next wave)
+
+Today `KeyboardWindow.qml`, `NavWindow.qml`, `MpgWindow.qml` and `PendantWindow.qml` repeat the
+logic but are **not a frame-by-frame port** of the React reference images. They must be rebuilt
+from those images: the five keyboard rows and colours, the side screen/arrow block, the full
+hardware panel (E-stop, Start/Stop/Reset, workplaces, mode/aux blocks, jog, override knobs), and
+the MPG body/encoder/rotary switches. Every window keeps a fixed logical canvas, locks the aspect
+ratio and scales proportionally for debugging. Acceptance is a Qt screenshot next to the React
+reference at 100% and at a reduced window, with grid/colour/font/spacing diffs closed.
 
 ### Three interface modes (required)
 

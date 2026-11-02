@@ -425,5 +425,13 @@ TestCase {
         compare(panel.item.mpgOpen, true)
         compare(panel.item.keyboardOpen, true)
         compare(panel.item.navOpen, true)
+
+        // The MPG window keeps its 520x800 aspect while the debug window is scaled.
+        var mpgObject = mpg.createObject(null, { "host": panel.item })
+        verify(mpgObject !== null)
+        mpgObject.width = 320
+        wait(0)
+        compare(mpgObject.height, 492)
+        mpgObject.destroy()
     }
 }

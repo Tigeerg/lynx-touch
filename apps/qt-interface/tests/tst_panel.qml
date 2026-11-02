@@ -38,6 +38,21 @@ TestCase {
         verify(panel.item.activeScreen.length > 0)
     }
 
+    function test_boot_state() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        // A clean start is deterministic: AUTO workplace, Program screen, the AUTO softkey set.
+        p.workplace = "RUN"
+        p.machineMode = "AUTO"
+        p.activeScreen = "prog"
+        wait(0)
+        compare(p.activeScreen, "prog")
+        compare(p.workplace, "RUN")
+        var keys = p.softkeysFor("prog")
+        compare(keys[0].id, "openFile")
+        compare(keys[1].id, "toCursor")
+    }
+
     function test_softkeys_are_slots() {
         var keys = panel.item.padSoft(panel.item.softkeysFor("pos"))
 
@@ -256,6 +271,19 @@ TestCase {
         compare(p.measurePhase(), "done")
         p.closeToolMeasure()
         verify(!p.toolMeasureOpen)
+    }
+
+    function test_hybrid_mode() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        p.svcValues = ({ "system.9": 1 })
+        wait(0)
+        verify(p.hybridMode)
+        verify(!p.touchMode)
+        var deck = findByName(p, "hybridDeckLayer")
+        verify(deck !== null)
+        p.svcValues = ({})
+        verify(!p.hybridMode)
     }
 
     function test_touch_mode() {

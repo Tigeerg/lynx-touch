@@ -17,16 +17,21 @@ Item {
     // touch panel. The service parameter [DISPLAY] UI_MODE selects it; `--touch` only seeds the
     // default for the standalone debug exe. The window follows the root size.
     readonly property int uiModeIndex: 9
-    property bool touchMode: {
+    readonly property int uiModeValue: {
         var v = svcValues["system." + uiModeIndex];
         if (v === undefined) v = systemDefs[uiModeIndex].dflt;
-        return v === 2;   // 0 panel, 1 hybrid, 2 touch-only
+        return v;   // 0 panel, 1 hybrid, 2 touch-only
     }
+    readonly property bool touchMode: uiModeValue === 2
+    readonly property bool hybridMode: uiModeValue === 1
     width: touchMode ? 864 : 1024
     height: touchMode ? 1536 : 600
+    onUiModeValueChanged: if (typeof CanvasLock !== "undefined") CanvasLock.apply(uiModeValue)
+    Component.onCompleted: if (typeof CanvasLock !== "undefined") CanvasLock.apply(uiModeValue)
 
     // Active screen (bind to logic in QtVCP). Values: pos, prog, ...
-    property string activeScreen: "pos"
+    // Boot is deterministic: AUTO workplace opens the Program screen with the AUTO views.
+    property string activeScreen: "prog"
     property string workplace: "RUN"
     property bool pendantOpen: false
     property bool mpgOpen: false
@@ -1067,6 +1072,10 @@ Item {
         visible: !root.touchMode
         focus: true
         Component.onCompleted: rootCol.forceActiveFocus()
+        Connections {
+            target: root
+            function onSplashGoneChanged() { if (root.splashGone) rootCol.forceActiveFocus(); }
+        }
         Keys.onPressed: {
             if (!root.splashGone && !root.splashLeaving) root.splashDismiss();
             if (event.isAutoRepeat) return;
@@ -1700,7 +1709,7 @@ Item {
                 // ----- Part run (AUTO, v0.5.1) — separate card -----
                 Rectangle {
                     id: autoProgressBar
-                    visible: root.machineMode === "AUTO"
+                    visible: root.machineMode === "AUTO" && root.workplace !== "RUN"
                     Layout.fillWidth: true; Layout.preferredHeight: 40; Layout.minimumHeight: 40; Layout.maximumHeight: 40
                     color: cCard; border.color: cBorder; border.width: 1; radius: 6
                     RowLayout { anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 12
@@ -1717,6 +1726,7 @@ Item {
                 // ----- "Program" panel -----
                 Rectangle {
                     id: progPanel
+                    visible: root.workplace !== "RUN"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     color: cCard
@@ -1823,6 +1833,15 @@ Item {
                             }
                         }
                     }
+                }
+
+                // AUTO workplace: the same AutoScreen as the touch panel; F8 switches the four
+                // views here too, not only on the touch canvas.
+                AutoScreen {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: root.workplace === "RUN"
+                    host: root
                 }
             }
 
@@ -3331,6 +3350,17 @@ Item {
                 }
             }
         }
+    }
+
+    HybridDeck {
+        objectName: "hybridDeckLayer"
+        visible: root.hybridMode
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 8
+        anchors.bottomMargin: 92
+        host: root
+        z: 150
     }
 
     TouchUI {

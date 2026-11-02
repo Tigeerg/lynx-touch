@@ -53,6 +53,21 @@ TestCase {
         compare(keys[1].id, "toCursor")
     }
 
+    function test_language_switch() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        p.svcValues = ({})
+        p.serviceSection = "system"
+        p.svcCursor = 2
+        compare(p.i18n.t("tab.work"), "Работа")
+        p.adjustParam(1, false)          // LANGUAGE -> English
+        compare(p.i18n.t("tab.work"), "Work")
+        compare(p.i18n.t("svc.save"), "Save")
+        p.adjustParam(-1, false)
+        compare(p.i18n.t("tab.work"), "Работа")
+        p.svcValues = ({})
+    }
+
     function test_service_adjust_perf() {
         tryCompare(panel, "status", Loader.Ready)
         var p = panel.item
@@ -362,7 +377,8 @@ TestCase {
         var touch = findByName(p, "touchPanel")
         verify(touch !== null)
         compare(touch.tabTitles.length, 5)
-        compare(touch.tabTitles[0], "Работа")
+        compare(touch.tabTitles[0], "tab.work")
+        compare(p.i18n.t(touch.tabTitles[0]), "Работа")
         // The same state drives the touch frame: the Work tab opens the workplace screen.
         p.setWorkplace("SETUP")
         touch.tabTarget(0)

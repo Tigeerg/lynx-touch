@@ -11,7 +11,7 @@ Item {
 
     property Item host
 
-    readonly property var tabTitles: ["Работа", "Смещения", "Инструмент", "Сообщения", "Сервис"]
+    readonly property var tabTitles: ["tab.work", "tab.offset", "tab.tool", "tab.alarm", "tab.service"]
     readonly property var tabIcons: ["\ue121", "\ue0ac", "\ue1b1", "\ue3b3", "\ue603"]
     readonly property int workTab: (host && (host.activeScreen === "pos" || host.activeScreen === "prog")) ? 0
                                       : host && host.activeScreen === "offset" ? 1
@@ -146,7 +146,7 @@ Item {
                     border.color: touch.workTab === index ? host.cPrimary : host.cBorder
                     RowLayout { anchors.centerIn: parent; spacing: 6
                         Text { text: touch.tabIcons[index]; color: touch.workTab === index ? host.cPrimaryFg : host.cForeground; font.family: "lucide"; font.pixelSize: 16 }
-                        Text { text: modelData; color: touch.workTab === index ? host.cPrimaryFg : host.cForeground; font.bold: true; font.pixelSize: 14 }
+                        Text { text: host.i18n.t(modelData); color: touch.workTab === index ? host.cPrimaryFg : host.cForeground; font.bold: true; font.pixelSize: 14 }
                     }
                     MouseArea { anchors.fill: parent; onClicked: touch.tabTarget(index) }
                 }
@@ -245,10 +245,10 @@ Item {
                         color: host.cMuted
                         RowLayout {
                             anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 6
-                            Text { text: "ПАРАМЕТР"; Layout.minimumWidth: 220; Layout.fillWidth: true; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10 }
-                            Text { text: "КЛЮЧ INI"; Layout.preferredWidth: 170; Layout.minimumWidth: 170; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10 }
-                            Text { text: "ЗНАЧЕНИЕ"; Layout.preferredWidth: 140; Layout.minimumWidth: 140; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10 }
-                            Text { text: "ПО УМОЛЧ."; Layout.preferredWidth: 64; Layout.minimumWidth: 64; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10 }
+                            Text { text: host.i18n.t("svc.param"); Layout.minimumWidth: 220; Layout.fillWidth: true; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10 }
+                            Text { text: host.i18n.t("svc.key"); Layout.preferredWidth: 170; Layout.minimumWidth: 170; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10 }
+                            Text { text: host.i18n.t("svc.value"); Layout.preferredWidth: 140; Layout.minimumWidth: 140; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10 }
+                            Text { text: host.i18n.t("svc.default"); Layout.preferredWidth: 64; Layout.minimumWidth: 64; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10 }
                             Item { Layout.preferredWidth: 86 }
                         }
                     }
@@ -309,7 +309,7 @@ Item {
                         Layout.minimumHeight: 44
                         Layout.maximumHeight: 44
                         radius: 6; color: host.cPrimary
-                        Text { anchors.centerIn: parent; text: "Сохранить"; color: host.cPrimaryFg; font.bold: true; font.pixelSize: 15 }
+                        Text { anchors.centerIn: parent; text: host.i18n.t("svc.save"); color: host.cPrimaryFg; font.bold: true; font.pixelSize: 15 }
                         MouseArea { anchors.fill: parent; onClicked: host.svcSave() }
                     }
                 }
@@ -502,10 +502,10 @@ Item {
             spacing: 8
             Repeater {
                 model: [
-                    { label: "ПУСК", action: "start", color: host.cSuccess, icon: "▶" },
-                    { label: "СТОП", action: "hold", color: host.cWarning, icon: "II" },
-                    { label: "СБРОС", action: "reset", color: host.cPrimary, icon: "↺" },
-                    { label: "АВАРИЯ", action: "estop", color: host.cDestructive, icon: "■" }
+                    { label: host.i18n.t("cycle.start"), action: "start", color: host.cSuccess, icon: "▶" },
+                    { label: host.i18n.t("cycle.hold"), action: "hold", color: host.cWarning, icon: "II" },
+                    { label: host.i18n.t("cycle.reset"), action: "reset", color: host.cPrimary, icon: "↺" },
+                    { label: host.i18n.t("cycle.estop"), action: "estop", color: host.cDestructive, icon: "■" }
                 ]
                 delegate: Rectangle {
                     Layout.fillWidth: true; Layout.fillHeight: true

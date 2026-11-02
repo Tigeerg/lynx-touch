@@ -32,6 +32,10 @@ Item {
     // Active screen (bind to logic in QtVCP). Values: pos, prog, ...
     // Boot is deterministic: AUTO workplace opens the Program screen with the AUTO views.
     property string activeScreen: "prog"
+    // [DISPLAY] LANGUAGE: 0 Russian, 1 English. The I18n object is shared by all screens.
+    readonly property string uiLanguage: svcVal("system", 2, systemDefs[2]) === 1 ? "en" : "ru"
+    readonly property var i18n: i18nObject
+    I18n { id: i18nObject; language: root.uiLanguage }
     property string workplace: "RUN"
     property bool pendantOpen: false
     property bool mpgOpen: false
@@ -673,7 +677,25 @@ Item {
         { label: "Макс. коррекция шпинделя", key: "[DISPLAY] MAX_SPINDLE_OVERRIDE", dflt: 120, unit: "%", min: 100, max: 150, step: 10 },
         { label: "Линейные единицы", key: "[TRAJ] LINEAR_UNITS", dflt: 0, options: ["мм", "дюйм"], restart: true },
         { label: "Уровень отладки", key: "[EMC] DEBUG", dflt: 0, min: 0, max: 7, step: 1 },
-        { label: "Режим интерфейса", key: "[DISPLAY] UI_MODE", dflt: (Qt.application.arguments.indexOf("--touch") >= 0 ? 2 : 0), options: ["панель", "гибрид", "сенсор"], free: true }
+        { label: "Режим интерфейса", key: "[DISPLAY] UI_MODE", dflt: (Qt.application.arguments.indexOf("--touch") >= 0 ? 2 : 0), options: ["панель", "гибрид", "сенсор"], free: true },
+        { label: "Размер экрана", key: "[DISPLAY] SCREEN_SIZE", dflt: 1, options: ["7 дюймов", "10 дюймов"], free: true },
+        { label: "Имя станка", key: "[EMC] MACHINE", dflt: 0, options: ["VMC850", "VMC850M", "Gantry"], restart: true },
+        { label: "Модуль интерфейса", key: "[DISPLAY] DISPLAY", dflt: 0, options: ["axis", "qtvcp", "gmoccapy"], restart: true },
+        { label: "Начало отсчёта позиции", key: "[DISPLAY] POSITION_OFFSET", dflt: 0, options: ["относительно детали", "относительно базы"], free: true },
+        { label: "Сегментов на дугу", key: "[DISPLAY] ARCDIVISION", dflt: 64, min: 8, max: 128, step: 8 },
+        { label: "Мин. коррекция шпинделя", key: "[DISPLAY] MIN_SPINDLE_OVERRIDE", dflt: 0, unit: "%", min: 0, max: 100, step: 5 },
+        { label: "Обороты шпинделя по умолч.", key: "[DISPLAY] DEFAULT_SPINDLE_SPEED", dflt: 3000, unit: "об/мин", min: 0, max: 24000, step: 100 },
+        { label: "Шаг оборотов шпинделя", key: "[DISPLAY] SPINDLE_INCREMENT", dflt: 100, unit: "об/мин", min: 10, max: 1000, step: 10 },
+        { label: "Набор шагов JOG", key: "[DISPLAY] INCREMENTS", dflt: 1, options: ["0.1/0.01/0.001", "1/0.1/0.01/0.001", "1/0.1/0.01/0.001/0.0001"], free: true },
+        { label: "Мин. линейная скорость", key: "[DISPLAY] MIN_LINEAR_VELOCITY", dflt: 0, unit: "мм/с", min: 0, max: 50, step: 5 },
+        { label: "Мин. угловая скорость", key: "[DISPLAY] MIN_ANGULAR_VELOCITY", dflt: 0, unit: "°/с", min: 0, max: 30, step: 0.5, digits: 1 },
+        { label: "Угловая скорость по умолч.", key: "[DISPLAY] DEFAULT_ANGULAR_VELOCITY", dflt: 30, unit: "°/с", min: 1, max: 180, step: 1 },
+        { label: "Макс. угловая скорость", key: "[DISPLAY] MAX_ANGULAR_VELOCITY", dflt: 90, unit: "°/с", min: 10, max: 720, step: 5 },
+        { label: "Каталог программ", key: "[DISPLAY] PROGRAM_PREFIX", dflt: 1, options: ["текущий", "~/linuxcnc/nc_files", "/home/cnc/nc_files"], free: true },
+        { label: "Редактор программ", key: "[DISPLAY] EDITOR", dflt: 0, options: ["нет", "gedit", "nano"], free: true },
+        { label: "Геометрия окна", key: "[DISPLAY] GEOMETRY", dflt: 1, options: ["нет", "x400 y400", "1024x600"], free: true },
+        { label: "Время заставки", key: "[DISPLAY] INTRO_TIME", dflt: 5, unit: "с", min: 0, max: 30, step: 1 },
+        { label: "Жёсткое нарезание резьбы", key: "[EMC] RIGID_TAPPING", dflt: 0, options: ["выкл.", "вкл."], free: true }
     ]
     readonly property var linuxcncDefs: [
         { label: "Модуль кинематики", key: "[KINS] KINEMATICS", dflt: 0, options: ["trivkins XYZA", "trivkins XYZ", "gantrykins"], restart: true },

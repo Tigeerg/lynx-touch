@@ -69,9 +69,9 @@ Item {
         // ---------- Header ----------
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 64
-            Layout.minimumHeight: 64
-            Layout.maximumHeight: 64
+            Layout.preferredHeight: 56
+            Layout.minimumHeight: 56
+            Layout.maximumHeight: 56
             spacing: 8
             Rectangle {
                 Layout.preferredWidth: 220; Layout.fillHeight: true
@@ -127,10 +127,10 @@ Item {
         // ---------- Tabs ----------
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 56
-            Layout.minimumHeight: 56
-            Layout.maximumHeight: 56
-            spacing: 8
+            Layout.preferredHeight: 42
+            Layout.minimumHeight: 42
+            Layout.maximumHeight: 42
+            spacing: 6
             Repeater {
                 model: touch.tabTitles
                 delegate: Rectangle {
@@ -139,8 +139,8 @@ Item {
                     color: touch.workTab === index ? host.cPrimary : host.cCard
                     border.color: touch.workTab === index ? host.cPrimary : host.cBorder
                     RowLayout { anchors.centerIn: parent; spacing: 6
-                        Text { text: touch.tabIcons[index]; color: touch.workTab === index ? host.cPrimaryFg : host.cForeground; font.family: "lucide"; font.pixelSize: 20 }
-                        Text { text: modelData; color: touch.workTab === index ? host.cPrimaryFg : host.cForeground; font.bold: true; font.pixelSize: 16 }
+                        Text { text: touch.tabIcons[index]; color: touch.workTab === index ? host.cPrimaryFg : host.cForeground; font.family: "lucide"; font.pixelSize: 16 }
+                        Text { text: modelData; color: touch.workTab === index ? host.cPrimaryFg : host.cForeground; font.bold: true; font.pixelSize: 14 }
                     }
                     MouseArea { anchors.fill: parent; onClicked: touch.tabTarget(index) }
                 }
@@ -279,9 +279,9 @@ Item {
         // ---------- Softkeys ----------
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 74
-            Layout.minimumHeight: 74
-            Layout.maximumHeight: 74
+            Layout.preferredHeight: 70
+            Layout.minimumHeight: 70
+            Layout.maximumHeight: 70
             spacing: 6
             Repeater {
                 model: host.softkeysFor(host.activeScreen)
@@ -315,16 +315,16 @@ Item {
         // ---------- Machine deck ----------
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 220
-            Layout.minimumHeight: 220
-            Layout.maximumHeight: 220
+            Layout.preferredHeight: 280
+            Layout.minimumHeight: 280
+            Layout.maximumHeight: 280
             spacing: 8
 
             // Workplace / mode column
             ColumnLayout {
-                Layout.preferredWidth: 180
-                Layout.minimumWidth: 180
-                Layout.maximumWidth: 180
+                Layout.preferredWidth: 150
+                Layout.minimumWidth: 150
+                Layout.maximumWidth: 150
                 Layout.fillHeight: true
                 spacing: 8
                 Repeater {
@@ -400,30 +400,56 @@ Item {
                 }
             }
 
-            // Functions
-            ColumnLayout {
-                Layout.preferredWidth: 168
-                Layout.minimumWidth: 168
-                Layout.maximumWidth: 168
+            // Functions: 4x3 block exactly like the React touch deck. The safe-point key is one
+            // cell like the others (the React reference had a three-cell bug).
+            GridLayout {
+                Layout.preferredWidth: 300
+                Layout.minimumWidth: 300
+                Layout.maximumWidth: 300
                 Layout.fillHeight: true
-                spacing: 8
-                Rectangle {
-                    Layout.fillWidth: true; Layout.fillHeight: true; radius: 8
-                    color: host.coolantOn ? host.cPrimary : host.cCard; border.color: host.cBorder
-                    Text { anchors.centerIn: parent; text: "СОЖ"; color: host.coolantOn ? host.cPrimaryFg : host.cForeground; font.bold: true; font.pixelSize: 16 }
-                    MouseArea { anchors.fill: parent; onClicked: host.pressSoftkey({ id: "coolant", machine: "coolant" }) }
-                }
-                Rectangle {
-                    Layout.fillWidth: true; Layout.fillHeight: true; radius: 8
-                    color: host.spindleOn ? host.cPrimary : host.cCard; border.color: host.cBorder
-                    Text { anchors.centerIn: parent; text: "ШПИНДЕЛЬ"; color: host.spindleOn ? host.cPrimaryFg : host.cForeground; font.bold: true; font.pixelSize: 14 }
-                    MouseArea { anchors.fill: parent; onClicked: host.pressSoftkey({ id: "spindle", machine: "spindle" }) }
-                }
-                Rectangle {
-                    Layout.fillWidth: true; Layout.fillHeight: true; radius: 8
-                    color: host.cCard; border.color: host.cBorder
-                    Text { anchors.centerIn: parent; text: "MDI"; color: host.cForeground; font.bold: true; font.pixelSize: 16 }
-                    MouseArea { anchors.fill: parent; onClicked: { host.setWorkplace("SETUP"); host.activeScreen = "pos" } }
+                columns: 4
+                rowSpacing: 6
+                columnSpacing: 6
+                Repeater {
+                    model: [
+                        { t: "M3", k: "m3", on: host.spindleOn && host.spindleDirection === "M03" },
+                        { t: "M4", k: "m4", on: host.spindleOn && host.spindleDirection === "M04" },
+                        { t: "M5", k: "m5", on: !host.spindleOn },
+                        { t: "СОЖ", k: "coolant", on: host.coolantOn },
+                        { t: "Туман", k: "mist", on: host.mistOn },
+                        { t: "Свет", k: "light", on: host.workLightOn },
+                        { t: "Стружка", k: "chip", on: host.chipConveyorOn },
+                        { t: "Обдув", k: "air", on: host.airBlastOn },
+                        { t: "Промывка", k: "wash", on: host.washOn },
+                        { t: "Смазка", k: "lube", on: host.lubeOn },
+                        { t: "Отвод", k: "safe", on: false },
+                        { t: host.toolClamped ? "Разжать" : "Зажать", k: "clamp", on: host.toolClamped }
+                    ]
+                    delegate: Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: 6
+                        color: modelData.on ? host.cPrimary : host.cCard
+                        border.color: modelData.on ? host.cPrimary : host.cBorder
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData.t
+                            color: modelData.on ? host.cPrimaryFg : host.cForeground
+                            font.bold: true
+                            font.pixelSize: 12
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                if (modelData.k === "m3") host.spindleCommand("M03");
+                                else if (modelData.k === "m4") host.spindleCommand("M04");
+                                else if (modelData.k === "m5") host.spindleCommand("M05");
+                                else if (modelData.k === "safe") host.goSafePoint();
+                                else if (modelData.k === "clamp") { host.toolClamped = !host.toolClamped; host.message = host.toolClamped ? "Инструмент зажат" : "Инструмент разжат"; }
+                                else host.toggleAux(modelData.k);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -431,9 +457,9 @@ Item {
         // ---------- Cycle row ----------
         RowLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 70
-            Layout.minimumHeight: 70
-            Layout.maximumHeight: 70
+            Layout.preferredHeight: 72
+            Layout.minimumHeight: 72
+            Layout.maximumHeight: 72
             spacing: 8
             Repeater {
                 model: [

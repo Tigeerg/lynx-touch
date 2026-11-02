@@ -148,7 +148,8 @@
   один `ViewerPane.qml` над настоящим `GcodeViewer3D.qml`.
 * `TouchUI.qml` — сенсорный вариант 864×1536 (портрет) на той же машине состояний: свои шапка,
   вкладки, софт-кеи без F-подписей и колода с джогом/циклом; экраны — `TouchWork.qml`,
-  `TouchProgram.qml`, `TouchCodeList.qml`, а не панельные. Вход — `--touch` у `lynx-panel.exe`
+  `TouchProgram.qml`, `TouchCodeList.qml`, а не панельные; блок функций 4×3 повторяет
+  React-колоду (M3/M4/M5, вспомогательные, отвод, зажим). Вход — `--touch` у `lynx-panel.exe`
   или `preview-touch.qml`; панельный вариант остаётся 1024×600.
 * `HybridDeck.qml` — сенсорная колода гибридного режима 1024×600 (цикл, джог, шаг) поверх
   панели. `panel-host.qml` масштабирует логический холст в окно, `PanelView`/`CanvasLock` в

@@ -67,7 +67,6 @@ export function FunctionsPanel({ state, dispatch }: { state: MachineState; dispa
       icon: House,
       active: false,
       action: { type: 'GO_SAFE' },
-      span: 3,
     },
     {
       label: state.toolClamped ? 'Разжим' : 'Зажим',

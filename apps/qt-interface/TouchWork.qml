@@ -29,7 +29,7 @@ Item {
                 spacing: 4
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { text: "ПОЛОЖЕНИЕ · ММ"; color: host.cMutedForeground; font.bold: true; font.pixelSize: 11; font.letterSpacing: 1 }
+                    Text { text: "РАБОЧИЕ · ММ"; color: host.cMutedForeground; font.bold: true; font.pixelSize: 11; font.letterSpacing: 1 }
                     Item { Layout.fillWidth: true }
                     Rectangle {
                         width: 52; height: 24; radius: 4; color: host.cPrimary

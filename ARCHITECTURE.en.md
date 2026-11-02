@@ -154,7 +154,8 @@ is local (when an API request appears, add and name that layer here).
   one `ViewerPane.qml` over the real `GcodeViewer3D.qml`.
 * `TouchUI.qml` is the touch variant at 864×1536 (portrait) on the same machine state: its own
   header, tabs, softkeys without F labels and a deck with jog/cycle; its screens are
-  `TouchWork.qml`, `TouchProgram.qml`, `TouchCodeList.qml`, not the panel ones. Entry: `--touch`
+  `TouchWork.qml`, `TouchProgram.qml`, `TouchCodeList.qml`, not the panel ones; the 4×3
+  functions block mirrors the React deck (M3/M4/M5, auxiliaries, safe point, clamp). Entry: `--touch`
   on `lynx-panel.exe` or `preview-touch.qml`; the key-panel variant stays 1024×600.
 * `HybridDeck.qml` is the touch deck of the 1024×600 hybrid mode (cycle, jog, step) over the
   panel. `panel-host.qml` scales the logical canvas into the window; `PanelView`/`CanvasLock` in

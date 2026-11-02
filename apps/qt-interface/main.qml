@@ -367,7 +367,36 @@ Item {
     ]
     property bool coolantOn: false
     property bool spindleOn: false
+    property bool mistOn: false
+    property bool workLightOn: false
+    property bool chipConveyorOn: false
+    property bool airBlastOn: false
+    property bool washOn: false
+    property bool lubeOn: false
+    property bool toolClamped: true
+    property string spindleDirection: "M05"
     property bool singleBlock: false
+
+    function spindleCommand(code) {
+        spindleDirection = code
+        spindleOn = code === "M03" || code === "M04"
+        machineToggleSpindle()
+        message = "Шпиндель: " + code
+    }
+    function toggleAux(kind) {
+        if (kind === "coolant") { coolantOn = !coolantOn; machineToggleCoolant(); }
+        else if (kind === "mist") mistOn = !mistOn;
+        else if (kind === "light") workLightOn = !workLightOn;
+        else if (kind === "chip") chipConveyorOn = !chipConveyorOn;
+        else if (kind === "air") airBlastOn = !airBlastOn;
+        else if (kind === "wash") washOn = !washOn;
+        else if (kind === "lube") lubeOn = !lubeOn;
+        message = "Вспомогательная функция: " + kind;
+    }
+    function goSafePoint() {
+        var ps = {}; for (var sk in machinePos) ps[sk] = machinePos[sk];
+        ps.z = 50; machinePos = ps; message = "Отвод в безопасную точку Z50";
+    }
     property bool optStop: false
     property bool dryRun: false
     function skeyActive(id) { return softkeyOn[id] === true; }
@@ -411,7 +440,7 @@ Item {
         else if (k.id === "partCounter") { partCount++; message = "Готовых деталей: " + partCount; }
         else if (k.id === "brokenTool") { mutateTools(cursorTool, { life: 0 }); message = toolsData[cursorTool].n + ": инструмент сломан, ресурс 0%"; }
         else if (k.id === "zeroRel") message = "Относительные координаты обнулены";
-        else if (k.id === "goSafe") { var ps = {}; for (var sk in machinePos) ps[sk] = machinePos[sk]; ps.z = 50; machinePos = ps; message = "Отвод в безопасную точку Z50"; }
+        else if (k.id === "goSafe") goSafePoint();
         else if (k.id === "goWorkZero") { machinePos = ({ x: 0, y: 0, z: 0, a: 0 }); message = "В ноль детали"; }
         else if (k.id === "warmup") { spindleOn = true; machineToggleSpindle(); message = "Прогрев шпинделя запущен"; }
         else if (k.id === "calc") message = "Калькулятор откроется в следующей волне";

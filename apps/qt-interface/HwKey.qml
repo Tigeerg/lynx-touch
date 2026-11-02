@@ -50,10 +50,16 @@ Rectangle {
             visible: key.icon !== ""
             text: key.icon
             color: key.active ? key.activeInk : key.ink
-            font.family: "lucide"; font.pixelSize: 18
+            font.family: key.icon.length > 0 && key.icon.charCodeAt(0) > 0xE000
+                         ? "lucide" : (host ? host.fontSans : "sans-serif")
+            font.pixelSize: 18
         }
         Text {
-            anchors.horizontalCenter: parent.horizontalCenter
+            width: key.width - 8
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
             text: key.label
             color: key.active ? key.activeInk : key.ink
             font.bold: true; font.pixelSize: 11

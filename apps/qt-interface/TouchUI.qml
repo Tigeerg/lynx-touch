@@ -384,13 +384,13 @@ Item {
                 spacing: 8
                 Repeater {
                     model: [ { id: "RUN", label: "АВТО" }, { id: "TEST", label: "ПРОГОН" }, { id: "SETUP", label: "НАЛАДКА" } ]
-                    delegate: Rectangle {
+                    delegate: HwKey {
                         Layout.fillWidth: true; Layout.fillHeight: true
-                        radius: 8
-                        color: host.workplace === modelData.id ? host.cPrimary : host.cCard
-                        border.color: host.workplace === modelData.id ? host.cPrimary : host.cBorder
-                        Text { anchors.centerIn: parent; text: modelData.label; color: host.workplace === modelData.id ? host.cPrimaryFg : host.cForeground; font.bold: true; font.pixelSize: 16 }
-                        MouseArea { anchors.fill: parent; onClicked: host.setWorkplace(modelData.id) }
+                        host: touch.host
+                        label: modelData.label
+                        active: host.workplace === modelData.id
+                        led: false
+                        onClicked: host.setWorkplace(modelData.id)
                     }
                 }
             }
@@ -415,25 +415,16 @@ Item {
                             { label: "Y−", axis: "Y", dir: -1 },
                             { label: "A−", axis: "A", dir: -1 }
                         ]
-                        delegate: Rectangle {
+                        delegate: HwKey {
                             Layout.fillWidth: true; Layout.fillHeight: true
-                            radius: 8
-                            color: modelData.axis === "" ? host.cWarning : (host.jogAxis === modelData.axis ? host.cAccent : host.cCard)
-                            border.color: host.cBorder
-                            Text {
-                                anchors.centerIn: parent
-                                text: modelData.label
-                                color: host.cForeground; font.bold: true
-                                font.pixelSize: modelData.axis === "" ? 12 : 18
-                                font.family: host.fontMono
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    if (modelData.axis === "") return;
-                                    host.selectAxis(modelData.axis);
-                                    host.machineJogRequest(modelData.dir);
-                                }
+                            host: touch.host
+                            label: modelData.label
+                            active: modelData.axis !== "" && host.jogAxis === modelData.axis
+                            led: false
+                            onClicked: {
+                                if (modelData.axis === "") return;
+                                host.selectAxis(modelData.axis);
+                                host.machineJogRequest(modelData.dir);
                             }
                         }
                     }
@@ -444,12 +435,13 @@ Item {
                     spacing: 6
                     Repeater {
                         model: [0, 1, 2]
-                        delegate: Rectangle {
-                            Layout.fillWidth: true; Layout.fillHeight: true; radius: 6
-                            color: host.jogStep === index ? host.cPrimary : host.cCard
-                            border.color: host.jogStep === index ? host.cPrimary : host.cBorder
-                            Text { anchors.centerIn: parent; text: ["0.001", "0.01", "0.1"][index]; color: host.jogStep === index ? host.cPrimaryFg : host.cForeground; font.bold: true; font.pixelSize: 13; font.family: host.fontMono }
-                            MouseArea { anchors.fill: parent; onClicked: host.jogStep = index }
+                        delegate: HwKey {
+                            Layout.fillWidth: true; Layout.fillHeight: true
+                            host: touch.host
+                            label: ["0.001", "0.01", "0.1"][index]
+                            active: host.jogStep === index
+                            led: false
+                            onClicked: host.jogStep = index
                         }
                     }
                 }
@@ -467,23 +459,24 @@ Item {
                 columnSpacing: 6
                 Repeater {
                     model: [
-                        { t: "M3", k: "m3", on: host.spindleOn && host.spindleDirection === "M03" },
-                        { t: "M4", k: "m4", on: host.spindleOn && host.spindleDirection === "M04" },
-                        { t: "M5", k: "m5", on: !host.spindleOn },
-                        { t: "СОЖ", k: "coolant", on: host.coolantOn },
-                        { t: "Туман", k: "mist", on: host.mistOn },
-                        { t: "Свет", k: "light", on: host.workLightOn },
-                        { t: "Стружка", k: "chip", on: host.chipConveyorOn },
-                        { t: "Обдув", k: "air", on: host.airBlastOn },
-                        { t: "Промывка", k: "wash", on: host.washOn },
-                        { t: "Смазка", k: "lube", on: host.lubeOn },
-                        { t: "Отвод", k: "safe", on: false },
-                        { t: host.toolClamped ? "Разжать" : "Зажать", k: "clamp", on: host.toolClamped }
+                        { t: "M3", i: "▶", k: "m3", on: host.spindleOn && host.spindleDirection === "M03" },
+                        { t: "M4", i: "◀", k: "m4", on: host.spindleOn && host.spindleDirection === "M04" },
+                        { t: "M5", i: "■", k: "m5", on: !host.spindleOn },
+                        { t: "СОЖ", i: "●", k: "coolant", on: host.coolantOn },
+                        { t: "Туман", i: "≈", k: "mist", on: host.mistOn },
+                        { t: "Свет", i: "☀", k: "light", on: host.workLightOn },
+                        { t: "Стружка", i: "▤", k: "chip", on: host.chipConveyorOn },
+                        { t: "Обдув", i: "≋", k: "air", on: host.airBlastOn },
+                        { t: "Промывка", i: "≈", k: "wash", on: host.washOn },
+                        { t: "Смазка", i: "◌", k: "lube", on: host.lubeOn },
+                        { t: "Отвод", i: "⇱", k: "safe", on: false },
+                        { t: host.toolClamped ? "Разжать" : "Зажать", i: host.toolClamped ? "↥" : "↧", k: "clamp", on: host.toolClamped }
                     ]
                     delegate: HwKey {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         host: touch.host
+                        icon: modelData.i || ""
                         label: modelData.t
                         active: modelData.on
                         led: true

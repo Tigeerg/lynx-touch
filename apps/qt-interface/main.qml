@@ -2864,13 +2864,6 @@ Item {
             }
         }   // contentRow
 
-        // Hybrid: the cycle keys must be present even when the side panel is shown.
-        HybridBar {
-            Layout.fillWidth: true
-            visible: root.hybridMode
-            host: root
-        }
-
         // ============ STAGE 5 — SOFTKEY BAR (F1–F8) ============
         // React: <SoftkeyBar> grid-cols-8 gap-2, each key h-[76px]
         RowLayout {
@@ -3410,6 +3403,20 @@ Item {
                 }
             }
         }
+    }
+
+    // Hybrid mode: cycle keys sit in the right column above the softkeys, not in a full-width
+    // strip across the panel.
+    HybridBar {
+        visible: root.hybridMode
+        z: 190
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 8
+        anchors.bottomMargin: 92
+        width: 300
+        height: 34
+        host: root
     }
 
     // Hybrid mode: switch the right column between the normal side panel and the touch deck.

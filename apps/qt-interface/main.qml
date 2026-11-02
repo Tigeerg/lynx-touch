@@ -604,6 +604,12 @@ Item {
         var m = { system:"Система", linuxcnc:"LinuxCNC", motion:"Траектория", joints:"Оси", pid:"PID", mesa:"Mesa", hal:"HAL", ladder:"Ladder", viewer:"Вьювер" };
         return m[id] || "";
     }
+    function serviceIconOf(id) {
+        for (var i = 0; i < serviceNav.length; i++)
+            if (serviceNav[i].t === "item" && serviceNav[i].id === id)
+                return serviceNav[i].icon || "";
+        return "";
+    }
     function serviceStep(d) {
         var i = serviceIds.indexOf(serviceSection);
         if (i < 0) i = 0;

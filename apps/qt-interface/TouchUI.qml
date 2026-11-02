@@ -201,84 +201,117 @@ Item {
                 }
             }
 
-            // Service: section chips and the parameters of the chosen section.
-            ColumnLayout {
+            // Service: vertical icon navigation + the React-style parameter table.
+            RowLayout {
                 visible: host.activeScreen === "service"
                 anchors.fill: parent
                 spacing: 6
-                Flickable {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 44
-                    Layout.minimumHeight: 44
-                    Layout.maximumHeight: 44
-                    contentWidth: svcChips.width
-                    contentHeight: height
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-                    flickableDirection: Flickable.HorizontalFlick
-                    Row {
-                        id: svcChips
-                        height: 44
+
+                Rectangle {
+                    Layout.preferredWidth: 64
+                    Layout.minimumWidth: 64
+                    Layout.maximumWidth: 64
+                    Layout.fillHeight: true
+                    color: host.cMuted
+                    radius: 6
+                    Column {
+                        anchors.top: parent.top
+                        anchors.topMargin: 6
+                        anchors.horizontalCenter: parent.horizontalCenter
                         spacing: 6
                         Repeater {
                             model: host.serviceIds
                             delegate: Rectangle {
-                                width: 104; height: 38; radius: 6
-                                color: host.serviceSection === modelData ? host.cPrimary : host.cCard
-                                border.color: host.serviceSection === modelData ? host.cPrimary : host.cBorder
-                                Text { anchors.centerIn: parent; text: host.serviceLabelOf(modelData); color: host.serviceSection === modelData ? host.cPrimaryFg : host.cForeground; font.bold: true; font.pixelSize: 12; elide: Text.ElideRight; width: parent.width - 8; horizontalAlignment: Text.AlignHCenter }
+                                width: 52; height: 48; radius: 6
+                                color: host.serviceSection === modelData ? host.cPrimary : "transparent"
+                                border.color: host.serviceSection === modelData ? host.cPrimary : "transparent"
+                                Text { anchors.centerIn: parent; text: host.serviceIconOf(modelData); color: host.serviceSection === modelData ? host.cPrimaryFg : host.cForeground; font.family: "lucide"; font.pixelSize: 22 }
                                 MouseArea { anchors.fill: parent; onClicked: host.serviceSection = modelData }
                             }
                         }
                     }
                 }
-                Flickable {
-                    Layout.fillWidth: true; Layout.fillHeight: true
-                    contentWidth: width; contentHeight: touchSvcCol.height
-                    clip: true; boundsBehavior: Flickable.StopAtBounds
-                    Column {
-                        id: touchSvcCol
-                        width: parent.width
-                        height: host.svcListLen() * 54 + 8
-                        Repeater {
-                            model: host.svcListLen()
-                            delegate: Rectangle {
-                                width: touchSvcCol.width; height: 54
-                                color: host.svcCursor === index ? host.cAccent : host.cCard
-                                border.color: host.cBorder
-                                RowLayout {
-                                    anchors.fill: parent; anchors.margins: 6; spacing: 8
-                                    Text { text: host.svcDefAt(index) ? host.svcDefAt(index).label : ""; Layout.fillWidth: true; color: host.cForeground; font.pixelSize: 13; elide: Text.ElideRight }
-                                    Rectangle {
-                                        Layout.preferredWidth: 52; Layout.preferredHeight: 38; radius: 4; color: host.cMuted
-                                        Text { anchors.centerIn: parent; text: "−"; color: host.cForeground; font.bold: true; font.pixelSize: 20 }
-                                        MouseArea { anchors.fill: parent; onClicked: { host.svcCursor = index; host.adjustParam(-1, false) } }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: 0
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 30
+                        Layout.minimumHeight: 30
+                        Layout.maximumHeight: 30
+                        color: host.cMuted
+                        RowLayout {
+                            anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 6
+                            Text { text: "ПАРАМЕТР"; Layout.minimumWidth: 220; Layout.fillWidth: true; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10 }
+                            Text { text: "КЛЮЧ INI"; Layout.preferredWidth: 170; Layout.minimumWidth: 170; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10 }
+                            Text { text: "ЗНАЧЕНИЕ"; Layout.preferredWidth: 140; Layout.minimumWidth: 140; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10 }
+                            Text { text: "ПО УМОЛЧ."; Layout.preferredWidth: 64; Layout.minimumWidth: 64; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10 }
+                            Item { Layout.preferredWidth: 86 }
+                        }
+                    }
+
+                    Flickable {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        contentWidth: width
+                        contentHeight: touchSvcCol.height
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        Column {
+                            id: touchSvcCol
+                            width: parent.width
+                            height: host.svcListLen() * 54
+                            Repeater {
+                                model: host.svcListLen()
+                                delegate: Rectangle {
+                                    width: touchSvcCol.width; height: 54
+                                    color: host.svcCursor === index ? host.cAccent : host.cCard
+                                    border.color: host.cBorder
+                                    RowLayout {
+                                        anchors.fill: parent; anchors.leftMargin: 8; anchors.rightMargin: 8; spacing: 6
+                                        Text { text: host.svcDefAt(index) ? host.svcDefAt(index).label : ""; Layout.minimumWidth: 220; Layout.fillWidth: true; color: host.cForeground; font.pixelSize: 13; elide: Text.ElideRight }
+                                        Text { text: host.svcDefAt(index) ? host.svcDefAt(index).key : ""; Layout.preferredWidth: 170; Layout.minimumWidth: 170; color: host.cMutedForeground; font.pixelSize: 11; font.family: host.fontMono; elide: Text.ElideRight }
+                                        Text {
+                                            Layout.preferredWidth: 140; Layout.minimumWidth: 140
+                                            text: host.svcDefAt(index) ? host.fmtVal(host.svcDefAt(index), host.svcValueAt(index)) : ""
+                                            color: host.cForeground; font.bold: true; font.pixelSize: 13; font.family: host.fontMono
+                                            horizontalAlignment: Text.AlignRight; elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            Layout.preferredWidth: 64; Layout.minimumWidth: 64
+                                            text: host.svcDefAt(index) ? host.fmtVal(host.svcDefAt(index), host.svcDefAt(index).dflt) : ""
+                                            color: host.cMutedForeground; font.pixelSize: 11; font.family: host.fontMono
+                                            horizontalAlignment: Text.AlignRight; elide: Text.ElideRight
+                                        }
+                                        Rectangle {
+                                            Layout.preferredWidth: 40; Layout.preferredHeight: 38; radius: 4; color: host.cMuted
+                                            Text { anchors.centerIn: parent; text: "−"; color: host.cForeground; font.bold: true; font.pixelSize: 20 }
+                                            MouseArea { anchors.fill: parent; onClicked: { host.svcCursor = index; host.adjustParam(-1, false) } }
+                                        }
+                                        Rectangle {
+                                            Layout.preferredWidth: 40; Layout.preferredHeight: 38; radius: 4; color: host.cMuted
+                                            Text { anchors.centerIn: parent; text: "+"; color: host.cForeground; font.bold: true; font.pixelSize: 20 }
+                                            MouseArea { anchors.fill: parent; onClicked: { host.svcCursor = index; host.adjustParam(1, false) } }
+                                        }
                                     }
-                                    Text {
-                                        Layout.preferredWidth: 170
-                                        text: host.svcDefAt(index) ? host.fmtVal(host.svcDefAt(index), host.svcValueAt(index)) : ""
-                                        color: host.cForeground; font.bold: true; font.pixelSize: 13; font.family: host.fontMono
-                                        horizontalAlignment: Text.AlignRight; elide: Text.ElideRight
-                                    }
-                                    Rectangle {
-                                        Layout.preferredWidth: 52; Layout.preferredHeight: 38; radius: 4; color: host.cMuted
-                                        Text { anchors.centerIn: parent; text: "+"; color: host.cForeground; font.bold: true; font.pixelSize: 20 }
-                                        MouseArea { anchors.fill: parent; onClicked: { host.svcCursor = index; host.adjustParam(1, false) } }
-                                    }
+                                    MouseArea { anchors.fill: parent; onClicked: host.svcCursor = index }
                                 }
-                                MouseArea { anchors.fill: parent; onClicked: host.svcCursor = index }
                             }
                         }
                     }
-                }
-                Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 44
-                    Layout.minimumHeight: 44
-                    Layout.maximumHeight: 44
-                    radius: 6; color: host.cPrimary
-                    Text { anchors.centerIn: parent; text: "Сохранить"; color: host.cPrimaryFg; font.bold: true; font.pixelSize: 15 }
-                    MouseArea { anchors.fill: parent; onClicked: host.svcSave() }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 44
+                        Layout.minimumHeight: 44
+                        Layout.maximumHeight: 44
+                        radius: 6; color: host.cPrimary
+                        Text { anchors.centerIn: parent; text: "Сохранить"; color: host.cPrimaryFg; font.bold: true; font.pixelSize: 15 }
+                        MouseArea { anchors.fill: parent; onClicked: host.svcSave() }
+                    }
                 }
             }
         }

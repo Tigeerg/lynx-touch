@@ -476,5 +476,17 @@ TestCase {
         wait(0)
         compare(mpgObject.height, 492)
         mpgObject.destroy()
+
+        // Strict keyboard/nav canvases keep their aspect when the debug window is scaled.
+        var kbObject = keyboard.createObject(null, { "host": panel.item })
+        kbObject.width = 250
+        wait(0)
+        compare(kbObject.height, 235)
+        kbObject.destroy()
+        var navObject = nav.createObject(null, { "host": panel.item })
+        navObject.width = 200
+        wait(0)
+        compare(navObject.height, 188)
+        navObject.destroy()
     }
 }

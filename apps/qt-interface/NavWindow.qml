@@ -2,17 +2,24 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Window
 
-// Side navigation keyboard of the physical console (React HardwareNav): the five screen keys,
-// Enter/Cancel and the cursor/page block. It only sends host actions; the screen sets and guards
-// stay in main.qml, exactly as for the F-keys.
+// Side navigation keys, ported from the React HardwareNav reference: five screen keys in one row,
+// then Enter/Up/Cancel/PgUp and Left/Down/Right/PgDn in a 4x2 block.
 Window {
     id: nav
-    width: 310
-    height: 640
+    width: 320
+    height: 300
+    minimumWidth: 200
+    minimumHeight: 188
     visible: false
     objectName: "navWindow"
     title: "Lynx Touch — клавиши навигации"
     color: "#2B3036"
+
+    readonly property real logicalW: 320
+    readonly property real logicalH: 300
+    property bool ratioGuard: false
+    onWidthChanged: if (!ratioGuard) { ratioGuard = true; height = Math.round(width * logicalH / logicalW); ratioGuard = false }
+    onHeightChanged: if (!ratioGuard) { ratioGuard = true; width = Math.round(height * logicalW / logicalH); ratioGuard = false }
 
     property Item host
 
@@ -21,8 +28,9 @@ Window {
     readonly property string cap: "#E7E2D8"
     readonly property string capAlt: "#C9D7E8"
     readonly property string green: "#2F9E55"
-    readonly property string red: "#D42125"
-    readonly property string blue: "#0362BB"
+    readonly property string red: "#B23A3A"
+    readonly property string blue: "#3E7CB1"
+    readonly property string darkKey: "#6B7178"
     readonly property string ink: "#1A1F25"
 
     readonly property var tabs: [
@@ -35,8 +43,7 @@ Window {
 
     function closeWindow() { if (host) host.navOpen = false }
     onClosing: function (close) { if (host) host.navOpen = false; close.accepted = true }
-
-    function isWorkTab(t) { return t === "work" && (host.activeScreen === "pos" || host.activeScreen === "prog") }
+    function isWork(t) { return t === "work" && (host.activeScreen === "pos" || host.activeScreen === "prog") }
     function goTab(t) {
         if (!host) return
         if (t === "work") host.activeScreen = host.workplace === "SETUP" ? "pos" : "prog";
@@ -53,105 +60,84 @@ Window {
         if (host.activeScreen === "service") host.svcCancel();
         else if (host.mdiOpen()) host.mdiBuffer = "";
     }
-    function leftRight(dir) {
-        if (!host) return
-        if (host.activeScreen === "service") host.adjustParam(dir, false);
-        else host.machineJogRequest(dir);
-    }
 
-    Rectangle {
-        anchors.fill: parent
-        color: nav.plate
-        radius: 10
+    Item {
+        id: canvas
+        width: nav.logicalW
+        height: nav.logicalH
+        scale: Math.min(nav.width / nav.logicalW, nav.height / nav.logicalH)
+        transformOrigin: Item.TopLeft
+        x: (nav.width - nav.logicalW * scale) / 2
+        y: (nav.height - nav.logicalH * scale) / 2
 
-        ColumnLayout {
+        Rectangle {
             anchors.fill: parent
-            anchors.margins: 12
-            spacing: 10
+            color: nav.plate
+            radius: 10
 
-            // Screen keys 1..5
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 250
-                color: nav.edge
-                radius: 8
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    spacing: 6
-                    Repeater {
-                        model: nav.tabs
-                        delegate: Rectangle {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            radius: 6
-                            color: nav.isWorkTab(modelData.target) || host.activeScreen === modelData.target ? nav.capAlt : nav.cap
-                            border.color: nav.edge
-                            border.width: 3
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 10
-                                anchors.rightMargin: 10
-                                spacing: 8
-                                Rectangle {
-                                    Layout.preferredWidth: 30; Layout.preferredHeight: 22
-                                    color: nav.ink; radius: 3
-                                    Text { anchors.centerIn: parent; text: modelData.n; color: nav.cap; font.bold: true; font.pixelSize: 12; font.family: "monospace" }
-                                }
-                                Text { text: modelData.icon; color: nav.ink; font.family: "lucide"; font.pixelSize: 20 }
-                                Text { text: modelData.title; Layout.fillWidth: true; color: nav.ink; font.bold: true; font.pixelSize: 13 }
-                            }
-                            MouseArea { anchors.fill: parent; onClicked: nav.goTab(modelData.target) }
+            // Screen keys
+            Row {
+                x: 18; y: 14
+                spacing: 6
+                Repeater {
+                    model: nav.tabs
+                    delegate: Rectangle {
+                        width: 52; height: 52; radius: 8
+                        color: nav.isWork(modelData.target) || host.activeScreen === modelData.target ? nav.capAlt : nav.cap
+                        border.color: nav.edge; border.width: 3
+                        Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 4; color: nav.edge; radius: 2 }
+                        Rectangle {
+                            x: 4; y: 4; width: 16; height: 16; radius: 3; color: nav.ink
+                            Text { anchors.centerIn: parent; text: modelData.n; color: nav.cap; font.bold: true; font.pixelSize: 9; font.family: "monospace" }
                         }
+                        Text { anchors.centerIn: parent; text: modelData.icon; color: nav.ink; font.family: "lucide"; font.pixelSize: 20 }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 5; text: modelData.title; color: nav.ink; font.bold: true; font.pixelSize: 7 }
+                        MouseArea { anchors.fill: parent; onClicked: nav.goTab(modelData.target) }
                     }
                 }
             }
 
-            // Navigation block: Enter, Up, Cancel / Left, Down, Right / PgUp, PgDn
-            GridLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                columns: 3
+            // Navigation block: Enter, Up, Cancel, PgUp / Left, Down, Right, PgDn
+            Grid {
+                x: 25; y: 84
+                columns: 4
+                rows: 2
                 rowSpacing: 8
                 columnSpacing: 8
                 Repeater {
                     model: [
-                        { t: "Ввод", kind: "enter", color: nav.green },
-                        { t: "▲", kind: "up" },
-                        { t: "Отмена", kind: "cancel", color: nav.red },
-                        { t: "◀", kind: "left" },
-                        { t: "▼", kind: "down" },
-                        { t: "▶", kind: "right" },
-                        { t: "PgUp", kind: "pgup" },
-                        { t: "", kind: "none" },
-                        { t: "PgDn", kind: "pgdn" }
+                        { t: "Ввод", c: nav.green, k: "enter" },
+                        { t: "▲", c: nav.cap, k: "up" },
+                        { t: "Отмена", c: nav.red, k: "cancel" },
+                        { t: "PgUp", c: nav.blue, k: "pgup" },
+                        { t: "◀", c: nav.darkKey, k: "left" },
+                        { t: "▼", c: nav.cap, k: "down" },
+                        { t: "▶", c: nav.darkKey, k: "right" },
+                        { t: "PgDn", c: nav.blue, k: "pgdn" }
                     ]
                     delegate: Rectangle {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        radius: 6
-                        color: modelData.kind === "none" ? "transparent" : (modelData.color ? modelData.color : nav.cap)
-                        border.color: nav.edge
-                        border.width: modelData.kind === "none" ? 0 : 3
-                        enabled: modelData.kind !== "none"
+                        width: 60; height: 60; radius: 8
+                        color: modelData.c
+                        border.color: nav.edge; border.width: 3
+                        Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 4; color: nav.edge; radius: 2 }
                         Text {
                             anchors.centerIn: parent
                             text: modelData.t
-                            color: modelData.color ? "#FFFFFF" : nav.ink
+                            color: index === 0 || index === 2 ? "#FFFFFF" : nav.ink
                             font.bold: true
-                            font.pixelSize: modelData.t.length > 2 ? 13 : 20
+                            font.pixelSize: modelData.t.length > 2 ? 12 : 22
                         }
                         MouseArea {
                             anchors.fill: parent
                             onClicked: {
-                                if (modelData.kind === "enter") nav.enter();
-                                else if (modelData.kind === "cancel") nav.cancel();
-                                else if (modelData.kind === "up") host.navUp();
-                                else if (modelData.kind === "down") host.navDown();
-                                else if (modelData.kind === "left") nav.leftRight(-1);
-                                else if (modelData.kind === "right") nav.leftRight(1);
-                                else if (modelData.kind === "pgup") host.pageCursor(-10);
-                                else if (modelData.kind === "pgdn") host.pageCursor(10);
+                                if (modelData.k === "enter") nav.enter();
+                                else if (modelData.k === "cancel") nav.cancel();
+                                else if (modelData.k === "up") host.navUp();
+                                else if (modelData.k === "down") host.navDown();
+                                else if (modelData.k === "left") host.machineJogRequest(-1);
+                                else if (modelData.k === "right") host.machineJogRequest(1);
+                                else if (modelData.k === "pgup") host.pageCursor(-10);
+                                else if (modelData.k === "pgdn") host.pageCursor(10);
                             }
                         }
                     }

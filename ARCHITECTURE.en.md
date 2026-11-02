@@ -156,7 +156,8 @@ is local (when an API request appears, add and name that layer here).
   header, tabs, softkeys without F labels and a deck with jog/cycle. Entry: `--touch` on
   `lynx-panel.exe` or `preview-touch.qml`; the key-panel variant stays 1024×600.
 * `HybridDeck.qml` is the touch deck of the 1024×600 hybrid mode (cycle, jog, step) over the
-  panel; `CanvasLock` in `main.cpp` owns the fixed window size.
+  panel. `panel-host.qml` scales the logical canvas into the window; `PanelView`/`CanvasLock` in
+  `main.cpp` enforce the aspect ratio and initial size; free aspect changes are not allowed.
 * Console debug windows: `KeyboardWindow.qml` (the bottom NC keyboard), `NavWindow.qml` (side
   screen/arrow keys), `MpgWindow.qml` (round handwheel, rotary axis and multiplier) and
   `PendantWindow.qml`. They send the same signals as the physical keys.

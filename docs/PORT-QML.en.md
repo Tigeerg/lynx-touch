@@ -6,7 +6,7 @@ code and its run; this file holds the intent, anchors in both trees and acceptan
 
 This edition was merged on 31.10.2026: the inventory and anchors come from the previous edition,
 the order of work, acceptance and decisions come from the lead. State at the day of the edition:
-React `0.24.1` (product `0.35.31`), Qt `0.6.26`.
+React `0.24.1` (product `0.35.32`), Qt `0.6.27`.
 
 **Roles fixed (01.11.2026).** The real controller runs **Qt — it is the product**. React was a demo
 stage: after the start and CAM-insert fixes it is **frozen** — no new features are developed there.
@@ -35,7 +35,7 @@ dispatcher's decisions are in §7.
 
 React anchors are a file and a symbol; line numbers are as of 31.10.2026. "W" is the wave in §4.
 
-| Panel node | React `0.24.1` (source) | Qt `0.6.26` (`main.qml`) | Gap | W |
+| Panel node | React `0.24.1` (source) | Qt `0.6.27` (`main.qml`) | Gap | W |
 |---|---|---|---|---|
 | Workplaces | `types.ts` (`SETUP`/`TEST`/`RUN`), `WORKPLACE_LABEL` (`data.ts`), `SET_WORKPLACE` (`nav.ts`) | none; only `machineMode` (`:24`) and `modeCycle` | no workplaces | C |
 | Tabs | 5: `TABS`/`TAB_LABEL` (`types.ts`) Work, Offsets, Tool, Messages, Service; Work merges `pos` and `prog` (`tabOfScreen`) | 7: `tab0`..`tab6` (`:967-1256`), Position and Program separate, plus 3D | +2 tabs | B |
@@ -290,8 +290,11 @@ Panel and touch-only work today; hybrid is reserved as value 1 and needs its own
 | `1` Hybrid | 1024×600 | physical keyboard **and** a touch deck: Start/Stop/Reset/Emergency, jog, step | partial: deck exists, shared layout does not |
 | `2` Touch-only | 864×1536 portrait | touch only, large tiles, deck, no F labels | done |
 
-Rules: one value for every window; switching changes the window size and the controls, while the
-machine state and active NC file survive; in hybrid both inputs are equal and do not double-fire;
+Rules: one value for every window; switching changes the logical canvas and the controls, while the
+machine state and active NC file survive; the logical canvas is fixed (1024×600 or 864×1536), but
+the debug window may be scaled down uniformly — `PanelView` enforces the aspect ratio and
+`panel-host.qml` scales the whole UI; free aspect changes are not allowed; in hybrid both inputs
+are equal and do not double-fire;
 in touch-only no action requires an F key. Each mode needs its own screenshot and scenario.
 
 ### Settings: inventory and logic

@@ -14,6 +14,8 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickView>
+#include <QResizeEvent>
+#include <QScreen>
 #include <QSize>
 #include <QUrl>
 #include <QtGlobal>
@@ -31,24 +33,64 @@ QString repoRoot()
     return QDir::cleanPath(here.absoluteFilePath(QStringLiteral("../..")));
 }
 
-// The panel must never be freely resizable: each UI mode owns one fixed canvas. QML calls
-// CanvasLock.apply(mode) when [DISPLAY] UI_MODE changes, including live switching.
+// The logical canvas keeps its aspect ratio, but the debug window may be scaled down so the
+// portrait touch panel fits a developer monitor. panel-host.qml applies the uniform scale to the
+// QML item; this view only rejects a changed aspect ratio.
+class PanelView : public QQuickView
+{
+public:
+    void setAspect(const QSize &logical)
+    {
+        if (logical.isValid() && !logical.isEmpty())
+            m_aspect = logical;
+    }
+
+protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        if (!m_inResize && m_aspect.isValid() && !m_aspect.isEmpty() && event->size().height() > 0) {
+            const int w = event->size().width();
+            const int h = event->size().height();
+            const int wantedH = qRound(double(w) * m_aspect.height() / m_aspect.width());
+            if (wantedH != h) {
+                m_inResize = true;
+                resize(w, wantedH);
+                m_inResize = false;
+            }
+        }
+        QQuickView::resizeEvent(event);
+    }
+
+private:
+    QSize m_aspect{1024, 600};
+    bool m_inResize = false;
+};
+
+// QML calls CanvasLock.apply(mode) when [DISPLAY] UI_MODE changes. The window opens at the
+// largest scaled size that still fits the available screen (the touch canvas is 864x1536).
 class CanvasLock : public QObject
 {
     Q_OBJECT
 public:
-    explicit CanvasLock(QQuickView *view) : m_view(view) {}
+    explicit CanvasLock(PanelView *view) : m_view(view) {}
 
     Q_INVOKABLE void apply(int mode)
     {
-        const QSize canvas = mode == 2 ? QSize(864, 1536) : QSize(1024, 600);
-        m_view->setMinimumSize(canvas);
-        m_view->setMaximumSize(canvas);
-        m_view->resize(canvas);
+        const QSize logical = mode == 2 ? QSize(864, 1536) : QSize(1024, 600);
+        m_view->setAspect(logical);
+        m_view->setMinimumSize(QSize(320, 240));
+        m_view->setMaximumSize(QSize(16777215, 16777215));
+        QSize avail(1280, 720);
+        if (QScreen *screen = QGuiApplication::primaryScreen())
+            avail = screen->availableGeometry().size();
+        const double sx = double(qMax(320, avail.width() - 80)) / logical.width();
+        const double sy = double(qMax(240, avail.height() - 120)) / logical.height();
+        const double scale = qMin(1.0, qMin(sx, sy));
+        m_view->resize(QSize(qRound(logical.width() * scale), qRound(logical.height() * scale)));
     }
 
 private:
-    QQuickView *m_view = nullptr;
+    PanelView *m_view = nullptr;
 };
 
 void addPathEntry(const QString &dir)
@@ -69,14 +111,16 @@ int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Lynx Touch"));
-    app.setApplicationVersion(QStringLiteral("0.6.26"));
+    app.setApplicationVersion(QStringLiteral("0.6.27"));
 
     const QString root = repoRoot();
-    const QString qmlFile = root + QStringLiteral("/apps/qt-interface/main.qml");
-    if (!QFileInfo::exists(qmlFile)) {
-        qWarning("lynx-panel: main.qml not found: %s", qPrintable(qmlFile));
+    const QString mainFile = root + QStringLiteral("/apps/qt-interface/main.qml");
+    if (!QFileInfo::exists(mainFile)) {
+        qWarning("lynx-panel: main.qml not found: %s", qPrintable(mainFile));
         return 1;
     }
+    // panel-host keeps the logical canvas and scales it uniformly into the resizable debug window.
+    const QString qmlFile = root + QStringLiteral("/apps/qt-interface/panel-host.qml");
 
     // The QML plugin of the viewer controller and the CNC.Edges plugin are built into the repo.
     addPathEntry(root + QStringLiteral("/build/qmlbackend/MockBackend"));
@@ -91,16 +135,15 @@ int main(int argc, char *argv[])
     // The panel has two fixed canvases: the 1024x600 key panel and the 864x1536 portrait touch
     // panel. `--touch` (also read by main.qml) starts the touch variant.
     const bool touch = app.arguments().contains(QStringLiteral("--touch"));
-    const QSize canvas = touch ? QSize(864, 1536) : QSize(1024, 600);
 
-    QQuickView view;
+    PanelView view;
     QQmlEngine *engine = view.engine();
     engine->addImportPath(root + QStringLiteral("/build/qmlbackend"));
     engine->addImportPath(root + QStringLiteral("/build/edges"));
     CanvasLock canvasLock(&view);
     view.rootContext()->setContextProperty(QStringLiteral("CanvasLock"), &canvasLock);
-    // Both canvases are fixed designs; QML changes the lock when [DISPLAY] UI_MODE changes.
-    view.setResizeMode(QQuickView::SizeViewToRootObject);
+    // The host item fills the view (SizeRootObjectToView); the logical panel inside is scaled.
+    view.setResizeMode(QQuickView::SizeRootObjectToView);
     canvasLock.apply(touch ? 2 : 0);
     view.setSource(QUrl::fromLocalFile(qmlFile));
     if (view.status() == QQuickView::Error) {
@@ -111,7 +154,6 @@ int main(int argc, char *argv[])
 
     view.setTitle(touch ? QStringLiteral("Lynx Touch — сенсорная панель")
                         : QStringLiteral("Lynx Touch — панель оператора"));
-    view.resize(canvas);
     view.show();
     return app.exec();
 }

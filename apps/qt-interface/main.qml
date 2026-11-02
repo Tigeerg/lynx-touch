@@ -374,6 +374,7 @@ Item {
     property bool washOn: false
     property bool lubeOn: false
     property bool toolClamped: true
+    property bool rapidJog: false
     property string spindleDirection: "M05"
     property bool singleBlock: false
 

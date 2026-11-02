@@ -488,5 +488,10 @@ TestCase {
         wait(0)
         compare(navObject.height, 188)
         navObject.destroy()
+        var pendantObject = pendant.createObject(null, { "host": panel.item })
+        pendantObject.width = 600
+        wait(0)
+        compare(pendantObject.height, 150)
+        pendantObject.destroy()
     }
 }

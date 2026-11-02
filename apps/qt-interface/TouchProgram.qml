@@ -140,7 +140,7 @@ Item {
                 id: trajectoryViewer
                 anchors.fill: parent
                 visible: host.workplace === "RUN" && host.autoView === "trajectory"
-                active: visible
+                active: prog.host.touchMode && prog.host.activeScreen === "prog" && visible
                 host: prog.host
                 settings: prog.host ? prog.host.viewerSettings() : ({})
             }
@@ -162,7 +162,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumWidth: 300
-                    active: visible
+                    active: prog.host.touchMode && prog.host.activeScreen === "prog" && prog.host.autoView === "both"
                     host: prog.host
                     settings: prog.host ? prog.host.viewerSettings() : ({})
                 }
@@ -172,7 +172,7 @@ Item {
                 id: overlayViewer
                 anchors.fill: parent
                 visible: host.workplace === "RUN" && host.autoView === "overlay"
-                active: visible
+                active: prog.host.touchMode && prog.host.activeScreen === "prog" && visible
                 host: prog.host
                 settings: prog.host ? prog.host.viewerSettings() : ({})
 

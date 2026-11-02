@@ -150,6 +150,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     host: work.host
+                    active: work.host && work.host.touchMode && work.host.activeScreen === "pos"
                     settings: work.host ? work.host.viewerSettings() : ({})
                 }
             }

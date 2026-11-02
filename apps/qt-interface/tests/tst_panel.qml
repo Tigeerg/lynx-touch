@@ -53,6 +53,37 @@ TestCase {
         compare(keys[1].id, "toCursor")
     }
 
+    function test_service_adjust_perf() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        p.serviceSection = "system"
+        p.svcCursor = 4
+        var t = Date.now()
+        for (var i = 0; i < 40; i++) p.adjustParam(1, false)
+        var elapsed = Date.now() - t
+        verify(elapsed < 1000)
+        p.svcValues = ({})
+    }
+
+    function test_service_navigation() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        var ids = p.serviceIds
+        for (var s = 0; s < ids.length; s++) {
+            p.serviceSection = ids[s]
+            wait(0)
+            var n = p.svcListLen()
+            for (var i = 0; i < n; i++) {
+                p.svcCursor = i
+                p.svcValueAt(i)
+                p.svcDefAt(i)
+                p.svcUnsaved(i)
+            }
+            p.svcSave()
+        }
+        p.serviceSection = "system"
+    }
+
     function test_softkey_matrix() {
         tryCompare(panel, "status", Loader.Ready)
         var p = panel.item
@@ -131,6 +162,7 @@ TestCase {
     function test_work_screen_parts() {
         tryCompare(panel, "status", Loader.Ready)
         panel.item.workplace = "TEST"
+        panel.item.activeScreen = "pos"
         wait(0)
         verify(findByName(panel.item, "workScreen") !== null)
         verify(findByName(panel.item, "workCoordStrip") !== null)
@@ -159,6 +191,7 @@ TestCase {
         tryCompare(panel, "status", Loader.Ready)
         var p = panel.item
         p.workplace = "TEST"
+        p.activeScreen = "pos"
         wait(0)
         // The viewer is configured from its own service section, not from viewer buttons.
         verify(p.serviceIds.indexOf("viewer") >= 0)
@@ -218,6 +251,7 @@ TestCase {
 
         // The Work-screen viewer receives the same active program text (manual workplace).
         p.workplace = "TEST"
+        p.activeScreen = "pos"
         wait(0)
         var viewer = findByName(p, "viewerPane")
         var viewerItem = viewer.children[0].item

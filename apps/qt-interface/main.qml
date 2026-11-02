@@ -1843,6 +1843,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     visible: root.workplace === "RUN"
+                    enabled: root.activeScreen === "prog" && root.workplace === "RUN"
                     host: root
                 }
             }

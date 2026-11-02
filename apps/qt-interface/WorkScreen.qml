@@ -305,7 +305,7 @@ Item {
                         id: viewerPane
                         anchors.fill: parent
                         host: workScreen.host
-                        active: !host || host.workplace !== "RUN"
+                        active: host && host.activeScreen === "pos" && host.workplace !== "RUN"
                         settings: workScreen.host ? workScreen.host.viewerSettings() : ({})
                     }
                     RowLayout {
@@ -327,6 +327,7 @@ Item {
         id: autoScreen
         anchors.fill: parent
         visible: host && host.workplace === "RUN"
+        enabled: host && host.activeScreen === "pos" && host.workplace === "RUN"
         host: workScreen.host
     }
 }

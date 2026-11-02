@@ -10,6 +10,9 @@ Item {
     objectName: "autoScreen"
 
     property Item host
+    // A hidden screen must not keep a QtQuick3D scene alive: the host sets this false when the
+    // screen is not the current one. Without it every hidden AutoScreen kept rendering.
+    property bool enabled: true
 
     readonly property var viewTitles: ({
         trajectory: "ТРАЕКТОРИЯ",
@@ -200,7 +203,7 @@ Item {
                         anchors.fill: parent
                         host: autoScreen.host
                         visible: autoScreen.view === "trajectory"
-                        active: visible
+                        active: autoScreen.enabled && visible
                     }
 
                     // Program only
@@ -251,7 +254,7 @@ Item {
                             Layout.minimumWidth: 180
                             Layout.preferredWidth: 260
                             host: autoScreen.host
-                            active: autoScreen.view === "both"
+                            active: autoScreen.enabled && autoScreen.view === "both"
                         }
                     }
 
@@ -261,7 +264,7 @@ Item {
                         anchors.fill: parent
                         host: autoScreen.host
                         visible: autoScreen.view === "overlay"
-                        active: visible
+                        active: autoScreen.enabled && visible
                         Flickable {
                             anchors.left: parent.left
                             anchors.top: parent.top

@@ -480,29 +480,20 @@ Item {
                         { t: "Отвод", k: "safe", on: false },
                         { t: host.toolClamped ? "Разжать" : "Зажать", k: "clamp", on: host.toolClamped }
                     ]
-                    delegate: Rectangle {
+                    delegate: HwKey {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        radius: 6
-                        color: modelData.on ? host.cPrimary : host.cCard
-                        border.color: modelData.on ? host.cPrimary : host.cBorder
-                        Text {
-                            anchors.centerIn: parent
-                            text: modelData.t
-                            color: modelData.on ? host.cPrimaryFg : host.cForeground
-                            font.bold: true
-                            font.pixelSize: 12
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: {
-                                if (modelData.k === "m3") host.spindleCommand("M03");
-                                else if (modelData.k === "m4") host.spindleCommand("M04");
-                                else if (modelData.k === "m5") host.spindleCommand("M05");
-                                else if (modelData.k === "safe") host.goSafePoint();
-                                else if (modelData.k === "clamp") { host.toolClamped = !host.toolClamped; host.message = host.toolClamped ? "Инструмент зажат" : "Инструмент разжат"; }
-                                else host.toggleAux(modelData.k);
-                            }
+                        host: touch.host
+                        label: modelData.t
+                        active: modelData.on
+                        led: true
+                        onClicked: {
+                            if (modelData.k === "m3") host.spindleCommand("M03");
+                            else if (modelData.k === "m4") host.spindleCommand("M04");
+                            else if (modelData.k === "m5") host.spindleCommand("M05");
+                            else if (modelData.k === "safe") host.goSafePoint();
+                            else if (modelData.k === "clamp") { host.toolClamped = !host.toolClamped; host.message = host.toolClamped ? "Инструмент зажат" : "Инструмент разжат"; }
+                            else host.toggleAux(modelData.k);
                         }
                     }
                 }

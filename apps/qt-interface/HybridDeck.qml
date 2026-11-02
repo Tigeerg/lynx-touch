@@ -111,21 +111,19 @@ Rectangle {
                     { t: host && host.toolClamped ? "РАЗЖАТЬ" : "ЗАЖАТЬ", k: "clamp", on: host ? host.toolClamped : false },
                     { t: "СВЕТ", k: "light", on: host ? host.workLightOn : false }
                 ]
-                delegate: Rectangle {
-                    Layout.fillWidth: true; Layout.fillHeight: true; radius: 4
-                    color: modelData.on ? (host ? host.cPrimary : "#0362BB") : (host ? host.cMuted : "#EEF0F3")
-                    border.color: host ? host.cBorder : "#C9CED4"
-                    Text { anchors.centerIn: parent; text: modelData.t; color: modelData.on ? "#FFFFFF" : (host ? host.cForeground : "#141B24"); font.bold: true; font.pixelSize: 10 }
-                    MouseArea {
-                        anchors.fill: parent
-                        onClicked: {
-                            if (modelData.k === "coolant") host.toggleAux("coolant");
-                            else if (modelData.k === "spindle") host.spindleCommand(host.spindleOn ? "M05" : "M03");
-                            else if (modelData.k === "mdi") { host.setWorkplace("SETUP"); host.activeScreen = "pos"; }
-                            else if (modelData.k === "safe") host.goSafePoint();
-                            else if (modelData.k === "clamp") { host.toolClamped = !host.toolClamped; host.message = host.toolClamped ? "Инструмент зажат" : "Инструмент разжат"; }
-                            else if (modelData.k === "light") host.toggleAux("light");
-                        }
+                delegate: HwKey {
+                    Layout.fillWidth: true; Layout.fillHeight: true
+                    host: deck.host
+                    label: modelData.t
+                    active: modelData.on
+                    led: true
+                    onClicked: {
+                        if (modelData.k === "coolant") host.toggleAux("coolant");
+                        else if (modelData.k === "spindle") host.spindleCommand(host.spindleOn ? "M05" : "M03");
+                        else if (modelData.k === "mdi") { host.setWorkplace("SETUP"); host.activeScreen = "pos"; }
+                        else if (modelData.k === "safe") host.goSafePoint();
+                        else if (modelData.k === "clamp") { host.toolClamped = !host.toolClamped; host.message = host.toolClamped ? "Инструмент зажат" : "Инструмент разжат"; }
+                        else if (modelData.k === "light") host.toggleAux("light");
                     }
                 }
             }

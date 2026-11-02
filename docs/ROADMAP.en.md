@@ -15,7 +15,7 @@ Russian original — [ROADMAP.md](ROADMAP.md); both are one source and are edite
 
 | Question | Decision |
 |---|---|
-| Qt port in alpha | No. Alpha is the React panel and the viewer. Qt comes after alpha as a separate stage |
+| Alpha as a React simulation | **Cancelled 02.11.2026.** React is frozen and is not released as alpha; the demo alpha is the Qt port with an installer, then the same Qt is connected to hardware. Details — `PORT-QML.md` |
 | Viewer in alpha | Toolpath, stock, stock removal and a **simple** collision check. No new mathematical methods and no CSG (building a volume from simple solids) |
 | Alpha acceptance | Desk with a real program from `cad-testdata`; a real machine is not required |
 | Video audience | Operator and technologist. We show a working scenario, not a set of screens |

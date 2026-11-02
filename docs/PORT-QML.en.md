@@ -6,12 +6,26 @@ code and its run; this file holds the intent, anchors in both trees and acceptan
 
 This edition was merged on 31.10.2026: the inventory and anchors come from the previous edition,
 the order of work, acceptance and decisions come from the lead. State at the day of the edition:
-React `0.24.2` (product `0.35.36`), Qt `0.6.31`.
+React `0.24.2` (product `0.35.37`), Qt `0.6.31`.
 
 **Roles fixed (01.11.2026).** The real controller runs **Qt — it is the product**. React was a demo
 stage: after the start and CAM-insert fixes it is **frozen** — no new features are developed there.
 React stays the reference for texts, behaviour and tests; a defect found during the port is fixed in
 React and moved to Qt at once.
+
+**Alpha clarification (02.11.2026).** The earlier "alpha is a React simulation" plan is
+**cancelled**. React is not released as alpha and is not developed further. The release path is:
+
+1. **Qt interface port** — current work: 1024×600 panel, hybrid, 864×1536 touch, viewer, settings,
+   wizards, languages.
+2. **Qt demo with installer** — the same Qt panel is packaged as a demo program for Windows/bench:
+   no real machine, simulated position, NC programs and viewer.
+3. **Hardware connection** — the same Qt interface is connected to LinuxCNC/HAL: live position,
+   feed, spindle, alarms, NC files; there is no separate "second panel".
+4. **CAM on C++** — after interface parity, on the same Qt core.
+
+React remains only a design/behaviour reference: changes there are limited to fixing a found defect
+and are immediately repeated in Qt.
 
 The port exists and is not empty: `main.qml` is 2781 lines, `preview.qml` is a `Window` wrapper with a
 `Loader` over `main.qml` (wave A is done, there is no copy of the panel), `assets/` and `fonts/`

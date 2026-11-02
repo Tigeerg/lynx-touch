@@ -3387,7 +3387,9 @@ Item {
 
     HybridDeck {
         objectName: "hybridDeckLayer"
-        visible: root.hybridMode
+        // Keep the deck off the full-width tables and the service parameter list: there it would
+        // cover the content. It stays on the Work and Program screens where the machine keys live.
+        visible: root.hybridMode && (root.activeScreen === "pos" || root.activeScreen === "prog")
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.rightMargin: 8

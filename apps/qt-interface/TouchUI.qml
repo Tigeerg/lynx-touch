@@ -200,17 +200,29 @@ Item {
                 visible: host.activeScreen === "service"
                 anchors.fill: parent
                 spacing: 6
-                RowLayout {
-                    Layout.fillWidth: true; Layout.preferredHeight: 38; spacing: 6
-                    Repeater {
-                        model: host.serviceIds
-                        delegate: Rectangle {
-                            Layout.fillHeight: true; Layout.preferredWidth: 96
-                            radius: 6
-                            color: host.serviceSection === modelData ? host.cPrimary : host.cCard
-                            border.color: host.serviceSection === modelData ? host.cPrimary : host.cBorder
-                            Text { anchors.centerIn: parent; text: host.serviceLabelOf(modelData); color: host.serviceSection === modelData ? host.cPrimaryFg : host.cForeground; font.bold: true; font.pixelSize: 12 }
-                            MouseArea { anchors.fill: parent; onClicked: host.serviceSection = modelData }
+                Flickable {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 44
+                    Layout.minimumHeight: 44
+                    Layout.maximumHeight: 44
+                    contentWidth: svcChips.width
+                    contentHeight: height
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    flickableDirection: Flickable.HorizontalFlick
+                    Row {
+                        id: svcChips
+                        height: 44
+                        spacing: 6
+                        Repeater {
+                            model: host.serviceIds
+                            delegate: Rectangle {
+                                width: 104; height: 38; radius: 6
+                                color: host.serviceSection === modelData ? host.cPrimary : host.cCard
+                                border.color: host.serviceSection === modelData ? host.cPrimary : host.cBorder
+                                Text { anchors.centerIn: parent; text: host.serviceLabelOf(modelData); color: host.serviceSection === modelData ? host.cPrimaryFg : host.cForeground; font.bold: true; font.pixelSize: 12; elide: Text.ElideRight; width: parent.width - 8; horizontalAlignment: Text.AlignHCenter }
+                                MouseArea { anchors.fill: parent; onClicked: host.serviceSection = modelData }
+                            }
                         }
                     }
                 }
@@ -254,7 +266,11 @@ Item {
                     }
                 }
                 Rectangle {
-                    Layout.fillWidth: true; Layout.preferredHeight: 44; radius: 6; color: host.cPrimary
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 44
+                    Layout.minimumHeight: 44
+                    Layout.maximumHeight: 44
+                    radius: 6; color: host.cPrimary
                     Text { anchors.centerIn: parent; text: "Сохранить"; color: host.cPrimaryFg; font.bold: true; font.pixelSize: 15 }
                     MouseArea { anchors.fill: parent; onClicked: host.svcSave() }
                 }

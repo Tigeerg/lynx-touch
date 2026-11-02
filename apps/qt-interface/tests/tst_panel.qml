@@ -333,6 +333,15 @@ TestCase {
         p.setWorkplace("SETUP")
         touch.tabTarget(0)
         compare(p.activeScreen, "pos")
+        verify(findByName(p, "touchWork") !== null)
+        verify(findByName(p, "touchProgram") !== null)
+
+        // The touch program screen has its own four view buttons; F8 still changes the same state.
+        p.setWorkplace("RUN")
+        p.activeScreen = "prog"
+        p.autoView = "trajectory"
+        p.pressSoftkeyIndex(7)
+        compare(p.autoView, "gcode")
 
         p.svcValues = ({})
         verify(!p.touchMode)

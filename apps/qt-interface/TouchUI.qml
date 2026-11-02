@@ -154,45 +154,17 @@ Item {
             Layout.minimumHeight: 300
             clip: true
 
-            WorkScreen {
+            // Touch-specific screens: no reuse of the 1024x600 WorkScreen/AutoScreen.
+            TouchWork {
                 anchors.fill: parent
                 visible: host.activeScreen === "pos"
                 host: touch.host
             }
 
-            AutoScreen {
+            TouchProgram {
                 anchors.fill: parent
-                visible: host.activeScreen === "prog" && host.workplace === "RUN"
+                visible: host.activeScreen === "prog"
                 host: touch.host
-            }
-
-            // Program on TEST/SETUP: a readable list with the current block.
-            Flickable {
-                visible: host.activeScreen === "prog" && host.workplace !== "RUN"
-                anchors.fill: parent
-                contentWidth: width; contentHeight: touchProgramCol.height
-                clip: true; boundsBehavior: Flickable.StopAtBounds
-                Rectangle { anchors.fill: parent; color: host.cCard; border.color: host.cBorder; radius: 8 }
-                Column {
-                    id: touchProgramCol
-                    width: parent.width
-                    height: host.progLines.length * 32 + 8
-                    Repeater {
-                        model: host.progLines
-                        delegate: Rectangle {
-                            width: touchProgramCol.width; height: 32
-                            color: index === host.cursorProg ? host.cAccent : "transparent"
-                            Text {
-                                anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width - 20
-                                text: modelData.num + "   " + touch.lineText(modelData)
-                                color: index === host.cursorProg ? host.cForeground : host.cMutedForeground
-                                font.family: host.fontMono; font.pixelSize: 15; elide: Text.ElideRight
-                            }
-                            MouseArea { anchors.fill: parent; onClicked: host.cursorProg = index }
-                        }
-                    }
-                }
             }
 
             // Offset / tool / alarm tables.

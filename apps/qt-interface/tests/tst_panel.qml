@@ -345,7 +345,7 @@ TestCase {
         wait(0)
         verify(p.hybridMode)
         verify(!p.touchMode)
-        var deck = findByName(p, "hybridDeckLayer")
+        var deck = findByName(p, "hybridDeckToggle")
         verify(deck !== null)
         p.svcValues = ({})
         verify(!p.hybridMode)

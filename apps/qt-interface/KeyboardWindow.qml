@@ -130,7 +130,7 @@ Window {
                         Text {
                             anchors.right: parent.right; anchors.rightMargin: 4; anchors.top: parent.top; anchors.topMargin: 3
                             visible: modelData.alt !== undefined && modelData.kind !== "shift"
-                            text: kb.shiftMode !== "off" ? modelData.m : modelData.alt
+                            text: (kb.shiftMode !== "off" ? modelData.m : modelData.alt) || ""
                             color: kb.ink; opacity: 0.75; font.pixelSize: 12; font.bold: true
                         }
                         Text {

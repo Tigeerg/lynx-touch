@@ -298,16 +298,37 @@ Item {
             width: parent ? parent.width : 0
             height: 20
             color: index === autoScreen.host.cursorProg ? autoScreen.host.cAccent : "transparent"
-            Text {
+            Row {
                 anchors.left: parent.left
                 anchors.leftMargin: 8
+                anchors.right: parent.right
+                anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 16
-                text: (modelData.num < 10 ? " " : "") + modelData.num + "  " + lineText(modelData)
-                color: index === autoScreen.host.cursorProg ? autoScreen.host.cForeground : autoScreen.host.cMutedForeground
-                font.family: autoScreen.host.fontMono
-                font.pixelSize: 12
-                elide: Text.ElideRight
+                spacing: 6
+                Text {
+                    width: 26
+                    text: modelData.num
+                    color: autoScreen.host.cMutedForeground
+                    font.family: autoScreen.host.fontMono
+                    font.pixelSize: 11
+                    horizontalAlignment: Text.AlignRight
+                }
+                Repeater {
+                    model: modelData.toks
+                    delegate: Text {
+                        text: modelData.t + " "
+                        color: modelData.c === "primary" ? autoScreen.host.cPrimary
+                             : modelData.c === "destructive" ? autoScreen.host.cDestructive
+                             : modelData.c === "success" ? autoScreen.host.cSuccess
+                             : modelData.c === "muted" ? autoScreen.host.cMutedForeground
+                             : modelData.c === "comment" ? autoScreen.host.cMutedForeground
+                             : autoScreen.host.cForeground
+                        font.family: autoScreen.host.fontMono
+                        font.pixelSize: 12
+                        font.italic: modelData.c === "comment"
+                        font.bold: (modelData.c === "primary" || modelData.c === "destructive")
+                    }
+                }
             }
             MouseArea { anchors.fill: parent; onClicked: autoScreen.host.cursorProg = index }
         }

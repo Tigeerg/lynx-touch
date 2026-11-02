@@ -29,16 +29,37 @@ Flickable {
                 width: col.width
                 height: 34
                 color: index === list.host.cursorProg ? list.host.cAccent : (list.translucent ? "transparent" : list.host.cCard)
-                Text {
+                Row {
                     anchors.left: parent.left
                     anchors.leftMargin: 10
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - 20
-                    text: modelData.num + "   " + list.lineText(modelData)
-                    color: index === list.host.cursorProg ? list.host.cForeground : list.host.cMutedForeground
-                    font.family: list.host.fontMono
-                    font.pixelSize: 15
-                    elide: Text.ElideRight
+                    spacing: 8
+                    Text {
+                        width: 28
+                        text: modelData.num
+                        color: list.host.cMutedForeground
+                        font.family: list.host.fontMono
+                        font.pixelSize: 13
+                        horizontalAlignment: Text.AlignRight
+                    }
+                    Repeater {
+                        model: modelData.toks
+                        delegate: Text {
+                            text: modelData.t + " "
+                            color: modelData.c === "primary" ? list.host.cPrimary
+                                 : modelData.c === "destructive" ? list.host.cDestructive
+                                 : modelData.c === "success" ? list.host.cSuccess
+                                 : modelData.c === "muted" ? list.host.cMutedForeground
+                                 : modelData.c === "comment" ? list.host.cMutedForeground
+                                 : list.host.cForeground
+                            font.family: list.host.fontMono
+                            font.pixelSize: 15
+                            font.italic: modelData.c === "comment"
+                            font.bold: (modelData.c === "primary" || modelData.c === "destructive")
+                        }
+                    }
                 }
                 MouseArea { anchors.fill: parent; onClicked: list.host.cursorProg = index }
             }

@@ -37,6 +37,7 @@ Item {
     property bool mpgOpen: false
     property bool keyboardOpen: false
     property bool navOpen: false
+    property bool hybridDeckOpen: false
     property int partCount: 7
     property bool editMode: false
     onActiveScreenChanged: { if (activeScreen === "service") svcFocus = "nav"; }
@@ -2694,7 +2695,7 @@ Item {
             // ============ PROGRAM SIDE (Machining, v0.4) ============
             Rectangle {
                 id: programSide
-                visible: root.activeScreen === "prog" && !root.hybridMode
+                visible: root.activeScreen === "prog" && !(root.hybridMode && root.hybridDeckOpen)
                 Layout.preferredWidth: 300
                 Layout.minimumWidth: 300
                 Layout.maximumWidth: 300
@@ -2836,12 +2837,25 @@ Item {
             WorkStatusColumn {
                 id: workStatusColumn
                 host: root
-                visible: root.activeScreen === "pos" && !root.hybridMode
+                visible: root.activeScreen === "pos" && !(root.hybridMode && root.hybridDeckOpen)
                 Layout.preferredWidth: 300
                 Layout.minimumWidth: 300
                 Layout.maximumWidth: 300
                 Layout.fillHeight: true
             }   // workStatusColumn
+
+            // Hybrid: the touch deck is an optional right column. By default the normal side
+            // panel is shown; the operator switches to the deck when finger controls are needed.
+            HybridDeck {
+                id: hybridColumn
+                visible: root.hybridMode && root.hybridDeckOpen
+                         && (root.activeScreen === "pos" || root.activeScreen === "prog")
+                Layout.preferredWidth: 300
+                Layout.minimumWidth: 300
+                Layout.maximumWidth: 300
+                Layout.fillHeight: true
+                host: root
+            }
         }   // contentRow
 
         // ============ STAGE 5 — SOFTKEY BAR (F1–F8) ============
@@ -3385,17 +3399,26 @@ Item {
         }
     }
 
-    HybridDeck {
-        objectName: "hybridDeckLayer"
-        // Keep the deck off the full-width tables and the service parameter list: there it would
-        // cover the content. It stays on the Work and Program screens where the machine keys live.
-        visible: root.hybridMode && (root.activeScreen === "pos" || root.activeScreen === "prog")
+    // Hybrid mode: switch the right column between the normal side panel and the touch deck.
+    Rectangle {
+        objectName: "hybridDeckToggle"
+        visible: root.hybridMode
+        z: 200
         anchors.right: parent.right
-        anchors.bottom: parent.bottom
+        anchors.top: parent.top
         anchors.rightMargin: 8
-        anchors.bottomMargin: 92
-        host: root
-        z: 150
+        anchors.topMargin: 108
+        width: 92; height: 26
+        radius: 4
+        color: root.hybridDeckOpen ? root.cPrimary : root.cCard
+        border.color: root.cBorder
+        Text {
+            anchors.centerIn: parent
+            text: root.hybridDeckOpen ? "СТАТУС" : "ПУЛЬТ"
+            color: root.hybridDeckOpen ? root.cPrimaryFg : root.cForeground
+            font.bold: true; font.pixelSize: 10
+        }
+        MouseArea { anchors.fill: parent; onClicked: root.hybridDeckOpen = !root.hybridDeckOpen }
     }
 
     TouchUI {

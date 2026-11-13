@@ -3,7 +3,8 @@
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-qt-panel.ps1
 #
 # Runs qmltestrunner with the MockBackend and CNC.Edges import paths, the same runtime the panel
-# uses. Qt and OCCT directories come from CNC_QT_DIR/CNC_OCC_DIR. Exit code 0 - all tests passed.
+# uses, then the backend contract test (lynx-backend-test.exe). Qt and OCCT directories come from
+# CNC_QT_DIR/CNC_OCC_DIR. Exit code 0 - all tests passed.
 
 [CmdletBinding()]
 param(
@@ -45,6 +46,28 @@ $args = @(
     '-import', (Join-Path $root 'build\qmlbackend'),
     '-import', (Join-Path $root 'build\edges')
 )
-& $runner @args
-if ($LASTEXITCODE -ne 0) { Fail "qmltestrunner вернул $LASTEXITCODE" }
+# QtTest writes to a file here: when stdout is not a console handle it stays empty, and a silent
+# green check would hide a broken suite. The log lives in build/ next to the panel build.
+$qmlLog = Join-Path $root 'build\qt-interface\qmltest.txt'
+& $runner @args -o ($qmlLog + ',txt')
+if ($LASTEXITCODE -ne 0) { Fail "qmltestrunner вернул $LASTEXITCODE, лог: $qmlLog" }
+$qmlTotals = Select-String -Path $qmlLog -Pattern '^Totals:' | Select-Object -Last 1
+if (-not $qmlTotals) { Fail "qmltestrunner не оставил итог в $qmlLog" }
+Write-Host ('check-qt-panel: ' + $qmlTotals.Line.Trim())
+
+# The data contract and the simulator are plain C++: the test binary needs the Qt Core/Test DLLs,
+# which are already on PATH above. It is built by scripts/build-qt-interface.ps1.
+$backendTest = Join-Path $root 'build\qt-interface\lynx-backend-test.exe'
+if (-not (Test-Path -LiteralPath $backendTest)) {
+    Fail "нет $backendTest - соберите панель: scripts/build-qt-interface.ps1"
+}
+# QtTest writes to a file here: when stdout is not a console handle it stays empty, and a silent
+# green check would hide a broken suite. The log lives in build/ next to the binary.
+$backendLog = Join-Path $root 'build\qt-interface\lynx-backend-test.txt'
+& $backendTest -o ($backendLog + ',txt')
+if ($LASTEXITCODE -ne 0) { Fail "lynx-backend-test вернул $LASTEXITCODE, лог: $backendLog" }
+$totals = Select-String -Path $backendLog -Pattern '^Totals:' | Select-Object -Last 1
+if (-not $totals) { Fail "lynx-backend-test не оставил итог в $backendLog" }
+Write-Host ('check-qt-panel: ' + $totals.Line.Trim())
+
 Write-Host 'check-qt-panel: OK' -ForegroundColor Green

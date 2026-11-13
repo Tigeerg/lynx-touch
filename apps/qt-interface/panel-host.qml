@@ -12,6 +12,7 @@ Item {
 
     Loader {
         id: panel
+        objectName: "panelLoader"
         width: host.logicalW
         height: host.logicalH
         scale: host.scaleFactor

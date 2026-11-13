@@ -17,7 +17,7 @@
 | id | Путь | Тип | Точка входа |
 |---|---|---|---|
 | `react-interface` | `apps/react-interface` | Next.js + TS | `app/page.tsx` |
-| `qt-interface` | `apps/qt-interface` | QML | `main.qml` |
+| `qt-interface` | `apps/qt-interface` | QML + C++ | `main.qml` |
 | `gcode-viewer` | `modules/gcode-viewer` | QML + C++ | `GcodeViewer3D.qml` |
 | `cad-testdata` | `data/cad-testdata` | данные | `Test_model.ngc` |
 | `quickprog` | `apps/quickprog` | C++ (консоль) | `main.cpp` |
@@ -142,6 +142,14 @@
 * `assets/` — картинки проекта; `fonts/` — `Inter`, `JetBrains Mono`, `lucide.ttf`.
 * Точка входа для отладки — `build/qt-interface/lynx-panel.exe` (`scripts/build-qt-interface.ps1`);
   окно 1024×600, пути `MockBackend`/`CNC.Edges` добавляет сам. На стойке позже — загрузчик QtVCP.
+* `backend/` — контракт данных панели (подробно — [docs/PANEL-BACKEND.md](docs/PANEL-BACKEND.md)):
+  `MachineBackend` (свойства, команды `{ ok, reason }`, сигналы), `SimBackend` с JSON-фикстурами,
+  выбор `--backend=sim|linuxcnc` без тихого отката. Библиотека `lynx-backend` собирается без Qt Quick,
+  её проверяет `lynx-backend-test`.
+* `BackendBridge.qml` — единственный шов панели к станку: экраны читают значения отсюда и шлют
+  команды назад; подписи (`runLabel`, `toolLabel`) собирает шов, отказ виден в `lastReason`.
+  Шапка (состояние прогона, УП, счётчик сообщений, часы) и команды цикла/шпинделя/СОЖ уже живые;
+  таблицы, каталог УП и MDI переезжают на шов следующими срезами.
 * Тексты совпадают с `react-interface` дословно; иконки — только lucide из приложенного шрифта.
 * Экран «Работа» разделён: `WorkScreen.qml` — ручной режим (живые координаты, MDI, вьювер),
   `AutoScreen.qml` — АВТО (позиция, «мм до кадра», остаток пути, четыре вида F8). Оба используют

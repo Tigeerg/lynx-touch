@@ -133,12 +133,18 @@ has already diverged (tab count, slot count, sets, locking, side column).
 | Touch mode | `components/cnc/touch/`, `ui-mode-context.ts` | `TouchDeck.qml`, a mode flag |
 | Quick program (CAM) | `lib/cnc/cam/`, `components/cnc/cam/` | wave G: C++/QML core, see §4 |
 | Text parity | `qt-parity.test.ts` | extended over all `*.qml` |
+| Machine data | `lib/cnc/machine.ts`, `machine-state.ts` | `backend/MachineBackend` + `SimBackend`, the `BackendBridge.qml` seam (`docs/PANEL-BACKEND.md`) |
 
 ## 4. Waves and steps
 
 Each wave ends with acceptance that goes red on a divergence. Estimates are rough, for the
 dispatcher. "Pre." are preconditions; steps run in order; checks are green after a step before the
 next one starts.
+
+**Stage 0 (2026-11-13, `qt-interface` 0.7.0).** The `MachineBackend` data contract, the simulator
+with fixtures and the `panel-shot`/`panel-diff` comparison stand — `docs/PANEL-BACKEND.md`. The
+waves below describe screens; switching the screens to the contract is the first step of wave D, not
+a separate wave.
 
 ### Wave A. Foundation (2-3 days)
 

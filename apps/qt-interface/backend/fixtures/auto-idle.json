@@ -1,0 +1,99 @@
+{
+  "name": "auto-idle",
+  "run": "IDLE",
+  "mode": "AUTO",
+  "workplace": "RUN",
+  "position": { "x": -120.5, "y": 35.25, "z": -210.4, "a": 0.0 },
+  "machine": { "x": 120.5, "y": 35.25, "z": -210.4, "a": 0.0 },
+  "activeOffset": 0,
+  "offsets": [
+    { "code": "G54", "values": { "x": -120.5, "y": 35.25, "z": -210.4, "a": 0.0 }, "active": true },
+    { "code": "G55", "values": { "x": -320.0, "y": 35.25, "z": -210.4, "a": 90.0 }, "active": false },
+    { "code": "G56", "values": { "x": 0.0, "y": 0.0, "z": 0.0, "a": 0.0 }, "active": false },
+    { "code": "G57", "values": { "x": 0.0, "y": 0.0, "z": 0.0, "a": 0.0 }, "active": false },
+    { "code": "G58", "values": { "x": 0.0, "y": 0.0, "z": 0.0, "a": 0.0 }, "active": false },
+    { "code": "G59", "values": { "x": 0.0, "y": 0.0, "z": 0.0, "a": 0.0 }, "active": false }
+  ],
+  "tool": 1,
+  "tools": [
+    { "number": 1, "name": "Фреза концевая 4z", "diameter": 12.0, "length": 85.214, "life": 72, "inSpindle": true },
+    { "number": 2, "name": "Сверло спиральное", "diameter": 6.8, "length": 112.06, "life": 54, "inSpindle": false },
+    { "number": 3, "name": "Метчик M8", "diameter": 8.0, "length": 96.3, "life": 88, "inSpindle": false },
+    { "number": 99, "name": "3D щуп Renishaw OMP40-2", "diameter": 2.0, "length": 98.45, "life": 100, "inSpindle": false }
+  ],
+  "toolTime": { "1": 0, "2": 0, "3": 0, "99": 0 },
+  "files": [
+    {
+      "name": "O1024",
+      "title": "КОРПУС ФЛАНЦА",
+      "lines": [
+        "O1024 (КОРПУС ФЛАНЦА)",
+        "N10 G21 G90 G17 G40 G49 G80",
+        "N20 T2 M06 (СВЕРЛО D6.8)",
+        "N30 G54 G00 X0 Y0",
+        "N40 S2400 M03",
+        "N50 G43 H02 Z50.0 M08",
+        "N60 G00 X-50.0 Y-30.0 Z3.0",
+        "N70 G01 Z-15.0 F180",
+        "N80 G00 Z3.0",
+        "N90 X50.0",
+        "N100 G01 Z-15.0 F180",
+        "N110 G00 Z3.0",
+        "N120 X-50.0 Y30.0",
+        "N130 G01 Z-15.0 F180",
+        "N140 G00 Z3.0",
+        "N150 X50.0",
+        "N160 G01 Z-15.0 F180",
+        "N170 G00 Z50.0 M09",
+        "N180 M05",
+        "N190 M30"
+      ]
+    },
+    {
+      "name": "O2048",
+      "title": "ПЛИТА КРЕПЁЖНАЯ",
+      "lines": [
+        "O2048 (ПЛИТА КРЕПЁЖНАЯ)",
+        "N10 G21 G90 G17 G40 G49 G80",
+        "N20 T1 M06 (ФРЕЗА D12)",
+        "N30 G54 G00 X0 Y0",
+        "N40 S3200 M03",
+        "N50 G43 H01 Z50.0 M08",
+        "N60 G00 X-80.0 Y-50.0 Z3.0",
+        "N70 G01 Z-8.0 F240",
+        "N80 G01 X80.0",
+        "N90 G01 Y50.0",
+        "N100 G01 X-80.0",
+        "N110 G01 Y-50.0",
+        "N120 G00 Z50.0 M09",
+        "N130 M05",
+        "N140 M30"
+      ]
+    }
+  ],
+  "activeFile": 0,
+  "line": 0,
+  "cursor": 0,
+  "alarms": [
+    { "id": "a1", "code": "2051", "text": "Ресурс инструмента T04 менее 10%", "level": "warning", "time": "07:42:10", "active": true },
+    { "id": "a2", "code": "3012", "text": "Плановое ТО шпинделя через 48 ч", "level": "info", "time": "07:30:02", "active": true },
+    { "id": "a3", "code": "1104", "text": "Низкий уровень СОЖ в баке", "level": "error", "time": "06:58:44", "active": false }
+  ],
+  "overrides": { "feed": 60, "spindle": 90, "rapid": 100 },
+  "probe": { "tool": 99, "running": false, "result": false, "step": 0 },
+  "spindle": false,
+  "coolant": false,
+  "load": 38,
+  "axisLoad": { "X": 0, "Y": 0, "Z": 0, "A": 0 },
+  "cycleTime": 42000,
+  "lastCycle": 198000,
+  "partCount": 7,
+  "singleBlock": false,
+  "optStop": true,
+  "dryRun": false,
+  "focused": true,
+  "message": "",
+  "clock": "10:45:00",
+  "clockFrozen": true,
+  "mdiHistory": ["G90 G54", "S1200 M3", "G0 X0 Y0"]
+}

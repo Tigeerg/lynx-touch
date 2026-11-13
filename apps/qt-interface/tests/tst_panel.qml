@@ -15,6 +15,8 @@ TestCase {
         source: "../main.qml"
     }
 
+    StubBackend { id: stubBackend }
+
     function findByName(item, name) {
         if (!item) return null
         if (item.objectName === name) return item
@@ -509,5 +511,62 @@ TestCase {
         wait(0)
         compare(pendantObject.height, 150)
         pendantObject.destroy()
+    }
+
+    // Stage 1, first slice: the header reads live machine state through the backend bridge, and the
+    // panel actuators ask the backend instead of only moving their own numbers.
+    function test_header_follows_backend() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        stubBackend.resetState()
+        p.backend.backend = stubBackend
+        p.activeScreen = "prog"
+        wait(0)
+
+        compare(findByName(p, "runStateText").text, "ГОТОВ")
+        compare(findByName(p, "headerProgramText").text, "O1024")
+        compare(findByName(p, "headerClockText").text, "10:45:00")
+        compare(findByName(p, "headerAlarmCount").text, "2")
+
+        // The run badge follows the backend, not a local literal.
+        stubBackend.run = "RUN"
+        tryCompare(findByName(p, "runStateText"), "text", "ВЫПОЛНЕНИЕ")
+        stubBackend.run = "HOLD"
+        tryCompare(findByName(p, "runStateText"), "text", "ПАУЗА")
+        stubBackend.run = "ESTOP"
+        tryCompare(findByName(p, "runStateText"), "text", "СТОП")
+        stubBackend.run = "IDLE"
+        wait(0)
+
+        // The panel actuators ask the backend: ПУСК/СТОП/СБРОС/АВАРИЯ and the switches go through
+        // the bridge, which is the only place that knows the machine.
+        p.machineCycleStart()
+        compare(stubBackend.lastCommandName, "cycleStart")
+        p.machineFeedHold()
+        compare(stubBackend.lastCommandName, "feedHold")
+        p.machineReset()
+        compare(stubBackend.lastCommandName, "reset")
+        p.machineEmergencyStop()
+        compare(stubBackend.lastCommandName, "emergencyStop")
+        p.machineToggleSpindle()
+        compare(stubBackend.lastCommandName, "toggle:spindle")
+        p.machineToggleCoolant()
+        compare(stubBackend.lastCommandName, "toggle:coolant")
+
+        // Switching the workplace sends it to the machine; a refusal is shown, not swallowed.
+        stubBackend.commandOk = false
+        stubBackend.commandReason = "Станок занят"
+        p.setWorkplace("TEST")
+        compare(p.backend.lastReason, "Станок занят")
+        compare(p.message, "Станок занят")
+
+        // A message switched off is gone from the live count.
+        stubBackend.alarms = [ { active: true } ]
+        tryCompare(findByName(p, "headerAlarmCount"), "text", "1")
+
+        // Leave the panel the way the other tests expect it.
+        stubBackend.resetState()
+        p.backend.backend = null
+        p.setWorkplace("RUN")
     }
 }

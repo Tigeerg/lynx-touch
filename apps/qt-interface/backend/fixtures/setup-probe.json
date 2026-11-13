@@ -1,0 +1,58 @@
+{
+  "name": "setup-probe",
+  "run": "IDLE",
+  "mode": "JOG",
+  "workplace": "SETUP",
+  "position": { "x": -120.5, "y": 35.25, "z": -210.4, "a": 0.0 },
+  "machine": { "x": 120.5, "y": 35.25, "z": -210.4, "a": 0.0 },
+  "activeOffset": 0,
+  "offsets": [
+    { "code": "G54", "values": { "x": -120.5, "y": 35.25, "z": -210.4, "a": 0.0 }, "active": true },
+    { "code": "G55", "values": { "x": -320.0, "y": 35.25, "z": -210.4, "a": 90.0 }, "active": false }
+  ],
+  "tool": 99,
+  "tools": [
+    { "number": 1, "name": "Фреза концевая 4z", "diameter": 12.0, "length": 85.214, "life": 72, "inSpindle": false },
+    { "number": 99, "name": "3D щуп Renishaw OMP40-2", "diameter": 2.0, "length": 98.45, "life": 100, "inSpindle": true }
+  ],
+  "toolTime": { "1": 0, "99": 0 },
+  "files": [
+    {
+      "name": "O1024",
+      "title": "КОРПУС ФЛАНЦА",
+      "lines": [
+        "O1024 (КОРПУС ФЛАНЦА)",
+        "N10 G21 G90 G17 G40 G49 G80",
+        "N20 T1 M06 (ФРЕЗА D12)",
+        "N30 G54 G00 X0 Y0",
+        "N40 S2400 M03",
+        "N50 G43 H01 Z50.0 M08",
+        "N60 G00 X-50.0 Y-30.0 Z3.0",
+        "N70 G01 Z-15.0 F180",
+        "N80 M05",
+        "N90 M30"
+      ]
+    }
+  ],
+  "activeFile": 0,
+  "line": 0,
+  "cursor": 0,
+  "alarms": [],
+  "overrides": { "feed": 100, "spindle": 100, "rapid": 50 },
+  "probe": { "tool": 99, "running": false, "result": true, "step": 4 },
+  "spindle": false,
+  "coolant": false,
+  "load": 0,
+  "axisLoad": { "X": 0, "Y": 0, "Z": 0, "A": 0 },
+  "cycleTime": 0,
+  "lastCycle": 0,
+  "partCount": 0,
+  "singleBlock": false,
+  "optStop": false,
+  "dryRun": false,
+  "focused": true,
+  "message": "",
+  "clock": "10:46:00",
+  "clockFrozen": true,
+  "mdiHistory": []
+}

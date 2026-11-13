@@ -1,6 +1,6 @@
 {
   "product": "CNC Панель оператора",
-  "version": "0.35.47",
+  "version": "0.37.0",
   "versioning": "semver",
   "description": "Панель оператора ЧПУ: React-интерфейс, Qt-порт, 3D-вьювер УП и тестовые данные/постпроцессор.",
   "projects": [
@@ -17,11 +17,11 @@
     {
       "id": "qt-interface",
       "name": "Qt-порт интерфейса",
-      "version": "0.6.41",
+      "version": "0.8.0",
       "path": "apps/qt-interface",
-      "kind": "qml",
+      "kind": "qml+cpp",
       "entry": "main.qml",
-      "description": "Qt-порт интерфейса оператора. main.qml — единственный источник панели; preview.qml — окно с Loader. Отдельная точка входа для отладки — build/qt-interface/lynx-panel.exe (scripts/build-qt-interface.ps1); на стойке позже — загрузчик QtVCP. MockBackend и CNC.Edges подключаются как QML-модули."
+      "description": "Qt-порт интерфейса оператора. main.qml — единственный источник панели; preview.qml — окно с Loader. Отдельная точка входа для отладки — build/qt-interface/lynx-panel.exe (scripts/build-qt-interface.ps1); на стойке позже — загрузчик QtVCP. MockBackend и CNC.Edges подключаются как QML-модули. backend/ — контракт данных MachineBackend и симулятор SimBackend с JSON-фикстурами (docs/PANEL-BACKEND.md)."
     },
     {
       "id": "gcode-viewer",

@@ -1,0 +1,68 @@
+{
+  "name": "test-dry",
+  "run": "IDLE",
+  "mode": "AUTO",
+  "workplace": "TEST",
+  "position": { "x": -50.0, "y": -30.0, "z": 3.0, "a": 0.0 },
+  "machine": { "x": -50.0, "y": -30.0, "z": 3.0, "a": 0.0 },
+  "activeOffset": 0,
+  "offsets": [
+    { "code": "G54", "values": { "x": -120.5, "y": 35.25, "z": -210.4, "a": 0.0 }, "active": true },
+    { "code": "G55", "values": { "x": -320.0, "y": 35.25, "z": -210.4, "a": 90.0 }, "active": false }
+  ],
+  "tool": 2,
+  "tools": [
+    { "number": 1, "name": "Фреза концевая 4z", "diameter": 12.0, "length": 85.214, "life": 72, "inSpindle": false },
+    { "number": 2, "name": "Сверло спиральное", "diameter": 6.8, "length": 112.06, "life": 54, "inSpindle": true },
+    { "number": 99, "name": "3D щуп Renishaw OMP40-2", "diameter": 2.0, "length": 98.45, "life": 100, "inSpindle": false }
+  ],
+  "toolTime": { "1": 0, "2": 0, "99": 0 },
+  "files": [
+    {
+      "name": "O1024",
+      "title": "КОРПУС ФЛАНЦА",
+      "lines": [
+        "O1024 (КОРПУС ФЛАНЦА)",
+        "N10 G21 G90 G17 G40 G49 G80",
+        "N20 T2 M06 (СВЕРЛО D6.8)",
+        "N30 G54 G00 X0 Y0",
+        "N40 S2400 M03",
+        "N50 G43 H02 Z50.0 M08",
+        "N60 G00 X-50.0 Y-30.0 Z3.0",
+        "N70 G01 Z-15.0 F180",
+        "N80 G00 Z3.0",
+        "N90 X50.0",
+        "N100 G01 Z-15.0 F180",
+        "N110 G00 Z3.0",
+        "N120 X-50.0 Y30.0",
+        "N130 G01 Z-15.0 F180",
+        "N140 G00 Z50.0 M09",
+        "N150 M05",
+        "N160 M30"
+      ]
+    }
+  ],
+  "activeFile": 0,
+  "line": 12,
+  "cursor": 12,
+  "alarms": [
+    { "id": "t1", "code": "2051", "text": "Ресурс инструмента T04 менее 10%", "level": "warning", "time": "07:42:10", "active": true }
+  ],
+  "overrides": { "feed": 100, "spindle": 100, "rapid": 25 },
+  "probe": { "tool": 99, "running": false, "result": false, "step": 0 },
+  "spindle": false,
+  "coolant": false,
+  "load": 0,
+  "axisLoad": { "X": 0, "Y": 0, "Z": 0, "A": 0 },
+  "cycleTime": 0,
+  "lastCycle": 0,
+  "partCount": 0,
+  "singleBlock": false,
+  "optStop": false,
+  "dryRun": true,
+  "focused": true,
+  "message": "",
+  "clock": "10:47:00",
+  "clockFrozen": true,
+  "mdiHistory": []
+}

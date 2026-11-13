@@ -32,10 +32,19 @@ Item {
     // Active screen (bind to logic in QtVCP). Values: pos, prog, ...
     // Boot is deterministic: AUTO workplace opens the Program screen with the AUTO views.
     property string activeScreen: "prog"
+    // A screenshot must not catch a moving second: --shot seeds the header clock from the backend
+    // and freezes it; an empty value keeps the live/`--:--:--` display.
+    property string frozenClock: ""
     // [DISPLAY] LANGUAGE: 0 Russian, 1 English. The I18n object is shared by all screens.
     readonly property string uiLanguage: svcVal("system", 2, systemDefs[2]) === 1 ? "en" : "ru"
     readonly property var i18n: i18nObject
     I18n { id: i18nObject; language: root.uiLanguage }
+    // Live machine data: values are read from the bridge, commands go back through it. The backend
+    // behind it is the simulator (tests, demo) or, later, the LinuxCNC adapter; the panel does not
+    // branch on which one it is. Reference tables that are still local (catalogue, offset/tool/alarm
+    // lists) move to the bridge in the next steps — docs/PANEL-BACKEND.md, §7.
+    BackendBridge { id: backendBridge }
+    property alias backend: backendBridge
     property string workplace: "RUN"
     property bool pendantOpen: false
     property bool mpgOpen: false
@@ -210,6 +219,8 @@ Item {
         activeScreen = modeStartScreen(m);
         if (m === "MPG" && (jogStep < 0 || jogStep > 2)) jogStep = 2;
         if (m === "AUTO" && activeScreen === "prog") svcEditing = false;
+        if (!root.backend.setMode(m) && root.backend.connected)
+            message = root.backend.lastReason;
     }
     function modeCycle(dir) {
         var modes = ["AUTO", "MDI", "JOG", "MPG"];
@@ -223,6 +234,10 @@ Item {
         machineMode = wp === "SETUP" ? "JOG" : "AUTO";
         dryRun = wp === "TEST";
         activeScreen = wp === "SETUP" ? "pos" : "prog";
+        // The machine switches too: the backend refuses while a program runs, and its reason is
+        // what the operator sees.
+        if (!root.backend.setWorkplace(wp) && root.backend.connected)
+            message = root.backend.lastReason;
     }
     function submitServiceAuth() {
         if (authInput.text === "1234") { serviceWrite = true; serviceAuthOpen = false; serviceAuthError = false; }
@@ -472,7 +487,14 @@ Item {
     function mutateTools(i, patch) { var d = toolsData.slice(); var r = {}; for (var k in d[i]) r[k] = d[i][k]; for (var k2 in patch) r[k2] = patch[k2]; d[i] = r; toolsData = d; }
     function setSpindleTool(i) { var d = toolsData.slice(); for (var j = 0; j < d.length; j++) { var r = {}; for (var k in d[j]) r[k] = d[j][k]; r.inSpindle = (j === i); d[j] = r; } toolsData = d; }
     function mutateAlarms(fn) { var d = []; for (var i = 0; i < alarmsData.length; i++) { var r = {}; for (var k in alarmsData[i]) r[k] = alarmsData[i][k]; d.push(fn(r, i)); } alarmsData = d; }
-    function activeAlarmCount() { var n = 0; for (var i = 0; i < alarmsData.length; i++) if (alarmsData[i].active) n++; return n; }
+    function activeAlarmCount() {
+        // Live count when the machine is connected; the local log is the fallback for a bare QML
+        // run and moves to the backend in the next step.
+        if (backend.connected) return backend.activeAlarmCount;
+        var n = 0;
+        for (var i = 0; i < alarmsData.length; i++) if (alarmsData[i].active) n++;
+        return n;
+    }
     function clearAckedAlarms() { var d = []; for (var i = 0; i < alarmsData.length; i++) if (alarmsData[i].active) d.push(alarmsData[i]); alarmsData = d; if (cursorAlarm >= alarmsData.length) cursorAlarm = Math.max(0, alarmsData.length - 1); }
     // Pads the set to eight slots and fills in the reason for disabled keys, so a disabled key
     // does not stay silent (React softkey-slots.ts, `slots`).
@@ -651,9 +673,12 @@ Item {
     // viewer's own buttons (those stay only in the debug gcodeviewer.exe).
     Connections {
         target: root
-        function onMachineCycleStart() { workScreen.viewerCycleStart(); }
-        function onMachineFeedHold() { workScreen.viewerFeedHold(); }
-        function onMachineReset() { workScreen.viewerReset(); }
+        function onMachineCycleStart() { workScreen.viewerCycleStart(); root.backend.cycleStart(); }
+        function onMachineFeedHold() { workScreen.viewerFeedHold(); root.backend.feedHold(); }
+        function onMachineReset() { workScreen.viewerReset(); root.backend.reset(); }
+        function onMachineEmergencyStop() { root.backend.emergencyStop(); }
+        function onMachineToggleSpindle() { root.backend.toggle("spindle"); }
+        function onMachineToggleCoolant() { root.backend.toggle("coolant"); }
     }
 
     // Program data (for the "Program" screen)
@@ -1353,10 +1378,11 @@ Item {
                 border.width: 2
                 radius: 6
                 Text {
+                    objectName: "runStateText"
                     anchors.centerIn: parent
-                    text: "ГОТОВ"
+                    text: root.backend.runLabel
                     Layout.maximumWidth: 100
-                    color: cForeground
+                    color: root.backend.stopped ? cDestructive : cForeground
                     font.bold: true
                     font.pixelSize: 16
                     elide: Text.ElideRight
@@ -1390,7 +1416,8 @@ Item {
                         Layout.fillHeight: true
                         spacing: 4
                         Text {
-                            text: root.activeProgram().name
+                            objectName: "headerProgramText"
+                            text: root.backend.programName !== "" ? root.backend.programName : root.activeProgram().name
                             Layout.maximumWidth: 60
                             color: cForeground
                             font.bold: true
@@ -1399,7 +1426,7 @@ Item {
                             elide: Text.ElideRight
                         }
                         Text {
-                            text: root.activeProgram().title
+                            text: root.backend.programTitle !== "" ? root.backend.programTitle : root.activeProgram().title
                             Layout.maximumWidth: 100000
                             color: cMutedForeground
                             font.pixelSize: pxSmall
@@ -1425,7 +1452,7 @@ Item {
                     anchors.margins: 8
                     spacing: 6
                     Text { text: "\ue193"; Layout.maximumWidth: 18; color: cWarningFg; font.family: "lucide"; font.pixelSize: 16 }   // triangle-alert
-                    Text { text: String(root.activeAlarmCount()); Layout.maximumWidth: 22; color: cWarningFg; font.bold: true; font.pixelSize: pxLarge; font.family: fontMono }
+                    Text { objectName: "headerAlarmCount"; text: String(root.activeAlarmCount()); Layout.maximumWidth: 22; color: cWarningFg; font.bold: true; font.pixelSize: pxLarge; font.family: fontMono }
                 }
             }
 
@@ -1452,7 +1479,8 @@ Item {
                         Text { text: "Активен"; color: cSuccess; font.pixelSize: 11; font.weight: Font.Medium; Layout.alignment: Qt.AlignVCenter }
                     }
                     Text {
-                        text: "--:--:--"
+                        objectName: "headerClockText"
+                        text: root.frozenClock !== "" ? root.frozenClock : root.backend.clock
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
                         color: cForeground

@@ -18,7 +18,7 @@ The product is five independently versioned projects (manifest — [projects.jso
 | id | Path | Kind | Entry point |
 |---|---|---|---|
 | `react-interface` | `apps/react-interface` | Next.js + TS | `app/page.tsx` |
-| `qt-interface` | `apps/qt-interface` | QML | `main.qml` |
+| `qt-interface` | `apps/qt-interface` | QML + C++ | `main.qml` |
 | `gcode-viewer` | `modules/gcode-viewer` | QML + C++ | `GcodeViewer3D.qml` |
 | `cad-testdata` | `data/cad-testdata` | data | `Test_model.ngc` |
 | `quickprog` | `apps/quickprog` | C++ (console) | `main.cpp` |
@@ -148,6 +148,15 @@ is local (when an API request appears, add and name that layer here).
 * The debug entry point is `build/qt-interface/lynx-panel.exe` (`scripts/build-qt-interface.ps1`):
   a 1024×600 window without a console; it adds the `MockBackend`/`CNC.Edges` paths itself. On the
   controller a QtVCP loader replaces it later.
+* `backend/` — the panel data contract (details — [docs/PANEL-BACKEND.md](docs/PANEL-BACKEND.md)):
+  `MachineBackend` (properties, `{ ok, reason }` commands, signals), `SimBackend` with JSON fixtures,
+  `--backend=sim|linuxcnc` selection without a silent fallback. The `lynx-backend` library builds
+  without Qt Quick and is tested by `lynx-backend-test`.
+* `BackendBridge.qml` — the single seam between the panel and the machine: screens read values here
+  and send commands back; the seam composes the labels (`runLabel`, `toolLabel`) and keeps the
+  refusal in `lastReason`. The header (run state, program, message count, clock) and the
+  cycle/spindle/coolant commands are live; the tables, the program catalogue and MDI move to the
+  seam in the next slices.
 * Texts match `react-interface` word for word; icons are lucide only, from the bundled font.
 * The Work screen is split: `WorkScreen.qml` is the manual mode (live coordinates, MDI, viewer),
   `AutoScreen.qml` is AUTO (position, distance to the block, remaining path, four F8 views). Both use

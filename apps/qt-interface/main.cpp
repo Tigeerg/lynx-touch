@@ -11,17 +11,26 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QCommandLineOption>
+#include <QCommandLineParser>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickView>
+#include <QQuickItem>
+#include <QQuickItemGrabResult>
 #include <QResizeEvent>
 #include <QScreen>
 #include <QSize>
+#include <QTimer>
 #include <QUrl>
+#include <QVariantMap>
 #include <QtGlobal>
+
+#include "backend/backend_factory.h"
 
 #ifdef Q_OS_WIN
 #  include <windows.h>
+#  include <cstdio>
 #endif
 
 namespace {
@@ -109,9 +118,92 @@ void addPathEntry(const QString &dir)
 
 int main(int argc, char *argv[])
 {
+#ifdef Q_OS_WIN
+    // lynx-panel is a GUI-subsystem process, so it is not attached to the console that started it
+    // and a startup error would be invisible. Reattach when there is a parent console, so
+    // `--backend=linuxcnc` prints its reason when run from `cmd`. Offscreen/CI runs have no console
+    // and keep the Qt log only.
+    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        FILE *stream = nullptr;
+        freopen_s(&stream, "CONOUT$", "w", stdout);
+        freopen_s(&stream, "CONOUT$", "w", stderr);
+    }
+#endif
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Lynx Touch"));
-    app.setApplicationVersion(QStringLiteral("0.6.41"));
+    app.setApplicationVersion(QStringLiteral("0.8.0"));
+
+    QCommandLineParser parser;
+    parser.setApplicationDescription(QStringLiteral("Lynx Touch — панель оператора ЧПУ"));
+    parser.addHelpOption();
+    const QCommandLineOption touchOption(QStringLiteral("touch"),
+                                         QStringLiteral("Открыть сенсорный холст 864x1536"));
+    const QCommandLineOption backendOption(QStringLiteral("backend"),
+                                           QStringLiteral("Источник данных: sim или linuxcnc"),
+                                           QStringLiteral("name"), QStringLiteral("sim"));
+    const QCommandLineOption fixtureOption(QStringLiteral("fixture"),
+                                           QStringLiteral("JSON-фикстура симулятора"),
+                                           QStringLiteral("path"));
+    const QCommandLineOption clockOption(QStringLiteral("freeze-clock"),
+                                         QStringLiteral("Остановить часы на HH:mm:ss"),
+                                         QStringLiteral("time"));
+    const QCommandLineOption screenOption(
+        QStringLiteral("screen"),
+        QStringLiteral("Стартовый экран: pos, prog, offset, tool, alarm, service"),
+        QStringLiteral("name"));
+    const QCommandLineOption workplaceOption(
+        QStringLiteral("workplace"),
+        QStringLiteral("Стартовое рабочее место: SETUP, TEST, RUN"), QStringLiteral("name"));
+    const QCommandLineOption themeOption(
+        QStringLiteral("theme"),
+        QStringLiteral("Тема 0..5 (Минимал светлая/тёмная, Светлая, Тёмная, Графит, Мята)"),
+        QStringLiteral("number"));
+    const QCommandLineOption shotOption(QStringLiteral("shot"),
+                                        QStringLiteral("Снять окно в PNG после загрузки"),
+                                        QStringLiteral("file"));
+    const QCommandLineOption shotDelayOption(QStringLiteral("shot-delay"),
+                                             QStringLiteral("Задержка снимка, мс"),
+                                             QStringLiteral("ms"), QStringLiteral("800"));
+    parser.addOption(touchOption);
+    parser.addOption(backendOption);
+    parser.addOption(fixtureOption);
+    parser.addOption(clockOption);
+    parser.addOption(screenOption);
+    parser.addOption(workplaceOption);
+    parser.addOption(themeOption);
+    parser.addOption(shotOption);
+    parser.addOption(shotDelayOption);
+    parser.process(app);
+
+    const QStringList screens{QStringLiteral("pos"), QStringLiteral("prog"),
+                              QStringLiteral("offset"), QStringLiteral("tool"),
+                              QStringLiteral("alarm"), QStringLiteral("service")};
+    const QStringList workplaces{QStringLiteral("SETUP"), QStringLiteral("TEST"),
+                                 QStringLiteral("RUN")};
+    const QString requestedScreen = parser.value(screenOption);
+    const QString requestedWorkplace = parser.value(workplaceOption);
+    if (!requestedScreen.isEmpty() && !screens.contains(requestedScreen)) {
+        qWarning("lynx-panel: unknown screen %s", qPrintable(requestedScreen));
+        return 1;
+    }
+    if (!requestedWorkplace.isEmpty() && !workplaces.contains(requestedWorkplace)) {
+        qWarning("lynx-panel: unknown workplace %s", qPrintable(requestedWorkplace));
+        return 1;
+    }
+    int requestedTheme = -1;
+    if (parser.isSet(themeOption)) {
+        bool ok = false;
+        requestedTheme = parser.value(themeOption).toInt(&ok);
+        if (!ok || requestedTheme < 0 || requestedTheme > 5) {
+            qWarning("lynx-panel: theme must be 0..5");
+            return 1;
+        }
+    }
+    bool delayOk = false;
+    int shotDelay = parser.value(shotDelayOption).toInt(&delayOk);
+    if (!delayOk)
+        shotDelay = 800;
+    shotDelay = qBound(0, shotDelay, 10000);
 
     const QString root = repoRoot();
     const QString mainFile = root + QStringLiteral("/apps/qt-interface/main.qml");
@@ -119,8 +211,11 @@ int main(int argc, char *argv[])
         qWarning("lynx-panel: main.qml not found: %s", qPrintable(mainFile));
         return 1;
     }
-    // panel-host keeps the logical canvas and scales it uniformly into the resizable debug window.
-    const QString qmlFile = root + QStringLiteral("/apps/qt-interface/panel-host.qml");
+    // A screenshot loads main.qml directly: the root then has no Loader and the state can be set
+    // before the frame. The normal launch keeps panel-host and its uniform scaling.
+    const bool shotMode = parser.isSet(shotOption);
+    const QString qmlFile =
+        shotMode ? mainFile : root + QStringLiteral("/apps/qt-interface/panel-host.qml");
 
     // The QML plugin of the viewer controller and the CNC.Edges plugin are built into the repo.
     addPathEntry(root + QStringLiteral("/build/qmlbackend/MockBackend"));
@@ -132,19 +227,40 @@ int main(int argc, char *argv[])
     if (!occ.isEmpty())
         addPathEntry(occ + QStringLiteral("/bin"));
 
+    QString fixture = parser.value(fixtureOption);
+    if (fixture.isEmpty())
+        fixture = root + QStringLiteral("/apps/qt-interface/backend/fixtures/auto-idle.json");
+    else if (QDir::isRelativePath(fixture))
+        fixture = root + QLatin1Char('/') + fixture;
+    QString backendError;
+    MachineBackend *machine = createBackend(parser.value(backendOption), fixture,
+                                            parser.value(clockOption), &app, &backendError);
+    if (!machine) {
+        qWarning("lynx-panel: backend: %s", qPrintable(backendError));
+        return 1;
+    }
+
     // The panel has two fixed canvases: the 1024x600 key panel and the 864x1536 portrait touch
     // panel. `--touch` (also read by main.qml) starts the touch variant.
-    const bool touch = app.arguments().contains(QStringLiteral("--touch"));
+    const bool touch = parser.isSet(touchOption);
 
     PanelView view;
     QQmlEngine *engine = view.engine();
     engine->addImportPath(root + QStringLiteral("/build/qmlbackend"));
     engine->addImportPath(root + QStringLiteral("/build/edges"));
     CanvasLock canvasLock(&view);
-    view.rootContext()->setContextProperty(QStringLiteral("CanvasLock"), &canvasLock);
-    // The host item fills the view (SizeRootObjectToView); the logical panel inside is scaled.
-    view.setResizeMode(QQuickView::SizeRootObjectToView);
-    canvasLock.apply(touch ? 2 : 0);
+    if (!shotMode)
+        view.rootContext()->setContextProperty(QStringLiteral("CanvasLock"), &canvasLock);
+    view.rootContext()->setContextProperty(QStringLiteral("machine"), machine);
+    // The host item fills the view (SizeRootObjectToView) and scales the logical panel inside.
+    // A screenshot is taken of the panel item itself: the root then keeps its own 1024x600 or
+    // 864x1536 canvas even on a smaller developer screen.
+    if (shotMode) {
+        view.setResizeMode(QQuickView::SizeViewToRootObject);
+    } else {
+        view.setResizeMode(QQuickView::SizeRootObjectToView);
+        canvasLock.apply(touch ? 2 : 0);
+    }
     view.setSource(QUrl::fromLocalFile(qmlFile));
     if (view.status() == QQuickView::Error) {
         for (const QQmlError &error : view.errors())
@@ -154,7 +270,55 @@ int main(int argc, char *argv[])
 
     view.setTitle(touch ? QStringLiteral("Lynx Touch — сенсорная панель")
                         : QStringLiteral("Lynx Touch — панель оператора"));
+    if (shotMode && view.rootObject()) {
+        QObject *panel = view.rootObject();
+        if (!requestedWorkplace.isEmpty()) {
+            panel->setProperty("workplace", requestedWorkplace);
+            panel->setProperty("machineMode",
+                               requestedWorkplace == QStringLiteral("SETUP")
+                                   ? QStringLiteral("JOG")
+                                   : QStringLiteral("AUTO"));
+        }
+        // The theme and the interface mode live in the same service map: insert once, so the second
+        // key does not overwrite the first.
+        if (requestedTheme >= 0 || touch) {
+            QVariantMap values = panel->property("svcValues").toMap();
+            if (requestedTheme >= 0)
+                values.insert(QStringLiteral("system.0"), requestedTheme);
+            if (touch)
+                values.insert(QStringLiteral("system.9"), 2);
+            panel->setProperty("svcValues", values);
+        }
+        if (!requestedScreen.isEmpty())
+            panel->setProperty("activeScreen", requestedScreen);
+        // The clock comes from the frozen backend state, so two shots of one fixture match.
+        panel->setProperty("frozenClock", machine->clock());
+        // A screenshot is a reference of the panel, not of the boot animation.
+        panel->setProperty("splashVisible", false);
+        panel->setProperty("splashLeaving", false);
+        panel->setProperty("splashGone", true);
+    }
     view.show();
+
+    if (shotMode) {
+        const QString shot = QFileInfo(parser.value(shotOption)).absoluteFilePath();
+        QTimer::singleShot(shotDelay, &app, [&view, &app, shot]() {
+            QQuickItem *root = view.rootObject();
+            if (!root) {
+                qWarning("lynx-panel: no root item for screenshot");
+                app.quit();
+                return;
+            }
+            const auto grab = root->grabToImage();
+            QObject::connect(grab.data(), &QQuickItemGrabResult::ready, &app,
+                             [grab, shot, &app]() {
+                                 if (!grab->saveToFile(shot))
+                                     qWarning("lynx-panel: cannot save screenshot %s",
+                                              qPrintable(shot));
+                                 app.quit();
+                             });
+        });
+    }
     return app.exec();
 }
 

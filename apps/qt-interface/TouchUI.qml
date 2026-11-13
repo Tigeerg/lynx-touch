@@ -55,8 +55,10 @@ Item {
         else if (host.activeScreen === "alarm") { host.cursorAlarm = i; host.pressSoftkey({ id: "ack" }); }
     }
 
+    // The touch header clock. `host.frozenClock` seeds it for a screenshot (set by --shot with the
+    // backend clock); an empty value keeps the live time and the one-second timer.
     Timer {
-        interval: 1000; running: true; repeat: true
+        interval: 1000; running: !(host && host.frozenClock); repeat: true
         onTriggered: touch.clockText = Qt.formatTime(new Date(), "HH:mm:ss")
     }
     Component.onCompleted: clockText = Qt.formatTime(new Date(), "HH:mm:ss")
@@ -92,7 +94,7 @@ Item {
             Rectangle {
                 Layout.preferredWidth: 92; Layout.fillHeight: true
                 color: host.cMuted; border.color: host.cBorder; radius: 8
-                Text { anchors.centerIn: parent; text: "ГОТОВ"; color: host.cSuccess; font.bold: true; font.pixelSize: 14 }
+                Text { anchors.centerIn: parent; text: host.backend.runLabel; color: host.backend.stopped ? host.cDestructive : host.cSuccess; font.bold: true; font.pixelSize: 14 }
             }
             Rectangle {
                 Layout.fillWidth: true; Layout.fillHeight: true
@@ -102,7 +104,8 @@ Item {
                     Text { text: "ПРОГРАММА"; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 1 }
                     Text {
                         Layout.fillWidth: true
-                        text: host.activeProgram().name + "   " + host.activeProgram().title
+                        text: (host.backend.programName !== "" ? host.backend.programName + "   " + host.backend.programTitle
+                                                              : host.activeProgram().name + "   " + host.activeProgram().title)
                         color: host.cForeground; font.bold: true; font.pixelSize: 16; font.family: host.fontMono
                         elide: Text.ElideRight
                     }
@@ -126,7 +129,7 @@ Item {
             Rectangle {
                 Layout.preferredWidth: 120; Layout.fillHeight: true
                 color: host.cCard; border.color: host.cBorder; radius: 8
-                Text { anchors.centerIn: parent; text: touch.clockText; color: host.cForeground; font.bold: true; font.pixelSize: 18; font.family: host.fontMono }
+                Text { anchors.centerIn: parent; text: host.frozenClock !== "" ? host.frozenClock : (host.backend.clock !== "" ? host.backend.clock : touch.clockText); color: host.cForeground; font.bold: true; font.pixelSize: 18; font.family: host.fontMono }
             }
         }
 

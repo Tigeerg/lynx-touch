@@ -1,5 +1,7 @@
 #include "backend_factory.h"
 
+#include "linuxcnc_backend.h"
+#include "linuxcnc_link.h"
 #include "sim_backend.h"
 
 MachineBackend *createBackend(const QString &kind, const QString &fixturePath,
@@ -7,9 +9,15 @@ MachineBackend *createBackend(const QString &kind, const QString &fixturePath,
 {
     const QString name = kind.trimmed().isEmpty() ? QStringLiteral("sim") : kind.trimmed().toLower();
     if (name == QStringLiteral("linuxcnc")) {
-        if (error)
-            *error = QStringLiteral("backend linuxcnc ещё не подключён: используйте --backend=sim");
-        return nullptr;
+        // The adapter is ready and tested against a fake link; the link itself needs the controller
+        // (docs/LINUXCNC-BACKEND.md). No silent fallback: a panel on a machine must know.
+        LinuxCncLink *link = createLinuxCncLink(error);
+        if (!link)
+            return nullptr;
+        auto *backend = new LinuxCncBackend(link, parent);
+        // The link lives exactly as long as the backend that reads it.
+        link->setParent(backend);
+        return backend;
     }
     if (name != QStringLiteral("sim")) {
         if (error)

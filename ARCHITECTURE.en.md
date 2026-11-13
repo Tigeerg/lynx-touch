@@ -152,6 +152,10 @@ is local (when an API request appears, add and name that layer here).
   `MachineBackend` (properties, `{ ok, reason }` commands, signals), `SimBackend` with JSON fixtures,
   `--backend=sim|linuxcnc` selection without a silent fallback. The `lynx-backend` library builds
   without Qt Quick and is tested by `lynx-backend-test`.
+* `backend/linuxcnc_link.h` + `linuxcnc_backend.cpp` — the controller adapter: raw `stat`/`command`
+  facts are mapped onto the contract (13 checks against a fake link); the real link is written on the
+  controller ([docs/LINUXCNC-BACKEND.md](docs/LINUXCNC-BACKEND.md)); `--backend=linuxcnc` without the
+  link fails with a readable message.
 * `BackendBridge.qml` — the single seam between the panel and the machine: screens read values here
   and send commands back; the seam composes the labels (`runLabel`, `toolLabel`) and keeps the
   refusal in `lastReason`. Live: the header (run state, program, message count, clock), the position

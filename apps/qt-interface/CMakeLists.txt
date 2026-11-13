@@ -12,6 +12,10 @@ set(CMAKE_AUTOMOC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Quick3D Test)
 
+# The LinuxCNC link is written on the controller: without this option the build has the adapter and
+# its tests, and `--backend=linuxcnc` reports that the link is missing (docs/LINUXCNC-BACKEND.md).
+option(LYNX_WITH_LINUXCNC "Build against the LinuxCNC libraries (controller only)" OFF)
+
 add_library(lynx-backend STATIC
     backend/machine_types.cpp
     backend/machine_types.h
@@ -22,9 +26,16 @@ add_library(lynx-backend STATIC
     backend/fixture_reader.h
     backend/sim_backend.cpp
     backend/sim_backend.h
+    backend/linuxcnc_link.h
+    backend/linuxcnc_backend.cpp
+    backend/linuxcnc_backend.h
+    backend/linuxcnc_nml_link.cpp
     backend/backend_factory.cpp
     backend/backend_factory.h
 )
+if (LYNX_WITH_LINUXCNC)
+    target_compile_definitions(lynx-backend PUBLIC LYNX_WITH_LINUXCNC)
+endif()
 target_include_directories(lynx-backend PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/backend")
 target_link_libraries(lynx-backend PUBLIC Qt6::Core)
 if (MSVC)
@@ -42,7 +53,15 @@ if (MSVC)
 endif()
 add_test(NAME lynx-backend COMMAND lynx-backend-test)
 
-set_target_properties(lynx-panel lynx-backend-test PROPERTIES
+# The LinuxCNC adapter is tested with a fake link, so it can be checked on any platform.
+add_executable(lynx-linuxcnc-test backend/tests/tst_linuxcnc.cpp)
+target_link_libraries(lynx-linuxcnc-test PRIVATE lynx-backend Qt6::Test)
+if (MSVC)
+    target_compile_options(lynx-linuxcnc-test PRIVATE /W4 /WX /utf-8)
+endif()
+add_test(NAME lynx-linuxcnc COMMAND lynx-linuxcnc-test)
+
+set_target_properties(lynx-panel lynx-backend-test lynx-linuxcnc-test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
     RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}"
     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}"

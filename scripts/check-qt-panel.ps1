@@ -70,4 +70,17 @@ $totals = Select-String -Path $backendLog -Pattern '^Totals:' | Select-Object -L
 if (-not $totals) { Fail "lynx-backend-test не оставил итог в $backendLog" }
 Write-Host ('check-qt-panel: ' + $totals.Line.Trim())
 
+# The LinuxCNC adapter is checked against a fake link, so it can be verified here; the real link is
+# written and built on the controller (docs/LINUXCNC-BACKEND.md).
+$linkTest = Join-Path $root 'build\qt-interface\lynx-linuxcnc-test.exe'
+if (-not (Test-Path -LiteralPath $linkTest)) {
+    Fail "нет $linkTest - соберите панель: scripts/build-qt-interface.ps1"
+}
+$linkLog = Join-Path $root 'build\qt-interface\lynx-linuxcnc-test.txt'
+& $linkTest -o ($linkLog + ',txt')
+if ($LASTEXITCODE -ne 0) { Fail "lynx-linuxcnc-test вернул $LASTEXITCODE, лог: $linkLog" }
+$linkTotals = Select-String -Path $linkLog -Pattern '^Totals:' | Select-Object -Last 1
+if (-not $linkTotals) { Fail "lynx-linuxcnc-test не оставил итог в $linkLog" }
+Write-Host ('check-qt-panel: ' + $linkTotals.Line.Trim())
+
 Write-Host 'check-qt-panel: OK' -ForegroundColor Green

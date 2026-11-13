@@ -33,6 +33,10 @@
 | `apps/qt-interface/backend/fixture_reader.h/.cpp` | Чтение и проверка JSON-фикстуры; битая фикстура не затирает прежнее состояние |
 | `apps/qt-interface/backend/sim_backend.h/.cpp` | Симулятор: те же запреты (занятость, авария, режим), шаги JOG, коррекции, MDI |
 | `apps/qt-interface/backend/backend_factory.h/.cpp` | Выбор backend по имени: `sim` или `linuxcnc` |
+| `apps/qt-interface/backend/linuxcnc_link.h` | Интерфейс связи со стойкой: сырые факты `stat`/`command`, без типов контракта |
+| `apps/qt-interface/backend/linuxcnc_backend.h/.cpp` | Адаптер LinuxCNC: отображение фактов в контракт, опрос и сигналы; проверяется подставной связью |
+| `apps/qt-interface/backend/linuxcnc_nml_link.cpp` | Реальный линк: пишется на стойке по карточке ([docs/LINUXCNC-BACKEND.md](LINUXCNC-BACKEND.md)) |
+| `apps/qt-interface/backend/tests/tst_linuxcnc.cpp` | 13 проверок адаптера на подставной связи |
 | `apps/qt-interface/backend/fixtures/*.json` | Состояния для тестов и снимков |
 | `apps/qt-interface/backend/tests/tst_backend.cpp` | 12 проверок контракта и симулятора |
 | `apps/qt-interface/BackendBridge.qml` | Шов панели: значения на чтение, команды назад, `lastReason` (§4) |
@@ -149,7 +153,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/panel-diff.ps1 `
 | Проверка | Что доказывает |
 |---|---|
 | `lynx-backend-test.exe` | 16 случаев: загрузка фикстуры, битая фикстура не затирает состояние, запреты рабочего места и JOG, цикл ПУСК/ПАУЗА/СБРОС, коррекции, сообщения, переключение фикстур, заморозка часов, выбор программы, команды смещений (активация, очистка, привязка), инструмента (ресурс, длина, вызов), квитирование одного сообщения и счётчик деталей |
-| `scripts/check-qt-panel.ps1` | QML-тесты панели и шва (37) + прогон `lynx-backend-test.exe` (16) |
+| `scripts/check-qt-panel.ps1` | QML-тесты панели и шва (37) + `lynx-backend-test` (16) + `lynx-linuxcnc-test` (13) |
 | `tools/panel-shot.ps1` + `panel-diff.ps1` | Снимок панели и сравнение с эталоном в бюджете расхождений |
 | `scripts/build-qt-interface.ps1` | Сборка `/W4 /WX` без предупреждений |
 
@@ -164,8 +168,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/panel-diff.ps1 `
   цикл и нагрузка — уже живые; правки идут командами станка (`setActiveOffset`, `touchOff`,
   `setToolLife`, `selectTool`, `acknowledgeAlarm`, `countPart`). Остальное — редактор УП, обмер,
   щуп, лестница и сервисные параметры (настройки панели, отдельное хранилище) — ещё локально.
-* Нет `LinuxCncBackend`: адаптер к HAL/`linuxcnc` появится после этапа 1; до него
-  `--backend=linuxcnc` намеренно падает.
+* `LinuxCncBackend` написан и проверен подставной связью (13 тестов), но реального линка к
+  библиотеке нет: он пишется на стойке (карточка — [docs/LINUXCNC-BACKEND.md](LINUXCNC-BACKEND.md)).
+  До него `--backend=linuxcnc` падает с понятным сообщением, без отката на симулятор. Пробелы
+  контракта (рабочее место, каталог УП, ресурс инструмента, уровень сообщений, результат щупа,
+  нагрузка, счётчики, старт с кадра) перечислены там же.
 * Темы «Минимал» в Qt нет: `--theme` принимает 0…5, но палитр пока четыре.
 * Симулятор не проигрывает траекторию вьювера: он двигает координаты по кадрам УП, но не
   синхронизирует их с 3D-сценой.

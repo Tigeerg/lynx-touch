@@ -146,6 +146,10 @@
   `MachineBackend` (свойства, команды `{ ok, reason }`, сигналы), `SimBackend` с JSON-фикстурами,
   выбор `--backend=sim|linuxcnc` без тихого отката. Библиотека `lynx-backend` собирается без Qt Quick,
   её проверяет `lynx-backend-test`.
+* `backend/linuxcnc_link.h` + `linuxcnc_backend.cpp` — адаптер к стойке: сырые факты `stat`/`command`
+  отображаются в контракт (13 проверок на подставной связи), реальный линк пишется на стойке
+  ([docs/LINUXCNC-BACKEND.md](docs/LINUXCNC-BACKEND.md)); `--backend=linuxcnc` без линка падает с
+  понятным сообщением.
 * `BackendBridge.qml` — единственный шов панели к станку: экраны читают значения отсюда и шлют
   команды назад; подписи (`runLabel`, `toolLabel`) собирает шов, отказ виден в `lastReason`.
   Живые: шапка (состояние прогона, УП, счётчик сообщений, часы), позиция (DRO), джог, MDI, ноль

@@ -33,6 +33,10 @@ The contract solves three problems:
 | `apps/qt-interface/backend/fixture_reader.h/.cpp` | Reads and validates a JSON fixture; a broken fixture does not overwrite the previous state |
 | `apps/qt-interface/backend/sim_backend.h/.cpp` | Simulator: the same guards (busy, alarm, mode), JOG steps, overrides, MDI |
 | `apps/qt-interface/backend/backend_factory.h/.cpp` | Backend selection by name: `sim` or `linuxcnc` |
+| `apps/qt-interface/backend/linuxcnc_link.h` | The link interface: raw `stat`/`command` facts, no contract types |
+| `apps/qt-interface/backend/linuxcnc_backend.h/.cpp` | The LinuxCNC adapter: maps the facts onto the contract, polls and signals; checked with a fake link |
+| `apps/qt-interface/backend/linuxcnc_nml_link.cpp` | The real link: written on the controller from the task card ([docs/LINUXCNC-BACKEND.md](LINUXCNC-BACKEND.md)) |
+| `apps/qt-interface/backend/tests/tst_linuxcnc.cpp` | 13 adapter checks against a fake link |
 | `apps/qt-interface/backend/fixtures/*.json` | States for tests and screenshots |
 | `apps/qt-interface/backend/tests/tst_backend.cpp` | 12 checks of the contract and the simulator |
 | `apps/qt-interface/BackendBridge.qml` | The panel seam: values in, commands back, `lastReason` (§4) |
@@ -149,7 +153,7 @@ ANSI and parses a line with a dash as an unclosed quote.
 | Check | What it proves |
 |---|---|
 | `lynx-backend-test.exe` | 16 cases: fixture loading, a broken fixture keeps the state, workplace and JOG guards, START/PAUSE/RESET cycle, overrides, messages, fixture switching, clock freeze, program selection, offset commands (activate, clear, touch off), tool commands (life, length, select), single-message acknowledgement and the finished-part counter |
-| `scripts/check-qt-panel.ps1` | QML panel and seam tests (37) + `lynx-backend-test.exe` (16) |
+| `scripts/check-qt-panel.ps1` | QML panel and seam tests (37) + `lynx-backend-test` (16) + `lynx-linuxcnc-test` (13) |
 | `tools/panel-shot.ps1` + `panel-diff.ps1` | Panel screenshot and comparison with the reference within the difference budget |
 | `scripts/build-qt-interface.ps1` | `/W4 /WX` build without warnings |
 
@@ -165,8 +169,11 @@ Environment variables for build and run: `CNC_VCVARS`, `CNC_NINJA`, `CNC_CMAKE`,
   `touchOff`, `setToolLife`, `selectTool`, `acknowledgeAlarm`, `countPart`). The rest — the program
   editor, measuring, the probe, the ladder and the service parameters (a separate settings store) —
   is still local.
-* There is no `LinuxCncBackend`: the HAL/`linuxcnc` adapter comes after stage 1; until then
-  `--backend=linuxcnc` fails on purpose.
+* `LinuxCncBackend` is written and checked with a fake link (13 tests), but there is no real link to
+  the library: it is written on the controller (task card — [docs/LINUXCNC-BACKEND.md](LINUXCNC-BACKEND.md)).
+  Until then `--backend=linuxcnc` fails with a readable message and no fallback to the simulator. The
+  contract gaps (workplace, program catalogue, tool life, message level, probe result, load, counters,
+  run from line) are listed there.
 * Qt has no "Minimal" theme: `--theme` accepts 0…5, but only four palettes exist.
 * The simulator does not play the viewer trajectory: it moves coordinates by program blocks but does
   not synchronise them with the 3D scene.

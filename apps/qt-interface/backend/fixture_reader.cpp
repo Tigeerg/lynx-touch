@@ -104,6 +104,7 @@ bool readFiles(const QJsonArray &array, SimState *state, QString *error)
         ProgramFile file;
         file.name = object.value(QStringLiteral("name")).toString();
         file.title = object.value(QStringLiteral("title")).toString();
+        file.modified = object.value(QStringLiteral("modified")).toString();
         const QJsonArray lines = object.value(QStringLiteral("lines")).toArray();
         for (const QJsonValue &line : lines)
             file.lines.append(line.toString());

@@ -43,6 +43,7 @@ QVariantMap ProgramFile::toMap() const
         lineList.append(line);
     return {{QStringLiteral("name"), name},
             {QStringLiteral("title"), title},
+            {QStringLiteral("modified"), modified},
             {QStringLiteral("lines"), lineList}};
 }
 

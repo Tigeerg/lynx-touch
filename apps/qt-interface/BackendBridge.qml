@@ -49,8 +49,13 @@ QtObject {
 
     // --- program ---------------------------------------------------------------------------
     readonly property var program: backend ? backend.program : ({})
+    readonly property var programs: backend ? backend.programs : []
     readonly property string programName: program.name ? program.name : ""
     readonly property string programTitle: program.title ? program.title : ""
+    readonly property int activeFile: program.activeFile !== undefined ? program.activeFile : 0
+    readonly property int programLine: program.line !== undefined ? program.line : 0
+    readonly property int programCursor: program.cursor !== undefined ? program.cursor : 0
+    readonly property string programNextLine: program.nextLine ? program.nextLine : ""
 
     // --- station ---------------------------------------------------------------------------
     readonly property var overrides: backend ? backend.overrides : ({ feed: 100, spindle: 100, rapid: 100 })
@@ -78,6 +83,67 @@ QtObject {
     readonly property string clock: backend ? backend.clock : "--:--:--"
     readonly property string machineMessage: backend ? backend.message : ""
     readonly property var mdiHistory: backend ? backend.mdiHistory : []
+
+    // --- presentation rows -----------------------------------------------------------------
+    // The screens keep their own row shape; the seam formats the numbers the machine reports (the
+    // contract itself carries numbers, not strings). Signs and decimals match the React panel:
+    // "+35.250" / "−120.500", tool diameter one decimal, tool length three.
+    function signed3(value) {
+        var n = Number(value);
+        if (!isFinite(n)) return "—";
+        return (n < 0 ? "−" : "+") + Math.abs(n).toFixed(3);
+    }
+    function fixed1(value) { var n = Number(value); return isFinite(n) ? n.toFixed(1) : "—"; }
+    function fixed3(value) { var n = Number(value); return isFinite(n) ? n.toFixed(3) : "—"; }
+
+    readonly property var offsetRows: {
+        var out = [];
+        for (var i = 0; i < offsets.length; i++) {
+            var o = offsets[i];
+            var v = o.values ? o.values : {};
+            out.push({ code: o.code,
+                       x: signed3(v.x), y: signed3(v.y), z: signed3(v.z), a: signed3(v.a),
+                       active: o.active === true });
+        }
+        return out;
+    }
+
+    readonly property var toolRows: {
+        var out = [];
+        for (var i = 0; i < tools.length; i++) {
+            var t = tools[i];
+            out.push({ n: "T" + (t.number < 10 ? "0" + t.number : "" + t.number),
+                       name: t.name,
+                       d: fixed1(t.diameter),
+                       l: fixed3(t.length),
+                       life: t.life,
+                       inSpindle: t.inSpindle === true });
+        }
+        return out;
+    }
+
+    readonly property var alarmRows: {
+        var out = [];
+        for (var i = 0; i < alarms.length; i++) {
+            var a = alarms[i];
+            out.push({ code: a.code,
+                       text: a.text,
+                       level: a.level === "warning" ? "warn" : a.level,
+                       lvl: a.level === "error" ? "Авария" : a.level === "warning" ? "Предупр." : "Инфо",
+                       time: a.time,
+                       active: a.active === true });
+        }
+        return out;
+    }
+
+    readonly property var programRows: {
+        var out = [];
+        for (var i = 0; i < programs.length; i++) {
+            var f = programs[i];
+            out.push({ name: f.name, title: f.title, modified: f.modified, lines: f.lines });
+        }
+        return out;
+    }
 
     // The verdict of the last command, so a screen can show why the machine said no instead of
     // staying silent.
@@ -113,4 +179,15 @@ QtObject {
     function toggle(key) { return note(backend ? backend.toggle(key) : null, "toggle") }
     function acknowledgeAlarms() { return note(backend ? backend.acknowledgeAlarms() : null, "acknowledgeAlarms") }
     function clearAcknowledgedAlarms() { return note(backend ? backend.clearAcknowledgedAlarms() : null, "clearAcknowledgedAlarms") }
+    function acknowledgeAlarm(index) { return note(backend ? backend.acknowledgeAlarm(index) : null, "acknowledgeAlarm") }
+    function setActiveOffset(index) { return note(backend ? backend.setActiveOffset(index) : null, "setActiveOffset") }
+    function zeroOffset(index) { return note(backend ? backend.zeroOffset(index) : null, "zeroOffset") }
+    function touchOff(index, axis) { return note(backend ? backend.touchOff(index, axis) : null, "touchOff") }
+    function setToolLife(number, life) { return note(backend ? backend.setToolLife(number, life) : null, "setToolLife") }
+    function setToolLength(number, length) { return note(backend ? backend.setToolLength(number, length) : null, "setToolLength") }
+    function selectTool(number) { return note(backend ? backend.selectTool(number) : null, "selectTool") }
+    function toolNumberAt(index) {
+        var t = tools[index];
+        return t ? t.number : 0;
+    }
 }

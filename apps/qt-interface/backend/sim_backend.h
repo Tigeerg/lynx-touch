@@ -67,6 +67,13 @@ public:
     QVariantMap toggle(const QString &key) override;
     QVariantMap acknowledgeAlarms() override;
     QVariantMap clearAcknowledgedAlarms() override;
+    QVariantMap setActiveOffset(int index) override;
+    QVariantMap zeroOffset(int index) override;
+    QVariantMap touchOff(int index, const QString &axis) override;
+    QVariantMap setToolLife(int number, int life) override;
+    QVariantMap setToolLength(int number, double length) override;
+    QVariantMap selectTool(int number) override;
+    QVariantMap acknowledgeAlarm(int index) override;
 
     Q_INVOKABLE bool loadFixture(const QString &path);
     Q_INVOKABLE bool setFrozenClock(const QString &clock);

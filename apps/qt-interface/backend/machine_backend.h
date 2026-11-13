@@ -100,6 +100,13 @@ public:
     Q_INVOKABLE virtual QVariantMap toggle(const QString &key);
     Q_INVOKABLE virtual QVariantMap acknowledgeAlarms();
     Q_INVOKABLE virtual QVariantMap clearAcknowledgedAlarms();
+    Q_INVOKABLE virtual QVariantMap setActiveOffset(int index);
+    Q_INVOKABLE virtual QVariantMap zeroOffset(int index);
+    Q_INVOKABLE virtual QVariantMap touchOff(int index, const QString &axis);
+    Q_INVOKABLE virtual QVariantMap setToolLife(int number, int life);
+    Q_INVOKABLE virtual QVariantMap setToolLength(int number, double length);
+    Q_INVOKABLE virtual QVariantMap selectTool(int number);
+    Q_INVOKABLE virtual QVariantMap acknowledgeAlarm(int index);
 
 signals:
     void connectionChanged();

@@ -31,6 +31,9 @@ private slots:
     void fixturesSwitch();
     void clockFreeze();
     void programLoad();
+    void offsetCommands();
+    void toolCommands();
+    void alarmAcknowledgeSingle();
 };
 
 void TestBackend::loadsAutoFixture()
@@ -48,10 +51,12 @@ void TestBackend::loadsAutoFixture()
     QCOMPARE(backend.tool(), 1);
     QCOMPARE(backend.position().value(QStringLiteral("x")).toDouble(), -120.5);
     QCOMPARE(backend.offsets().size(), 6);
-    QCOMPARE(backend.tools().size(), 4);
+    QCOMPARE(backend.tools().size(), 9);
     QCOMPARE(backend.alarms().size(), 3);
-    QCOMPARE(backend.programs().size(), 2);
+    QCOMPARE(backend.programs().size(), 4);
     QCOMPARE(backend.program().value(QStringLiteral("name")).toString(), QStringLiteral("O1024"));
+    QCOMPARE(backend.programs().at(0).toMap().value(QStringLiteral("modified")).toString(),
+             QStringLiteral("08.02.2026 14:20"));
     QCOMPARE(backend.program().value(QStringLiteral("line")).toInt(), 0);
     QCOMPARE(backend.overrides().value(QStringLiteral("feed")).toInt(), 60);
     QCOMPARE(backend.overrides().value(QStringLiteral("spindle")).toInt(), 90);
@@ -201,6 +206,80 @@ void TestBackend::programLoad()
     QVERIFY(backend.loadProgram(1).value(QStringLiteral("ok")).toBool());
     QCOMPARE(backend.program().value(QStringLiteral("name")).toString(), QStringLiteral("O2048"));
     QVERIFY(!backend.loadProgram(99).value(QStringLiteral("ok")).toBool());
+}
+
+void TestBackend::offsetCommands()
+{
+    SimBackend backend;
+    QVERIFY(backend.loadFixture(fixturePath(QStringLiteral("auto-idle.json"))));
+    QCOMPARE(backend.activeOffset(), 0);
+
+    // Activating a work offset moves the active flag to it.
+    QVERIFY(backend.setActiveOffset(1).value(QStringLiteral("ok")).toBool());
+    QCOMPARE(backend.activeOffset(), 1);
+    QVERIFY(backend.offsets().at(1).toMap().value(QStringLiteral("active")).toBool());
+    QVERIFY(!backend.offsets().at(0).toMap().value(QStringLiteral("active")).toBool());
+
+    // Clearing an offset keeps the list and the active index, but zeroes the values.
+    QVERIFY(backend.zeroOffset(1).value(QStringLiteral("ok")).toBool());
+    const QVariantMap zeroed = backend.offsets().at(1).toMap().value(QStringLiteral("values")).toMap();
+    QCOMPARE(zeroed.value(QStringLiteral("x")).toDouble(), 0.0);
+    QCOMPARE(zeroed.value(QStringLiteral("z")).toDouble(), 0.0);
+
+    // Touch off writes the current position into the chosen axis only.
+    const double z = backend.position().value(QStringLiteral("z")).toDouble();
+    QVERIFY(backend.touchOff(1, QStringLiteral("Z")).value(QStringLiteral("ok")).toBool());
+    const QVariantMap touched = backend.offsets().at(1).toMap().value(QStringLiteral("values")).toMap();
+    QCOMPARE(touched.value(QStringLiteral("z")).toDouble(), z);
+    QVERIFY(!backend.touchOff(1, QStringLiteral("Q")).value(QStringLiteral("ok")).toBool());
+    QVERIFY(!backend.setActiveOffset(99).value(QStringLiteral("ok")).toBool());
+
+    // A running program owns the offsets.
+    QVERIFY(backend.cycleStart().value(QStringLiteral("ok")).toBool());
+    QVERIFY(!backend.setActiveOffset(2).value(QStringLiteral("ok")).toBool());
+    QVERIFY(!backend.touchOff(2, QStringLiteral("X")).value(QStringLiteral("ok")).toBool());
+    QVERIFY(backend.reset().value(QStringLiteral("ok")).toBool());
+    QVERIFY(backend.setActiveOffset(2).value(QStringLiteral("ok")).toBool());
+}
+
+void TestBackend::toolCommands()
+{
+    SimBackend backend;
+    QVERIFY(backend.loadFixture(fixturePath(QStringLiteral("auto-idle.json"))));
+
+    QVERIFY(backend.setToolLife(1, 0).value(QStringLiteral("ok")).toBool());
+    QCOMPARE(backend.tools().at(0).toMap().value(QStringLiteral("life")).toInt(), 0);
+    // The machine clamps the resource to 0…100.
+    QVERIFY(backend.setToolLife(1, 500).value(QStringLiteral("ok")).toBool());
+    QCOMPARE(backend.tools().at(0).toMap().value(QStringLiteral("life")).toInt(), 100);
+
+    QVERIFY(backend.setToolLength(2, 42.5).value(QStringLiteral("ok")).toBool());
+    QCOMPARE(backend.tools().at(1).toMap().value(QStringLiteral("length")).toDouble(), 42.5);
+
+    // Selecting a tool puts it in the spindle and no other.
+    QVERIFY(backend.selectTool(99).value(QStringLiteral("ok")).toBool());
+    QCOMPARE(backend.tool(), 99);
+    for (const QVariant &value : backend.tools()) {
+        const QVariantMap tool = value.toMap();
+        QCOMPARE(tool.value(QStringLiteral("inSpindle")).toBool(),
+                 tool.value(QStringLiteral("number")).toInt() == 99);
+    }
+
+    QVERIFY(!backend.setToolLife(77, 10).value(QStringLiteral("ok")).toBool());
+    QVERIFY(!backend.setToolLength(77, 10.0).value(QStringLiteral("ok")).toBool());
+    QVERIFY(!backend.selectTool(77).value(QStringLiteral("ok")).toBool());
+}
+
+void TestBackend::alarmAcknowledgeSingle()
+{
+    SimBackend backend;
+    QVERIFY(backend.loadFixture(fixturePath(QStringLiteral("auto-idle.json"))));
+
+    // One message at a time: the panel acknowledges the row under the cursor, not the whole log.
+    QVERIFY(backend.acknowledgeAlarm(0).value(QStringLiteral("ok")).toBool());
+    QVERIFY(!backend.alarms().at(0).toMap().value(QStringLiteral("active")).toBool());
+    QVERIFY(backend.alarms().at(1).toMap().value(QStringLiteral("active")).toBool());
+    QVERIFY(!backend.acknowledgeAlarm(99).value(QStringLiteral("ok")).toBool());
 }
 
 QTEST_GUILESS_MAIN(TestBackend)

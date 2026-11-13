@@ -50,6 +50,7 @@ struct Alarm {
 struct ProgramFile {
     QString name;
     QString title;
+    QString modified;
     QStringList lines;
 
     QVariantMap toMap() const;

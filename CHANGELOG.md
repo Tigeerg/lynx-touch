@@ -5,6 +5,34 @@
 
 Формат и правила — в [`VERSIONING.md`](VERSIONING.md). Термины — [`ROLES.md`](ROLES.md), раздел 9.
 
+## 0.39.0 - 2026-11-13
+
+### Изменено
+- **Таблицы смещений, инструмента и сообщений — из станка.** Локальные массивы
+  `offsetsData`/`toolsData`/`alarmsData` удалены: экран читает строки, которые собирает шов
+  (`backend.offsetRows`/`toolRows`/`alarmRows`) из чисел контракта. Формат прежний: знак и три
+  знака после запятой (`+35.250`, `−120.500`), диаметр — один знак, длина — три, сообщения
+  `warning` показываются как «Предупр.». Каталог УП и редактор берут `backend.programRows`
+  (`name`, `title`, `modified`, `lines`), активный файл — из `program`.
+- **Правки таблиц стали командами станка.** Новые команды контракта: `setActiveOffset`,
+  `zeroOffset`, `touchOff(index, ось)`, `setToolLife`, `setToolLength`, `selectTool`,
+  `acknowledgeAlarm` — активация смещения, очистка, привязка по позиции, ресурс/длина инструмента,
+  вызов в шпиндель и квитирование одной строки; отказ станка виден строкой.
+- **Фикстура `auto-idle` богаче.** 9 инструментов, 6 смещений, 4 УП с датами — демонстрация
+  показывает тот же набор, что и раньше, но он приходит из станка.
+
+### Добавлено
+- Проверки: `offsetCommands`, `toolCommands`, `alarmAcknowledgeSingle` в C++ (15 всего);
+  `test_presentation_rows` и `test_table_commands` в шве, `test_program_catalogue`,
+  `test_softkey_actions` и `test_tool_measure` переписаны под команды станка (36 QML-тестов).
+
+### Проверки
+- `check-qt-panel` — 36 QML + 15 контракта; сборка `/W4 /WX`.
+- Снимки таблиц: `build/artifacts/screenshots/stage3-{offsets,tools,alarms}.png`.
+
+### Версии
+- продукт — `0.39.0`; `qt-interface` — `0.10.0`; остальные без изменений.
+
 ## 0.38.0 - 2026-11-13
 
 ### Изменено

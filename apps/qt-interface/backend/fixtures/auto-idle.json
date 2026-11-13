@@ -19,13 +19,19 @@
     { "number": 1, "name": "Фреза концевая 4z", "diameter": 12.0, "length": 85.214, "life": 72, "inSpindle": true },
     { "number": 2, "name": "Сверло спиральное", "diameter": 6.8, "length": 112.06, "life": 54, "inSpindle": false },
     { "number": 3, "name": "Метчик M8", "diameter": 8.0, "length": 96.3, "life": 88, "inSpindle": false },
+    { "number": 4, "name": "Фреза торцевая", "diameter": 50.0, "length": 62.718, "life": 8, "inSpindle": false },
+    { "number": 5, "name": "Зенковка 90°", "diameter": 16.0, "length": 78.45, "life": 65, "inSpindle": false },
+    { "number": 6, "name": "Фреза сферическая", "diameter": 6.0, "length": 90.11, "life": 41, "inSpindle": false },
+    { "number": 7, "name": "Сверло центровочное", "diameter": 10.0, "length": 70.902, "life": 93, "inSpindle": false },
+    { "number": 8, "name": "Головка расточная", "diameter": 32.0, "length": 128.5, "life": 77, "inSpindle": false },
     { "number": 99, "name": "3D щуп Renishaw OMP40-2", "diameter": 2.0, "length": 98.45, "life": 100, "inSpindle": false }
   ],
-  "toolTime": { "1": 0, "2": 0, "3": 0, "99": 0 },
+  "toolTime": { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0, "7": 0, "8": 0, "99": 0 },
   "files": [
     {
       "name": "O1024",
       "title": "КОРПУС ФЛАНЦА",
+      "modified": "08.02.2026 14:20",
       "lines": [
         "O1024 (КОРПУС ФЛАНЦА)",
         "N10 G21 G90 G17 G40 G49 G80",
@@ -52,6 +58,7 @@
     {
       "name": "O2048",
       "title": "ПЛИТА КРЕПЁЖНАЯ",
+      "modified": "05.02.2026 09:12",
       "lines": [
         "O2048 (ПЛИТА КРЕПЁЖНАЯ)",
         "N10 G21 G90 G17 G40 G49 G80",
@@ -68,6 +75,45 @@
         "N120 G00 Z50.0 M09",
         "N130 M05",
         "N140 M30"
+      ]
+    },
+    {
+      "name": "O3100",
+      "title": "КОРПУС ДЛЯ СБОРКИ",
+      "modified": "29.01.2026 16:47",
+      "lines": [
+        "O3100 (КОРПУС ДЛЯ СБОРКИ)",
+        "N10 G21 G90 G17 G40 G49 G80",
+        "N20 T1 M06 (ФРЕЗА D12)",
+        "N30 G54 G00 X0 Y0",
+        "N40 S3000 M03",
+        "N50 G43 H01 Z50.0 M08",
+        "N60 G00 X-60.0 Y-40.0 Z3.0",
+        "N70 G01 Z-5.0 F200",
+        "N80 G01 X60.0",
+        "N90 G01 Y40.0",
+        "N100 G01 X-60.0",
+        "N110 G01 Y-40.0",
+        "N120 G00 Z50.0 M09",
+        "N130 M05",
+        "N140 M30"
+      ]
+    },
+    {
+      "name": "O0007",
+      "title": "ПРОГРЕВ ШПИНДЕЛЯ",
+      "modified": "12.01.2026 07:05",
+      "lines": [
+        "O0007 (ПРОГРЕВ ШПИНДЕЛЯ)",
+        "N10 G21 G90 G17",
+        "N20 S2000",
+        "N30 G04 P5",
+        "N40 S5000",
+        "N50 G04 P5",
+        "N60 S8000",
+        "N70 G04 P5",
+        "N80 M05",
+        "N90 M30"
       ]
     }
   ],

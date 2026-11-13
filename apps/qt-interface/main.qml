@@ -131,9 +131,14 @@ Item {
     }
     function finishToolMeasure() {
         var len = Math.round((60 + ((Math.abs(machinePos.z) * 7.31 + cursorTool * 13.7) % 70)) * 1000) / 1000;
-        mutateTools(cursorTool, { l: len.toFixed(3) });
+        var measured = toolsData[cursorTool];
         measureLength = len; measureRunning = false; measureElapsed = measureTotal;
-        message = toolsData[cursorTool].n + ": длина " + len.toFixed(3) + " мм";
+        // The length goes into the machine's tool table; the machine may refuse (busy, no such
+        // tool) and then its reason is what the operator reads.
+        if (!backend.setToolLength(backend.toolNumberAt(cursorTool), len)) {
+            if (backend.connected) { message = backend.lastReason; return; }
+        }
+        message = (measured ? measured.n : "Инструмент") + ": длина " + len.toFixed(3) + " мм";
     }
     Timer {
         interval: 50
@@ -430,12 +435,12 @@ Item {
         else if (k.id === "autoView") cycleAutoView();
         else if (k.toggle) setSkey(k.id, !skeyActive(k.id));
         else if (k.id === "act") activateOffset(cursorOffset);
-        else if (k.id === "offClear") mutateOffsets(cursorOffset, { x: "+0.000", y: "+0.000", z: "+0.000", a: "+0.000" });
-        else if (k.id === "teachX") mutateOffsets(cursorOffset, { x: machineCoordinate("X") });
-        else if (k.id === "teachY") mutateOffsets(cursorOffset, { y: machineCoordinate("Y") });
-        else if (k.id === "teachZ") mutateOffsets(cursorOffset, { z: machineCoordinate("Z") });
+        else if (k.id === "offClear") { if (!backend.zeroOffset(cursorOffset) && backend.connected) message = backend.lastReason; }
+        else if (k.id === "teachX") touchOffAxis("X");
+        else if (k.id === "teachY") touchOffAxis("Y");
+        else if (k.id === "teachZ") touchOffAxis("Z");
         else if (k.id === "call") setSpindleTool(cursorTool);
-        else if (k.id === "resetLife") mutateTools(cursorTool, { life: 100 });
+        else if (k.id === "resetLife") setToolLife(cursorTool, 100);
         else if (k.id === "edit") { editMode = !editMode; message = editMode ? "Редактор: изменения разрешены" : "Редактор: просмотр"; }
         else if (k.id === "search") message = "Поиск по УП: введите строку в MDI и нажмите Enter";
         else if (k.id === "toCursor") {
@@ -446,14 +451,14 @@ Item {
         else if (k.id === "rewind") { cursorProg = 0; workScreen.viewerSeek(0); message = "В начало программы"; }
         else if (k.id === "toolLife") { activeScreen = "tool"; message = "Ресурс инструмента"; }
         else if (k.id === "partCounter") { partCount++; message = "Готовых деталей: " + partCount; }
-        else if (k.id === "brokenTool") { mutateTools(cursorTool, { life: 0 }); message = toolsData[cursorTool].n + ": инструмент сломан, ресурс 0%"; }
+        else if (k.id === "brokenTool") { var broken = toolsData[cursorTool]; setToolLife(cursorTool, 0); message = (broken ? broken.n : "Инструмент") + ": инструмент сломан, ресурс 0%"; }
         else if (k.id === "zeroRel") message = "Относительные координаты обнулены";
         else if (k.id === "goSafe") goSafePoint();
         else if (k.id === "goWorkZero") { if (backend.mdi("G90 X0 Y0 Z0 A0")) message = "В ноль детали"; else if (backend.connected) message = backend.lastReason; }
         else if (k.id === "warmup") { spindleOn = true; machineToggleSpindle(); message = "Прогрев шпинделя запущен"; }
         else if (k.id === "calc") message = "Калькулятор откроется в следующей волне";
         else if (k.id === "teachBase") message = "База щупа записана";
-        else if (k.id === "ack") mutateAlarms(function (r, i) { if (i === cursorAlarm) r.active = false; return r; });
+        else if (k.id === "ack") { if (!backend.acknowledgeAlarm(cursorAlarm) && backend.connected) message = backend.lastReason; }
         else if (k.id === "alarmClearAll") clearAckedAlarms();
         else if (k.id === "probe") probeOpen = true;
         else if (k.id === "pClose") probeOpen = false;
@@ -469,20 +474,15 @@ Item {
         if (k.nav) serviceSection = k.nav;
     }
     function activeOffsetCode() { for (var i = 0; i < offsetsData.length; i++) if (offsetsData[i].active) return offsetsData[i].code; return "G54"; }
-    function activateOffset(i) { var d = offsetsData.slice(); for (var j = 0; j < d.length; j++) { var r = {}; for (var k in d[j]) r[k] = d[j][k]; r.active = (j === i); d[j] = r; } offsetsData = d; }
-    function mutateOffsets(i, patch) { var d = offsetsData.slice(); var r = {}; for (var k in d[i]) r[k] = d[i][k]; for (var k2 in patch) r[k2] = patch[k2]; d[i] = r; offsetsData = d; }
-    function mutateTools(i, patch) { var d = toolsData.slice(); var r = {}; for (var k in d[i]) r[k] = d[i][k]; for (var k2 in patch) r[k2] = patch[k2]; d[i] = r; toolsData = d; }
-    function setSpindleTool(i) { var d = toolsData.slice(); for (var j = 0; j < d.length; j++) { var r = {}; for (var k in d[j]) r[k] = d[j][k]; r.inSpindle = (j === i); d[j] = r; } toolsData = d; }
-    function mutateAlarms(fn) { var d = []; for (var i = 0; i < alarmsData.length; i++) { var r = {}; for (var k in alarmsData[i]) r[k] = alarmsData[i][k]; d.push(fn(r, i)); } alarmsData = d; }
-    function activeAlarmCount() {
-        // Live count when the machine is connected; the local log is the fallback for a bare QML
-        // run and moves to the backend in the next step.
-        if (backend.connected) return backend.activeAlarmCount;
-        var n = 0;
-        for (var i = 0; i < alarmsData.length; i++) if (alarmsData[i].active) n++;
-        return n;
+    function activateOffset(i) { if (!backend.setActiveOffset(i) && backend.connected) message = backend.lastReason; }
+    function setToolLife(i, life) { if (!backend.setToolLife(backend.toolNumberAt(i), life) && backend.connected) message = backend.lastReason; }
+    function touchOffAxis(axis) { if (!backend.touchOff(cursorOffset, axis) && backend.connected) message = backend.lastReason; }
+    function setSpindleTool(i) { if (!backend.selectTool(backend.toolNumberAt(i)) && backend.connected) message = backend.lastReason; }
+    function activeAlarmCount() { return backend.activeAlarmCount; }
+    function clearAckedAlarms() {
+        if (!backend.clearAcknowledgedAlarms() && backend.connected) { message = backend.lastReason; return; }
+        if (cursorAlarm >= alarmsData.length) cursorAlarm = Math.max(0, alarmsData.length - 1);
     }
-    function clearAckedAlarms() { var d = []; for (var i = 0; i < alarmsData.length; i++) if (alarmsData[i].active) d.push(alarmsData[i]); alarmsData = d; if (cursorAlarm >= alarmsData.length) cursorAlarm = Math.max(0, alarmsData.length - 1); }
     // Pads the set to eight slots and fills in the reason for disabled keys, so a disabled key
     // does not stay silent (React softkey-slots.ts, `slots`).
     function softSlots(a) {
@@ -916,133 +916,28 @@ Item {
     function svcDefaults() { var i = svcCursor; var def = svcDefAt(i); if (!def || !(def.free || serviceWrite)) return; setSvcVal(i, def.dflt); }
 
     // --- Screen data ---
-    property var offsetsData: [
-        { code: "G54", x: "−120.500", y: "+35.250", z: "−210.400", a: "+0.000", active: true },
-        { code: "G55", x: "−320.000", y: "+35.250", z: "−210.400", a: "+90.000", active: false },
-        { code: "G56", x: "+0.000", y: "+0.000", z: "+0.000", a: "+0.000", active: false },
-        { code: "G57", x: "+0.000", y: "+0.000", z: "+0.000", a: "+0.000", active: false },
-        { code: "G58", x: "+0.000", y: "+0.000", z: "+0.000", a: "+0.000", active: false },
-        { code: "G59", x: "+0.000", y: "+0.000", z: "+0.000", a: "+0.000", active: false }
-    ]
-    property var toolsData: [
-        { n: "T01", name: "Фреза концевая 4z", d: "12.0", l: "85.214", life: 72, inSpindle: true },
-        { n: "T02", name: "Сверло спиральное", d: "6.8", l: "112.060", life: 54, inSpindle: false },
-        { n: "T03", name: "Метчик M8", d: "8.0", l: "96.300", life: 88, inSpindle: false },
-        { n: "T04", name: "Фреза торцевая", d: "50.0", l: "62.718", life: 8, inSpindle: false },
-        { n: "T05", name: "Зенковка 90°", d: "16.0", l: "78.450", life: 65, inSpindle: false },
-        { n: "T06", name: "Фреза сферическая", d: "6.0", l: "90.110", life: 41, inSpindle: false },
-        { n: "T07", name: "Сверло центровочное", d: "10.0", l: "70.902", life: 93, inSpindle: false },
-        { n: "T08", name: "Головка расточная", d: "32.0", l: "128.500", life: 77, inSpindle: false },
-        { n: "T99", name: "3D щуп Renishaw OMP40-2", d: "2.0", l: "98.450", life: 100, inSpindle: false }
-    ]
-    property var alarmsData: [
-        { code: "2051", text: "Ресурс инструмента T04 менее 10%", level: "warn", lvl: "Предупр.", time: "07:42:10", active: true },
-        { code: "3012", text: "Плановое ТО шпинделя через 48 ч", level: "info", lvl: "Инфо", time: "07:30:02", active: true },
-        { code: "1104", text: "Низкий уровень СОЖ в баке", level: "error", lvl: "Авария", time: "06:58:44", active: false }
-    ]
+    // The reference tables come from the machine through the seam. The row shape is unchanged, so
+    // the screens read them exactly as before; the seam formats the numbers (backend.offsetRows and
+    // the rest in BackendBridge.qml).
+    readonly property var offsetsData: backend.offsetRows
+    readonly property var toolsData: backend.toolRows
+    readonly property var alarmsData: backend.alarmRows
 
     // ---- NC program catalogue -----------------------------------------------------------------
     // The files the panel can open. The editor and the 3D viewer share the active file; the
     // catalogue is data, so a later controller adapter only has to replace this array.
-    readonly property var programFiles: [
-        {
-            name: "O1024", title: "КОРПУС ФЛАНЦА", modified: "08.02.2026 14:20",
-            lines: [
-                "O1024 (КОРПУС ФЛАНЦА)",
-                "N10 G21 G90 G17 G40 G49 G80",
-                "N20 T1 M06 (ФРЕЗА D12)",
-                "N30 G54 G00 X0 Y0",
-                "N40 S8000 M03",
-                "N50 G43 H01 Z50.0 M08",
-                "N60 G00 X-40.0 Y-30.0",
-                "N70 Z5.0",
-                "N80 G01 Z-2.0 F400",
-                "N90 G01 X40.0 F1200",
-                "N100 Y30.0",
-                "N110 X-40.0",
-                "N120 Y-30.0",
-                "N130 G00 Z5.0",
-                "N135 M01 (КОНТРОЛЬ РАЗМЕРА)",
-                "N140 X-30.0 Y-20.0",
-                "N150 G01 Z-4.0 F400",
-                "N160 X30.0 F1000",
-                "N170 Y20.0",
-                "N180 X-30.0",
-                "N190 Y-20.0",
-                "N200 G00 Z50.0 M09",
-                "N210 M05",
-                "N220 G91 G28 Z0",
-                "N230 M30"
-            ]
-        },
-        {
-            name: "O2048", title: "ПЛИТА КРЕПЁЖНАЯ", modified: "05.02.2026 09:12",
-            lines: [
-                "O2048 (ПЛИТА КРЕПЁЖНАЯ)",
-                "N10 G21 G90 G17 G40 G49 G80",
-                "N20 T2 M06 (СВЕРЛО D6.8)",
-                "N30 G54 G00 X0 Y0",
-                "N40 S2400 M03",
-                "N50 G43 H02 Z50.0 M08",
-                "N60 G00 X-50.0 Y-30.0 Z3.0",
-                "N70 G01 Z-15.0 F180",
-                "N80 G00 Z3.0",
-                "N90 X50.0",
-                "N100 G01 Z-15.0 F180",
-                "N110 G00 Z3.0",
-                "N120 Y30.0",
-                "N130 G01 Z-15.0 F180",
-                "N140 G00 Z3.0",
-                "N150 X-50.0",
-                "N160 G01 Z-15.0 F180",
-                "N170 G00 Z50.0 M09",
-                "N180 M05",
-                "N190 G91 G28 Z0",
-                "N200 M30"
-            ]
-        },
-        {
-            name: "O3100", title: "КРЫШКА ПОД ПОДШИПНИК", modified: "29.01.2026 16:47",
-            lines: [
-                "O3100 (КРЫШКА ПОД ПОДШИПНИК)",
-                "N10 G21 G90 G17 G40 G49 G80",
-                "N20 T4 M06 (ФРЕЗА ТОРЦЕВАЯ D50)",
-                "N30 G55 G00 X-70.0 Y0",
-                "N40 S3500 M03",
-                "N50 G43 H04 Z50.0 M08",
-                "N60 Z2.0",
-                "N70 G01 Z-0.5 F300",
-                "N80 X70.0 F1500",
-                "N90 G00 Z50.0 M09",
-                "N100 M05",
-                "N110 G91 G28 Z0",
-                "N120 M30"
-            ]
-        },
-        {
-            name: "O0007", title: "ПРОВЕРКА ШПИНДЕЛЯ", modified: "12.01.2026 07:05",
-            lines: [
-                "O0007 (ПРОВЕРКА ШПИНДЕЛЯ)",
-                "N10 G21 G90 G17",
-                "N20 S2000 M03",
-                "N30 G04 P5",
-                "N40 S5000",
-                "N50 G04 P5",
-                "N60 S8000",
-                "N70 G04 P5",
-                "N80 M05",
-                "N90 M30"
-            ]
-        }
-    ]
-    property int activeFile: 0
+    // The catalogue comes from the machine: the seam turns `programs` into rows with the shape the
+    // file dialog and the program screen already read (name, title, modified, lines).
+    readonly property var programFiles: backend.programRows
+    readonly property int activeFile: backend.activeFile
     property int fileCursor: 0
     property bool fileDialog: false
     function activeProgram() { return programFiles[activeFile] || programFiles[0]; }
     function programText() { var f = activeProgram(); return f ? f.lines.join("\n") : ""; }
     function openProgram(i) {
         if (i < 0 || i >= programFiles.length) return;
-        activeFile = i; fileCursor = i; fileDialog = false; cursorProg = 0;
+        if (!backend.loadProgram(i) && backend.connected) { message = backend.lastReason; return; }
+        fileCursor = i; fileDialog = false; cursorProg = 0;
         message = "Открыта УП " + programFiles[i].name + " · " + programFiles[i].title;
     }
     function openFileDialog() {

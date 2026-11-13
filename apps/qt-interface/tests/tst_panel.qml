@@ -178,6 +178,9 @@ TestCase {
 
     function test_work_screen_parts() {
         tryCompare(panel, "status", Loader.Ready)
+        // The viewer needs a program from the machine: without one it has nothing to play.
+        stubBackend.resetState()
+        panel.item.backend.backend = stubBackend
         panel.item.workplace = "TEST"
         panel.item.activeScreen = "pos"
         wait(0)
@@ -202,6 +205,7 @@ TestCase {
         panel.item.machineReset()
         verify(viewerItem.pathDist === 0)
         panel.item.workplace = "RUN"
+        panel.item.backend.backend = null
     }
 
     function test_viewer_service_settings() {
@@ -248,23 +252,36 @@ TestCase {
     function test_program_catalogue() {
         tryCompare(panel, "status", Loader.Ready)
         var p = panel.item
+        stubBackend.resetState()
+        p.backend.backend = stubBackend
+        wait(0)
         verify(p.programFiles.length >= 4)
         compare(p.activeProgram().name, "O1024")
         verify(p.progLines.length > 10)
         compare(p.progLines[0].toks[0].t, "O1024")
+        compare(p.programFiles[0].modified, "08.02.2026 14:20")
 
-        // The Program softkey opens the catalogue; choosing a file makes it active everywhere.
+        // The Program softkey opens the catalogue; choosing a file is a machine command and the
+        // active program follows the machine, not a local index.
         p.setWorkplace("RUN")
         p.activeScreen = "prog"
         p.fileDialog = true
         p.fileCursor = 1
         p.openProgram(p.fileCursor)
+        compare(stubBackend.lastCommandName, "loadProgram:1")
         compare(p.fileDialog, false)
         compare(p.activeProgram().name, "O2048")
         compare(p.activeProgram().title, "ПЛИТА КРЕПЁЖНАЯ")
         compare(p.progLines[0].toks[0].t, "O2048")
         verify(p.programText().indexOf("O2048") === 0)
         compare(p.cursorProg, 0)
+
+        // A refused open keeps the current program and shows the machine's reason.
+        stubBackend.commandOk = false
+        stubBackend.commandReason = "Станок занят"
+        p.openProgram(2)
+        compare(p.message, "Станок занят")
+        compare(p.activeProgram().name, "O2048")
 
         // The Work-screen viewer receives the same active program text (manual workplace).
         p.workplace = "TEST"
@@ -275,9 +292,12 @@ TestCase {
         wait(0)
         verify(viewerItem.gcode.indexOf("O2048") === 0)
 
+        stubBackend.commandOk = true
         p.openProgram(0)
         compare(p.activeProgram().name, "O1024")
         p.workplace = "RUN"
+        stubBackend.resetState()
+        p.backend.backend = null
     }
 
     function test_machine_position() {
@@ -329,10 +349,15 @@ TestCase {
         compare(p.partCount, 1)
 
         p.cursorTool = 2
+        stubBackend.resetState()
+        p.backend.backend = stubBackend
         p.pressSoftkey({ id: "brokenTool" })
+        compare(stubBackend.lastCommandName, "setToolLife:3:0")
         compare(p.toolsData[2].life, 0)
         p.pressSoftkey({ id: "resetLife" })
+        compare(stubBackend.lastCommandName, "setToolLife:3:100")
         compare(p.toolsData[2].life, 100)
+        p.backend.backend = null
 
         // The safe point and work zero are MDI lines the machine executes; the panel does not move
         // its own numbers.
@@ -342,7 +367,32 @@ TestCase {
         compare(stubBackend.lastCommandName, "mdi:G90 Z50")
         p.pressSoftkey({ id: "goWorkZero" })
         compare(stubBackend.lastCommandName, "mdi:G90 X0 Y0 Z0 A0")
+
+        // The offset table: activate a row, clear it, touch off an axis by the live position.
+        p.cursorOffset = 1
+        p.pressSoftkey({ id: "act" })
+        compare(stubBackend.lastCommandName, "setActiveOffset:1")
+        compare(p.offsetsData[1].active, true)
+        p.pressSoftkey({ id: "offClear" })
+        compare(stubBackend.lastCommandName, "zeroOffset:1")
+        compare(p.offsetsData[1].x, "+0.000")
+        p.pressSoftkey({ id: "teachZ" })
+        compare(stubBackend.lastCommandName, "touchOff:1:Z")
+        compare(p.offsetsData[1].z, p.backend.signed3(stubBackend.position.z))
+
+        // The message softkeys acknowledge one row and drop the acknowledged ones.
+        p.cursorAlarm = 0
+        p.pressSoftkey({ id: "ack" })
+        compare(stubBackend.lastCommandName, "acknowledgeAlarm:0")
+        compare(p.alarmsData[0].active, false)
+        compare(p.activeAlarmCount(), 1)
+        p.pressSoftkey({ id: "alarmClearAll" })
+        compare(stubBackend.lastCommandName, "clearAcknowledgedAlarms")
+        compare(p.alarmsData.length, 1)
+        compare(p.activeAlarmCount(), 1)
+        p.cursorOffset = 0
         p.backend.backend = null
+        stubBackend.resetState()
 
         p.editMode = false
         p.pressSoftkey({ id: "edit" })
@@ -395,6 +445,9 @@ TestCase {
     function test_tool_measure() {
         tryCompare(panel, "status", Loader.Ready)
         var p = panel.item
+        stubBackend.resetState()
+        p.backend.backend = stubBackend
+        wait(0)
         p.cursorTool = 0
         p.openToolMeasure()
         verify(p.toolMeasureOpen)
@@ -406,10 +459,15 @@ TestCase {
         verify(p.measureDepth() > 0)
         p.finishToolMeasure()
         verify(p.measureLength > 0)
+        // The measured length is written to the machine's tool table, not to a local copy.
+        compare(stubBackend.lastCommandName, "setToolLength:1")
+        compare(stubBackend.tools[0].length.toFixed(3), p.measureLength.toFixed(3))
         compare(p.toolsData[0].l, p.measureLength.toFixed(3))
         compare(p.measurePhase(), "done")
         p.closeToolMeasure()
         verify(!p.toolMeasureOpen)
+        stubBackend.resetState()
+        p.backend.backend = null
     }
 
     function test_hybrid_mode() {

@@ -259,3 +259,48 @@ QVariantMap MachineBackend::clearAcknowledgedAlarms()
 {
     return commandFailed(QStringLiteral("Backend не подключён"));
 }
+
+QVariantMap MachineBackend::setActiveOffset(int index)
+{
+    Q_UNUSED(index)
+    return commandFailed(QStringLiteral("Backend не подключён"));
+}
+
+QVariantMap MachineBackend::zeroOffset(int index)
+{
+    Q_UNUSED(index)
+    return commandFailed(QStringLiteral("Backend не подключён"));
+}
+
+QVariantMap MachineBackend::touchOff(int index, const QString &axis)
+{
+    Q_UNUSED(index)
+    Q_UNUSED(axis)
+    return commandFailed(QStringLiteral("Backend не подключён"));
+}
+
+QVariantMap MachineBackend::setToolLife(int number, int life)
+{
+    Q_UNUSED(number)
+    Q_UNUSED(life)
+    return commandFailed(QStringLiteral("Backend не подключён"));
+}
+
+QVariantMap MachineBackend::setToolLength(int number, double length)
+{
+    Q_UNUSED(number)
+    Q_UNUSED(length)
+    return commandFailed(QStringLiteral("Backend не подключён"));
+}
+
+QVariantMap MachineBackend::selectTool(int number)
+{
+    Q_UNUSED(number)
+    return commandFailed(QStringLiteral("Backend не подключён"));
+}
+
+QVariantMap MachineBackend::acknowledgeAlarm(int index)
+{
+    Q_UNUSED(index)
+    return commandFailed(QStringLiteral("Backend не подключён"));
+}

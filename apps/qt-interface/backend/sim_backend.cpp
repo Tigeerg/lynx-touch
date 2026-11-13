@@ -653,3 +653,100 @@ QVariantMap SimBackend::clearAcknowledgedAlarms()
     emit alarmsChanged();
     return commandOk();
 }
+
+QVariantMap SimBackend::setActiveOffset(int index)
+{
+    if (m_state.run == QStringLiteral("RUN") || m_state.run == QStringLiteral("HOLD"))
+        return commandFailed(QStringLiteral("Станок занят"));
+    if (index < 0 || index >= m_state.offsets.size())
+        return commandFailed(QStringLiteral("Нет такого смещения"));
+    for (int i = 0; i < m_state.offsets.size(); ++i)
+        m_state.offsets[i].active = (i == index);
+    m_state.activeOffset = index;
+    emit offsetsChanged();
+    return commandOk();
+}
+
+QVariantMap SimBackend::zeroOffset(int index)
+{
+    if (m_state.run == QStringLiteral("RUN") || m_state.run == QStringLiteral("HOLD"))
+        return commandFailed(QStringLiteral("Станок занят"));
+    if (index < 0 || index >= m_state.offsets.size())
+        return commandFailed(QStringLiteral("Нет такого смещения"));
+    m_state.offsets[index].values = Position();
+    emit offsetsChanged();
+    return commandOk();
+}
+
+QVariantMap SimBackend::touchOff(int index, const QString &axis)
+{
+    if (m_state.run == QStringLiteral("RUN") || m_state.run == QStringLiteral("HOLD"))
+        return commandFailed(QStringLiteral("Станок занят"));
+    if (index < 0 || index >= m_state.offsets.size())
+        return commandFailed(QStringLiteral("Нет такого смещения"));
+    const QString upper = axis.toUpper();
+    // Touch off writes the current work position into the offset, so the axis reads zero at the
+    // point the operator touched; the machine position does not move.
+    if (upper == QStringLiteral("X"))
+        m_state.offsets[index].values.x = m_state.position.x;
+    else if (upper == QStringLiteral("Y"))
+        m_state.offsets[index].values.y = m_state.position.y;
+    else if (upper == QStringLiteral("Z"))
+        m_state.offsets[index].values.z = m_state.position.z;
+    else if (upper == QStringLiteral("A"))
+        m_state.offsets[index].values.a = m_state.position.a;
+    else
+        return commandFailed(QStringLiteral("Неизвестная ось"));
+    emit offsetsChanged();
+    return commandOk();
+}
+
+QVariantMap SimBackend::setToolLife(int number, int life)
+{
+    for (Tool &tool : m_state.tools) {
+        if (tool.number != number)
+            continue;
+        tool.life = std::clamp(life, 0, 100);
+        emit toolsChanged();
+        return commandOk();
+    }
+    return commandFailed(QStringLiteral("Нет такого инструмента"));
+}
+
+QVariantMap SimBackend::setToolLength(int number, double length)
+{
+    for (Tool &tool : m_state.tools) {
+        if (tool.number != number)
+            continue;
+        tool.length = length;
+        emit toolsChanged();
+        return commandOk();
+    }
+    return commandFailed(QStringLiteral("Нет такого инструмента"));
+}
+
+QVariantMap SimBackend::selectTool(int number)
+{
+    if (m_state.run == QStringLiteral("RUN") || m_state.run == QStringLiteral("HOLD"))
+        return commandFailed(QStringLiteral("Станок занят"));
+    bool found = false;
+    for (Tool &tool : m_state.tools)
+        found = found || tool.number == number;
+    if (!found)
+        return commandFailed(QStringLiteral("Нет такого инструмента"));
+    for (Tool &tool : m_state.tools)
+        tool.inSpindle = (tool.number == number);
+    m_state.tool = number;
+    setMessage(QStringLiteral("Инструмент T%1 в шпинделе").arg(number));
+    emit toolsChanged();
+    return commandOk();
+}
+
+QVariantMap SimBackend::acknowledgeAlarm(int index)
+{
+    if (index < 0 || index >= m_state.alarms.size())
+        return commandFailed(QStringLiteral("Нет такого сообщения"));
+    m_state.alarms[index].active = false;
+    emit alarmsChanged();
+    return commandOk();
+}

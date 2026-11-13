@@ -159,6 +159,94 @@ TestCase {
         compare(bridge.mdiHistory.length, 0)
     }
 
+    // The screens did not have to be rewritten: the seam turns machine numbers into the row shape
+    // they already read (signs and decimals match the React panel).
+    function test_presentation_rows() {
+        bridge.backend = stub
+        compare(bridge.offsetRows.length, 2)
+        compare(bridge.offsetRows[0].code, "G54")
+        // Negative values carry the typographic minus, as in React ("−120.500").
+        compare(bridge.offsetRows[0].x.charCodeAt(0), 0x2212)
+        compare(bridge.offsetRows[0].x.substring(1), "120.500")
+        compare(bridge.offsetRows[0].y, "+35.250")
+        compare(bridge.offsetRows[0].active, true)
+        compare(bridge.offsetRows[1].a, "+90.000")
+        compare(bridge.offsetRows[1].active, false)
+
+        compare(bridge.toolRows.length, 4)
+        compare(bridge.toolRows[0].n, "T01")
+        compare(bridge.toolRows[0].d, "12.0")
+        compare(bridge.toolRows[0].l, "85.214")
+        compare(bridge.toolRows[0].inSpindle, true)
+        compare(bridge.toolRows[3].n, "T99")
+
+        // The machine speaks "warning"; the panel row keeps "warn" and its Russian label.
+        compare(bridge.alarmRows.length, 3)
+        compare(bridge.alarmRows[0].level, "warn")
+        compare(bridge.alarmRows[0].lvl, "Предупр.")
+        compare(bridge.alarmRows[2].level, "error")
+        compare(bridge.alarmRows[2].lvl, "Авария")
+        compare(bridge.alarmRows[2].active, false)
+
+        compare(bridge.programRows.length, 4)
+        compare(bridge.programRows[0].name, "O1024")
+        compare(bridge.programRows[0].modified, "08.02.2026 14:20")
+        compare(bridge.programName, "O1024")
+        compare(bridge.activeFile, 0)
+        compare(bridge.programLine, 0)
+
+        // No backend: the rows are empty and the formatting helpers still answer.
+        bridge.backend = null
+        compare(bridge.offsetRows.length, 0)
+        compare(bridge.toolRows.length, 0)
+        compare(bridge.programRows.length, 0)
+        compare(bridge.signed3(-1).charCodeAt(0), 0x2212)
+        compare(bridge.signed3(-1).substring(1), "1.000")
+        compare(bridge.fixed1(2), "2.0")
+        compare(bridge.fixed3(2), "2.000")
+    }
+
+    function test_table_commands() {
+        bridge.backend = stub
+        verify(bridge.setActiveOffset(1))
+        compare(stub.lastCommandName, "setActiveOffset:1")
+        compare(bridge.offsetRows[1].active, true)
+        compare(bridge.activeOffsetCode, "G55")
+
+        verify(bridge.zeroOffset(1))
+        compare(bridge.offsetRows[1].x, "+0.000")
+
+        verify(bridge.touchOff(1, "Z"))
+        compare(bridge.offsetRows[1].z, bridge.signed3(stub.position.z))
+
+        verify(bridge.setToolLife(3, 0))
+        compare(bridge.toolRows[2].life, 0)
+        verify(bridge.setToolLength(1, 42.5))
+        compare(bridge.toolRows[0].l, "42.500")
+        verify(bridge.selectTool(3))
+        compare(bridge.toolRows[2].inSpindle, true)
+        compare(bridge.toolRows[0].inSpindle, false)
+        compare(bridge.tool, 3)
+        compare(bridge.toolNumberAt(3), 99)
+
+        verify(bridge.acknowledgeAlarm(0))
+        compare(bridge.alarmRows[0].active, false)
+        compare(bridge.activeAlarmCount, 1)
+        verify(bridge.clearAcknowledgedAlarms())
+        compare(bridge.alarmRows.length, 1)
+
+        verify(bridge.loadProgram(1))
+        compare(bridge.programName, "O2048")
+        compare(bridge.activeFile, 1)
+        compare(bridge.toolLabel, "T03")
+
+        // A refusal is a normal answer with the machine's reason.
+        stub.commandOk = false
+        stub.commandReason = "Станок занят"
+        verify(!bridge.setActiveOffset(0))
+        compare(bridge.lastReason, "Станок занят")
+    }
+
     function test_messages_and_counters() {
         bridge.backend = stub
         compare(bridge.activeAlarmCount, 2)

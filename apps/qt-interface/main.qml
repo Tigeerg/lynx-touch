@@ -51,7 +51,8 @@ Item {
     property bool keyboardOpen: false
     property bool navOpen: false
     property bool hybridDeckOpen: false
-    property int partCount: 7
+    // The finished-part counter and the cycle clocks are the machine's (see BackendBridge).
+    readonly property int partCount: backend.partCount
     property bool editMode: false
     onActiveScreenChanged: { if (activeScreen === "service") svcFocus = "nav"; }
     property string machineMode: "AUTO"
@@ -450,7 +451,7 @@ Item {
         }
         else if (k.id === "rewind") { cursorProg = 0; workScreen.viewerSeek(0); message = "В начало программы"; }
         else if (k.id === "toolLife") { activeScreen = "tool"; message = "Ресурс инструмента"; }
-        else if (k.id === "partCounter") { partCount++; message = "Готовых деталей: " + partCount; }
+        else if (k.id === "partCounter") { if (backend.countPart()) message = "Готовых деталей: " + partCount; else if (backend.connected) message = backend.lastReason; }
         else if (k.id === "brokenTool") { var broken = toolsData[cursorTool]; setToolLife(cursorTool, 0); message = (broken ? broken.n : "Инструмент") + ": инструмент сломан, ресурс 0%"; }
         else if (k.id === "zeroRel") message = "Относительные координаты обнулены";
         else if (k.id === "goSafe") goSafePoint();
@@ -1683,11 +1684,11 @@ Item {
                     RowLayout { anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 12
                         ColumnLayout { Layout.preferredWidth: 150; Layout.minimumWidth: 150; Layout.maximumWidth: 150; spacing: 0
                             Text { text: "ВЫПОЛНЕНИЕ ДЕТАЛИ"; color: cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 1 }
-                            Text { text: "Ожидание пуска"; color: cForeground; font.bold: true; font.pixelSize: 13 } }
+                            Text { text: backend.runStateText; color: cForeground; font.bold: true; font.pixelSize: 13 } }
                         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 18; Layout.minimumHeight: 18; Layout.maximumHeight: 18; color: cMuted; radius: 3
-                            Rectangle { width: parent.width * (root.cursorProg / Math.max(1, root.progLines.length - 1)); height: parent.height; color: cPrimary; radius: 3 } }
-                        Text { text: (root.progLines.length > 0 ? "1/" + root.progLines.length : "—"); color: cMutedForeground; font.pixelSize: 11; font.family: fontMono }
-                        Text { text: Math.round(root.cursorProg / Math.max(1, root.progLines.length - 1) * 100) + "%"; Layout.minimumWidth: 66; Layout.maximumWidth: 66; color: cForeground; font.bold: true; font.pixelSize: 26; font.family: fontMono; horizontalAlignment: Text.AlignRight }
+                            Rectangle { width: parent.width * backend.programProgress / 100; height: parent.height; color: cPrimary; radius: 3 } }
+                        Text { text: (backend.programLineCount > 0 ? (backend.programLine + 1) + "/" + backend.programLineCount : "—"); color: cMutedForeground; font.pixelSize: 11; font.family: fontMono }
+                        Text { text: backend.programProgress + "%"; Layout.minimumWidth: 66; Layout.maximumWidth: 66; color: cForeground; font.bold: true; font.pixelSize: 26; font.family: fontMono; horizontalAlignment: Text.AlignRight }
                     }
                 }
 
@@ -2659,16 +2660,16 @@ Item {
                             RowLayout { Layout.fillWidth: true; spacing: 6
                                 Text { text: "\ue0c3"; color: cMutedForeground; font.family: "lucide"; font.pixelSize: 13 }
                                 Text { text: "ВЫПОЛНЕНИЕ"; color: cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 0.5; Layout.fillWidth: true }
-                                Text { text: "1/25"; color: cForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono }
+                                Text { text: (backend.programLine + 1) + "/" + backend.programLineCount; color: cForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono }
                             }
                             RowLayout { Layout.fillWidth: true; spacing: 8
                                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 8; Layout.minimumHeight: 8; Layout.maximumHeight: 8; color: cMuted; border.color: cBorder; radius: 3
-                                    Rectangle { width: parent.width * 0.04; height: parent.height - 2; anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: 1; color: cPrimary; radius: 2 } }
-                                Text { text: "4%"; Layout.minimumWidth: 30; Layout.maximumWidth: 30; color: cForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono; horizontalAlignment: Text.AlignRight }
+                                    Rectangle { width: parent.width * backend.programProgress / 100; height: parent.height - 2; anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: 1; color: cPrimary; radius: 2 } }
+                                Text { text: backend.programProgress + "%"; Layout.minimumWidth: 30; Layout.maximumWidth: 30; color: cForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono; horizontalAlignment: Text.AlignRight }
                             }
                             RowLayout { Layout.fillWidth: true; spacing: 6
                                 Text { text: "ДАЛЕЕ"; color: cMutedForeground; font.bold: true; font.pixelSize: 9; font.letterSpacing: 0.5 }
-                                Text { text: "N10 G21 G90 G17 G40 G49 G80"; Layout.fillWidth: true; color: cForeground; font.bold: true; font.pixelSize: 10; font.family: fontMono; elide: Text.ElideRight }
+                                Text { text: backend.programNextLine !== "" ? backend.programNextLine : "—"; Layout.fillWidth: true; color: cForeground; font.bold: true; font.pixelSize: 10; font.family: fontMono; elide: Text.ElideRight }
                             }
                             Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; Layout.minimumHeight: 1; Layout.maximumHeight: 1; color: cBorder }
                             RowLayout { Layout.fillWidth: true; spacing: 10
@@ -2676,17 +2677,17 @@ Item {
                                     RowLayout { spacing: 4
                                         Text { text: "\ue1e0"; color: cMutedForeground; font.family: "lucide"; font.pixelSize: 12 }
                                         Text { text: "ЦИКЛ"; color: cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 0.5 } }
-                                    Text { text: "00:00:42"; color: cForeground; font.bold: true; font.pixelSize: 12; font.family: fontMono } }
+                                    Text { text: backend.cycleTimeText; color: cForeground; font.bold: true; font.pixelSize: 12; font.family: fontMono } }
                                 ColumnLayout { Layout.fillWidth: true; spacing: 1
                                     RowLayout { spacing: 4
                                         Text { text: "\ue1f5"; color: cMutedForeground; font.family: "lucide"; font.pixelSize: 12 }
                                         Text { text: "ПРОШЛЫЙ"; color: cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 0.5 } }
-                                    Text { text: "00:03:18"; color: cForeground; font.bold: true; font.pixelSize: 12; font.family: fontMono } }
+                                    Text { text: backend.lastCycleText; color: cForeground; font.bold: true; font.pixelSize: 12; font.family: fontMono } }
                                 ColumnLayout { Layout.fillWidth: true; spacing: 1
                                     RowLayout { spacing: 4
                                         Text { text: "\ue129"; color: cMutedForeground; font.family: "lucide"; font.pixelSize: 12 }
                                         Text { text: "ДЕТАЛЕЙ"; color: cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 0.5 } }
-                                    Text { text: "7"; color: cForeground; font.bold: true; font.pixelSize: 12; font.family: fontMono } }
+                                    Text { text: "" + backend.partCount; color: cForeground; font.bold: true; font.pixelSize: 12; font.family: fontMono } }
                             }
                         }
                     }
@@ -2700,28 +2701,20 @@ Item {
                                 Text { text: "\ue1b1"; color: cMutedForeground; font.family: "lucide"; font.pixelSize: 13 }
                                 Text { text: "ИНСТРУМЕНТ ПРОГРАММЫ"; color: cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 0.5; Layout.fillWidth: true }
                             }
-                                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 24; Layout.minimumHeight: 24; Layout.maximumHeight: 24; color: cAccent; radius: 3
-                                    RowLayout { anchors.fill: parent; anchors.leftMargin: 4; anchors.rightMargin: 4; spacing: 6
-                                        Rectangle { Layout.preferredWidth: 40; Layout.preferredHeight: 18; Layout.minimumWidth: 40; Layout.maximumWidth: 40; Layout.minimumHeight: 18; Layout.maximumHeight: 18; color: cPrimary; radius: 3
-                                            Text { anchors.centerIn: parent; text: "T01"; color: cPrimaryFg; font.bold: true; font.pixelSize: 11; font.family: fontMono } }
-                                        Text { text: "Фреза концевая 4z"; Layout.fillWidth: true; color: cForeground; font.pixelSize: 11; elide: Text.ElideRight }
-                                        Text { text: "72%"; color: cMutedForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono }
-                                    }
-                                }
-                                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 24; Layout.minimumHeight: 24; Layout.maximumHeight: 24; color: cCard; radius: 3
-                                    RowLayout { anchors.fill: parent; anchors.leftMargin: 4; anchors.rightMargin: 4; spacing: 6
-                                        Rectangle { Layout.preferredWidth: 40; Layout.preferredHeight: 18; Layout.minimumWidth: 40; Layout.maximumWidth: 40; Layout.minimumHeight: 18; Layout.maximumHeight: 18; color: cMuted; radius: 3
-                                            Text { anchors.centerIn: parent; text: "T03"; color: cMutedForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono } }
-                                        Text { text: "Метчик M8"; Layout.fillWidth: true; color: cForeground; font.pixelSize: 11; elide: Text.ElideRight }
-                                        Text { text: "88%"; color: cMutedForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono }
-                                    }
-                                }
-                                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 24; Layout.minimumHeight: 24; Layout.maximumHeight: 24; color: cCard; radius: 3
-                                    RowLayout { anchors.fill: parent; anchors.leftMargin: 4; anchors.rightMargin: 4; spacing: 6
-                                        Rectangle { Layout.preferredWidth: 40; Layout.preferredHeight: 18; Layout.minimumWidth: 40; Layout.maximumWidth: 40; Layout.minimumHeight: 18; Layout.maximumHeight: 18; color: cMuted; radius: 3
-                                            Text { anchors.centerIn: parent; text: "T99"; color: cMutedForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono } }
-                                        Text { text: "3D щуп Renishaw"; Layout.fillWidth: true; color: cForeground; font.pixelSize: 11; elide: Text.ElideRight }
-                                        Text { text: "100%"; color: cMutedForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono }
+                                // The tools the program calls, taken from its T-words and the machine's
+                                // tool table; the one in the spindle is highlighted.
+                                Repeater {
+                                    model: backend.programToolRows.slice(0, 3)
+                                    delegate: Rectangle {
+                                        Layout.fillWidth: true; Layout.preferredHeight: 24; Layout.minimumHeight: 24; Layout.maximumHeight: 24
+                                        color: modelData.inSpindle ? cAccent : cCard; radius: 3
+                                        RowLayout { anchors.fill: parent; anchors.leftMargin: 4; anchors.rightMargin: 4; spacing: 6
+                                            Rectangle { Layout.preferredWidth: 40; Layout.preferredHeight: 18; Layout.minimumWidth: 40; Layout.maximumWidth: 40; Layout.minimumHeight: 18; Layout.maximumHeight: 18
+                                                color: modelData.inSpindle ? cPrimary : cMuted; radius: 3
+                                                Text { anchors.centerIn: parent; text: modelData.n; color: modelData.inSpindle ? cPrimaryFg : cMutedForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono } }
+                                            Text { text: modelData.name; Layout.fillWidth: true; color: cForeground; font.pixelSize: 11; elide: Text.ElideRight }
+                                            Text { text: modelData.life + "%"; color: cMutedForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono }
+                                        }
                                     }
                                 }
                         }
@@ -2742,7 +2735,7 @@ Item {
                                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 8; Layout.minimumHeight: 8; Layout.maximumHeight: 8; color: cMuted; border.color: cBorder; radius: 3
                                     Rectangle { width: parent.width * Math.min(1, root.spindleOverride / 150); height: parent.height - 2; anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: 1; color: cPrimary; radius: 2 } }
                                 Rectangle { Layout.preferredWidth: 22; Layout.preferredHeight: 18; Layout.minimumWidth: 22; Layout.maximumWidth: 22; Layout.minimumHeight: 18; Layout.maximumHeight: 18; color: cCard; border.color: cBorderMuted; radius: 3; Text { anchors.centerIn: parent; text: "]"; color: cMutedForeground; font.bold: true; font.pixelSize: 10 } }
-                                Text { text: "90%"; Layout.minimumWidth: 34; Layout.maximumWidth: 34; color: cForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono; horizontalAlignment: Text.AlignRight }
+                                Text { text: root.spindleOverride + "%"; Layout.minimumWidth: 34; Layout.maximumWidth: 34; color: cForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono; horizontalAlignment: Text.AlignRight }
                             }
                             RowLayout { Layout.fillWidth: true; spacing: 6
                                 Text { text: "F%"; Layout.minimumWidth: 22; Layout.maximumWidth: 22; color: cMutedForeground; font.bold: true; font.pixelSize: 10 }
@@ -2750,16 +2743,21 @@ Item {
                                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 8; Layout.minimumHeight: 8; Layout.maximumHeight: 8; color: cMuted; border.color: cBorder; radius: 3
                                     Rectangle { width: parent.width * Math.min(1, root.feedOverride / 150); height: parent.height - 2; anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: 1; color: cPrimary; radius: 2 } }
                                 Rectangle { Layout.preferredWidth: 22; Layout.preferredHeight: 18; Layout.minimumWidth: 22; Layout.maximumWidth: 22; Layout.minimumHeight: 18; Layout.maximumHeight: 18; color: cCard; border.color: cBorderMuted; radius: 3; Text { anchors.centerIn: parent; text: "="; color: cMutedForeground; font.bold: true; font.pixelSize: 10 } }
-                                Text { text: "60%"; Layout.minimumWidth: 34; Layout.maximumWidth: 34; color: cForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono; horizontalAlignment: Text.AlignRight }
+                                Text { text: root.feedOverride + "%"; Layout.minimumWidth: 34; Layout.maximumWidth: 34; color: cForeground; font.bold: true; font.pixelSize: 11; font.family: fontMono; horizontalAlignment: Text.AlignRight }
                             }
                             RowLayout { Layout.fillWidth: true; spacing: 4
                                 Text { text: "G0"; Layout.minimumWidth: 22; Layout.maximumWidth: 22; color: cMutedForeground; font.bold: true; font.pixelSize: 10 }
+                                // The rapid row is the machine's (5/25/50/100 by default).
                                 RowLayout { Layout.fillWidth: true; Layout.preferredHeight: 18; Layout.minimumHeight: 18; Layout.maximumHeight: 18; spacing: 2
-                                    Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; color: cPrimary; radius: 3; Text { anchors.centerIn: parent; text: "100"; color: cPrimaryFg; font.bold: true; font.pixelSize: 9; font.family: fontMono } }
-                                    Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; color: cMuted; radius: 3; Text { anchors.centerIn: parent; text: "75"; color: cMutedForeground; font.bold: true; font.pixelSize: 9; font.family: fontMono } }
-                                    Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; color: cMuted; radius: 3; Text { anchors.centerIn: parent; text: "50"; color: cMutedForeground; font.bold: true; font.pixelSize: 9; font.family: fontMono } }
-                                    Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; color: cMuted; radius: 3; Text { anchors.centerIn: parent; text: "25"; color: cMutedForeground; font.bold: true; font.pixelSize: 9; font.family: fontMono } }
-                                    Rectangle { Layout.fillWidth: true; Layout.fillHeight: true; color: cMuted; radius: 3; Text { anchors.centerIn: parent; text: "1"; color: cMutedForeground; font.bold: true; font.pixelSize: 9; font.family: fontMono } }
+                                    Repeater {
+                                        model: root.rapidSteps
+                                        delegate: Rectangle {
+                                            Layout.fillWidth: true; Layout.fillHeight: true
+                                            color: modelData === root.rapidOverride ? cPrimary : cMuted
+                                            radius: 3
+                                            Text { anchors.centerIn: parent; text: "" + modelData; color: modelData === root.rapidOverride ? cPrimaryFg : cMutedForeground; font.bold: true; font.pixelSize: 9; font.family: fontMono }
+                                        }
+                                    }
                                 }
                             }
                         }

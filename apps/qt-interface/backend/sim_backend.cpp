@@ -750,3 +750,13 @@ QVariantMap SimBackend::acknowledgeAlarm(int index)
     emit alarmsChanged();
     return commandOk();
 }
+
+QVariantMap SimBackend::countPart()
+{
+    // The finished-part counter belongs to the machine: the adapter will wire it to the counter of
+    // the controller, the simulator just increments it. No message here — the panel names the
+    // number it reads back.
+    ++m_state.partCount;
+    emit countersChanged();
+    return commandOk();
+}

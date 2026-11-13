@@ -155,9 +155,10 @@ is local (when an API request appears, add and name that layer here).
 * `BackendBridge.qml` — the single seam between the panel and the machine: screens read values here
   and send commands back; the seam composes the labels (`runLabel`, `toolLabel`) and keeps the
   refusal in `lastReason`. Live: the header (run state, program, message count, clock), the position
-  (DRO), jog, MDI, part zero, the safe point, the overrides, the cycle/spindle/coolant commands and
-  the offset, tool, message and program tables (edits are machine commands). The program editor,
-  measuring, the probe, the ladder and the service move to the seam in the next slices.
+  (DRO), jog, MDI, part zero, the safe point, the overrides, the cycle/spindle/coolant commands, the
+  offset/tool/message/program tables, the program block and progress, the program's tools, the part
+  counter, the cycle clocks and the load (edits are machine commands). The program editor, measuring,
+  the probe, the ladder and the service parameters move to the seam in the next slices.
 * Texts match `react-interface` word for word; icons are lucide only, from the bundled font.
 * The Work screen is split: `WorkScreen.qml` is the manual mode (live coordinates, MDI, viewer),
   `AutoScreen.qml` is AUTO (position, distance to the block, remaining path, four F8 views). Both use

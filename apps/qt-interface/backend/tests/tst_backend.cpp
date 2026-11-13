@@ -34,6 +34,7 @@ private slots:
     void offsetCommands();
     void toolCommands();
     void alarmAcknowledgeSingle();
+    void counterCommands();
 };
 
 void TestBackend::loadsAutoFixture()
@@ -280,6 +281,24 @@ void TestBackend::alarmAcknowledgeSingle()
     QVERIFY(!backend.alarms().at(0).toMap().value(QStringLiteral("active")).toBool());
     QVERIFY(backend.alarms().at(1).toMap().value(QStringLiteral("active")).toBool());
     QVERIFY(!backend.acknowledgeAlarm(99).value(QStringLiteral("ok")).toBool());
+}
+
+void TestBackend::counterCommands()
+{
+    SimBackend backend;
+    QVERIFY(backend.loadFixture(fixturePath(QStringLiteral("auto-idle.json"))));
+    QCOMPARE(backend.partCount(), 7);
+
+    // The counter belongs to the machine and counts even while a program runs.
+    QVERIFY(backend.countPart().value(QStringLiteral("ok")).toBool());
+    QCOMPARE(backend.partCount(), 8);
+    QVERIFY(backend.cycleStart().value(QStringLiteral("ok")).toBool());
+    QVERIFY(backend.countPart().value(QStringLiteral("ok")).toBool());
+    QCOMPARE(backend.partCount(), 9);
+
+    // The cycle clock is the machine's too: zero before the run, and the finished time lands in
+    // the previous-cycle counter when the program reaches its end.
+    QCOMPARE(backend.lastCycle(), 198000);
 }
 
 QTEST_GUILESS_MAIN(TestBackend)

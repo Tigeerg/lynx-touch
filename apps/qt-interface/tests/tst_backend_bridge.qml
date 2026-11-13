@@ -247,6 +247,53 @@ TestCase {
         compare(bridge.lastReason, "Станок занят")
     }
 
+    // Cycle clocks, load and program progress are machine numbers the panel only formats.
+    function test_counters_and_progress() {
+        bridge.backend = stub
+        compare(bridge.cycleTime, 42000)
+        compare(bridge.cycleTimeText, "00:00:42")
+        compare(bridge.lastCycleText, "00:03:18")
+        compare(bridge.load, 38)
+        compare(bridge.partCount, 7)
+
+        // "00:00:42" for 42 s, "01:00:05" past the hour, zero for a negative answer.
+        compare(bridge.clockTime(0), "00:00:00")
+        compare(bridge.clockTime(3605000), "01:00:05")
+        compare(bridge.clockTime(-5), "00:00:00")
+        compare(bridge.clockTime(undefined), "00:00:00")
+
+        // Progress follows the machine's line in the machine's program, not a visible row index.
+        compare(bridge.programLineCount, 16)
+        compare(bridge.programLine, 0)
+        compare(bridge.programProgress, 0)
+        stub.programLine = 8
+        compare(bridge.programProgress, 53)
+        stub.programLine = 15
+        compare(bridge.programProgress, 100)
+        compare(bridge.programNextLine, "")
+
+        // Counting a finished part is a machine command; the panel shows what comes back.
+        verify(bridge.countPart())
+        stub.partCount = 8
+        compare(bridge.partCount, 8)
+
+        // The spindle tool is the machine's, not the table cursor.
+        compare(bridge.spindleToolRow.n, "T01")
+        verify(bridge.selectTool(2))
+        compare(bridge.spindleToolRow.n, "T02")
+        compare(bridge.toolLabel, "T02")
+
+        // "Инструмент программы" is the program's own T-words resolved against the machine table.
+        // O1024 calls T2 only; the list follows the program, not a literal set of rows.
+        compare(bridge.programToolRows.length, 1)
+        compare(bridge.programToolRows[0].n, "T02")
+        compare(bridge.programToolRows[0].life, 54)
+        verify(bridge.loadProgram(3))
+        compare(bridge.programName, "O0007")
+        compare(bridge.programToolRows.length, 0)
+        verify(bridge.loadProgram(0))
+    }
+
     function test_messages_and_counters() {
         bridge.backend = stub
         compare(bridge.activeAlarmCount, 2)

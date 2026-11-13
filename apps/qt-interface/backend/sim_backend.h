@@ -74,6 +74,7 @@ public:
     QVariantMap setToolLength(int number, double length) override;
     QVariantMap selectTool(int number) override;
     QVariantMap acknowledgeAlarm(int index) override;
+    QVariantMap countPart() override;
 
     Q_INVOKABLE bool loadFixture(const QString &path);
     Q_INVOKABLE bool setFrozenClock(const QString &clock);

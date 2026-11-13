@@ -242,6 +242,12 @@ QtObject {
         }
         return r
     }
+    function countPart() {
+        var r = answer("countPart")
+        if (r.ok)
+            partCount = partCount + 1
+        return r
+    }
     function acknowledgeAlarm(index) {
         var r = answer("acknowledgeAlarm:" + index)
         if (r.ok) {

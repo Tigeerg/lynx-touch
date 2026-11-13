@@ -107,6 +107,7 @@ public:
     Q_INVOKABLE virtual QVariantMap setToolLength(int number, double length);
     Q_INVOKABLE virtual QVariantMap selectTool(int number);
     Q_INVOKABLE virtual QVariantMap acknowledgeAlarm(int index);
+    Q_INVOKABLE virtual QVariantMap countPart();
 
 signals:
     void connectionChanged();

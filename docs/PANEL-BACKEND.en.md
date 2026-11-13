@@ -89,13 +89,15 @@ Connected at this step: the run state, program name and title, message count and
 (panel and touch); the cycle, spindle and coolant commands; workplace and mode switching; the
 position (DRO of the panel and the touch UI), jog, the MDI line, "go to part zero", "retract to the
 safe point"; the feed/spindle/rapid overrides; the offset, tool and message tables (`offsetRows`,
-`toolRows`, `alarmRows`) and the program catalogue (`programRows`). The screens did not have to be
-rewritten: the seam builds rows of the shape they already read (sign and three decimals, `T01`,
-"Предупр.").
+`toolRows`, `alarmRows`) and the program catalogue (`programRows`); the block, the program progress
+and the tools the program calls (`programToolRows`, taken from its `T`-words), the part counter and
+the cycle clocks (`countPart`, `cycleTimeText`, `lastCycleText`), the load (`load`, `axisLoad`) and
+the state sentence (`runStateText`). The screens did not have to be rewritten: the seam builds rows
+of the shape they already read (sign and three decimals, `T01`, "Предупр.").
 
 Still local (moving in the next slices, see §8): the program editor and its search, tool measuring as
-a scenario, the probe wizard, the ladder, the service parameters and the part counter (the contract
-has no counter command yet).
+a scenario, the probe wizard, the ladder and the service parameters (they are panel settings, a
+separate store, not machine state).
 
 ## 5. Backend selection and launch
 
@@ -146,8 +148,8 @@ ANSI and parses a line with a dash as an unclosed quote.
 
 | Check | What it proves |
 |---|---|
-| `lynx-backend-test.exe` | 15 cases: fixture loading, a broken fixture keeps the state, workplace and JOG guards, START/PAUSE/RESET cycle, overrides, messages, fixture switching, clock freeze, program selection, offset commands (activate, clear, touch off), tool commands (life, length, select) and single-message acknowledgement |
-| `scripts/check-qt-panel.ps1` | QML panel and seam tests (36) + `lynx-backend-test.exe` (15) |
+| `lynx-backend-test.exe` | 16 cases: fixture loading, a broken fixture keeps the state, workplace and JOG guards, START/PAUSE/RESET cycle, overrides, messages, fixture switching, clock freeze, program selection, offset commands (activate, clear, touch off), tool commands (life, length, select), single-message acknowledgement and the finished-part counter |
+| `scripts/check-qt-panel.ps1` | QML panel and seam tests (37) + `lynx-backend-test.exe` (16) |
 | `tools/panel-shot.ps1` + `panel-diff.ps1` | Panel screenshot and comparison with the reference within the difference budget |
 | `scripts/build-qt-interface.ps1` | `/W4 /WX` build without warnings |
 
@@ -157,11 +159,12 @@ Environment variables for build and run: `CNC_VCVARS`, `CNC_NINJA`, `CNC_CMAKE`,
 ## 8. What is not done yet
 
 * The screens read `machine` through the seam: the header (run state, program, message count,
-  clock), the position (DRO), jog, the MDI line, the safe point, part zero, the overrides and the
-  offset, tool, message and program tables are live; table edits are machine commands
-  (`setActiveOffset`, `touchOff`, `setToolLife`, `selectTool`, `acknowledgeAlarm`). The rest — the
-  program editor, measuring, the probe, the ladder, the service parameters, the part counter — is
-  still local.
+  clock), the position (DRO), jog, the MDI line, the safe point, part zero, the overrides, the
+  offset/tool/message/program tables, the program block and progress, the program's tools, the part
+  counter, the cycle clocks and the load are live; edits are machine commands (`setActiveOffset`,
+  `touchOff`, `setToolLife`, `selectTool`, `acknowledgeAlarm`, `countPart`). The rest — the program
+  editor, measuring, the probe, the ladder and the service parameters (a separate settings store) —
+  is still local.
 * There is no `LinuxCncBackend`: the HAL/`linuxcnc` adapter comes after stage 1; until then
   `--backend=linuxcnc` fails on purpose.
 * Qt has no "Minimal" theme: `--theme` accepts 0…5, but only four palettes exist.

@@ -46,12 +46,12 @@ Item {
                     Item { Layout.fillWidth: true }
                     Text { text: "ПРОШЛЫЙ"; color: host.cMutedForeground; font.pixelSize: 9 }
                     Item { Layout.fillWidth: true }
-                    Text { text: "ДЕТАЛЕЙ " + host.partCount; color: host.cForeground; font.bold: true; font.pixelSize: 10 }
+                    Text { text: "ДЕТАЛЕЙ " + host.backend.partCount; color: host.cForeground; font.bold: true; font.pixelSize: 10 }
                 }
                 RowLayout { Layout.fillWidth: true
-                    Text { text: "00:00:00"; color: host.cForeground; font.bold: true; font.pixelSize: 12; font.family: host.fontMono }
+                    Text { text: host.backend.cycleTimeText; color: host.cForeground; font.bold: true; font.pixelSize: 12; font.family: host.fontMono }
                     Item { Layout.fillWidth: true }
-                    Text { text: "00:00:00"; color: host.cForeground; font.bold: true; font.pixelSize: 12; font.family: host.fontMono }
+                    Text { text: host.backend.lastCycleText; color: host.cForeground; font.bold: true; font.pixelSize: 12; font.family: host.fontMono }
                 }
             }
         }
@@ -67,12 +67,13 @@ Item {
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 8; spacing: 4
                 Text { text: "ИНСТРУМЕНТ"; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 1 }
+                // The machine tool (what is in the spindle), not the table cursor.
                 RowLayout { Layout.fillWidth: true
                     Rectangle { width: 40; height: 26; radius: 4; color: host.cPrimary
-                        Text { anchors.centerIn: parent; text: host.toolsData[host.cursorTool] ? host.toolsData[host.cursorTool].n : "T--"; color: host.cPrimaryFg; font.bold: true; font.pixelSize: 11; font.family: host.fontMono } }
-                    Text { text: host.toolsData[host.cursorTool] ? host.toolsData[host.cursorTool].name : ""; Layout.fillWidth: true; color: host.cForeground; font.pixelSize: 12; elide: Text.ElideRight }
+                        Text { anchors.centerIn: parent; text: host.backend.spindleToolRow ? host.backend.spindleToolRow.n : "T--"; color: host.cPrimaryFg; font.bold: true; font.pixelSize: 11; font.family: host.fontMono } }
+                    Text { text: host.backend.spindleToolRow ? host.backend.spindleToolRow.name : ""; Layout.fillWidth: true; color: host.cForeground; font.pixelSize: 12; elide: Text.ElideRight }
                 }
-                Text { text: "D" + (host.toolsData[host.cursorTool] ? host.toolsData[host.cursorTool].d : "—") + " · L " + (host.toolsData[host.cursorTool] ? host.toolsData[host.cursorTool].l : "—") + " · " + (host.toolsData[host.cursorTool] ? host.toolsData[host.cursorTool].life : 0) + "%"; color: host.cMutedForeground; font.pixelSize: 10; font.family: host.fontMono }
+                Text { text: host.backend.spindleToolRow ? ("D" + host.backend.spindleToolRow.d + " · L " + host.backend.spindleToolRow.l + " · " + host.backend.spindleToolRow.life + "%") : "—"; color: host.cMutedForeground; font.pixelSize: 10; font.family: host.fontMono }
             }
         }
 
@@ -87,13 +88,19 @@ Item {
             ColumnLayout {
                 anchors.fill: parent; anchors.margins: 8; spacing: 3
                 Text { text: "НАГРУЗКА (ИМИТАЦИЯ)"; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 1 }
+                // Spindle load and the per-axis load come from the machine (percent).
                 Repeater {
-                    model: [ { l: "Нр", v: 0.38 }, { l: "X", v: 0.02 }, { l: "Y", v: 0.02 }, { l: "Z", v: 0.03 } ]
+                    model: [
+                        { l: "Нр", v: host.backend.load },
+                        { l: "X", v: host.backend.axisLoad.X ? host.backend.axisLoad.X : 0 },
+                        { l: "Y", v: host.backend.axisLoad.Y ? host.backend.axisLoad.Y : 0 },
+                        { l: "Z", v: host.backend.axisLoad.Z ? host.backend.axisLoad.Z : 0 }
+                    ]
                     delegate: RowLayout { Layout.fillWidth: true; spacing: 6
                         Text { text: modelData.l; width: 22; color: host.cMutedForeground; font.pixelSize: 9; font.family: host.fontMono }
                         Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 6; color: host.cMuted; radius: 3
-                            Rectangle { width: parent.width * modelData.v; height: parent.height; color: host.cPrimary; radius: 3 } }
-                        Text { text: Math.round(modelData.v * 100) + "%"; width: 34; color: host.cForeground; font.pixelSize: 9; font.family: host.fontMono; horizontalAlignment: Text.AlignRight }
+                            Rectangle { width: parent.width * Math.min(1, modelData.v / 100); height: parent.height; color: host.cPrimary; radius: 3 } }
+                        Text { text: Math.round(modelData.v) + "%"; width: 34; color: host.cForeground; font.pixelSize: 9; font.family: host.fontMono; horizontalAlignment: Text.AlignRight }
                     }
                 }
             }
@@ -116,7 +123,7 @@ Item {
                             Text { anchors.centerIn: parent; text: modelData; color: index === 4 ? host.cPrimaryFg : host.cForeground; font.bold: true; font.pixelSize: 10; font.family: host.fontMono } } }
                 }
                 RowLayout { spacing: 4
-                    Repeater { model: ["G40", "G49", "G80", "M05", "M09"]
+                    Repeater { model: ["G40", "G49", "G80", host.backend.spindle ? "M03" : "M05", host.backend.coolant ? "M08" : "M09"]
                         delegate: Rectangle { width: 38; height: 20; radius: 3; color: host.cMuted
                             Text { anchors.centerIn: parent; text: modelData; color: host.cForeground; font.pixelSize: 10; font.family: host.fontMono } } }
                 }

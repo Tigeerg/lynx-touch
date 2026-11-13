@@ -344,9 +344,16 @@ TestCase {
     function test_softkey_actions() {
         tryCompare(panel, "status", Loader.Ready)
         var p = panel.item
-        p.partCount = 0
+        // The finished-part counter belongs to the machine; the softkey asks it and shows the answer.
+        stubBackend.resetState()
+        p.backend.backend = stubBackend
+        stubBackend.partCount = 0
         p.pressSoftkey({ id: "partCounter" })
+        compare(stubBackend.lastCommandName, "countPart")
         compare(p.partCount, 1)
+        compare(p.message, "Готовых деталей: 1")
+        p.backend.backend = null
+        stubBackend.resetState()
 
         p.cursorTool = 2
         stubBackend.resetState()

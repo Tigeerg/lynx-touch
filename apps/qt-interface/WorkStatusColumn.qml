@@ -10,8 +10,8 @@ Rectangle {
 
     property Item host
 
-    // Mock load from the old side-status block: the Qt port has no load model yet.
-    readonly property int spindleLoad: 38
+    // Spindle load and the cycle counters are the machine's numbers, read through the panel seam.
+    readonly property int spindleLoad: host && host.backend ? host.backend.load : 0
 
     function currentTool() {
         if (!host || !host.toolsData) return null;
@@ -47,8 +47,8 @@ Rectangle {
             { label: "Коррекция радиуса", value: "G40" },
             { label: "Коррекция длины", value: "G49" },
             { label: "Цикл", value: "G80" },
-            { label: "Шпиндель", value: host && host.spindleOn ? "M03" : "M05" },
-            { label: "СОЖ", value: host && host.coolantOn ? "M08" : "M09" }
+            { label: "Шпиндель", value: host && host.backend.spindle ? "M03" : "M05" },
+            { label: "СОЖ", value: host && host.backend.coolant ? "M08" : "M09" }
         ];
     }
     function chipColor(value) {
@@ -337,7 +337,7 @@ Rectangle {
                         color: host.cMuted
                         border.color: host.cBorder
                         radius: 3
-                        Rectangle { width: parent.width * 0.38; height: parent.height - 2; anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: 1; color: host.cPrimary; radius: 2 }
+                        Rectangle { width: parent.width * Math.min(1, workStatusColumn.spindleLoad / 100); height: parent.height - 2; anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: 1; color: host.cPrimary; radius: 2 }
                         Rectangle { x: parent.width * 0.60; y: 0; width: 1; height: parent.height; color: "#4d34363a" }
                         Rectangle { x: parent.width * 0.80; y: 0; width: 1; height: parent.height; color: "#4d34363a" }
                     }
@@ -364,7 +364,7 @@ Rectangle {
                     Text { text: "\ue0c3"; color: host.cMutedForeground; font.family: "lucide"; font.pixelSize: 12 }
                     Text { text: "ВЫПОЛНЕНИЕ"; color: host.cMutedForeground; font.bold: true; font.pixelSize: 10; font.letterSpacing: 1 }
                     Item { Layout.fillWidth: true }
-                    Text { text: "1/16"; color: host.cForeground; font.bold: true; font.pixelSize: 10; font.family: host.fontMono }
+                    Text { text: (host.backend.programLine + 1) + "/" + host.backend.programLineCount; color: host.cForeground; font.bold: true; font.pixelSize: 10; font.family: host.fontMono }
                 }
                 RowLayout {
                     Layout.fillWidth: true
@@ -377,9 +377,9 @@ Rectangle {
                         color: host.cMuted
                         border.color: host.cBorder
                         radius: 3
-                        Rectangle { width: parent.width * 0.12; height: parent.height - 2; anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: 1; color: host.cPrimary; radius: 2 }
+                        Rectangle { width: parent.width * host.backend.programProgress / 100; height: parent.height - 2; anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.leftMargin: 1; color: host.cPrimary; radius: 2 }
                     }
-                    Text { text: "12%"; Layout.minimumWidth: 30; Layout.maximumWidth: 30; color: host.cForeground; font.bold: true; font.pixelSize: 11; font.family: host.fontMono; horizontalAlignment: Text.AlignRight }
+                    Text { text: host.backend.programProgress + "%"; Layout.minimumWidth: 30; Layout.maximumWidth: 30; color: host.cForeground; font.bold: true; font.pixelSize: 11; font.family: host.fontMono; horizontalAlignment: Text.AlignRight }
                 }
                 RowLayout {
                     Layout.fillWidth: true
@@ -388,19 +388,19 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: 0
                         Text { text: "ЦИКЛ"; color: host.cMutedForeground; font.bold: true; font.pixelSize: 9; font.letterSpacing: 0.5 }
-                        Text { text: "00:00:42"; color: host.cForeground; font.bold: true; font.pixelSize: 11; font.family: host.fontMono }
+                        Text { text: host.backend.cycleTimeText; color: host.cForeground; font.bold: true; font.pixelSize: 11; font.family: host.fontMono }
                     }
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 0
                         Text { text: "ПРОШЛЫЙ"; color: host.cMutedForeground; font.bold: true; font.pixelSize: 9; font.letterSpacing: 0.5 }
-                        Text { text: "00:03:18"; color: host.cForeground; font.bold: true; font.pixelSize: 11; font.family: host.fontMono }
+                        Text { text: host.backend.lastCycleText; color: host.cForeground; font.bold: true; font.pixelSize: 11; font.family: host.fontMono }
                     }
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 0
                         Text { text: "ДЕТАЛЕЙ"; color: host.cMutedForeground; font.bold: true; font.pixelSize: 9; font.letterSpacing: 0.5 }
-                        Text { text: "7"; color: host.cForeground; font.bold: true; font.pixelSize: 11; font.family: host.fontMono }
+                        Text { text: "" + host.backend.partCount; color: host.cForeground; font.bold: true; font.pixelSize: 11; font.family: host.fontMono }
                     }
                 }
             }

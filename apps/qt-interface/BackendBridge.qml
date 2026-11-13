@@ -25,6 +25,11 @@ QtObject {
                                         : run === "HOLD" ? "ПАУЗА"
                                         : run === "ALARM" ? "АВАРИЯ"
                                         : run === "ESTOP" ? "СТОП" : "ГОТОВ"
+    // The sentence form the program card shows under "ВЫПОЛНЕНИЕ ДЕТАЛИ".
+    readonly property string runStateText: run === "RUN" ? "Выполнение"
+                                            : run === "HOLD" ? "Пауза"
+                                            : run === "ALARM" ? "Авария"
+                                            : run === "ESTOP" ? "Стоп" : "Ожидание пуска"
 
     // --- geometry --------------------------------------------------------------------------
     readonly property var position: backend ? backend.position : ({ x: 0, y: 0, z: 0, a: 0 })
@@ -83,6 +88,19 @@ QtObject {
     readonly property string clock: backend ? backend.clock : "--:--:--"
     readonly property string machineMessage: backend ? backend.message : ""
     readonly property var mdiHistory: backend ? backend.mdiHistory : []
+    // The cycle times come as milliseconds; the panel shows hh:mm:ss like the React side.
+    readonly property string cycleTimeText: clockTime(cycleTime)
+    readonly property string lastCycleText: clockTime(lastCycle)
+    readonly property int programLineCount: program.lines ? program.lines.length : 0
+    readonly property int programProgress:
+        programLineCount > 1 ? Math.round(programLine / (programLineCount - 1) * 100) : 0
+    function clockTime(ms) {
+        var total = Math.max(0, Math.round(Number(ms) / 1000));
+        if (!isFinite(total)) return "00:00:00";
+        return two(Math.floor(total / 3600)) + ":" + two(Math.floor((total % 3600) / 60)) +
+               ":" + two(total % 60);
+    }
+    function two(value) { return (value < 10 ? "0" : "") + value; }
 
     // --- presentation rows -----------------------------------------------------------------
     // The screens keep their own row shape; the seam formats the numbers the machine reports (the
@@ -112,7 +130,8 @@ QtObject {
         var out = [];
         for (var i = 0; i < tools.length; i++) {
             var t = tools[i];
-            out.push({ n: "T" + (t.number < 10 ? "0" + t.number : "" + t.number),
+            out.push({ number: t.number,
+                       n: "T" + (t.number < 10 ? "0" + t.number : "" + t.number),
                        name: t.name,
                        d: fixed1(t.diameter),
                        l: fixed3(t.length),
@@ -120,6 +139,43 @@ QtObject {
                        inSpindle: t.inSpindle === true });
         }
         return out;
+    }
+
+    // The tool the machine has in the spindle, in the same row shape (the touch status zone shows
+    // the machine tool, not the table cursor).
+    readonly property var spindleToolRow: {
+        for (var i = 0; i < toolRows.length; i++)
+            if (toolRows[i].inSpindle) return toolRows[i];
+        return null;
+    }
+
+    // The tools the active program calls, in the order it first calls them: the "инструмент
+    // программы" list is derived from the program text and the machine's tool table, not written
+    // into the panel.
+    readonly property var programToolRows: {
+        var out = [];
+        var lines = program.lines ? program.lines : [];
+        for (var i = 0; i < lines.length; i++) {
+            var words = ("" + lines[i]).toUpperCase().match(/T[0-9]+/g);
+            if (!words) continue;
+            for (var w = 0; w < words.length; w++) {
+                var number = parseInt(words[w].substring(1), 10);
+                if (!number || toolRowIn(out, number)) continue;
+                var row = toolRowByNumber(number);
+                if (row) out.push(row);
+            }
+        }
+        return out;
+    }
+    function toolRowIn(rows, number) {
+        for (var i = 0; i < rows.length; i++)
+            if (rows[i].number === number) return true;
+        return false;
+    }
+    function toolRowByNumber(number) {
+        for (var i = 0; i < toolRows.length; i++)
+            if (toolRows[i].number === number) return toolRows[i];
+        return null;
     }
 
     readonly property var alarmRows: {
@@ -180,6 +236,7 @@ QtObject {
     function acknowledgeAlarms() { return note(backend ? backend.acknowledgeAlarms() : null, "acknowledgeAlarms") }
     function clearAcknowledgedAlarms() { return note(backend ? backend.clearAcknowledgedAlarms() : null, "clearAcknowledgedAlarms") }
     function acknowledgeAlarm(index) { return note(backend ? backend.acknowledgeAlarm(index) : null, "acknowledgeAlarm") }
+    function countPart() { return note(backend ? backend.countPart() : null, "countPart") }
     function setActiveOffset(index) { return note(backend ? backend.setActiveOffset(index) : null, "setActiveOffset") }
     function zeroOffset(index) { return note(backend ? backend.zeroOffset(index) : null, "zeroOffset") }
     function touchOff(index, axis) { return note(backend ? backend.touchOff(index, axis) : null, "touchOff") }

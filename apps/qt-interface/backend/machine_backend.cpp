@@ -304,3 +304,8 @@ QVariantMap MachineBackend::acknowledgeAlarm(int index)
     Q_UNUSED(index)
     return commandFailed(QStringLiteral("Backend не подключён"));
 }
+
+QVariantMap MachineBackend::countPart()
+{
+    return commandFailed(QStringLiteral("Backend не подключён"));
+}

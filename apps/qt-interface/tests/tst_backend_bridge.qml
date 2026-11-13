@@ -145,6 +145,20 @@ TestCase {
         compare(bridge.lastReason, "")
     }
 
+    function test_rapid_steps_and_history() {
+        bridge.backend = stub
+        compare(bridge.rapidSteps.length, 4)
+        compare(bridge.rapidSteps[3], 100)
+        compare(bridge.mdiHistory.length, 0)
+        stub.mdiHistory = [ "G91 X5", "G0 X10" ]
+        compare(bridge.mdiHistory[0], "G91 X5")
+        // Without a backend the panel keeps its documented rapid row.
+        bridge.backend = null
+        compare(bridge.rapidSteps.length, 4)
+        compare(bridge.rapidSteps[0], 5)
+        compare(bridge.mdiHistory.length, 0)
+    }
+
     function test_messages_and_counters() {
         bridge.backend = stub
         compare(bridge.activeAlarmCount, 2)

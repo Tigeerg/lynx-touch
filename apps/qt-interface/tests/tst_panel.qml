@@ -283,24 +283,40 @@ TestCase {
     function test_machine_position() {
         tryCompare(panel, "status", Loader.Ready)
         var p = panel.item
-        p.machinePos = ({ x: 0, y: 0, z: 0, a: 0 })
+        stubBackend.resetState()
+        p.backend.backend = stubBackend
+        stubBackend.position = ({ x: 0, y: 0, z: 0, a: 0 })
+
+        // The panel owns the step row (0.001 / 0.01 / 0.1 mm) and asks the machine; the DRO then
+        // reads what the machine answered, not what the panel guessed.
         p.jogAxis = "X"
         p.jogStep = 2          // 0.1 mm
         p.machineJogRequest(1)
+        compare(stubBackend.lastCommandName, "jog:X:2:1")
+        stubBackend.position = ({ x: 0.1, y: 0, z: 0, a: 0 })
         compare(p.machinePos.x, 0.1)
         compare(p.machineCoordinate("X"), "+0.100")
 
         p.jogAxis = "Z"
         p.jogStep = 0          // 0.001 mm
         p.machineJogRequest(-1)
-        compare(p.machinePos.z, -0.001)
+        compare(stubBackend.lastCommandName, "jog:Z:0:-1")
+        stubBackend.position = ({ x: 0.1, y: 0, z: -0.001, a: 0 })
 
         // The Work DRO reads the live position, not the G54 table row.
         var ws = findByName(p, "workScreen")
         compare(ws.dro("X"), "+0.100")
         compare(ws.dro("Z"), "-0.001")
 
-        p.machinePos = ({ x: -120.500, y: 35.250, z: -210.400, a: 0.000 })
+        // A refused jog keeps the machine position and shows the machine's reason.
+        stubBackend.commandOk = false
+        stubBackend.commandReason = "Ручная подача доступна в JOG или MPG"
+        p.machineJogRequest(1)
+        compare(p.machinePos.x, 0.1)
+        compare(p.message, "Ручная подача доступна в JOG или MPG")
+
+        stubBackend.resetState()
+        p.backend.backend = null
         p.jogAxis = "X"
         p.jogStep = 1
     }
@@ -318,12 +334,15 @@ TestCase {
         p.pressSoftkey({ id: "resetLife" })
         compare(p.toolsData[2].life, 100)
 
-        p.machinePos = ({ x: 10, y: 20, z: -30, a: 0 })
+        // The safe point and work zero are MDI lines the machine executes; the panel does not move
+        // its own numbers.
+        stubBackend.resetState()
+        p.backend.backend = stubBackend
         p.pressSoftkey({ id: "goSafe" })
-        compare(p.machinePos.z, 50)
+        compare(stubBackend.lastCommandName, "mdi:G90 Z50")
         p.pressSoftkey({ id: "goWorkZero" })
-        compare(p.machinePos.x, 0)
-        compare(p.machinePos.z, 0)
+        compare(stubBackend.lastCommandName, "mdi:G90 X0 Y0 Z0 A0")
+        p.backend.backend = null
 
         p.editMode = false
         p.pressSoftkey({ id: "edit" })
@@ -331,8 +350,46 @@ TestCase {
         p.pressSoftkey({ id: "edit" })
         verify(!p.editMode)
 
-        p.machinePos = ({ x: -120.500, y: 35.250, z: -210.400, a: 0.000 })
+        stubBackend.resetState()
+        p.backend.backend = null
         p.cursorTool = 0
+    }
+
+    // The overrides are the machine's numbers: the panel asks for one step and shows the answer.
+    function test_overrides_route_to_backend() {
+        tryCompare(panel, "status", Loader.Ready)
+        var p = panel.item
+        stubBackend.resetState()
+        p.backend.backend = stubBackend
+        stubBackend.overrides = ({ feed: 100, spindle: 100, rapid: 100 })
+        wait(0)
+        compare(p.feedOverride, 100)
+        compare(p.spindleOverride, 100)
+        compare(p.rapidOverride, 100)
+
+        p.adjustFeed(1)
+        compare(stubBackend.lastCommandName, "setOverride:feed:1")
+        p.adjustSpindle(-1)
+        compare(stubBackend.lastCommandName, "setOverride:spindle:-1")
+        p.adjustRapid(-1)
+        compare(stubBackend.lastCommandName, "setOverride:rapid:-1")
+
+        // The panel shows what the machine reports after the step, including its own rapid row.
+        stubBackend.overrides = ({ feed: 110, spindle: 90, rapid: 50 })
+        tryCompare(p, "feedOverride", 110)
+        compare(p.spindleOverride, 90)
+        compare(p.rapidOverride, 50)
+        stubBackend.rapidSteps = [5, 25, 50, 100]
+        compare(p.rapidSteps.length, 4)
+
+        // A refused override is reported, not applied silently.
+        stubBackend.commandOk = false
+        stubBackend.commandReason = "Коррекция недоступна при работе"
+        p.adjustFeed(1)
+        compare(p.message, "Коррекция недоступна при работе")
+
+        stubBackend.resetState()
+        p.backend.backend = null
     }
 
     function test_tool_measure() {
@@ -406,7 +463,9 @@ TestCase {
         var p = panel.item
         p.workplace = "RUN"
         p.activeScreen = "pos"
-        p.machinePos = ({ x: 0, y: 0, z: 0, a: 0 })
+        stubBackend.resetState()
+        p.backend.backend = stubBackend
+        stubBackend.position = ({ x: 0, y: 0, z: 0, a: 0 })
         p.cursorProg = 0
         p.autoView = "trajectory"
         wait(0)
@@ -427,6 +486,7 @@ TestCase {
         compare(auto.view, "overlay")
 
         p.autoView = "trajectory"
+        p.backend.backend = null
     }
 
     function test_mdi_line() {
@@ -435,7 +495,10 @@ TestCase {
         p.workplace = "SETUP"
         p.activeScreen = "pos"
         wait(0)
-        p.machinePos = ({ x: 0, y: 0, z: 0, a: 0 })
+        stubBackend.resetState()
+        p.backend.backend = stubBackend
+        stubBackend.position = ({ x: 0, y: 0, z: 0, a: 0 })
+        stubBackend.mdiHistory = []
         p.mdiBuffer = ""
 
         p.mdiType("g0 x10")
@@ -443,18 +506,32 @@ TestCase {
         p.mdiBackspace()
         compare(p.mdiBuffer, "G0 X1")
 
+        // The line goes to the machine; the panel then shows the position and the history the
+        // machine reports (parsing the G-code is the simulator's job, checked in C++).
         p.mdiBuffer = "G0 X10 Y20"
         p.runMdi()
+        compare(stubBackend.lastCommandName, "mdi:G0 X10 Y20")
+        stubBackend.position = ({ x: 10, y: 20, z: 0, a: 0 })
+        stubBackend.mdiHistory = [ "G0 X10 Y20" ]
         compare(p.machinePos.x, 10)
         compare(p.machinePos.y, 20)
         compare(p.mdiBuffer, "")
         compare(p.mdiHistory[0], "G0 X10 Y20")
 
-        // G91 moves relative to the live position; the command is kept in the recent history.
-        p.mdiBuffer = "G91 X5"
-        p.runMdi()
-        compare(p.machinePos.x, 15)
+        // The machine keeps the recent lines; the panel recalls the first one into the buffer.
+        stubBackend.mdiHistory = [ "G91 X5", "G0 X10 Y20" ]
         compare(p.mdiHistory[0], "G91 X5")
+        p.mdiRecall(0)
+        compare(p.mdiBuffer, "G91 X5")
+        p.mdiBuffer = ""
+
+        // A refused line keeps the typed text and shows the machine's reason.
+        stubBackend.commandOk = false
+        stubBackend.commandReason = "Станок занят"
+        p.mdiBuffer = "G0 X30"
+        p.runMdi()
+        compare(p.message, "Станок занят")
+        compare(p.mdiBuffer, "G0 X30")
 
         // The row is laid out on the Work screen in SETUP; its own visible value follows the
         // tab's visibility, so the state check is mdiOpen().
@@ -462,7 +539,8 @@ TestCase {
         verify(p.mdiOpen())
 
         p.workplace = "RUN"
-        p.machinePos = ({ x: -120.500, y: 35.250, z: -210.400, a: 0.000 })
+        stubBackend.resetState()
+        p.backend.backend = null
     }
 
     function test_debug_windows_exist() {

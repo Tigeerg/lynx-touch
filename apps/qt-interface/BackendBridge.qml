@@ -54,6 +54,7 @@ QtObject {
 
     // --- station ---------------------------------------------------------------------------
     readonly property var overrides: backend ? backend.overrides : ({ feed: 100, spindle: 100, rapid: 100 })
+    readonly property var rapidSteps: backend ? backend.rapidSteps : [ 5, 25, 50, 100 ]
     readonly property bool spindle: backend ? backend.spindle : false
     readonly property bool coolant: backend ? backend.coolant : false
     readonly property int load: backend ? backend.load : 0
@@ -76,6 +77,7 @@ QtObject {
     }
     readonly property string clock: backend ? backend.clock : "--:--:--"
     readonly property string machineMessage: backend ? backend.message : ""
+    readonly property var mdiHistory: backend ? backend.mdiHistory : []
 
     // The verdict of the last command, so a screen can show why the machine said no instead of
     // staying silent.

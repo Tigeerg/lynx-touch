@@ -33,6 +33,8 @@ QtObject {
     property var alarms: [ { active: true }, { active: false }, { active: true } ]
     property string clock: "10:45:00"
     property string message: ""
+    property var mdiHistory: []
+    property var rapidSteps: [ 5, 25, 50, 100 ]
 
     // Command answers are configurable so a refusal can be checked, not only a success.
     property bool commandOk: true
@@ -60,6 +62,8 @@ QtObject {
         cycleTime = 42000
         clock = "10:45:00"
         message = ""
+        mdiHistory = []
+        rapidSteps = [ 5, 25, 50, 100 ]
         commandOk = true
         commandReason = ""
         lastCommandName = ""

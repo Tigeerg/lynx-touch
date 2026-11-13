@@ -55,13 +55,14 @@ Item {
     property bool editMode: false
     onActiveScreenChanged: { if (activeScreen === "service") svcFocus = "nav"; }
     property string machineMode: "AUTO"
-    // Live work position in the active offset. The DRO reads this, not the offset table: jogging
-    // (panel keys, pendant, MPG) moves the numbers, editing G54 does not.
-    property var machinePos: ({ x: -120.500, y: 35.250, z: -210.400, a: 0.000 })
+    // Live work position in the active offset. The machine owns it: the DRO reads `machinePos`,
+    // jogging, MDI and "go to zero" ask the backend, and the numbers follow its answer.
+    readonly property var machinePos: backend.position
 
     // MDI (manual data input) line: open on the SETUP work screen, typed with the panel keyboard.
     property string mdiBuffer: ""
-    property var mdiHistory: ["G90 G54", "S1200 M3", "G0 X0 Y0"]
+    // The recent MDI lines are the machine's: the panel recalls what the machine remembers.
+    readonly property var mdiHistory: backend.mdiHistory
     function mdiOpen() { return workplace === "SETUP" && activeScreen === "pos"; }
     function mdiChar(event) {
         if (event.key >= Qt.Key_A && event.key <= Qt.Key_Z)
@@ -80,35 +81,16 @@ Item {
     function runMdi() {
         var text = mdiBuffer.trim();
         if (text === "") return;
-        var toks = text.replace(/\(.*?\)/g, " ").toUpperCase().split(/\s+/);
-        var relative = false;
-        var p = {};
-        for (var k in machinePos) p[k] = machinePos[k];
-        for (var i = 0; i < toks.length; i++) {
-            var t = toks[i];
-            if (t === "G91") relative = true;
-            else if (t === "G90") relative = false;
-            else if (t.charAt(0) === "X") p.x = moveCoord(p.x, t.substring(1), relative);
-            else if (t.charAt(0) === "Y") p.y = moveCoord(p.y, t.substring(1), relative);
-            else if (t.charAt(0) === "Z") p.z = moveCoord(p.z, t.substring(1), relative);
-            else if (t.charAt(0) === "A") p.a = moveCoord(p.a, t.substring(1), relative);
-            else if (t === "M03" || t === "M3") { spindleOn = true; machineToggleSpindle(); }
-            else if (t === "M05" || t === "M5") { spindleOn = false; machineToggleSpindle(); }
-            else if (t === "M08" || t === "M8") { coolantOn = true; machineToggleCoolant(); }
-            else if (t === "M09" || t === "M9") { coolantOn = false; machineToggleCoolant(); }
+        if (backend.mdi(text)) {
+            // The machine answers with the new position and switches; the panel takes them back so
+            // the DRO and the function keys do not drift from the machine.
+            spindleOn = backend.spindle;
+            coolantOn = backend.coolant;
+            mdiBuffer = "";
+            message = "MDI: " + text.toUpperCase();
+        } else if (backend.connected) {
+            message = backend.lastReason;
         }
-        machinePos = p;
-        var h = [text];
-        for (var j = 0; j < mdiHistory.length && h.length < 3; j++)
-            if (mdiHistory[j] !== text) h.push(mdiHistory[j]);
-        mdiHistory = h;
-        message = "MDI: " + text;
-        mdiBuffer = "";
-    }
-    function moveCoord(current, value, relative) {
-        var v = parseFloat(value);
-        if (!isFinite(v)) return current;
-        return relative ? Math.round((current + v) * 1000) / 1000 : v;
     }
 
     // ---- Tool length measurement (tool setter) ------------------------------------------------
@@ -324,15 +306,17 @@ Item {
         { title: "Коррекции", items: [ { keys: ["−", "="], desc: "Подача F: −10% / +10%" }, { keys: ["[", "]"], desc: "Шпиндель S: −10% / +10%" }, { keys: ["9", "0"], desc: "Ускоренный ход: 5 / 25 / 50 / 100%" } ] }
     ]
     property string jogAxis: "X"
-    property int feedOverride: 60
-    property int spindleOverride: 90
-    property int rapidOverride: 100
-    readonly property var rapidSteps: [5, 25, 50, 100]
+    // The overrides are the machine's: the panel shows them and asks for a step; the machine clamps
+    // and reports (feed and spindle 0…150 % by 10, rapid from its own 5/25/50/100 row).
+    readonly property int feedOverride: backend.overrides.feed
+    readonly property int spindleOverride: backend.overrides.spindle
+    readonly property int rapidOverride: backend.overrides.rapid
+    readonly property var rapidSteps: backend.rapidSteps.length > 0 ? backend.rapidSteps : [5, 25, 50, 100]
     function selectAxis(a) { jogAxis = a; }
     function axisSel(a) { return (machineMode === "JOG" || machineMode === "MPG") && jogAxis === a; }
-    function adjustFeed(d) { feedOverride = Math.max(0, Math.min(150, feedOverride + d * 10)); }
-    function adjustSpindle(d) { spindleOverride = Math.max(0, Math.min(150, spindleOverride + d * 10)); }
-    function adjustRapid(d) { var i = rapidSteps.indexOf(rapidOverride); if (i < 0) i = rapidSteps.length - 1; i = Math.max(0, Math.min(rapidSteps.length - 1, i + d)); rapidOverride = rapidSteps[i]; }
+    function adjustFeed(d) { if (!backend.setOverride("feed", d > 0 ? 1 : -1) && backend.connected) message = backend.lastReason; }
+    function adjustSpindle(d) { if (!backend.setOverride("spindle", d > 0 ? 1 : -1) && backend.connected) message = backend.lastReason; }
+    function adjustRapid(d) { if (!backend.setOverride("rapid", d > 0 ? 1 : -1) && backend.connected) message = backend.lastReason; }
     function pageCursor(d) { if (activeScreen === "service") { if (svcFocus === "list") svcCursor = Math.max(0, Math.min(svcListLen() - 1, svcCursor + d)); } else setCursorIndex(cursorIndex() + d); }
     property bool splashVisible: true
     property bool splashLeaving: false
@@ -415,8 +399,11 @@ Item {
         message = "Вспомогательная функция: " + kind;
     }
     function goSafePoint() {
-        var ps = {}; for (var sk in machinePos) ps[sk] = machinePos[sk];
-        ps.z = 50; machinePos = ps; message = "Отвод в безопасную точку Z50";
+        // Safe point: the machine lifts Z to 50 (absolute) and reports the new position.
+        if (backend.mdi("G90 Z50"))
+            message = "Отвод в безопасную точку Z50";
+        else if (backend.connected)
+            message = backend.lastReason;
     }
     property bool optStop: false
     property bool dryRun: false
@@ -462,7 +449,7 @@ Item {
         else if (k.id === "brokenTool") { mutateTools(cursorTool, { life: 0 }); message = toolsData[cursorTool].n + ": инструмент сломан, ресурс 0%"; }
         else if (k.id === "zeroRel") message = "Относительные координаты обнулены";
         else if (k.id === "goSafe") goSafePoint();
-        else if (k.id === "goWorkZero") { machinePos = ({ x: 0, y: 0, z: 0, a: 0 }); message = "В ноль детали"; }
+        else if (k.id === "goWorkZero") { if (backend.mdi("G90 X0 Y0 Z0 A0")) message = "В ноль детали"; else if (backend.connected) message = backend.lastReason; }
         else if (k.id === "warmup") { spindleOn = true; machineToggleSpindle(); message = "Прогрев шпинделя запущен"; }
         else if (k.id === "calc") message = "Калькулятор откроется в следующей волне";
         else if (k.id === "teachBase") message = "База щупа записана";
@@ -654,14 +641,11 @@ Item {
     onMachineJogRequest: function(dir) { root.jogMachine(dir) }
 
     function jogMachine(dir) {
-        var steps = [0.001, 0.01, 0.1];
-        var step = steps[Math.max(0, Math.min(2, jogStep))];
-        var key = jogAxis.toLowerCase();
-        var p = {};
-        for (var k in machinePos) p[k] = machinePos[k];
-        var next = (p[key] === undefined ? 0 : p[key]) + dir * step;
-        p[key] = Math.round(next * 1000) / 1000;
-        machinePos = p;
+        // The panel owns the step rows (0.001 / 0.01 / 0.1 mm); the machine decides whether the
+        // move is allowed and reports the position it ended at.
+        var step = Math.max(0, Math.min(2, jogStep));
+        if (!backend.jog(jogAxis.toUpperCase(), step, dir) && backend.connected)
+            message = backend.lastReason;
     }
     function machineCoordinate(axis) {
         var v = machinePos[axis.toLowerCase()];

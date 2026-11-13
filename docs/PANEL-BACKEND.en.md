@@ -86,11 +86,13 @@ The screens do not know which backend is behind the contract. One object sits be
   `main.cpp` makes that choice.
 
 Connected at this step: the run state, program name and title, message count and clock in the header
-(panel and touch); the cycle, spindle and coolant commands; workplace and mode switching.
+(panel and touch); the cycle, spindle and coolant commands; workplace and mode switching; the
+position (DRO of the panel and the touch UI), jog, the MDI line, "go to part zero", "retract to the
+safe point" and the feed/spindle/rapid overrides.
 
 Still local (moving in the next slices, see §8): the program catalogue and editor, the offset, tool
-and message tables, the MDI buffer, tool measuring, the probe wizard, the ladder and the service
-parameters.
+and message tables, tool measuring, the probe wizard, the ladder, the service parameters and the part
+counter (the contract has no counter command yet).
 
 ## 5. Backend selection and launch
 
@@ -151,11 +153,11 @@ Environment variables for build and run: `CNC_VCVARS`, `CNC_NINJA`, `CNC_CMAKE`,
 
 ## 8. What is not done yet
 
-* The screens read `machine` through the seam: the header (run state, program, message count, clock)
-  and the cycle/spindle/coolant/workplace/mode commands are live. The rest — the program catalogue
-  and editor, the offset/tool/message tables, the MDI buffer, measuring, the probe, the ladder, the
-  service parameters — is still local and moves one screen at a time (first step: DRO, MDI and
-  overrides).
+* The screens read `machine` through the seam: the header (run state, program, message count,
+  clock), the position (DRO), jog, the MDI line, the safe point, part zero and the overrides are
+  live. The rest — the program catalogue and editor, the offset/tool/message tables, measuring, the
+  probe, the ladder, the service parameters, the part counter — is still local and moves one screen
+  at a time.
 * There is no `LinuxCncBackend`: the HAL/`linuxcnc` adapter comes after stage 1; until then
   `--backend=linuxcnc` fails on purpose.
 * Qt has no "Minimal" theme: `--theme` accepts 0…5, but only four palettes exist.

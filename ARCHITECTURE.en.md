@@ -154,9 +154,9 @@ is local (when an API request appears, add and name that layer here).
   without Qt Quick and is tested by `lynx-backend-test`.
 * `BackendBridge.qml` — the single seam between the panel and the machine: screens read values here
   and send commands back; the seam composes the labels (`runLabel`, `toolLabel`) and keeps the
-  refusal in `lastReason`. The header (run state, program, message count, clock) and the
-  cycle/spindle/coolant commands are live; the tables, the program catalogue and MDI move to the
-  seam in the next slices.
+  refusal in `lastReason`. Live: the header (run state, program, message count, clock), the position
+  (DRO), jog, MDI, part zero, the safe point, the overrides and the cycle/spindle/coolant commands.
+  The tables, the program catalogue and the service move to the seam in the next slices.
 * Texts match `react-interface` word for word; icons are lucide only, from the bundled font.
 * The Work screen is split: `WorkScreen.qml` is the manual mode (live coordinates, MDI, viewer),
   `AutoScreen.qml` is AUTO (position, distance to the block, remaining path, four F8 views). Both use

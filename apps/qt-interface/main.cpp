@@ -131,7 +131,7 @@ int main(int argc, char *argv[])
 #endif
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("Lynx Touch"));
-    app.setApplicationVersion(QStringLiteral("0.8.0"));
+    app.setApplicationVersion(QStringLiteral("0.9.0"));
 
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Lynx Touch — панель оператора ЧПУ"));
